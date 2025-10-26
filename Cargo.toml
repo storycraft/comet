@@ -1,0 +1,10 @@
+[package]
+name = "comet"
+version = "0.1.0"
+edition = "2024"
+authors = ["storycraft <storycraft@pancake.sh>"]
+
+[dependencies]
+accesskit = "0.21.1"
+parley = "0.6.0"
+taffy = "0.9.1"
