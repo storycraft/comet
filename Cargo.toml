@@ -6,5 +6,9 @@ authors = ["storycraft <storycraft@pancake.sh>"]
 
 [dependencies]
 accesskit = "0.21.1"
+anyrender = "0.6.1"
+anyrender_vello_hybrid = "0.1.0"
 parley = "0.6.0"
+slotmap = "1.0.7"
 taffy = "0.9.1"
+winit = "0.30.12"
