@@ -3,6 +3,7 @@ use core::iter;
 use parley::{
     FontContext, InlineBox, Layout, LayoutContext, StyleProperty, TextStyle, TreeBuilder,
 };
+use slotmap::Key;
 
 use crate::{
     layout::pre_pass::{LayoutPrePassCx, NodeIns},
@@ -11,7 +12,7 @@ use crate::{
 
 pub struct LayoutPassCx {
     font_cx: FontContext,
-    layout_cx: LayoutContext<Option<NodeKey>>,
+    layout_cx: LayoutContext<NodeKey>,
     ins_stack_buf: Vec<NodeKey>,
     pub blocks: Vec<LayoutBlock>,
 }
@@ -34,7 +35,7 @@ impl LayoutPassCx {
     pub fn accept(&mut self, pre_pass: &mut LayoutPrePassCx) {
         self.clear();
 
-        let mut builder: Option<TreeBuilder<'_, Option<NodeKey>>> = None;
+        let mut builder: Option<TreeBuilder<'_, NodeKey>> = None;
 
         let mut text_size = 0usize;
         for ins in &pre_pass.instructions {
@@ -51,7 +52,7 @@ impl LayoutPassCx {
                         1.0,
                         false,
                         &TextStyle {
-                            brush: Some(id),
+                            brush: id,
                             ..Default::default()
                         },
                     ));
@@ -62,13 +63,13 @@ impl LayoutPassCx {
                     builder
                         .as_mut()
                         .unwrap()
-                        .push_style_modification_span(iter::once(&StyleProperty::Brush(Some(id))));
+                        .push_style_modification_span(iter::once(&StyleProperty::Brush(id)));
                     self.ins_stack_buf.push(id);
                 }
 
-                NodeIns::Box { width, height } => {
+                NodeIns::Box { key, width, height } => {
                     builder.as_mut().unwrap().push_inline_box(InlineBox {
-                        id: 0, // TODO
+                        id: key.data().as_ffi(),
                         index: text_size,
                         width,
                         height,
@@ -105,7 +106,8 @@ impl LayoutPassCx {
                         1.0,
                         false,
                         &TextStyle {
-                            brush: self.ins_stack_buf.pop(),
+                            // TODO:: Error handling
+                            brush: self.ins_stack_buf.pop().unwrap(),
                             ..Default::default()
                         },
                     ));
@@ -119,5 +121,5 @@ impl LayoutPassCx {
 
 pub struct LayoutBlock {
     pub text: String,
-    pub layout: Layout<Option<NodeKey>>,
+    pub layout: Layout<NodeKey>,
 }

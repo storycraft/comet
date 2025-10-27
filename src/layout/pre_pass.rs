@@ -1,4 +1,4 @@
-use crate::node::{DisplayOuter, LayoutTree, Node, NodeKey};
+use crate::node::{DisplayInner, DisplayOuter, LayoutTree, Node, NodeKey};
 
 #[derive(Debug, Clone, Copy)]
 pub enum NodeIns {
@@ -7,7 +7,11 @@ pub enum NodeIns {
     /// Push inline box
     PushInline(NodeKey, Option<()>),
     /// An opaque box
-    Box { width: f32, height: f32 },
+    Box {
+        key: NodeKey,
+        width: f32,
+        height: f32,
+    },
     /// A text span
     Text { start: usize, end: usize },
     /// Pop previouslyt pushed inline box
@@ -47,7 +51,7 @@ impl LayoutPrePassCx {
 
         match node {
             Node::Div(div) => {
-                let display_outer = div.display.unwrap_or_default().0;
+                let (display_outer, display_inner) = div.display.unwrap_or_default();
 
                 let (push_ins, pop_ins) = match display_outer {
                     DisplayOuter::Block => (NodeIns::PushBlock(id, None), NodeIns::PopBlock),
@@ -55,10 +59,19 @@ impl LayoutPrePassCx {
                 };
 
                 self.instructions.push(push_ins);
-
-                for &child in tree.children(id) {
-                    self.pre_pass_inner(tree, child);
+                if display_inner == DisplayInner::Flow {
+                    for &child in tree.children(id) {
+                        self.pre_pass_inner(tree, child);
+                    }
+                } else {
+                    self.instructions.push(NodeIns::Box {
+                        key: id,
+                        // TODO
+                        width: 100.0,
+                        height: 100.0,
+                    });
                 }
+
                 self.instructions.push(pop_ins);
             }
 
