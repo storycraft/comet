@@ -1,6 +1,5 @@
 use comet::{
-    layout::{LayoutPass, LayoutPrePass, layout, layout_pre_pass},
-    node::{LayoutTree, NodeKey},
+    layout::{pass::LayoutPassCx, pre_pass::LayoutPrePassCx}, node::{LayoutTree, NodeKey}
 };
 use parley::{Alignment, AlignmentOptions};
 
@@ -20,12 +19,12 @@ fn main() {
     layout_tree.append_child(div2, inner2);
     layout_tree.append_child(root, text2);
 
-    let mut pre_pass = LayoutPrePass::new();
-    layout_pre_pass(&mut pre_pass, &layout_tree, root);
+    let mut pre_pass = LayoutPrePassCx::new();
+    pre_pass.accept( &layout_tree, root);
     dbg!(&mut pre_pass);
 
-    let mut pass = LayoutPass::new();
-    layout(&mut pre_pass, &mut pass);
+    let mut pass = LayoutPassCx::new();
+    pass.accept(&mut pre_pass);
 
     for block in &mut pass.blocks {
         println!("block");
@@ -34,13 +33,14 @@ fn main() {
             .layout
             .align(None, Alignment::Start, AlignmentOptions::default());
         dbg!(&block.text);
+        dbg!(block.layout.width(), block.layout.height());
         for line in block.layout.lines() {
             println!("items");
             for items in line.items() {
                 match items {
                     parley::PositionedLayoutItem::GlyphRun(glyph_run) => {
                         let runs = glyph_run.glyphs().collect::<Vec<_>>();
-                        dbg!(runs);
+                        dbg!(glyph_run.style(), runs);
                     }
                     parley::PositionedLayoutItem::InlineBox(positioned_inline_box) => {
                         dbg!(positioned_inline_box);
