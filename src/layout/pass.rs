@@ -11,8 +11,6 @@ use crate::{
 };
 
 pub struct LayoutPassCx {
-    font_cx: FontContext,
-    layout_cx: LayoutContext<NodeKey>,
     ins_stack_buf: Vec<NodeKey>,
     pub blocks: Vec<LayoutBlock>,
 }
@@ -20,8 +18,6 @@ pub struct LayoutPassCx {
 impl LayoutPassCx {
     pub fn new() -> Self {
         Self {
-            font_cx: FontContext::new(),
-            layout_cx: LayoutContext::new(),
             ins_stack_buf: Vec::new(),
             blocks: Vec::new(),
         }
@@ -32,7 +28,12 @@ impl LayoutPassCx {
         self.blocks.clear();
     }
 
-    pub fn accept(&mut self, pre_pass: &mut LayoutPrePassCx) {
+    pub fn accept(
+        &mut self,
+        pre_pass: &mut LayoutPrePassCx,
+        font_cx: &mut FontContext,
+        layout_cx: &mut LayoutContext<NodeKey>,
+    ) {
         self.clear();
 
         let mut builder: Option<TreeBuilder<'_, NodeKey>> = None;
@@ -47,8 +48,8 @@ impl LayoutPassCx {
                     }
 
                     self.ins_stack_buf.push(id);
-                    builder = Some(self.layout_cx.tree_builder(
-                        &mut self.font_cx,
+                    builder = Some(layout_cx.tree_builder(
+                        font_cx,
                         1.0,
                         false,
                         &TextStyle {
@@ -101,8 +102,8 @@ impl LayoutPassCx {
                         self.blocks.push(LayoutBlock { text, layout });
                     }
 
-                    builder = Some(self.layout_cx.tree_builder(
-                        &mut self.font_cx,
+                    builder = Some(layout_cx.tree_builder(
+                        font_cx,
                         1.0,
                         false,
                         &TextStyle {

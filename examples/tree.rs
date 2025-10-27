@@ -1,9 +1,12 @@
 use comet::{
     layout::{pass::LayoutPassCx, pre_pass::LayoutPrePassCx}, node::{LayoutTree, NodeKey}
 };
-use parley::{Alignment, AlignmentOptions};
+use parley::{Alignment, AlignmentOptions, FontContext, LayoutContext};
 
 fn main() {
+    let mut font_cx = FontContext::new();
+    let mut layout_cx = LayoutContext::new();
+
     let mut layout_tree = LayoutTree::new();
     let root = layout_tree.create_div();
     let text1 = layout_tree.create_text("sample text");
@@ -24,7 +27,7 @@ fn main() {
     dbg!(&mut pre_pass);
 
     let mut pass = LayoutPassCx::new();
-    pass.accept(&mut pre_pass);
+    pass.accept(&mut pre_pass, &mut font_cx, &mut layout_cx);
 
     for block in &mut pass.blocks {
         println!("block");
