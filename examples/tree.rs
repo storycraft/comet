@@ -1,17 +1,9 @@
 use comet::{
-    layout::{
-        pass::LayoutPassCx,
-        pass2::{BoxKey, BoxLayoutTree, BoxLayoutTreeCx, TreeNode},
-        pre_pass::LayoutPrePassCx,
-    },
+    layout::{BoxKey, BoxLayoutTree, BoxLayoutTreeCx, TreeNode, TreeNodeTy},
     node::{DisplayInner, DisplayOuter, Node, NodeKey, UiTree},
 };
-use parley::{Alignment, AlignmentOptions, FontContext, LayoutContext};
 
 fn main() {
-    let mut font_cx = FontContext::new();
-    let mut layout_cx = LayoutContext::new();
-
     let mut ui = UiTree::new();
     let root = ui.create_div();
     let text1 = ui.create_text("sample text");
@@ -30,41 +22,20 @@ fn main() {
     ui.append_child(div2, inner2);
     ui.append_child(root, text2);
 
-    let mut pre_pass = LayoutPrePassCx::new();
-    pre_pass.accept(&ui, root);
-    dbg!(&mut pre_pass);
-
-    let mut pass = LayoutPassCx::new();
-    pass.accept(&mut pre_pass, &mut font_cx, &mut layout_cx);
-
     let mut box_tree = BoxLayoutTree::new();
     let mut box_tree_cx = BoxLayoutTreeCx::new();
-    let root_box = box_tree_cx.build(&mut ui, root, &mut box_tree);
-    print_box_tree(&mut box_tree, root_box, 0);
+    box_tree_cx.build(&mut ui, root, &mut box_tree);
+    let box_root = box_tree.root;
 
-    for block in &mut pass.blocks {
-        println!("block");
-        block.layout.break_all_lines(None);
-        block
-            .layout
-            .align(None, Alignment::Start, AlignmentOptions::default());
-        dbg!(&block.text);
-        dbg!(block.layout.width(), block.layout.height());
-        for line in block.layout.lines() {
-            println!("items");
-            for items in line.items() {
-                match items {
-                    parley::PositionedLayoutItem::GlyphRun(glyph_run) => {
-                        let runs = glyph_run.glyphs().collect::<Vec<_>>();
-                        dbg!(glyph_run.style(), runs);
-                    }
-                    parley::PositionedLayoutItem::InlineBox(positioned_inline_box) => {
-                        dbg!(positioned_inline_box);
-                    }
-                }
-            }
-        }
-    }
+    box_tree.compute_layout(
+        &mut ui,
+        taffy::Size {
+            width: taffy::AvailableSpace::Definite(100.0),
+            height: taffy::AvailableSpace::Definite(100.0),
+        },
+    );
+    print_box_tree(&mut box_tree, box_root, 0);
+
     print(&ui, root, 0);
 }
 
@@ -73,10 +44,17 @@ fn print_box_tree(box_tree: &BoxLayoutTree, id: BoxKey, space: u32) {
         print!(" ");
     }
 
-    let node = box_tree.map.get(id);
-    println!("- {:?}", node);
+    let Some(node) = box_tree.map.get(id) else {
+        return;
+    };
 
-    if let Some(TreeNode::Box(block)) = node {
+    println!("- ty: {:?} layout: {:?}", node.ty, node.layout);
+
+    if let TreeNode {
+        ty: TreeNodeTy::Box(block),
+        ..
+    } = node
+    {
         for child in &block.children {
             print_box_tree(box_tree, *child, space + 4);
         }
