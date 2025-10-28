@@ -1,4 +1,4 @@
-use crate::node::{DisplayInner, DisplayOuter, LayoutTree, Node, NodeKey};
+use crate::node::{DisplayInner, DisplayOuter, UiTree, Node, NodeKey};
 
 #[derive(Debug, Clone, Copy)]
 pub enum NodeIns {
@@ -39,12 +39,12 @@ impl LayoutPrePassCx {
         self.texts.clear();
     }
 
-    pub fn accept(&mut self, tree: &LayoutTree, root: NodeKey) {
+    pub fn accept(&mut self, tree: &UiTree, root: NodeKey) {
         self.clear();
         self.pre_pass_inner(tree, root);
     }
 
-    fn pre_pass_inner(&mut self, tree: &LayoutTree, id: NodeKey) {
+    fn pre_pass_inner(&mut self, tree: &UiTree, id: NodeKey) {
         let Some(node) = tree.get(id) else {
             return;
         };

@@ -1,12 +1,12 @@
 use slotmap::{HopSlotMap, new_key_type};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum Node {
     Div(Div),
     Text(String),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct Div {
     pub display: Option<(DisplayOuter, DisplayInner)>,
     children: Vec<NodeKey>,
@@ -50,17 +50,17 @@ struct NodeItem {
     node: Node,
 }
 
-pub struct LayoutTree {
+pub struct UiTree {
     map: HopSlotMap<NodeKey, NodeItem>,
 }
 
-impl Default for LayoutTree {
+impl Default for UiTree {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl LayoutTree {
+impl UiTree {
     pub fn new() -> Self {
         Self {
             map: HopSlotMap::with_key(),

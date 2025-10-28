@@ -1,5 +1,10 @@
 use comet::{
-    layout::{pass::LayoutPassCx, pre_pass::LayoutPrePassCx}, node::{LayoutTree, NodeKey}
+    layout::{
+        pass::LayoutPassCx,
+        pass2::{BoxKey, BoxLayoutTree, BoxLayoutTreeCx, TreeNode},
+        pre_pass::LayoutPrePassCx,
+    },
+    node::{DisplayInner, DisplayOuter, Node, NodeKey, UiTree},
 };
 use parley::{Alignment, AlignmentOptions, FontContext, LayoutContext};
 
@@ -7,27 +12,35 @@ fn main() {
     let mut font_cx = FontContext::new();
     let mut layout_cx = LayoutContext::new();
 
-    let mut layout_tree = LayoutTree::new();
-    let root = layout_tree.create_div();
-    let text1 = layout_tree.create_text("sample text");
-    let inner = layout_tree.create_text("start");
-    let div = layout_tree.create_div();
-    let div2 = layout_tree.create_div();
-    let inner2 = layout_tree.create_text("end");
-    let text2 = layout_tree.create_text("1");
-    layout_tree.append_child(root, text1);
-    layout_tree.append_child(root, div);
-    layout_tree.append_child(div, inner);
-    layout_tree.append_child(root, div2);
-    layout_tree.append_child(div2, inner2);
-    layout_tree.append_child(root, text2);
+    let mut ui = UiTree::new();
+    let root = ui.create_div();
+    let text1 = ui.create_text("sample text");
+    let inner = ui.create_text("start");
+    let div = ui.create_div();
+    if let Some(Node::Div(div)) = ui.get_mut(div) {
+        div.display = Some((DisplayOuter::Inline, DisplayInner::FlowRoot));
+    }
+    let div2 = ui.create_div();
+    let inner2 = ui.create_text("end");
+    let text2 = ui.create_text("1");
+    ui.append_child(root, text1);
+    ui.append_child(root, div);
+    ui.append_child(div, inner);
+    ui.append_child(root, div2);
+    ui.append_child(div2, inner2);
+    ui.append_child(root, text2);
 
     let mut pre_pass = LayoutPrePassCx::new();
-    pre_pass.accept( &layout_tree, root);
+    pre_pass.accept(&ui, root);
     dbg!(&mut pre_pass);
 
     let mut pass = LayoutPassCx::new();
     pass.accept(&mut pre_pass, &mut font_cx, &mut layout_cx);
+
+    let mut box_tree = BoxLayoutTree::new();
+    let mut box_tree_cx = BoxLayoutTreeCx::new();
+    let root_box = box_tree_cx.build(&mut ui, root, &mut box_tree);
+    print_box_tree(&mut box_tree, root_box, 0);
 
     for block in &mut pass.blocks {
         println!("block");
@@ -52,10 +65,25 @@ fn main() {
             }
         }
     }
-    print(&layout_tree, root, 0);
+    print(&ui, root, 0);
 }
 
-fn print(tree: &LayoutTree, id: NodeKey, space: u32) {
+fn print_box_tree(box_tree: &BoxLayoutTree, id: BoxKey, space: u32) {
+    for _ in 0..space {
+        print!(" ");
+    }
+
+    let node = box_tree.map.get(id);
+    println!("- {:?}", node);
+
+    if let Some(TreeNode::Box(block)) = node {
+        for child in &block.children {
+            print_box_tree(box_tree, *child, space + 4);
+        }
+    }
+}
+
+fn print(tree: &UiTree, id: NodeKey, space: u32) {
     for _ in 0..space {
         print!(" ");
     }
