@@ -211,6 +211,7 @@ impl BoxLayoutTreeCx {
 
                 if needs_block {
                     self.parents.pop();
+                    self.current_inline_box.take();
                 }
             }
 
