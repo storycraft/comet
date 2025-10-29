@@ -13,17 +13,19 @@ new_key_type! { pub struct BoxKey; }
 
 #[derive(Debug)]
 pub struct TreeNode {
-    pub ty: TreeNodeTy,
+    pub span: Option<NodeKey>,
     pub cache: taffy::Cache,
     pub layout: taffy::Layout,
+    pub ty: TreeNodeTy,
 }
 
 impl TreeNode {
-    pub fn new(ty: TreeNodeTy) -> Self {
+    pub fn new(span: Option<NodeKey>, ty: TreeNodeTy) -> Self {
         Self {
-            ty,
+            span,
             cache: taffy::Cache::new(),
             layout: taffy::Layout::new(),
+            ty,
         }
     }
 }
@@ -36,14 +38,12 @@ pub enum TreeNodeTy {
 
 #[derive(Debug)]
 pub struct BoxItem {
-    pub span: Option<NodeKey>,
     pub children: Vec<BoxKey>,
 }
 
 impl BoxItem {
-    pub fn new(span: Option<NodeKey>) -> Self {
+    pub fn new() -> Self {
         Self {
-            span,
             children: Vec::new(),
         }
     }
@@ -64,7 +64,7 @@ impl InlineBoxItem {
 
 #[derive(Debug, Clone, Copy)]
 pub enum InlineItem {
-    Node(NodeKey),
+    Text(NodeKey),
     Box(BoxKey),
 }
 
@@ -127,7 +127,7 @@ impl BoxLayoutTreeCx {
     fn create_parent_box(&mut self, tree: &mut BoxLayoutTree, span: Option<NodeKey>) -> BoxKey {
         let id = tree
             .map
-            .insert(TreeNode::new(TreeNodeTy::Box(BoxItem::new(span))));
+            .insert(TreeNode::new(span, TreeNodeTy::Box(BoxItem::new())));
         self.push_child(tree, id);
         self.parents.push(id);
         self.current_inline_box.take();
@@ -138,7 +138,7 @@ impl BoxLayoutTreeCx {
     fn create_cx(&mut self, tree: &mut BoxLayoutTree, span: Option<NodeKey>) {
         let cx_box = tree
             .map
-            .insert(TreeNode::new(TreeNodeTy::Box(BoxItem::new(span))));
+            .insert(TreeNode::new(span, TreeNodeTy::Box(BoxItem::new())));
         self.with_inline_box(tree, |inline| {
             inline.children.push(InlineItem::Box(cx_box));
         });
@@ -164,7 +164,7 @@ impl BoxLayoutTreeCx {
         let ret = f(&mut inline_box);
         let id = tree
             .map
-            .insert(TreeNode::new(TreeNodeTy::Inline(inline_box)));
+            .insert(TreeNode::new(None, TreeNodeTy::Inline(inline_box)));
         self.push_child(tree, id);
         self.current_inline_box = Some(id);
 
@@ -196,6 +196,15 @@ impl BoxLayoutTreeCx {
                     self.create_parent_box(tree, span.take());
                 }
 
+                match display_outer {
+                    DisplayOuter::Block => {
+                        self.create_parent_box(tree, span.take());
+                    }
+                    DisplayOuter::Inline => {
+                        
+                    },
+                }
+
                 let needs_new_cx = display_inner != DisplayInner::Flow;
                 if needs_new_cx {
                     self.create_cx(tree, span.take());
@@ -209,15 +218,15 @@ impl BoxLayoutTreeCx {
                     self.parents.pop();
                 }
 
-                if needs_block {
-                    self.parents.pop();
+                self.parents.pop();
+                if display_outer == DisplayOuter::Block {
                     self.current_inline_box.take();
                 }
             }
 
             Node::Text(_) => {
                 self.with_inline_box(tree, |inline| {
-                    inline.children.push(InlineItem::Node(id));
+                    inline.children.push(InlineItem::Text(id));
                 });
             }
         }

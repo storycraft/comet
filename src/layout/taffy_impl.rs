@@ -40,7 +40,7 @@ impl LayoutPartialTree for TaffyLayoutImpl<'_> {
                 TreeNodeTy::Box(_) => compute_block_layout(this, node_id, inputs),
                 TreeNodeTy::Inline(ref inline_box_item) => {
                     let items = inline_box_item.children.clone();
-                    compute_inline_layout(this.1, this.0, items)
+                    compute_inline_layout(this.1, this.0, &items)
                 }
             }
         })
