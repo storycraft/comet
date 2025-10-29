@@ -1,5 +1,5 @@
 use comet::{
-    layout::{BoxKey, BoxLayoutTree, BoxLayoutTreeCx, TreeNode, TreeNodeTy},
+    layout::{BoxKey, BoxLayoutTree, BoxLayoutTreeCx, BoxNodeTy, InlineItem},
     node::{DisplayInner, DisplayOuter, Node, NodeKey, UiTree},
 };
 
@@ -40,23 +40,36 @@ fn main() {
 }
 
 fn print_box_tree(box_tree: &BoxLayoutTree, id: BoxKey, space: u32) {
-    for _ in 0..space {
-        print!(" ");
-    }
-
     let Some(node) = box_tree.map.get(id) else {
         return;
     };
 
-    println!("- ty: {:?} layout: {:?}", node.ty, node.layout);
+    for _ in 0..space {
+        print!(" ");
+    }
 
-    if let TreeNode {
-        ty: TreeNodeTy::Box(block),
-        ..
-    } = node
-    {
-        for child in &block.children {
-            print_box_tree(box_tree, *child, space + 4);
+    println!("- span: {:?} ty: {:?}", node.span, node.ty);
+
+    match node.ty {
+        BoxNodeTy::Block(ref block) => {
+            for child in &block.children {
+                print_box_tree(box_tree, *child, space + 4);
+            }
+        }
+        BoxNodeTy::Inline(ref inline) => {
+            for child in &inline.children {
+                match *child {
+                    InlineItem::Text { start, end } => {
+                        for _ in 0..space {
+                            print!(" ");
+                        }
+                        println!("    - text: {:?}", &box_tree.texts[start..end]);
+                    }
+                    InlineItem::Box(child_box) => {
+                        print_box_tree(box_tree, child_box, space + 4);
+                    }
+                }
+            }
         }
     }
 }

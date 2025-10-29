@@ -1,15 +1,15 @@
 use parley::{
-    Alignment, AlignmentOptions, Brush, FontContext, InlineBox, LayoutContext, TextStyle,
+    Alignment, AlignmentOptions, FontContext, InlineBox, LayoutContext, TextStyle,
     TreeBuilder,
 };
 use taffy::{CollapsibleMarginSet, compute_root_layout};
 
 use crate::{
     layout::{
-        BoxLayoutTree, InlineItem, TreeNodeTy,
+        BoxLayoutTree, InlineItem, BoxNodeTy,
         taffy_impl::{TaffyLayoutImpl, to_taffy_key},
     },
-    node::{Node, NodeKey, UiTree},
+    node::{NodeKey, UiTree},
 };
 
 pub fn compute_inline_layout(
@@ -49,12 +49,12 @@ pub fn traverse_inline(
 ) {
     for &item in items {
         match item {
-            InlineItem::Text(node_key) => {
-                collect_texts(ui, node_key, builder, text_len);
+            InlineItem::Text { start, end } => {
+                builder.push_text(&box_tree.texts[start..end]);
             }
 
             InlineItem::Box(box_key) => match box_tree.map[box_key].ty {
-                TreeNodeTy::Box(_) => {
+                BoxNodeTy::Block(_) => {
                     compute_root_layout(
                         &mut TaffyLayoutImpl(box_tree, ui),
                         to_taffy_key(box_key),
@@ -70,22 +70,10 @@ pub fn traverse_inline(
                     });
                 }
 
-                TreeNodeTy::Inline(ref item) => {
+                BoxNodeTy::Inline(ref item) => {
                     traverse_inline(builder, ui, box_tree, &item.children.clone(), text_len);
                 }
             },
         }
-    }
-}
-
-fn collect_texts<B: Brush>(
-    ui: &UiTree,
-    key: NodeKey,
-    builder: &mut TreeBuilder<B>,
-    text_len: &mut usize,
-) {
-    if let Some(Node::Text(text)) = ui.get(key) {
-        builder.push_text(text);
-        *text_len += text.len();
     }
 }

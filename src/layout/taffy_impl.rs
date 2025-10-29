@@ -7,7 +7,7 @@ use taffy::{
 };
 
 use crate::{
-    layout::{BoxKey, BoxLayoutTree, TreeNodeTy, inline::compute_inline_layout},
+    layout::{BoxKey, BoxLayoutTree, BoxNodeTy, inline::compute_inline_layout},
     node::UiTree,
 };
 
@@ -25,7 +25,7 @@ impl LayoutPartialTree for TaffyLayoutImpl<'_> {
     }
 
     fn set_unrounded_layout(&mut self, node_id: taffy::NodeId, layout: &taffy::Layout) {
-        self.0.map[from_taffy_key(node_id)].layout = layout.clone();
+        self.0.map[from_taffy_key(node_id)].layout = *layout;
     }
 
     fn compute_child_layout(
@@ -37,8 +37,8 @@ impl LayoutPartialTree for TaffyLayoutImpl<'_> {
             let node = &mut this.0.map[from_taffy_key(node_id)];
 
             match node.ty {
-                TreeNodeTy::Box(_) => compute_block_layout(this, node_id, inputs),
-                TreeNodeTy::Inline(ref inline_box_item) => {
+                BoxNodeTy::Block(_) => compute_block_layout(this, node_id, inputs),
+                BoxNodeTy::Inline(ref inline_box_item) => {
                     let items = inline_box_item.children.clone();
                     compute_inline_layout(this.1, this.0, &items)
                 }
@@ -56,22 +56,22 @@ impl TraversePartialTree for TaffyLayoutImpl<'_> {
     fn child_ids(&self, parent_node_id: taffy::NodeId) -> Self::ChildIter<'_> {
         ChildIter {
             children: match self.0.map[from_taffy_key(parent_node_id)].ty {
-                TreeNodeTy::Box(ref box_item) => box_item.children.iter(),
-                TreeNodeTy::Inline(_) => [].iter(),
+                BoxNodeTy::Block(ref box_item) => box_item.children.iter(),
+                BoxNodeTy::Inline(_) => [].iter(),
             },
         }
     }
 
     fn child_count(&self, parent_node_id: taffy::NodeId) -> usize {
         match self.0.map[from_taffy_key(parent_node_id)].ty {
-            TreeNodeTy::Box(ref box_item) => box_item.children.len(),
+            BoxNodeTy::Block(ref box_item) => box_item.children.len(),
             _ => 0,
         }
     }
 
     fn get_child_id(&self, parent_node_id: taffy::NodeId, child_index: usize) -> taffy::NodeId {
         match self.0.map[from_taffy_key(parent_node_id)].ty {
-            TreeNodeTy::Box(ref box_item) => to_taffy_key(box_item.children[child_index]),
+            BoxNodeTy::Block(ref box_item) => to_taffy_key(box_item.children[child_index]),
             _ => unreachable!(),
         }
     }
