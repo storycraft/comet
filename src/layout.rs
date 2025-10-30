@@ -19,6 +19,7 @@ pub struct BoxNode {
     pub next_sibiling: Option<BoxKey>,
 
     pub cache: taffy::Cache,
+    pub unrounded_layout: taffy::Layout,
     pub layout: taffy::Layout,
 
     pub ty: BoxNodeTy,
@@ -33,7 +34,9 @@ impl BoxNode {
             next_sibiling: None,
 
             cache: taffy::Cache::new(),
+            unrounded_layout: taffy::Layout::new(),
             layout: taffy::Layout::new(),
+
             ty,
         }
     }

@@ -50,7 +50,7 @@ fn print_box_tree(box_tree: &BoxLayoutTree, id: BoxKey, space: u32) {
 
     println!(
         "- span: {:?} ty: {:?} location: {:?} size: {:?}",
-        node.span, node.ty, node.layout.location, node.layout.size
+        node.span, node.ty, node.unrounded_layout.location, node.unrounded_layout.size
     );
 
     match node.ty {

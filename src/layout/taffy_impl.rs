@@ -23,7 +23,7 @@ impl LayoutPartialTree for TaffyLayoutImpl<'_> {
     }
 
     fn set_unrounded_layout(&mut self, node_id: taffy::NodeId, layout: &taffy::Layout) {
-        self.0.map[from_taffy_key(node_id)].layout = *layout;
+        self.0.map[from_taffy_key(node_id)].unrounded_layout = *layout;
     }
 
     fn compute_child_layout(
@@ -80,7 +80,7 @@ impl TraverseTree for TaffyLayoutImpl<'_> {}
 
 impl RoundTree for TaffyLayoutImpl<'_> {
     fn get_unrounded_layout(&self, node_id: taffy::NodeId) -> taffy::Layout {
-        self.0.map[from_taffy_key(node_id)].layout
+        self.0.map[from_taffy_key(node_id)].unrounded_layout
     }
 
     fn set_final_layout(&mut self, node_id: taffy::NodeId, layout: &taffy::Layout) {
