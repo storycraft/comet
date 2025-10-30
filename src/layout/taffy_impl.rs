@@ -2,8 +2,8 @@ use std::slice;
 
 use slotmap::KeyData;
 use taffy::{
-    CacheTree, LayoutBlockContainer, LayoutPartialTree, TraversePartialTree, compute_block_layout,
-    compute_cached_layout,
+    CacheTree, LayoutBlockContainer, LayoutPartialTree, RoundTree, TraversePartialTree,
+    TraverseTree, compute_block_layout, compute_cached_layout,
 };
 
 use crate::{
@@ -59,7 +59,10 @@ impl TraversePartialTree for TaffyLayoutImpl<'_> {
             BoxNodeTy::Inline(_) => None,
         };
 
-        ChildIter { tree: &self.0, next_child_id }
+        ChildIter {
+            tree: &self.0,
+            next_child_id,
+        }
     }
 
     fn child_count(&self, parent_node_id: taffy::NodeId) -> usize {
@@ -72,6 +75,18 @@ impl TraversePartialTree for TaffyLayoutImpl<'_> {
     fn get_child_id(&self, parent_node_id: taffy::NodeId, child_index: usize) -> taffy::NodeId {
         // TODO:: impl workaround
         self.child_ids(parent_node_id).nth(child_index).unwrap()
+    }
+}
+
+impl TraverseTree for TaffyLayoutImpl<'_> {}
+
+impl RoundTree for TaffyLayoutImpl<'_> {
+    fn get_unrounded_layout(&self, node_id: taffy::NodeId) -> taffy::Layout {
+        self.0.map[from_taffy_key(node_id)].layout
+    }
+
+    fn set_final_layout(&mut self, node_id: taffy::NodeId, layout: &taffy::Layout) {
+        self.0.map[from_taffy_key(node_id)].layout = layout.clone();
     }
 }
 
