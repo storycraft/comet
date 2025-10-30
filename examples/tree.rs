@@ -58,7 +58,7 @@ fn print_box_tree(box_tree: &BoxLayoutTree, id: BoxKey, space: u32) {
             let mut child = block.first_child;
             while let Some(child_id) = child {
                 print_box_tree(box_tree, child_id, space + 4);
-                child = box_tree.map.get(child_id).and_then(|node| node.next_sibiling);
+                child = box_tree.map.get(child_id).and_then(|node| node.next_sibling);
             }
         }
         BoxNodeTy::Inline(ref inline) => {

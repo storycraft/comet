@@ -160,7 +160,7 @@ impl Iterator for ChildIter<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let id = self.next_child_id.take()?;
-        self.next_child_id = self.tree.map.get(id)?.next_sibiling;
+        self.next_child_id = self.tree.map.get(id)?.next_sibling;
 
         Some(to_taffy_key(id))
     }

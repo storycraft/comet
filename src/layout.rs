@@ -15,8 +15,8 @@ new_key_type! { pub struct BoxKey; }
 pub struct BoxNode {
     pub span: Option<NodeKey>,
 
-    pub prev_sibiling: Option<BoxKey>,
-    pub next_sibiling: Option<BoxKey>,
+    pub prev_sibling: Option<BoxKey>,
+    pub next_sibling: Option<BoxKey>,
 
     pub cache: taffy::Cache,
     pub unrounded_layout: taffy::Layout,
@@ -30,8 +30,8 @@ impl BoxNode {
         Self {
             span,
 
-            prev_sibiling: None,
-            next_sibiling: None,
+            prev_sibling: None,
+            next_sibling: None,
 
             cache: taffy::Cache::new(),
             unrounded_layout: taffy::Layout::new(),
@@ -199,11 +199,11 @@ impl BoxLayoutTreeCx {
                 };
 
                 if let Some(last_child_node) = tree.map.get_mut(last_child_id) {
-                    last_child_node.next_sibiling = Some(id);
+                    last_child_node.next_sibling = Some(id);
                 }
 
                 if let Some(node) = tree.map.get_mut(id) {
-                    node.prev_sibiling = Some(last_child_id);
+                    node.prev_sibling = Some(last_child_id);
                 }
             }
             BoxNodeTy::Inline(ref mut item) => {
