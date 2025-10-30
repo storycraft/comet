@@ -61,7 +61,7 @@ pub fn traverse_inline(
                         taffy::Size::min_content(),
                     );
 
-                    let size = box_tree.map[box_key].unrounded_layout.size;
+                    let size = box_tree.map[box_key].layout.size;
                     builder.push_inline_box(InlineBox {
                         id: 0,
                         index: *text_len,

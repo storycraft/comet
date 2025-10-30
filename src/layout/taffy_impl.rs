@@ -1,7 +1,7 @@
 use slotmap::KeyData;
 use taffy::{
-    CacheTree, LayoutBlockContainer, LayoutPartialTree, RoundTree, TraversePartialTree,
-    TraverseTree, compute_block_layout, compute_cached_layout,
+    CacheTree, LayoutBlockContainer, LayoutPartialTree, TraversePartialTree, TraverseTree,
+    compute_block_layout, compute_cached_layout,
 };
 
 use crate::{
@@ -23,7 +23,7 @@ impl LayoutPartialTree for TaffyLayoutImpl<'_> {
     }
 
     fn set_unrounded_layout(&mut self, node_id: taffy::NodeId, layout: &taffy::Layout) {
-        self.0.map[from_taffy_key(node_id)].unrounded_layout = *layout;
+        self.0.map[from_taffy_key(node_id)].layout = *layout;
     }
 
     fn compute_child_layout(
@@ -77,16 +77,6 @@ impl TraversePartialTree for TaffyLayoutImpl<'_> {
 }
 
 impl TraverseTree for TaffyLayoutImpl<'_> {}
-
-impl RoundTree for TaffyLayoutImpl<'_> {
-    fn get_unrounded_layout(&self, node_id: taffy::NodeId) -> taffy::Layout {
-        self.0.map[from_taffy_key(node_id)].unrounded_layout
-    }
-
-    fn set_final_layout(&mut self, node_id: taffy::NodeId, layout: &taffy::Layout) {
-        self.0.map[from_taffy_key(node_id)].layout = *layout;
-    }
-}
 
 impl LayoutBlockContainer for TaffyLayoutImpl<'_> {
     type BlockContainerStyle<'a>
