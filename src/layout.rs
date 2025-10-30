@@ -14,8 +14,13 @@ new_key_type! { pub struct BoxKey; }
 #[derive(Debug)]
 pub struct BoxNode {
     pub span: Option<NodeKey>,
+
+    pub prev_sibiling: Option<BoxKey>,
+    pub next_sibiling: Option<BoxKey>,
+
     pub cache: taffy::Cache,
     pub layout: taffy::Layout,
+
     pub ty: BoxNodeTy,
 }
 
@@ -23,6 +28,10 @@ impl BoxNode {
     pub fn new(span: Option<NodeKey>, ty: BoxNodeTy) -> Self {
         Self {
             span,
+
+            prev_sibiling: None,
+            next_sibiling: None,
+
             cache: taffy::Cache::new(),
             layout: taffy::Layout::new(),
             ty,
@@ -38,20 +47,24 @@ pub enum BoxNodeTy {
 
 #[derive(Debug)]
 pub struct BlockBox {
-    pub children: Vec<BoxKey>,
-}
-
-impl Default for BlockBox {
-    fn default() -> Self {
-        Self::new()
-    }
+    pub first_child: Option<BoxKey>,
+    pub last_child: Option<BoxKey>,
+    pub children_count: usize,
 }
 
 impl BlockBox {
     pub fn new() -> Self {
         Self {
-            children: Vec::new(),
+            first_child: None,
+            last_child: None,
+            children_count: 0,
         }
+    }
+}
+
+impl Default for BlockBox {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -167,13 +180,28 @@ impl BoxLayoutTreeCx {
             return;
         };
 
-        let Some(node) = tree.map.get_mut(parent) else {
+        let Some(parent_node) = tree.map.get_mut(parent) else {
             return;
         };
 
-        match node.ty {
+        match parent_node.ty {
             BoxNodeTy::Block(ref mut item) => {
-                item.children.push(id);
+                item.children_count += 1;
+                if item.first_child.is_none() {
+                    item.first_child = Some(id);
+                }
+
+                let Some(last_child_id) = item.last_child.replace(id) else {
+                    return;
+                };
+
+                if let Some(last_child_node) = tree.map.get_mut(last_child_id) {
+                    last_child_node.next_sibiling = Some(id);
+                }
+
+                if let Some(node) = tree.map.get_mut(id) {
+                    node.prev_sibiling = Some(last_child_id);
+                }
             }
             BoxNodeTy::Inline(ref mut item) => {
                 item.children.push(InlineItem::Box(id));

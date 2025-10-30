@@ -48,12 +48,17 @@ fn print_box_tree(box_tree: &BoxLayoutTree, id: BoxKey, space: u32) {
         print!(" ");
     }
 
-    println!("- span: {:?} ty: {:?}", node.span, node.ty);
+    println!(
+        "- span: {:?} ty: {:?} location: {:?} size: {:?}",
+        node.span, node.ty, node.layout.location, node.layout.size
+    );
 
     match node.ty {
         BoxNodeTy::Block(ref block) => {
-            for child in &block.children {
-                print_box_tree(box_tree, *child, space + 4);
+            let mut child = block.first_child;
+            while let Some(child_id) = child {
+                print_box_tree(box_tree, child_id, space + 4);
+                child = box_tree.map.get(child_id).and_then(|node| node.next_sibiling);
             }
         }
         BoxNodeTy::Inline(ref inline) => {

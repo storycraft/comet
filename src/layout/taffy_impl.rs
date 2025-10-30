@@ -54,26 +54,24 @@ impl TraversePartialTree for TaffyLayoutImpl<'_> {
         Self: 'a;
 
     fn child_ids(&self, parent_node_id: taffy::NodeId) -> Self::ChildIter<'_> {
-        ChildIter {
-            children: match self.0.map[from_taffy_key(parent_node_id)].ty {
-                BoxNodeTy::Block(ref box_item) => box_item.children.iter(),
-                BoxNodeTy::Inline(_) => [].iter(),
-            },
-        }
+        let next_child_id = match self.0.map[from_taffy_key(parent_node_id)].ty {
+            BoxNodeTy::Block(ref box_item) => box_item.first_child,
+            BoxNodeTy::Inline(_) => None,
+        };
+
+        ChildIter { tree: &self.0, next_child_id }
     }
 
     fn child_count(&self, parent_node_id: taffy::NodeId) -> usize {
         match self.0.map[from_taffy_key(parent_node_id)].ty {
-            BoxNodeTy::Block(ref box_item) => box_item.children.len(),
+            BoxNodeTy::Block(ref box_item) => box_item.children_count,
             _ => 0,
         }
     }
 
     fn get_child_id(&self, parent_node_id: taffy::NodeId, child_index: usize) -> taffy::NodeId {
-        match self.0.map[from_taffy_key(parent_node_id)].ty {
-            BoxNodeTy::Block(ref box_item) => to_taffy_key(box_item.children[child_index]),
-            _ => unreachable!(),
-        }
+        // TODO:: impl workaround
+        self.child_ids(parent_node_id).nth(child_index).unwrap()
     }
 }
 
@@ -140,13 +138,17 @@ pub fn to_taffy_key(id: BoxKey) -> taffy::NodeId {
 }
 
 pub(crate) struct ChildIter<'a> {
-    children: slice::Iter<'a, BoxKey>,
+    tree: &'a BoxLayoutTree,
+    next_child_id: Option<BoxKey>,
 }
 
 impl Iterator for ChildIter<'_> {
     type Item = taffy::NodeId;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Some(to_taffy_key(self.children.next().copied()?))
+        let id = self.next_child_id.take()?;
+        self.next_child_id = self.tree.map.get(id)?.next_sibiling;
+
+        Some(to_taffy_key(id))
     }
 }
