@@ -24,7 +24,7 @@ fn main() {
 
     let mut box_tree = BoxLayoutTree::new();
     let mut box_tree_cx = BoxLayoutTreeCx::new();
-    box_tree_cx.build(&mut ui, root, &mut box_tree);
+    box_tree_cx.build(&ui, root, &mut box_tree);
     let box_root = box_tree.root;
 
     box_tree.compute_layout(
@@ -34,7 +34,7 @@ fn main() {
             height: taffy::AvailableSpace::Definite(100.0),
         },
     );
-    print_box_tree(&mut box_tree, box_root, 0);
+    print_box_tree(&box_tree, box_root, 0);
 
     print(&ui, root, 0);
 }

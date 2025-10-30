@@ -1,5 +1,3 @@
-use std::slice;
-
 use slotmap::KeyData;
 use taffy::{
     CacheTree, LayoutBlockContainer, LayoutPartialTree, RoundTree, TraversePartialTree,
@@ -60,7 +58,7 @@ impl TraversePartialTree for TaffyLayoutImpl<'_> {
         };
 
         ChildIter {
-            tree: &self.0,
+            tree: self.0,
             next_child_id,
         }
     }
@@ -86,7 +84,7 @@ impl RoundTree for TaffyLayoutImpl<'_> {
     }
 
     fn set_final_layout(&mut self, node_id: taffy::NodeId, layout: &taffy::Layout) {
-        self.0.map[from_taffy_key(node_id)].layout = layout.clone();
+        self.0.map[from_taffy_key(node_id)].layout = *layout;
     }
 }
 
