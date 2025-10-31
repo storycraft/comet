@@ -31,9 +31,10 @@ impl<K: Key, V> SlotTree<K, V> {
     /// Append child to parent node and return last parent node id
     pub fn append(&mut self, parent: K, id: K) -> Option<K> {
         let parent_node = self.arena.get_mut(parent)?;
-        match parent_node.last_child {
-            Some(last_child) => self.before(last_child, id),
-            None => {
+        match (parent_node.first_child, parent_node.last_child) {
+            (_, Some(last_child)) => self.after(last_child, id),
+            _ => {
+                parent_node.first_child = Some(id);
                 parent_node.last_child = Some(id);
 
                 let last_parent = self.remove_parent(id);
@@ -50,10 +51,11 @@ impl<K: Key, V> SlotTree<K, V> {
     /// Prepend child to parent node and return last parent node id
     pub fn prepend(&mut self, parent: K, id: K) -> Option<K> {
         let parent_node = self.arena.get_mut(parent)?;
-        match parent_node.first_child {
-            Some(first_child) => self.before(first_child, id),
-            None => {
+        match (parent_node.first_child, parent_node.last_child) {
+            (Some(first_child), _) => self.before(first_child, id),
+            _ => {
                 parent_node.first_child = Some(id);
+                parent_node.last_child = Some(id);
 
                 let last_parent = self.remove_parent(id);
                 let Some(node) = self.arena.get_mut(id) else {
