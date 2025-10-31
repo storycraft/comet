@@ -1,15 +1,17 @@
+use parley::{Alignment, AlignmentOptions};
 use slotmap::KeyData;
 use taffy::{
     CacheTree, LayoutBlockContainer, LayoutPartialTree, TraversePartialTree, TraverseTree,
-    compute_block_layout, compute_cached_layout,
+    compute_block_layout, compute_cached_layout, compute_leaf_layout,
 };
 
 use crate::{
-    layout::{BoxKey, BoxLayoutTree, BoxNodeTy, inline::compute_inline_layout},
+    layout::{LayoutBox, LayoutBoxKey, LayoutBoxTree, LayoutTy},
     node::UiTree,
+    tree::cursor::Cursor,
 };
 
-pub(crate) struct TaffyLayoutImpl<'a>(pub &'a mut BoxLayoutTree, pub &'a mut UiTree);
+pub(crate) struct TaffyLayoutImpl<'a>(pub &'a mut LayoutBoxTree, pub &'a mut UiTree);
 
 impl LayoutPartialTree for TaffyLayoutImpl<'_> {
     type CoreContainerStyle<'a>
@@ -23,7 +25,7 @@ impl LayoutPartialTree for TaffyLayoutImpl<'_> {
     }
 
     fn set_unrounded_layout(&mut self, node_id: taffy::NodeId, layout: &taffy::Layout) {
-        self.0.map[from_taffy_key(node_id)].layout = *layout;
+        self.0.boxes[from_taffy_key(node_id)].taffy_layout = *layout;
     }
 
     fn compute_child_layout(
@@ -32,14 +34,33 @@ impl LayoutPartialTree for TaffyLayoutImpl<'_> {
         inputs: taffy::LayoutInput,
     ) -> taffy::LayoutOutput {
         compute_cached_layout(self, node_id, inputs, |this, node_id, inputs| {
-            let node = &mut this.0.map[from_taffy_key(node_id)];
+            let id = from_taffy_key(node_id);
+            let node = &mut this.0.boxes[id];
 
             match node.ty {
-                BoxNodeTy::Block(_) => compute_block_layout(this, node_id, inputs),
-                BoxNodeTy::Inline(ref inline_box_item) => {
-                    let items = inline_box_item.children.clone();
-                    compute_inline_layout(this.1, this.0, &items)
-                }
+                LayoutTy::Block => compute_block_layout(this, node_id, inputs),
+                LayoutTy::Inline(inline_box_key) => compute_leaf_layout(
+                    inputs,
+                    &taffy::Style::<String>::DEFAULT,
+                    |_, _| 0.0,
+                    |_, available_space| {
+                        // compute_inline_layout(this.1, this.0, id);
+
+                        let available_size = available_space.width.into_option();
+                        let inline_box = &mut this.0.inline_boxes[inline_box_key];
+                        inline_box.parley_layout.break_all_lines(available_size);
+                        inline_box.parley_layout.align(
+                            available_size,
+                            Alignment::Start,
+                            AlignmentOptions::default(),
+                        );
+
+                        taffy::Size {
+                            width: inline_box.parley_layout.width(),
+                            height: inline_box.parley_layout.height(),
+                        }
+                    },
+                ),
             }
         })
     }
@@ -52,26 +73,20 @@ impl TraversePartialTree for TaffyLayoutImpl<'_> {
         Self: 'a;
 
     fn child_ids(&self, parent_node_id: taffy::NodeId) -> Self::ChildIter<'_> {
-        let next_child_id = match self.0.map[from_taffy_key(parent_node_id)].ty {
-            BoxNodeTy::Block(ref box_item) => box_item.first_child,
-            BoxNodeTy::Inline(_) => None,
-        };
-
+        let first_id = self.0.boxes.first_child(from_taffy_key(parent_node_id));
         ChildIter {
-            tree: self.0,
-            next_child_id,
+            iter: self.0.boxes.cursor(first_id),
         }
     }
 
     fn child_count(&self, parent_node_id: taffy::NodeId) -> usize {
-        match self.0.map[from_taffy_key(parent_node_id)].ty {
-            BoxNodeTy::Block(ref box_item) => box_item.children_count,
-            _ => 0,
-        }
+        self.0
+            .boxes
+            .cursor(self.0.boxes.first_child(from_taffy_key(parent_node_id)))
+            .count()
     }
 
     fn get_child_id(&self, parent_node_id: taffy::NodeId, child_index: usize) -> taffy::NodeId {
-        // TODO:: impl workaround
         self.child_ids(parent_node_id).nth(child_index).unwrap()
     }
 }
@@ -106,9 +121,11 @@ impl CacheTree for TaffyLayoutImpl<'_> {
         available_space: taffy::Size<taffy::AvailableSpace>,
         run_mode: taffy::RunMode,
     ) -> Option<taffy::LayoutOutput> {
-        self.0.map[from_taffy_key(node_id)]
-            .cache
-            .get(known_dimensions, available_space, run_mode)
+        self.0.boxes[from_taffy_key(node_id)].taffy_cache.get(
+            known_dimensions,
+            available_space,
+            run_mode,
+        )
     }
 
     fn cache_store(
@@ -119,7 +136,7 @@ impl CacheTree for TaffyLayoutImpl<'_> {
         run_mode: taffy::RunMode,
         layout_output: taffy::LayoutOutput,
     ) {
-        self.0.map[from_taffy_key(node_id)].cache.store(
+        self.0.boxes[from_taffy_key(node_id)].taffy_cache.store(
             known_dimensions,
             available_space,
             run_mode,
@@ -128,30 +145,26 @@ impl CacheTree for TaffyLayoutImpl<'_> {
     }
 
     fn cache_clear(&mut self, node_id: taffy::NodeId) {
-        self.0.map[from_taffy_key(node_id)].cache.clear();
+        self.0.boxes[from_taffy_key(node_id)].taffy_cache.clear();
     }
 }
 
-pub fn from_taffy_key(id: taffy::NodeId) -> BoxKey {
-    BoxKey(KeyData::from_ffi(id.into()))
+pub fn from_taffy_key(id: taffy::NodeId) -> LayoutBoxKey {
+    LayoutBoxKey(KeyData::from_ffi(id.into()))
 }
 
-pub fn to_taffy_key(id: BoxKey) -> taffy::NodeId {
+pub fn to_taffy_key(id: LayoutBoxKey) -> taffy::NodeId {
     taffy::NodeId::new(id.0.as_ffi())
 }
 
 pub(crate) struct ChildIter<'a> {
-    tree: &'a BoxLayoutTree,
-    next_child_id: Option<BoxKey>,
+    iter: Cursor<'a, LayoutBoxKey, LayoutBox>,
 }
 
 impl Iterator for ChildIter<'_> {
     type Item = taffy::NodeId;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let id = self.next_child_id.take()?;
-        self.next_child_id = self.tree.map.get(id)?.next_sibling;
-
-        Some(to_taffy_key(id))
+        Some(to_taffy_key(self.iter.next()?))
     }
 }

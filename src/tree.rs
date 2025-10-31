@@ -1,4 +1,5 @@
 pub mod cursor;
+mod tests;
 
 use core::ops::{Index, IndexMut};
 

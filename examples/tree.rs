@@ -1,5 +1,5 @@
 use comet::{
-    layout::{BoxKey, BoxLayoutTree, BoxLayoutTreeCx, BoxNodeTy, InlineItem},
+    layout::{InlineItem, LayoutBoxKey, LayoutBoxTree, LayoutBoxTreeCx, LayoutTy},
     node::{DisplayInner, DisplayOuter, Node, NodeKey, UiTree},
 };
 
@@ -22,25 +22,25 @@ fn main() {
     ui.append_child(div2, inner2);
     ui.append_child(root, text2);
 
-    let mut box_tree = BoxLayoutTree::new();
-    let mut box_tree_cx = BoxLayoutTreeCx::new();
-    box_tree_cx.build(&ui, root, &mut box_tree);
-    let box_root = box_tree.root;
+    let mut layout_tree = LayoutBoxTree::new();
+    let mut tree_cx = LayoutBoxTreeCx::new();
+    tree_cx.build(&ui, root, &mut layout_tree);
+    let box_root = layout_tree.root;
 
-    box_tree.compute_layout(
+    layout_tree.compute_layout(
         &mut ui,
         taffy::Size {
             width: taffy::AvailableSpace::Definite(100.0),
             height: taffy::AvailableSpace::Definite(100.0),
         },
     );
-    print_box_tree(&box_tree, box_root, 0);
+    print_box_tree(&layout_tree, box_root, 0);
 
     print(&ui, root, 0);
 }
 
-fn print_box_tree(box_tree: &BoxLayoutTree, id: BoxKey, space: u32) {
-    let Some(node) = box_tree.map.get(id) else {
+fn print_box_tree(layout_tree: &LayoutBoxTree, id: LayoutBoxKey, space: u32) {
+    let Some(node) = layout_tree.boxes.get(id) else {
         return;
     };
 
@@ -50,32 +50,31 @@ fn print_box_tree(box_tree: &BoxLayoutTree, id: BoxKey, space: u32) {
 
     println!(
         "- span: {:?} ty: {:?} location: {:?} size: {:?}",
-        node.span, node.ty, node.unrounded_layout.location, node.unrounded_layout.size
+        node.span, node.ty, node.taffy_layout.location, node.taffy_layout.size
     );
 
     match node.ty {
-        BoxNodeTy::Block(ref block) => {
-            let mut child = block.first_child;
-            while let Some(child_id) = child {
-                print_box_tree(box_tree, child_id, space + 4);
-                child = box_tree.map.get(child_id).and_then(|node| node.next_sibling);
-            }
-        }
-        BoxNodeTy::Inline(ref inline) => {
-            for child in &inline.children {
-                match *child {
+        LayoutTy::Block => {}
+        LayoutTy::Inline(inline_box_id) => {
+            let inline_box = &layout_tree.inline_boxes[inline_box_id];
+            for child_id in layout_tree.inlines.cursor(inline_box.item_start) {
+                match layout_tree.inlines[child_id] {
                     InlineItem::Text { start, end } => {
                         for _ in 0..space {
                             print!(" ");
                         }
-                        println!("    - text: {:?}", &box_tree.texts[start..end]);
+                        println!("    - text: {:?}", &layout_tree.texts[start..end]);
                     }
                     InlineItem::Box(child_box) => {
-                        print_box_tree(box_tree, child_box, space + 4);
+                        print_box_tree(layout_tree, child_box, space + 4);
                     }
                 }
             }
         }
+    }
+
+    for child_id in layout_tree.boxes.cursor(layout_tree.boxes.first_child(id)) {
+        print_box_tree(layout_tree, child_id, space + 4);
     }
 }
 
