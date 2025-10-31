@@ -325,6 +325,7 @@ dependencies = [
  "accesskit",
  "anyrender",
  "anyrender_vello_hybrid",
+ "kurbo",
  "parley",
  "slotmap",
  "taffy",
