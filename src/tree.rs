@@ -10,6 +10,12 @@ pub struct SlotTree<K: Key, V> {
     arena: SlotMap<K, Node<K, V>>,
 }
 
+impl<K: Key, V> Default for SlotTree<K, V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<K: Key, V> SlotTree<K, V> {
     pub fn new() -> Self {
         Self {

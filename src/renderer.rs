@@ -1,5 +1,4 @@
 use anyrender::{Paint, PaintScene};
-use anyrender_vello::wgpu::hal::auxil::db;
 use color::AlphaColor;
 use kurbo::{Affine, Rect, Stroke};
 use parley::{
@@ -14,6 +13,12 @@ use crate::layout::{InlineBoxKey, LayoutBoxKey, LayoutBoxTree, LayoutTy};
 pub struct CometRenderer {
     offset_x: f64,
     offset_y: f64,
+}
+
+impl Default for CometRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CometRenderer {
