@@ -49,6 +49,7 @@ pub enum LayoutTy {
 pub struct InlineBox {
     pub parley_layout: parley::Layout<Option<NodeKey>>,
     pub item_start: Option<InlineKey>,
+    pub texts: String,
 }
 
 impl InlineBox {
@@ -56,6 +57,7 @@ impl InlineBox {
         Self {
             parley_layout: parley::Layout::new(),
             item_start: None,
+            texts: String::new(),
         }
     }
 }
@@ -174,6 +176,7 @@ impl LayoutBoxTreeCx {
             LayoutTy::Block => {
                 tree.boxes.append(parent, id);
             }
+
             LayoutTy::Inline(inline_box_key) => {
                 let Some(item_start) = tree
                     .inline_boxes
@@ -216,7 +219,6 @@ impl LayoutBoxTreeCx {
                 self.commit_text(tree);
 
                 let (display_outer, display_inner) = div.display.unwrap_or_default();
-
                 match display_outer {
                     DisplayOuter::Block => {
                         self.commit_inline_box(tree);
@@ -289,12 +291,6 @@ impl InlineBoxCx {
         }
     }
 
-    pub fn clear(&mut self) {
-        self.span_stack.clear();
-        self.first_key = None;
-        self.last_key = None;
-    }
-
     pub fn push_span(&mut self, key: NodeKey) {
         self.span_stack.push(key);
     }
@@ -327,12 +323,14 @@ impl InlineBoxCx {
 
         if let Some(prev_last_id) = self.last_key.replace(id) {
             tree.inlines.after(prev_last_id, id);
-        }        
+        }
     }
 
     pub fn finish(&mut self, tree: &mut LayoutBoxTree) -> Option<(Option<NodeKey>, InlineBoxKey)> {
         let span = self.span_stack.last().copied();
         let first_key = self.first_key?;
+        self.first_key = None;
+        self.last_key = None;
 
         let mut inline_box = InlineBox::new();
         inline_box.item_start = Some(first_key);

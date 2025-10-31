@@ -47,9 +47,8 @@ fn print_box_tree(layout_tree: &LayoutBoxTree, id: LayoutBoxKey, space: u32) {
     for _ in 0..space {
         print!(" ");
     }
-
     println!(
-        "- span: {:?} ty: {:?} location: {:?} size: {:?}",
+        "- id: {id:?} span: {:?} ty: {:?} location: {:?} size: {:?}",
         node.span, node.ty, node.taffy_layout.location, node.taffy_layout.size
     );
 

@@ -1,89 +1,77 @@
-// use parley::{FontContext, InlineBox, LayoutContext, RangedBuilder};
-// use taffy::compute_root_layout;
+use parley::{FontContext, InlineBox, LayoutContext, TextStyle, TreeBuilder};
+use taffy::compute_root_layout;
 
-// use crate::{
-//     layout::{
-//         LayoutBoxKey, BoxLayoutTree, LayoutBox, LayoutTy, InlineItem,
-//         taffy_impl::{TaffyLayoutImpl, to_taffy_key},
-//     },
-//     node::{NodeKey, UiTree},
-// };
+use crate::{
+    layout::{
+        InlineBoxKey, InlineItem, InlineKey, LayoutBoxTree,
+        taffy_impl::{TaffyLayoutImpl, to_taffy_key},
+    },
+    node::{NodeKey, UiTree},
+};
 
-// pub fn compute_inline_layout(ui: &mut UiTree, box_tree: &mut BoxLayoutTree, id: LayoutBoxKey) {
-//     // TODO:: move
-//     let mut font_cx = FontContext::new();
-//     let mut layout_cx = LayoutContext::<Option<NodeKey>>::new();
+pub fn compute_inline_layout(ui: &mut UiTree, layout_tree: &mut LayoutBoxTree, id: InlineBoxKey) {
+    // TODO:: move
+    let mut font_cx = FontContext::new();
+    let mut layout_cx = LayoutContext::<Option<NodeKey>>::new();
 
-//     let Some(LayoutBox {
-//         ty: LayoutTy::Inline(inline_box),
-//         ..
-//     }) = box_tree.boxes.get(id)
-//     else {
-//         return;
-//     };
+    // todo:: remove clone
+    let mut builder = layout_cx.tree_builder(&mut font_cx, 1.0, false, &TextStyle::default());
+    traverse_inline_box(&mut builder, ui, layout_tree, id);
 
-//     // todo:: remove clone
-//     let text = inline_box.texts.clone();
-//     let mut builder = layout_cx.ranged_builder(&mut font_cx, &text, 1.0, false);
-//     traverse_inline(&mut builder, ui, box_tree, id);
+    // TODO:: cleanup code
+    let Some(inline_box) = layout_tree.inline_boxes.get_mut(id) else {
+        return;
+    };
+    let (layout, texts) = builder.build();
+    inline_box.parley_layout = layout;
+    inline_box.texts = texts;
+}
 
-//     // TODO:: cleanup code
-//     let Some(LayoutBox {
-//         ty: LayoutTy::Inline(inline_box),
-//         ..
-//     }) = box_tree.boxes.get_mut(id)
-//     else {
-//         return;
-//     };
-//     builder.build_into(&mut inline_box.parley_layout, &inline_box.texts);
-// }
+pub fn traverse_inline_box(
+    builder: &mut TreeBuilder<Option<NodeKey>>,
+    ui: &mut UiTree,
+    layout_box_tree: &mut LayoutBoxTree,
+    id: InlineBoxKey,
+) {
+    let Some(inline_box) = layout_box_tree.inline_boxes.get(id) else {
+        return;
+    };
 
-// pub fn traverse_inline(
-//     builder: &mut RangedBuilder<Option<NodeKey>>,
-//     ui: &mut UiTree,
-//     box_tree: &mut BoxLayoutTree,
-//     id: LayoutBoxKey,
-// ) {
-//     let inline_box = match box_tree.boxes.get_mut(id) {
-//         Some(LayoutBox {
-//             ty: LayoutTy::Inline(inline_box),
-//             ..
-//         }) => inline_box,
+    let mut next_id = inline_box.item_start;
+    while let Some(inline_id) = next_id {
+        build_inline(builder, ui, layout_box_tree, inline_id);
+        next_id = layout_box_tree.inlines.next_sibling(inline_id);
+    }
+}
 
-//         Some(LayoutBox {
-//             ty: LayoutTy::Block(block_box),
-//             ..
-//         }) => {
-//             compute_root_layout(
-//                 &mut TaffyLayoutImpl(box_tree, ui),
-//                 to_taffy_key(id),
-//                 taffy::Size::min_content(),
-//             );
+pub fn build_inline(
+    builder: &mut TreeBuilder<Option<NodeKey>>,
+    ui: &mut UiTree,
+    layout_box_tree: &mut LayoutBoxTree,
+    id: InlineKey,
+) {
+    let Some(&inline_item) = layout_box_tree.inlines.get(id) else {
+        return;
+    };
 
-//             let size = box_tree.boxes[id].taffy_layout.size;
-//             builder.push_inline_box(InlineBox {
-//                 id: 0,
-//                 index: 0,
-//                 width: size.width,
-//                 height: size.height,
-//             });
+    match inline_item {
+        InlineItem::Text { start, end } => {
+            builder.push_text(&layout_box_tree.texts[start..end]);
+        }
+        InlineItem::Box(layout_box_key) => {
+            compute_root_layout(
+                &mut TaffyLayoutImpl(layout_box_tree, ui),
+                to_taffy_key(layout_box_key),
+                taffy::Size::min_content(),
+            );
 
-//             return;
-//         }
-
-//         _ => return,
-//     };
-
-//     // TODO:: remove clone
-//     for &item in inline_box.children.clone().iter() {
-//         match item {
-//             InlineItem::Text { start, end } => {
-//                 inline_box.texts.push_str(&box_tree.texts[start..end]);
-//             }
-
-//             InlineItem::Box(box_key) => {
-//                 traverse_inline(builder, ui, box_tree, box_key);
-//             }
-//         }
-//     }
-// }
+            let size = layout_box_tree.boxes[layout_box_key].taffy_layout.size;
+            builder.push_inline_box(InlineBox {
+                id: 0,
+                index: 0,
+                width: size.width,
+                height: size.height,
+            });
+        }
+    }
+}

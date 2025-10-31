@@ -6,7 +6,7 @@ use taffy::{
 };
 
 use crate::{
-    layout::{LayoutBox, LayoutBoxKey, LayoutBoxTree, LayoutTy},
+    layout::{LayoutBox, LayoutBoxKey, LayoutBoxTree, LayoutTy, inline::compute_inline_layout},
     node::UiTree,
     tree::cursor::Cursor,
 };
@@ -44,7 +44,7 @@ impl LayoutPartialTree for TaffyLayoutImpl<'_> {
                     &taffy::Style::<String>::DEFAULT,
                     |_, _| 0.0,
                     |_, available_space| {
-                        // compute_inline_layout(this.1, this.0, id);
+                        compute_inline_layout(this.1, this.0, inline_box_key);
 
                         let available_size = available_space.width.into_option();
                         let inline_box = &mut this.0.inline_boxes[inline_box_key];
