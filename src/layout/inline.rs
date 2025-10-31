@@ -37,9 +37,10 @@ pub fn traverse_inline_box(
         return;
     };
 
+    let mut text_len = 0;
     let mut next_id = inline_box.item_start;
     while let Some(inline_id) = next_id {
-        build_inline(builder, ui, layout_box_tree, inline_id);
+        build_inline(builder, ui, layout_box_tree, inline_id, &mut text_len);
         next_id = layout_box_tree.inlines.next_sibling(inline_id);
     }
 }
@@ -49,6 +50,7 @@ pub fn build_inline(
     ui: &mut UiTree,
     layout_box_tree: &mut LayoutBoxTree,
     id: InlineKey,
+    text_len: &mut usize,
 ) {
     let Some(&inline_item) = layout_box_tree.inlines.get(id) else {
         return;
@@ -57,7 +59,9 @@ pub fn build_inline(
     match inline_item {
         InlineItem::Text { start, end } => {
             builder.push_text(&layout_box_tree.texts[start..end]);
+            *text_len += end - start;
         }
+
         InlineItem::Box(layout_box_key) => {
             compute_root_layout(
                 &mut TaffyLayoutImpl(layout_box_tree, ui),
@@ -67,8 +71,8 @@ pub fn build_inline(
 
             let size = layout_box_tree.boxes[layout_box_key].taffy_layout.size;
             builder.push_inline_box(InlineBox {
-                id: 0,
-                index: 0,
+                id: layout_box_key.0.as_ffi(),
+                index: *text_len,
                 width: size.width,
                 height: size.height,
             });
