@@ -93,6 +93,7 @@ impl CometRenderer {
         let font_data = FontData::new(blob, 0);
 
         for line in node.parley_layout.lines() {
+            // TODO:: proper height calc
             let mut height_offset = 0.0f32;
             for item in line.items() {
                 let PositionedLayoutItem::InlineBox(inline_box) = item else {
