@@ -56,7 +56,7 @@ impl LayoutPartialTree for TaffyLayoutImpl<'_> {
                         );
 
                         taffy::Size {
-                            width: inline_box.parley_layout.width(),
+                            width: inline_box.parley_layout.full_width(),
                             height: inline_box.parley_layout.height(),
                         }
                     },

@@ -3,7 +3,7 @@ use taffy::compute_root_layout;
 
 use crate::{
     layout::{
-        InlineBoxKey, InlineItem, InlineKey, LayoutBoxTree,
+        InlineBoxKey, InlineItem, InlineKey, LayoutBoxTree, LayoutTy,
         taffy_impl::{TaffyLayoutImpl, to_taffy_key},
     },
     node::{NodeKey, UiTree},
@@ -56,26 +56,35 @@ pub fn build_inline(
         return;
     };
 
+    // TODO:: fix temp workaround
     match inline_item {
         InlineItem::Text { start, end } => {
             builder.push_text(&layout_box_tree.texts[start..end]);
             *text_len += end - start;
         }
 
-        InlineItem::Box(layout_box_key) => {
-            compute_root_layout(
-                &mut TaffyLayoutImpl(layout_box_tree, ui),
-                to_taffy_key(layout_box_key),
-                taffy::Size::min_content(),
-            );
+        InlineItem::Box(layout_box_key) => match layout_box_tree.boxes[layout_box_key].ty {
+            LayoutTy::Block => {
+                compute_root_layout(
+                    &mut TaffyLayoutImpl(layout_box_tree, ui),
+                    to_taffy_key(layout_box_key),
+                    taffy::Size::min_content(),
+                );
 
-            let size = layout_box_tree.boxes[layout_box_key].taffy_layout.size;
-            builder.push_inline_box(InlineBox {
-                id: layout_box_key.0.as_ffi(),
-                index: *text_len,
-                width: size.width,
-                height: size.height,
-            });
-        }
+                let size = layout_box_tree.boxes[layout_box_key].taffy_layout.size;
+                builder.push_inline_box(InlineBox {
+                    id: layout_box_key.0.as_ffi(),
+                    index: *text_len,
+                    width: size.width,
+                    height: size.height,
+                });
+            }
+
+            LayoutTy::Inline(inline_box_id) => {
+                if let Some(inline_start) = layout_box_tree.inline_boxes[inline_box_id].item_start {
+                    build_inline(builder, ui, layout_box_tree, inline_start, text_len);
+                }
+            }
+        },
     }
 }
