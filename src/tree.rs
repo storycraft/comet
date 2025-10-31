@@ -28,58 +28,98 @@ impl<K: Key, V> SlotTree<K, V> {
 
     #[inline]
     /// Append child to parent node and return last parent node id
-    pub fn append_child(&mut self, parent: K, id: K) -> Option<K> {
-        let last_parent = self.remove_parent(id);
-        let Some(parent_node) = self.arena.get_mut(parent) else {
-            return last_parent;
-        };
+    pub fn append(&mut self, parent: K, id: K) -> Option<K> {
+        let parent_node = self.arena.get_mut(parent)?;
+        match parent_node.last_child {
+            Some(last_child) => self.before(last_child, id),
+            None => {
+                parent_node.last_child = Some(id);
 
-        if parent_node.first_child.is_none() {
-            parent_node.first_child = Some(id);
+                let last_parent = self.remove_parent(id);
+                let Some(node) = self.arena.get_mut(id) else {
+                    return last_parent;
+                };
+                node.parent = Some(parent);
+                last_parent
+            }
         }
-
-        let Some(prev_last_id) = parent_node.last_child.replace(id) else {
-            return last_parent;
-        };
-
-        if let Some(prev_last_node) = self.arena.get_mut(prev_last_id) {
-            prev_last_node.next_sibling = Some(id);
-        };
-
-        let Some(node) = self.arena.get_mut(id) else {
-            return last_parent;
-        };
-        node.prev_sibling = Some(prev_last_id);
-
-        last_parent
     }
 
     #[inline]
     /// Prepend child to parent node and return last parent node id
-    pub fn prepend_child(&mut self, parent: K, id: K) -> Option<K> {
-        let last_parent_id = self.remove_parent(id);
-        let Some(parent_node) = self.arena.get_mut(parent) else {
-            return last_parent_id;
-        };
+    pub fn prepend(&mut self, parent: K, id: K) -> Option<K> {
+        let parent_node = self.arena.get_mut(parent)?;
+        match parent_node.first_child {
+            Some(first_child) => self.before(first_child, id),
+            None => {
+                parent_node.first_child = Some(id);
 
-        if parent_node.last_child.is_none() {
-            parent_node.last_child = Some(id);
+                let last_parent = self.remove_parent(id);
+                let Some(node) = self.arena.get_mut(id) else {
+                    return last_parent;
+                };
+                node.parent = Some(parent);
+                last_parent
+            }
+        }
+    }
+
+    /// Insert a node before `target`. Returns previous parent id
+    pub fn before(&mut self, target: K, id: K) -> Option<K> {
+        fn inner<K: Key, V>(tree: &mut SlotTree<K, V>, target: K, id: K) -> Option<()> {
+            let target_node = tree.arena.get_mut(target)?;
+            let parent = target_node.parent;
+            let prev_sibling = target_node.prev_sibling.replace(id);
+
+            let node = tree.arena.get_mut(id)?;
+            node.prev_sibling = prev_sibling;
+            node.next_sibling = Some(target);
+            node.parent = parent;
+
+            match prev_sibling {
+                Some(prev_sibling) => {
+                    tree.arena.get_mut(prev_sibling)?.next_sibling = Some(id);
+                }
+                None => {
+                    tree.arena.get_mut(parent?)?.first_child = Some(id);
+                }
+            }
+
+            Some(())
         }
 
-        let Some(prev_first_id) = parent_node.first_child.replace(id) else {
-            return last_parent_id;
-        };
+        let last_parent = self.remove_parent(id);
+        inner(self, target, id);
+        last_parent
+    }
 
-        if let Some(prev_first_node) = self.arena.get_mut(prev_first_id) {
-            prev_first_node.prev_sibling = Some(id);
-        };
+    /// Insert a node after `target`. Returns previous parent id
+    pub fn after(&mut self, target: K, id: K) -> Option<K> {
+        fn inner<K: Key, V>(tree: &mut SlotTree<K, V>, target: K, id: K) -> Option<()> {
+            let target_node = tree.arena.get_mut(target)?;
+            let parent = target_node.parent;
+            let next_sibling = target_node.next_sibling.replace(id);
 
-        let Some(node) = self.arena.get_mut(id) else {
-            return last_parent_id;
-        };
-        node.next_sibling = Some(prev_first_id);
+            let node = tree.arena.get_mut(id)?;
+            node.prev_sibling = Some(target);
+            node.next_sibling = next_sibling;
+            node.parent = parent;
 
-        last_parent_id
+            match next_sibling {
+                Some(next_sibling) => {
+                    tree.arena.get_mut(next_sibling)?.prev_sibling = Some(id);
+                }
+                None => {
+                    tree.arena.get_mut(parent?)?.last_child = Some(id);
+                }
+            }
+
+            Some(())
+        }
+
+        let last_parent = self.remove_parent(id);
+        inner(self, target, id);
+        last_parent
     }
 
     #[inline]
