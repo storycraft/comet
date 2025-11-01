@@ -6,8 +6,8 @@ use std::fmt::Debug;
 use taffy::compute_root_layout;
 
 use crate::{
-    layout::tree::taffy_impl::{TaffyLayoutImpl, to_taffy_key},
-    node::{DisplayInner, DisplayOuter, Node, NodeKey, UiTree},
+    layout::{DisplayInner, DisplayOuter, tree::taffy_impl::{TaffyLayoutImpl, to_taffy_key}},
+    node::{Node, NodeKey, UiTree},
     tree::SlotTree,
 };
 

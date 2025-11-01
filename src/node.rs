@@ -1,5 +1,7 @@
 use slotmap::{HopSlotMap, new_key_type};
 
+use crate::layout::{DisplayInner, DisplayOuter};
+
 #[derive(Debug, PartialEq)]
 pub enum Node {
     Div(Div),
@@ -25,22 +27,6 @@ impl Default for Div {
     fn default() -> Self {
         Self::new()
     }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum DisplayOuter {
-    #[default]
-    Block,
-    Inline,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum DisplayInner {
-    #[default]
-    Flow,
-    FlowRoot,
-    Flex,
-    Grid,
 }
 
 new_key_type! { pub struct NodeKey; }

@@ -4,8 +4,8 @@ use anyrender::{ImageRenderer, PaintScene};
 use anyrender_vello::VelloImageRenderer;
 use color::AlphaColor;
 use comet::{
-    layout::tree::{InlineItem, LayoutBoxKey, LayoutBoxTree, LayoutBoxTreeCx, LayoutTy},
-    node::{DisplayInner, DisplayOuter, Node, NodeKey, UiTree},
+    layout::{DisplayInner, DisplayOuter, tree::{InlineItem, LayoutBoxKey, LayoutBoxTree, LayoutBoxTreeCx, LayoutTy}},
+    node::{Node, NodeKey, UiTree},
     renderer::CometRenderer,
 };
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};

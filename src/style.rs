@@ -8,6 +8,8 @@ pub use taffy::{
     style::{BoxSizing, Dimension, LengthPercentage, LengthPercentageAuto, Position},
 };
 
+use crate::layout::{DisplayInner, DisplayOuter};
+
 #[derive(Debug, Clone, PartialEq)]
 /// Style properties for flow layout
 pub struct Style<'a> {
@@ -57,21 +59,4 @@ pub struct Style<'a> {
     // Text spacing
     pub word_spacing: f32,
     pub letter_spacing: f32,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum DisplayOuter {
-    #[default]
-    Block,
-    Inline,
-    None,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum DisplayInner {
-    #[default]
-    Flow,
-    FlowRoot,
-    Flex,
-    Grid,
 }
