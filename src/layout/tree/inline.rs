@@ -2,7 +2,7 @@ use parley::{FontContext, InlineBox, LayoutContext, TextStyle, TreeBuilder};
 use taffy::compute_root_layout;
 
 use crate::{
-    layout::{
+    layout::tree::{
         InlineBoxKey, InlineItem, InlineKey, LayoutBoxTree, LayoutTy,
         taffy_impl::{TaffyLayoutImpl, to_taffy_key},
     },

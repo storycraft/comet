@@ -8,7 +8,7 @@ use parley::{
 use peniko::{FontData, StyleRef};
 use slotmap::KeyData;
 
-use crate::layout::{InlineBoxKey, LayoutBoxKey, LayoutBoxTree, LayoutTy};
+use crate::layout::tree::{InlineBoxKey, LayoutBoxKey, LayoutBoxTree, LayoutTy};
 
 pub struct CometRenderer {
     offset_x: f64,

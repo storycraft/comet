@@ -6,7 +6,7 @@ use taffy::{
 };
 
 use crate::{
-    layout::{LayoutBox, LayoutBoxKey, LayoutBoxTree, LayoutTy, inline::compute_inline_layout},
+    layout::tree::{LayoutBox, LayoutBoxKey, LayoutBoxTree, LayoutTy, inline::compute_inline_layout},
     node::UiTree,
     tree::cursor::Cursor,
 };
