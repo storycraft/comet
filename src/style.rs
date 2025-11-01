@@ -1,3 +1,5 @@
+pub mod tree;
+
 pub use parley::style::{
     FontFamily, FontFeature, FontSettings, FontStack, FontStyle, FontVariation, FontWeight,
     FontWidth, LineHeight, OverflowWrap, WordBreakStrength,

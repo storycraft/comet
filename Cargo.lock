@@ -419,6 +419,7 @@ dependencies = [
  "kurbo",
  "parley",
  "peniko",
+ "rustc-hash 2.1.1",
  "slotmap",
  "taffy",
  "winit",
