@@ -43,7 +43,7 @@ impl TraversePartialTree for TaffyLayoutImpl<'_> {
 
 impl TraverseTree for TaffyLayoutImpl<'_> {}
 
-pub(crate) struct ChildIter<'a> {
+pub struct ChildIter<'a> {
     iter: Cursor<'a, LayoutBoxKey, LayoutBox>,
 }
 

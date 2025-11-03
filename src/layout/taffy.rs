@@ -1,6 +1,7 @@
 mod cache;
 mod compute;
 mod layout;
+pub mod style;
 mod traverse;
 
 use slotmap::{Key, KeyData};
@@ -11,7 +12,7 @@ use crate::{
     layout::tree::{LayoutBoxKey, LayoutBoxTree},
 };
 
-pub(crate) struct TaffyLayoutImpl<'a> {
+pub struct TaffyLayoutImpl<'a> {
     layout_tree: &'a mut LayoutBoxTree,
     ui: &'a mut UiTree,
 }

@@ -24,41 +24,50 @@ impl LayoutPartialTree for TaffyLayoutImpl<'_> {
         self.layout_tree.boxes[from_taffy_key(node_id)].taffy_layout = *layout;
     }
 
+    #[inline]
     fn compute_child_layout(
         &mut self,
         node_id: taffy::NodeId,
         inputs: taffy::LayoutInput,
     ) -> taffy::LayoutOutput {
-        compute_cached_layout(self, node_id, inputs, |this, node_id, inputs| {
-            let id = from_taffy_key(node_id);
-            let node = &mut this.layout_tree.boxes[id];
+        compute_cached_layout(self, node_id, inputs, Self::compute_uncached_layout)
+    }
+}
 
-            match node.ty {
-                LayoutTy::Block => compute_block_layout(this, node_id, inputs),
-                LayoutTy::Inline(inline_box_key) => compute_leaf_layout(
-                    inputs,
-                    &taffy::Style::<String>::DEFAULT,
-                    |_, _| 0.0,
-                    |_, available_space| {
-                        compute_inline_layout(this.ui, this.layout_tree, inline_box_key);
+impl TaffyLayoutImpl<'_> {
+    fn compute_uncached_layout(
+        &mut self,
+        node_id: taffy::NodeId,
+        inputs: taffy::LayoutInput,
+    ) -> taffy::LayoutOutput {
+        let id = from_taffy_key(node_id);
+        let node = &mut self.layout_tree.boxes[id];
 
-                        let available_size = available_space.width.into_option();
-                        let inline_box = &mut this.layout_tree.inline_boxes[inline_box_key];
-                        inline_box.parley_layout.break_all_lines(available_size);
-                        inline_box.parley_layout.align(
-                            available_size,
-                            Alignment::Start,
-                            AlignmentOptions::default(),
-                        );
+        match node.ty {
+            LayoutTy::Block => compute_block_layout(self, node_id, inputs),
+            LayoutTy::Inline(inline_box_key) => compute_leaf_layout(
+                inputs,
+                &taffy::Style::<String>::DEFAULT,
+                |_, _| 0.0,
+                |_, available_space| {
+                    compute_inline_layout(self.ui, self.layout_tree, inline_box_key);
 
-                        taffy::Size {
-                            width: inline_box.parley_layout.full_width(),
-                            height: inline_box.parley_layout.height(),
-                        }
-                    },
-                ),
-            }
-        })
+                    let available_size = available_space.width.into_option();
+                    let inline_box = &mut self.layout_tree.inline_boxes[inline_box_key];
+                    inline_box.parley_layout.break_all_lines(available_size);
+                    inline_box.parley_layout.align(
+                        available_size,
+                        Alignment::Start,
+                        AlignmentOptions::default(),
+                    );
+
+                    taffy::Size {
+                        width: inline_box.parley_layout.full_width(),
+                        height: inline_box.parley_layout.height(),
+                    }
+                },
+            ),
+        }
     }
 }
 
