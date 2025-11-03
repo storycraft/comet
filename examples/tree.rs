@@ -4,11 +4,12 @@ use anyrender::{ImageRenderer, PaintScene};
 use anyrender_vello::VelloImageRenderer;
 use color::AlphaColor;
 use comet::{
+    UiTree,
     layout::{
         DisplayInner, DisplayOuter,
         tree::{InlineItem, LayoutBoxKey, LayoutBoxTree, LayoutBoxTreeCx, LayoutTy},
     },
-    node::{Node, NodeKey, UiTree},
+    node::{Node, NodeKey},
     renderer::CometRenderer,
 };
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};

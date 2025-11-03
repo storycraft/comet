@@ -1,10 +1,9 @@
 use slotmap::new_key_type;
 use taffy::{BoxSizing, Dimension, LengthPercentage, LengthPercentageAuto, Position, Rect, Size};
 
-use crate::{
-    layout::{DisplayInner, DisplayOuter},
-    tree::SlotTree,
-};
+use crate::layout::{DisplayInner, DisplayOuter};
+
+new_key_type! { pub struct NodeKey; }
 
 #[derive(Debug, PartialEq)]
 pub enum Node {
@@ -34,7 +33,7 @@ pub struct Div {
 }
 
 impl Div {
-    const fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             display_outer: Some(DisplayOuter::Block),
             display_inner: DisplayInner::Flow,
@@ -53,35 +52,5 @@ impl Div {
 impl Default for Div {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-new_key_type! { pub struct NodeKey; }
-
-pub struct UiTree {
-    pub elements: SlotTree<NodeKey, Node>,
-}
-
-impl Default for UiTree {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl UiTree {
-    pub fn new() -> Self {
-        Self {
-            elements: SlotTree::new(),
-        }
-    }
-
-    /// Create a new Text node
-    pub fn create_text(&mut self, text: impl Into<String>) -> NodeKey {
-        self.elements.insert(Node::Text(text.into()))
-    }
-
-    /// Create a new [`Div`] node
-    pub fn create_div(&mut self) -> NodeKey {
-        self.elements.insert(Node::Div(Div::new()))
     }
 }

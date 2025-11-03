@@ -3,14 +3,15 @@ use slotmap::Key;
 use taffy::compute_root_layout;
 
 use crate::{
+    UiTree,
     layout::{
         taffy::{TaffyLayoutImpl, to_taffy_key},
         tree::{InlineBoxKey, InlineItem, InlineKey, LayoutBoxTree, LayoutTy},
     },
-    node::{NodeKey, UiTree},
+    node::NodeKey,
 };
 
-pub fn compute_inline_layout(ui: &UiTree, layout_tree: &mut LayoutBoxTree, id: InlineBoxKey) {
+pub fn compute_inline_layout(ui: &mut UiTree, layout_tree: &mut LayoutBoxTree, id: InlineBoxKey) {
     // TODO:: move
     let mut font_cx = FontContext::new();
     let mut layout_cx = LayoutContext::<Option<NodeKey>>::new();
@@ -30,7 +31,7 @@ pub fn compute_inline_layout(ui: &UiTree, layout_tree: &mut LayoutBoxTree, id: I
 
 pub fn traverse_inline_box(
     builder: &mut TreeBuilder<Option<NodeKey>>,
-    ui: &UiTree,
+    ui: &mut UiTree,
     layout_box_tree: &mut LayoutBoxTree,
     id: InlineBoxKey,
 ) {
@@ -48,7 +49,7 @@ pub fn traverse_inline_box(
 
 pub fn build_inline(
     builder: &mut TreeBuilder<Option<NodeKey>>,
-    ui: &UiTree,
+    ui: &mut UiTree,
     layout_box_tree: &mut LayoutBoxTree,
     id: InlineKey,
     text_len: &mut usize,

@@ -23,12 +23,9 @@ impl CacheTree for TaffyLayoutImpl<'_> {
         run_mode: RunMode,
         layout_output: LayoutOutput,
     ) {
-        self.layout_tree.boxes[from_taffy_key(node_id)].taffy_cache.store(
-            known_dimensions,
-            available_space,
-            run_mode,
-            layout_output,
-        );
+        self.layout_tree.boxes[from_taffy_key(node_id)]
+            .taffy_cache
+            .store(known_dimensions, available_space, run_mode, layout_output);
     }
 
     fn cache_clear(&mut self, node_id: NodeId) {

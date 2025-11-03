@@ -3,8 +3,9 @@ use std::fmt::Debug;
 use taffy::{AvailableSpace, Size};
 
 use crate::{
+    UiTree,
     layout::{DisplayInner, DisplayOuter, taffy::TaffyLayoutImpl},
-    node::{Node, NodeKey, UiTree},
+    node::{Node, NodeKey},
     tree::SlotTree,
 };
 
