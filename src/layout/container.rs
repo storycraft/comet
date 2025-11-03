@@ -49,6 +49,11 @@ impl LayoutContainer {
     pub fn insert<T: GenericStyle>(&mut self, key: NodeKey, style: T) {
         self.get_or_insert_store_mut().insert(key, style);
     }
+
+    #[inline]
+    pub fn remove<T: GenericStyle>(&mut self, key: NodeKey) -> Option<T> {
+        self.store_mut()?.remove(key)
+    }
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
