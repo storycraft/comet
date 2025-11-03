@@ -12,6 +12,10 @@ pub use taffy::{
 
 use crate::layout::{DisplayInner, DisplayOuter};
 
+pub trait GenericStyle: 'static + Sized + Clone {
+    
+}
+
 #[derive(Debug, Clone, PartialEq)]
 /// Style properties for flow layout
 pub struct Style<'a> {
