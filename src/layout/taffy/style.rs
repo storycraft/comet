@@ -5,9 +5,10 @@ use taffy::{
 
 use crate::{layout::DisplayInner, node::Div};
 
-pub struct TaffyCoreStyle<'a>(&'a Div);
+/// Taffy [`CoreStyle`], [`BlockContainerStyle`], [`BlockItemStyle`] wrapper
+pub struct TaffyCoreStyle<'a>(pub &'a Div);
 
-impl Default for TaffyCoreStyle<'static> {
+impl Default for TaffyCoreStyle<'_> {
     fn default() -> Self {
         Self(const { &Div::new() })
     }
