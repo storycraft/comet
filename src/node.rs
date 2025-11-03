@@ -1,5 +1,8 @@
 use slotmap::new_key_type;
-use taffy::{BoxSizing, Dimension, LengthPercentage, LengthPercentageAuto, Position, Rect, Size};
+use taffy::{
+    BoxSizing, Dimension, LengthPercentage, LengthPercentageAuto, Overflow, Point, Position, Rect,
+    Size,
+};
 
 use crate::layout::{DisplayInner, DisplayOuter};
 
@@ -19,12 +22,15 @@ pub struct Div {
 
     // Position
     pub position: Position,
+    pub inset: Rect<LengthPercentageAuto>,
 
     // Size and modes
     pub box_sizing: BoxSizing,
     pub size: Size<Dimension>,
     pub min_size: Size<Dimension>,
     pub max_size: Size<Dimension>,
+    pub aspect_ratio: Option<f32>,
+    pub overflow: Point<Overflow>,
 
     // Margin, padding, border
     pub margin: Rect<LengthPercentageAuto>,
@@ -37,11 +43,20 @@ impl Div {
         Self {
             display_outer: Some(DisplayOuter::Block),
             display_inner: DisplayInner::Flow,
+
             position: Position::Relative,
+            inset: Rect::zero(),
+
             box_sizing: BoxSizing::BorderBox,
             size: Size::auto(),
             min_size: Size::auto(),
             max_size: Size::auto(),
+            aspect_ratio: None,
+            overflow: Point {
+                x: Overflow::Visible,
+                y: Overflow::Visible,
+            },
+
             margin: Rect::zero(),
             padding: Rect::zero(),
             border: Rect::zero(),

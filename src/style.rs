@@ -1,3 +1,5 @@
+pub mod container;
+
 pub use parley::style::{
     FontFamily, FontFeature, FontSettings, FontStack, FontStyle, FontVariation, FontWeight,
     FontWidth, LineHeight, OverflowWrap, WordBreakStrength,
@@ -8,9 +10,12 @@ pub use taffy::{
     style::{BoxSizing, Dimension, LengthPercentage, LengthPercentageAuto, Position},
 };
 
-#[derive(PartialEq)]
-/// Style properties for flow layout
-pub struct Style<'a> {
+/// Style for a specific [`crate::layout::Layout`]
+pub trait LayoutStyle: 'static + Sized + Clone {}
+
+#[derive(Debug, Clone, PartialEq)]
+/// Text styles
+pub struct TextStyle<'a> {
     // Font settings
     pub font_stack: FontStack<'a>,
     pub font_size: f32,

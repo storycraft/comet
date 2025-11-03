@@ -1,4 +1,3 @@
-pub mod container;
 mod taffy;
 pub mod tree;
 
@@ -17,8 +16,6 @@ impl Layout {
         // TODO
     }
 }
-
-pub trait GenericLayout: 'static + Sized + Clone {}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DisplayOuter {
