@@ -5,19 +5,21 @@ use taffy::{
 };
 
 use crate::layout::{
-    taffy::{TaffyLayoutImpl, compute::compute_inline_layout, from_taffy_key},
+    taffy::{
+        TaffyLayoutImpl, compute::compute_inline_layout, from_taffy_key, style::TaffyCoreStyle,
+    },
     tree::LayoutTy,
 };
 
 impl LayoutPartialTree for TaffyLayoutImpl<'_> {
     type CoreContainerStyle<'a>
-        = taffy::Style
+        = TaffyCoreStyle<'a>
     where
         Self: 'a;
     type CustomIdent = String;
 
     fn get_core_container_style(&self, node_id: taffy::NodeId) -> Self::CoreContainerStyle<'_> {
-        taffy::Style::DEFAULT
+        TaffyCoreStyle::default()
     }
 
     fn set_unrounded_layout(&mut self, node_id: taffy::NodeId, layout: &taffy::Layout) {
@@ -73,20 +75,20 @@ impl TaffyLayoutImpl<'_> {
 
 impl LayoutBlockContainer for TaffyLayoutImpl<'_> {
     type BlockContainerStyle<'a>
-        = taffy::Style
+        = TaffyCoreStyle<'a>
     where
         Self: 'a;
 
     type BlockItemStyle<'a>
-        = taffy::Style
+        = TaffyCoreStyle<'a>
     where
         Self: 'a;
 
     fn get_block_container_style(&self, node_id: taffy::NodeId) -> Self::BlockContainerStyle<'_> {
-        taffy::Style::DEFAULT
+        TaffyCoreStyle::default()
     }
 
     fn get_block_child_style(&self, child_node_id: taffy::NodeId) -> Self::BlockItemStyle<'_> {
-        taffy::Style::DEFAULT
+        TaffyCoreStyle::default()
     }
 }
