@@ -4,7 +4,7 @@ use nohash_hasher::{IntMap, IsEnabled};
 use rustc_hash::FxBuildHasher;
 use slotmap::SparseSecondaryMap;
 
-use crate::{node::NodeKey, style::GenericStyle};
+use crate::{layout::GenericLayout, node::NodeKey};
 
 type LayoutStore<T> = SparseSecondaryMap<NodeKey, T, FxBuildHasher>;
 
@@ -19,15 +19,15 @@ impl LayoutContainer {
         }
     }
 
-    fn store<T: GenericStyle>(&self) -> Option<&LayoutStore<T>> {
+    fn store<T: GenericLayout>(&self) -> Option<&LayoutStore<T>> {
         self.typemap.get(&TypeKey::of::<T>())?.downcast_ref()
     }
 
-    fn store_mut<T: GenericStyle>(&mut self) -> Option<&mut LayoutStore<T>> {
+    fn store_mut<T: GenericLayout>(&mut self) -> Option<&mut LayoutStore<T>> {
         self.typemap.get_mut(&TypeKey::of::<T>())?.downcast_mut()
     }
 
-    fn get_or_insert_store_mut<T: GenericStyle>(&mut self) -> &mut LayoutStore<T> {
+    fn get_or_insert_store_mut<T: GenericLayout>(&mut self) -> &mut LayoutStore<T> {
         self.typemap
             .entry(TypeKey::of::<T>())
             .or_insert_with(|| Box::new(LayoutStore::<T>::default()))
@@ -36,22 +36,22 @@ impl LayoutContainer {
     }
 
     #[inline]
-    pub fn get<T: GenericStyle>(&self, key: NodeKey) -> Option<&T> {
+    pub fn get<T: GenericLayout>(&self, key: NodeKey) -> Option<&T> {
         self.store::<T>()?.get(key)
     }
 
     #[inline]
-    pub fn get_mut<T: GenericStyle>(&mut self, key: NodeKey) -> Option<&mut T> {
+    pub fn get_mut<T: GenericLayout>(&mut self, key: NodeKey) -> Option<&mut T> {
         self.store_mut::<T>()?.get_mut(key)
     }
 
     #[inline]
-    pub fn insert<T: GenericStyle>(&mut self, key: NodeKey, style: T) {
+    pub fn insert<T: GenericLayout>(&mut self, key: NodeKey, style: T) {
         self.get_or_insert_store_mut().insert(key, style);
     }
 
     #[inline]
-    pub fn remove<T: GenericStyle>(&mut self, key: NodeKey) -> Option<T> {
+    pub fn remove<T: GenericLayout>(&mut self, key: NodeKey) -> Option<T> {
         self.store_mut()?.remove(key)
     }
 }

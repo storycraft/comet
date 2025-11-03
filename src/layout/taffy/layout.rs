@@ -1,0 +1,83 @@
+use parley::{Alignment, AlignmentOptions};
+use taffy::{
+    LayoutBlockContainer, LayoutPartialTree, compute_block_layout, compute_cached_layout,
+    compute_leaf_layout,
+};
+
+use crate::layout::{
+    taffy::{TaffyLayoutImpl, compute::compute_inline_layout, from_taffy_key},
+    tree::LayoutTy,
+};
+
+impl LayoutPartialTree for TaffyLayoutImpl<'_> {
+    type CoreContainerStyle<'a>
+        = taffy::Style
+    where
+        Self: 'a;
+    type CustomIdent = String;
+
+    fn get_core_container_style(&self, node_id: taffy::NodeId) -> Self::CoreContainerStyle<'_> {
+        taffy::Style::DEFAULT
+    }
+
+    fn set_unrounded_layout(&mut self, node_id: taffy::NodeId, layout: &taffy::Layout) {
+        self.layout_tree.boxes[from_taffy_key(node_id)].taffy_layout = *layout;
+    }
+
+    fn compute_child_layout(
+        &mut self,
+        node_id: taffy::NodeId,
+        inputs: taffy::LayoutInput,
+    ) -> taffy::LayoutOutput {
+        compute_cached_layout(self, node_id, inputs, |this, node_id, inputs| {
+            let id = from_taffy_key(node_id);
+            let node = &mut this.layout_tree.boxes[id];
+
+            match node.ty {
+                LayoutTy::Block => compute_block_layout(this, node_id, inputs),
+                LayoutTy::Inline(inline_box_key) => compute_leaf_layout(
+                    inputs,
+                    &taffy::Style::<String>::DEFAULT,
+                    |_, _| 0.0,
+                    |_, available_space| {
+                        compute_inline_layout(this.ui, this.layout_tree, inline_box_key);
+
+                        let available_size = available_space.width.into_option();
+                        let inline_box = &mut this.layout_tree.inline_boxes[inline_box_key];
+                        inline_box.parley_layout.break_all_lines(available_size);
+                        inline_box.parley_layout.align(
+                            available_size,
+                            Alignment::Start,
+                            AlignmentOptions::default(),
+                        );
+
+                        taffy::Size {
+                            width: inline_box.parley_layout.full_width(),
+                            height: inline_box.parley_layout.height(),
+                        }
+                    },
+                ),
+            }
+        })
+    }
+}
+
+impl LayoutBlockContainer for TaffyLayoutImpl<'_> {
+    type BlockContainerStyle<'a>
+        = taffy::Style
+    where
+        Self: 'a;
+
+    type BlockItemStyle<'a>
+        = taffy::Style
+    where
+        Self: 'a;
+
+    fn get_block_container_style(&self, node_id: taffy::NodeId) -> Self::BlockContainerStyle<'_> {
+        taffy::Style::DEFAULT
+    }
+
+    fn get_block_child_style(&self, child_node_id: taffy::NodeId) -> Self::BlockItemStyle<'_> {
+        taffy::Style::DEFAULT
+    }
+}

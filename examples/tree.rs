@@ -4,7 +4,10 @@ use anyrender::{ImageRenderer, PaintScene};
 use anyrender_vello::VelloImageRenderer;
 use color::AlphaColor;
 use comet::{
-    layout::{DisplayInner, DisplayOuter, tree::{InlineItem, LayoutBoxKey, LayoutBoxTree, LayoutBoxTreeCx, LayoutTy}},
+    layout::{
+        DisplayInner, DisplayOuter,
+        tree::{InlineItem, LayoutBoxKey, LayoutBoxTree, LayoutBoxTreeCx, LayoutTy},
+    },
     node::{Node, NodeKey, UiTree},
     renderer::CometRenderer,
 };
@@ -19,19 +22,20 @@ fn main() {
     let text1 = ui.create_text(" text");
     let inner = ui.create_text("start");
     let div = ui.create_div();
-    if let Some(Node::Div(div)) = ui.get_mut(div) {
-        div.display = Some((DisplayOuter::Inline, DisplayInner::FlowRoot));
+    if let Some(Node::Div(div)) = ui.elements.get_mut(div) {
+        div.display_outer = Some(DisplayOuter::Inline);
+        div.display_inner = DisplayInner::FlowRoot;
     }
     let div2 = ui.create_div();
     let inner2 = ui.create_text("end");
     let text2 = ui.create_text("1");
-    ui.append_child(root, text0);
-    ui.append_child(root, div);
-    ui.append_child(root, text1);
-    ui.append_child(div, inner);
-    ui.append_child(root, div2);
-    ui.append_child(div2, inner2);
-    ui.append_child(root, text2);
+    ui.elements.append(root, text0);
+    ui.elements.append(root, div);
+    ui.elements.append(root, text1);
+    ui.elements.append(div, inner);
+    ui.elements.append(root, div2);
+    ui.elements.append(div2, inner2);
+    ui.elements.append(root, text2);
 
     let mut layout_tree = LayoutBoxTree::new();
     let mut tree_cx = LayoutBoxTreeCx::new();
@@ -112,8 +116,8 @@ fn print(tree: &UiTree, id: NodeKey, space: u32) {
     for _ in 0..space {
         print!(" ");
     }
-    println!("- {:?}", tree.get(id));
-    for child in tree.children(id) {
-        print(tree, *child, space + 4);
+    println!("- {:?}", tree.elements.get(id));
+    for child in tree.elements.cursor(tree.elements.first_child(id)) {
+        print(tree, child, space + 4);
     }
 }

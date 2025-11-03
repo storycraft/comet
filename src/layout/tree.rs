@@ -1,12 +1,9 @@
-mod inline;
-mod taffy_impl;
-
 use slotmap::{Key, SlotMap, new_key_type};
 use std::fmt::Debug;
-use taffy::compute_root_layout;
+use taffy::{AvailableSpace, Size};
 
 use crate::{
-    layout::{DisplayInner, DisplayOuter, tree::taffy_impl::{TaffyLayoutImpl, to_taffy_key}},
+    layout::{DisplayInner, DisplayOuter, taffy::TaffyLayoutImpl},
     node::{Node, NodeKey, UiTree},
     tree::SlotTree,
 };
@@ -97,13 +94,9 @@ impl LayoutBoxTree {
         self.boxes.clear();
     }
 
-    pub fn compute_layout(
-        &mut self,
-        ui: &mut UiTree,
-        available_space: taffy::Size<taffy::AvailableSpace>,
-    ) {
-        let root = to_taffy_key(self.root);
-        compute_root_layout(&mut TaffyLayoutImpl(self, ui), root, available_space);
+    pub fn compute_layout(&mut self, ui: &mut UiTree, available_space: Size<AvailableSpace>) {
+        let root = self.root;
+        TaffyLayoutImpl::new(self, ui).compute_layout(root, available_space);
     }
 }
 
@@ -210,7 +203,7 @@ impl LayoutBoxTreeCx {
     }
 
     fn build_inner(&mut self, ui: &UiTree, id: NodeKey, tree: &mut LayoutBoxTree) {
-        let Some(node) = ui.get(id) else {
+        let Some(node) = ui.elements.get(id) else {
             return;
         };
 
@@ -218,7 +211,9 @@ impl LayoutBoxTreeCx {
             Node::Div(div) => {
                 self.commit_text(tree);
 
-                let (display_outer, display_inner) = div.display.unwrap_or_default();
+                let Some(display_outer) = div.display_outer else {
+                    return;
+                };
                 match display_outer {
                     DisplayOuter::Block => {
                         self.commit_inline_box(tree);
@@ -230,7 +225,7 @@ impl LayoutBoxTreeCx {
                     }
                 }
 
-                let needs_new_cx = display_inner != DisplayInner::Flow;
+                let needs_new_cx = div.display_inner != DisplayInner::Flow;
                 if needs_new_cx {
                     let id = tree.boxes.insert(LayoutBox::new(None, LayoutTy::Block));
                     self.parents.push(id);
@@ -241,7 +236,7 @@ impl LayoutBoxTreeCx {
                     self.inline_cx.push(InlineBoxCx::new());
                 }
 
-                for &child in ui.children(id) {
+                for child in ui.elements.cursor(ui.elements.first_child(id)) {
                     self.build_inner(ui, child, tree);
                 }
                 self.commit_text(tree);

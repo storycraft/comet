@@ -1,6 +1,10 @@
-use slotmap::{HopSlotMap, new_key_type};
+use slotmap::new_key_type;
+use taffy::{BoxSizing, Dimension, LengthPercentage, LengthPercentageAuto, Position, Rect, Size};
 
-use crate::layout::{DisplayInner, DisplayOuter};
+use crate::{
+    layout::{DisplayInner, DisplayOuter},
+    tree::SlotTree,
+};
 
 #[derive(Debug, PartialEq)]
 pub enum Node {
@@ -10,15 +14,38 @@ pub enum Node {
 
 #[derive(Debug, PartialEq)]
 pub struct Div {
-    pub display: Option<(DisplayOuter, DisplayInner)>,
-    children: Vec<NodeKey>,
+    // Display
+    pub display_outer: Option<DisplayOuter>,
+    pub display_inner: DisplayInner,
+
+    // Position
+    pub position: Position,
+
+    // Size and modes
+    pub box_sizing: BoxSizing,
+    pub size: Size<Dimension>,
+    pub min_size: Size<Dimension>,
+    pub max_size: Size<Dimension>,
+
+    // Margin, padding, border
+    pub margin: Rect<LengthPercentageAuto>,
+    pub padding: Rect<LengthPercentage>,
+    pub border: Rect<LengthPercentage>,
 }
 
 impl Div {
     const fn new() -> Self {
         Self {
-            display: Some((DisplayOuter::Block, DisplayInner::Flow)),
-            children: Vec::new(),
+            display_outer: Some(DisplayOuter::Block),
+            display_inner: DisplayInner::Flow,
+            position: Position::Relative,
+            box_sizing: BoxSizing::BorderBox,
+            size: Size::auto(),
+            min_size: Size::auto(),
+            max_size: Size::auto(),
+            margin: Rect::zero(),
+            padding: Rect::zero(),
+            border: Rect::zero(),
         }
     }
 }
@@ -31,13 +58,8 @@ impl Default for Div {
 
 new_key_type! { pub struct NodeKey; }
 
-struct NodeItem {
-    parent: Option<NodeKey>,
-    node: Node,
-}
-
 pub struct UiTree {
-    map: HopSlotMap<NodeKey, NodeItem>,
+    pub elements: SlotTree<NodeKey, Node>,
 }
 
 impl Default for UiTree {
@@ -49,85 +71,17 @@ impl Default for UiTree {
 impl UiTree {
     pub fn new() -> Self {
         Self {
-            map: HopSlotMap::with_key(),
+            elements: SlotTree::new(),
         }
     }
 
     /// Create a new Text node
     pub fn create_text(&mut self, text: impl Into<String>) -> NodeKey {
-        self.map.insert(NodeItem {
-            parent: None,
-            node: Node::Text(text.into()),
-        })
+        self.elements.insert(Node::Text(text.into()))
     }
 
     /// Create a new [`Div`] node
     pub fn create_div(&mut self) -> NodeKey {
-        self.map.insert(NodeItem {
-            parent: None,
-            node: Node::Div(Div::new()),
-        })
-    }
-
-    pub fn get(&self, key: NodeKey) -> Option<&Node> {
-        self.map.get(key).map(|item| &item.node)
-    }
-
-    pub fn get_mut(&mut self, key: NodeKey) -> Option<&mut Node> {
-        self.map.get_mut(key).map(|item| &mut item.node)
-    }
-
-    /// Get parent of the node
-    pub fn parent(&self, key: NodeKey) -> Option<NodeKey> {
-        self.map.get(key)?.parent
-    }
-
-    /// Get children of the node
-    pub fn children(&self, key: NodeKey) -> &[NodeKey] {
-        let Some(item) = self.map.get(key) else {
-            return &[];
-        };
-
-        match item.node {
-            Node::Div(ref div) => &div.children,
-            _ => &[],
-        }
-    }
-
-    /// Remove child from its parent and return parent node
-    pub fn remove_child(&mut self, child: NodeKey) -> Option<NodeKey> {
-        let child_item = self.map.get_mut(child)?;
-        let parent = child_item.parent.take()?;
-        let Some(NodeItem {
-            node: Node::Div(parent_div),
-            ..
-        }) = self.map.get_mut(parent)
-        else {
-            return None;
-        };
-
-        parent_div.children.retain(|key| *key == child);
-        Some(parent)
-    }
-
-    /// Append node as a child
-    pub fn append_child(&mut self, parent: NodeKey, child: NodeKey) -> Option<Option<NodeKey>> {
-        let last_parent = self.remove_child(child);
-        let Some(NodeItem {
-            node: Node::Div(parent_div),
-            ..
-        }) = self.map.get_mut(parent)
-        else {
-            return None;
-        };
-
-        parent_div.children.push(child);
-        Some(last_parent)
-    }
-
-    /// Delete a node from the tree
-    pub fn delete(&mut self, key: NodeKey) -> bool {
-        self.remove_child(key);
-        self.map.remove(key).is_some()
+        self.elements.insert(Node::Div(Div::new()))
     }
 }

@@ -1,0 +1,35 @@
+mod cache;
+mod compute;
+mod layout;
+mod traverse;
+
+use slotmap::{Key, KeyData};
+use taffy::{AvailableSpace, Size, compute_root_layout};
+
+use crate::{
+    layout::tree::{LayoutBoxKey, LayoutBoxTree},
+    node::UiTree,
+};
+
+pub(crate) struct TaffyLayoutImpl<'a> {
+    layout_tree: &'a mut LayoutBoxTree,
+    ui: &'a UiTree,
+}
+
+impl<'a> TaffyLayoutImpl<'a> {
+    pub fn new(layout_tree: &'a mut LayoutBoxTree, ui: &'a UiTree) -> Self {
+        Self { layout_tree, ui }
+    }
+
+    pub fn compute_layout(&mut self, root: LayoutBoxKey, available_space: Size<AvailableSpace>) {
+        compute_root_layout(self, to_taffy_key(root), available_space);
+    }
+}
+
+pub fn from_taffy_key(id: taffy::NodeId) -> LayoutBoxKey {
+    LayoutBoxKey::from(KeyData::from_ffi(id.into()))
+}
+
+pub fn to_taffy_key(id: LayoutBoxKey) -> taffy::NodeId {
+    taffy::NodeId::new(id.data().as_ffi())
+}

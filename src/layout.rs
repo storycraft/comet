@@ -1,5 +1,8 @@
-pub mod tree;
+use core::fmt::Debug;
+
 pub mod container;
+mod taffy;
+pub mod tree;
 
 pub type LayoutFn = fn();
 
@@ -17,6 +20,8 @@ impl Layout {
     }
 }
 
+pub trait GenericLayout: 'static + Sized + Clone {}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DisplayOuter {
     #[default]
@@ -24,10 +29,21 @@ pub enum DisplayOuter {
     Inline,
 }
 
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
+#[derive(Debug, Default)]
 pub enum DisplayInner {
     #[default]
     Flow,
     FlowRoot,
     Layout(Layout),
+    Content,
+}
+
+impl PartialEq for DisplayInner {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Flow, Self::Flow) | (Self::FlowRoot, Self::FlowRoot) => true,
+            (Self::Layout(f1), Self::Layout(f2)) => f1 == f2,
+            _ => false,
+        }
+    }
 }
