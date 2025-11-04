@@ -13,8 +13,9 @@ use comet::{
     renderer::CometRenderer,
 };
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
-use kurbo::{Affine, Rect};
+use kurbo::Affine;
 use peniko::Brush;
+use taffy::{LengthPercentageAuto, Rect};
 
 fn main() {
     let mut ui = UiTree::new();
@@ -27,7 +28,17 @@ fn main() {
         div.display_outer = Some(DisplayOuter::Inline);
         div.display_inner = DisplayInner::FlowRoot;
     }
+
     let div2 = ui.create_div();
+    if let Some(Node::Div(div2)) = ui.elements.get_mut(div2) {
+        div2.margin = Rect {
+            left: LengthPercentageAuto::length(50.0),
+            top: LengthPercentageAuto::length(50.0),
+            bottom: LengthPercentageAuto::length(50.0),
+            right: LengthPercentageAuto::length(50.0),
+        };
+    }
+
     let inner2 = ui.create_text("end");
     let text2 = ui.create_text("1");
     ui.elements.append(root, text0);
@@ -63,7 +74,7 @@ fn main() {
                 Affine::IDENTITY,
                 Brush::Solid(AlphaColor::WHITE),
                 None,
-                &Rect::new(0.0, 0.0, 256.0, 256.0),
+                &kurbo::Rect::new(0.0, 0.0, 256.0, 256.0),
             );
             CometRenderer::new().draw(&layout_tree, box_root, scene);
         },

@@ -1,14 +1,14 @@
 mod taffy;
 pub mod tree;
 
-pub type LayoutFn = fn();
+pub type ContainerLayoutFn = fn();
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct Layout(LayoutFn);
+pub struct ContainerLayout(ContainerLayoutFn);
 
-impl Layout {
-    pub const fn new(f: LayoutFn) -> Self {
+impl ContainerLayout {
+    pub const fn new(f: ContainerLayoutFn) -> Self {
         Self(f)
     }
 
@@ -29,7 +29,7 @@ pub enum DisplayInner {
     #[default]
     Flow,
     FlowRoot,
-    Layout(Layout),
+    Container(ContainerLayout),
     Content,
 }
 
@@ -37,7 +37,7 @@ impl PartialEq for DisplayInner {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Flow, Self::Flow) | (Self::FlowRoot, Self::FlowRoot) => true,
-            (Self::Layout(f1), Self::Layout(f2)) => f1 == f2,
+            (Self::Container(f1), Self::Container(f2)) => f1 == f2,
             _ => false,
         }
     }
