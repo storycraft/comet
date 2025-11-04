@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use taffy::{AvailableSpace, Size};
 
 use crate::{
-    UiTree,
+    Ui,
     layout::{DisplayInner, DisplayOuter, taffy::TaffyLayoutImpl},
     node::{Node, NodeKey},
     tree::SlotTree,
@@ -95,7 +95,7 @@ impl LayoutBoxTree {
         self.boxes.clear();
     }
 
-    pub fn compute_layout(&mut self, ui: &mut UiTree, available_space: Size<AvailableSpace>) {
+    pub fn compute_layout(&mut self, ui: &mut Ui, available_space: Size<AvailableSpace>) {
         let root = self.root;
         TaffyLayoutImpl::new(self, ui).compute_layout(root, available_space);
     }
@@ -186,7 +186,7 @@ impl LayoutBoxTreeCx {
         }
     }
 
-    pub fn build(&mut self, ui: &UiTree, root: NodeKey, tree: &mut LayoutBoxTree) {
+    pub fn build(&mut self, ui: &Ui, root: NodeKey, tree: &mut LayoutBoxTree) {
         tree.clear();
 
         let root_id = tree.boxes.insert(LayoutBox::new(None, LayoutTy::Block));
@@ -203,7 +203,7 @@ impl LayoutBoxTreeCx {
         self.inline_cx.clear();
     }
 
-    fn build_inner(&mut self, ui: &UiTree, id: NodeKey, tree: &mut LayoutBoxTree) {
+    fn build_inner(&mut self, ui: &Ui, id: NodeKey, tree: &mut LayoutBoxTree) {
         let Some(node) = ui.elements.get(id) else {
             return;
         };

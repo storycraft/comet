@@ -5,18 +5,20 @@ pub mod style;
 pub mod tree;
 
 use crate::{
-    node::{Div, Node, NodeKey},
-    tree::SlotTree,
+    node::{Div, Node, NodeKey}, style::container::LayoutStyleContainer, tree::SlotTree
 };
 
-pub struct UiTree {
+#[non_exhaustive]
+pub struct Ui {
     pub elements: SlotTree<NodeKey, Node>,
+    pub styles: LayoutStyleContainer,
 }
 
-impl UiTree {
+impl Ui {
     pub fn new() -> Self {
         Self {
             elements: SlotTree::new(),
+            styles: LayoutStyleContainer::new(),
         }
     }
 
@@ -33,7 +35,7 @@ impl UiTree {
     }
 }
 
-impl Default for UiTree {
+impl Default for Ui {
     fn default() -> Self {
         Self::new()
     }

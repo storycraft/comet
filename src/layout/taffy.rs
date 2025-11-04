@@ -8,17 +8,17 @@ use slotmap::{Key, KeyData};
 use taffy::{AvailableSpace, Size, compute_root_layout};
 
 use crate::{
-    UiTree,
+    Ui,
     layout::tree::{LayoutBoxKey, LayoutBoxTree},
 };
 
 pub struct TaffyLayoutImpl<'a> {
     layout_tree: &'a mut LayoutBoxTree,
-    ui: &'a mut UiTree,
+    ui: &'a mut Ui,
 }
 
 impl<'a> TaffyLayoutImpl<'a> {
-    pub fn new(layout_tree: &'a mut LayoutBoxTree, ui: &'a mut UiTree) -> Self {
+    pub fn new(layout_tree: &'a mut LayoutBoxTree, ui: &'a mut Ui) -> Self {
         Self { layout_tree, ui }
     }
 

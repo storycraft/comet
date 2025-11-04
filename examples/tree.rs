@@ -4,7 +4,7 @@ use anyrender::{ImageRenderer, PaintScene};
 use anyrender_vello::VelloImageRenderer;
 use color::AlphaColor;
 use comet::{
-    UiTree,
+    Ui,
     layout::{
         DisplayInner, DisplayOuter,
         tree::{InlineItem, LayoutBoxKey, LayoutBoxTree, LayoutBoxTreeCx, LayoutTy},
@@ -18,7 +18,7 @@ use peniko::Brush;
 use taffy::{LengthPercentageAuto, Rect};
 
 fn main() {
-    let mut ui = UiTree::new();
+    let mut ui = Ui::new();
     let root = ui.create_div();
     let text0 = ui.create_text("sample ");
     let text1 = ui.create_text(" text");
@@ -124,7 +124,7 @@ fn print_box_tree(layout_tree: &LayoutBoxTree, id: LayoutBoxKey, space: u32) {
     }
 }
 
-fn print(tree: &UiTree, id: NodeKey, space: u32) {
+fn print(tree: &Ui, id: NodeKey, space: u32) {
     for _ in 0..space {
         print!(" ");
     }
