@@ -111,11 +111,12 @@ impl CometRenderer {
             for item in line.items() {
                 match item {
                     PositionedLayoutItem::GlyphRun(glyph_run) => {
+                        let run = glyph_run.run();
                         scene.draw_glyphs(
-                            &glyph_run.run().font(),
+                            &run.font(),
                             16.0,
                             true,
-                            &[],
+                            run.normalized_coords(),
                             StyleRef::Fill(peniko::Fill::NonZero),
                             Paint::Solid(AlphaColor::BLACK),
                             1.0,
