@@ -1,4 +1,5 @@
 pub mod cursor;
+#[cfg(test)]
 mod tests;
 
 use core::ops::{Index, IndexMut};
