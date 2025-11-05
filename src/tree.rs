@@ -239,7 +239,7 @@ impl<K: Key, V> IndexMut<K> for SlotTree<K, V> {
     }
 }
 
-pub struct Node<K: Key, T> {
+struct Node<K: Key, T> {
     parent: Option<K>,
 
     first_child: Option<K>,
