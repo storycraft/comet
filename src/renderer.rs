@@ -70,7 +70,7 @@ impl CometRenderer {
                 let y1 = y0 + size.height as f64;
 
                 if let Some(span) = node.span {
-                    self.draw_tmp(ui, span, &[Rect::new(x0, y0, x1, y1)], scene);
+                    self.draw_block(ui, span, Rect::new(x0, y0, x1, y1), scene);
                 }
 
                 for child_id in tree.boxes.cursor(tree.boxes.first_child(id)) {
@@ -164,20 +164,18 @@ impl CometRenderer {
         }
     }
 
-    fn draw_tmp(&self, ui: &Ui, id: NodeKey, rects: &[Rect], scene: &mut impl PaintScene) {
+    fn draw_block(&self, ui: &Ui, id: NodeKey, rect: Rect, scene: &mut impl PaintScene) {
         let Some(Node::Div(div)) = ui.elements.get(id) else {
             return;
         };
 
-        for &rect in rects {
-            let rect = RoundedRect::from_rect(rect, div.border_radius);
-            if let Some(fill) = &div.fill {
-                scene.fill(Fill::EvenOdd, div.transform, fill, None, &rect);
-            }
+        let rect = RoundedRect::from_rect(rect, div.border_radius);
+        if let Some(fill) = &div.fill {
+            scene.fill(Fill::EvenOdd, div.transform, fill, None, &rect);
+        }
 
-            if let Some((stroke_style, stroke_paint)) = &div.stroke {
-                scene.stroke(stroke_style, div.transform, stroke_paint, None, &rect);
-            }
+        if let Some((stroke_style, stroke_paint)) = &div.stroke {
+            scene.stroke(stroke_style, div.transform, stroke_paint, None, &rect);
         }
     }
 }

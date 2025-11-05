@@ -5,7 +5,9 @@ pub mod style;
 pub mod tree;
 
 use crate::{
-    node::{Div, Node, NodeKey}, style::container::LayoutStyleContainer, tree::SlotTree
+    node::{Div, Node, NodeKey},
+    style::container::LayoutStyleContainer,
+    tree::SlotTree,
 };
 
 #[non_exhaustive]

@@ -13,9 +13,9 @@ use comet::{
     renderer::CometRenderer,
 };
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
-use kurbo::Affine;
+use kurbo::{Affine, RoundedRectRadii};
 use peniko::Brush;
-use taffy::{LengthPercentageAuto, Rect};
+use taffy::{LengthPercentage, Rect};
 
 fn main() {
     let mut ui = Ui::new();
@@ -24,28 +24,35 @@ fn main() {
     let text1 = ui.create_text(" text");
     let inner = ui.create_text("start");
     let div = ui.create_div();
+    let div1 = ui.create_div();
     if let Some(Node::Div(div)) = ui.elements.get_mut(div) {
+        div.display_outer = Some(DisplayOuter::Inline);
+        div.fill = Some(Paint::Solid(AlphaColor::from_rgb8(255, 0, 0)));
+    }
+    if let Some(Node::Div(div)) = ui.elements.get_mut(div1) {
         div.display_outer = Some(DisplayOuter::Inline);
         div.display_inner = DisplayInner::FlowRoot;
     }
 
     let div2 = ui.create_div();
     if let Some(Node::Div(div2)) = ui.elements.get_mut(div2) {
-        div2.margin = Rect {
-            left: LengthPercentageAuto::length(50.0),
-            top: LengthPercentageAuto::length(50.0),
-            bottom: LengthPercentageAuto::length(50.0),
-            right: LengthPercentageAuto::length(50.0),
+        div2.padding = Rect {
+            left: LengthPercentage::length(16.0),
+            top: LengthPercentage::length(16.0),
+            bottom: LengthPercentage::length(16.0),
+            right: LengthPercentage::length(16.0),
         };
         div2.fill = Some(Paint::Solid(AlphaColor::from_rgb8(0, 255, 0)));
+        div2.border_radius = RoundedRectRadii::new(8.0, 0.0, 8.0, 0.0)
     }
 
     let inner2 = ui.create_text("end");
     let text2 = ui.create_text("1");
-    ui.elements.append(root, text0);
+    ui.elements.append(div, text0);
+    ui.elements.append(div, div1);
+    ui.elements.append(div, text1);
     ui.elements.append(root, div);
-    ui.elements.append(root, text1);
-    ui.elements.append(div, inner);
+    ui.elements.append(div1, inner);
     ui.elements.append(root, div2);
     ui.elements.append(div2, inner2);
     ui.elements.append(root, text2);

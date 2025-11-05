@@ -56,6 +56,12 @@ impl LayoutStyleContainer {
     }
 }
 
+impl Default for LayoutStyleContainer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct TypeKey(TypeId);
