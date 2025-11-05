@@ -1,6 +1,6 @@
 use std::{fs, io::BufWriter};
 
-use anyrender::{ImageRenderer, PaintScene};
+use anyrender::{ImageRenderer, Paint, PaintScene};
 use anyrender_vello::VelloImageRenderer;
 use color::AlphaColor;
 use comet::{
@@ -37,6 +37,7 @@ fn main() {
             bottom: LengthPercentageAuto::length(50.0),
             right: LengthPercentageAuto::length(50.0),
         };
+        div2.fill = Some(Paint::Solid(AlphaColor::from_rgb8(0, 255, 0)));
     }
 
     let inner2 = ui.create_text("end");
@@ -76,7 +77,7 @@ fn main() {
                 None,
                 &kurbo::Rect::new(0.0, 0.0, 256.0, 256.0),
             );
-            CometRenderer::new().draw(&layout_tree, box_root, scene);
+            CometRenderer::new().draw(&ui, &layout_tree, box_root, scene);
         },
         &mut data[..],
     );

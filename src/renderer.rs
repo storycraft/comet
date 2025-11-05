@@ -1,14 +1,18 @@
 use anyrender::{Paint, PaintScene};
 use color::AlphaColor;
-use kurbo::{Affine, Rect, Stroke};
+use kurbo::{Affine, Rect, RoundedRect};
 use parley::{
     FontContext, GenericFamily, PositionedLayoutItem,
     fontique::{SourceCache, SourceCacheOptions},
 };
-use peniko::{FontData, StyleRef};
+use peniko::{Fill, FontData, StyleRef};
 use slotmap::KeyData;
 
-use crate::layout::tree::{InlineBoxKey, LayoutBoxKey, LayoutBoxTree, LayoutTy};
+use crate::{
+    Ui,
+    layout::tree::{InlineBoxKey, LayoutBoxKey, LayoutBoxTree, LayoutTy},
+    node::{Node, NodeKey},
+};
 
 pub struct CometRenderer {
     offset_x: f64,
@@ -29,13 +33,25 @@ impl CometRenderer {
         }
     }
 
-    pub fn draw(&mut self, tree: &LayoutBoxTree, id: LayoutBoxKey, scene: &mut impl PaintScene) {
+    pub fn draw(
+        &mut self,
+        ui: &Ui,
+        tree: &LayoutBoxTree,
+        id: LayoutBoxKey,
+        scene: &mut impl PaintScene,
+    ) {
         self.offset_x = 0.0;
         self.offset_y = 0.0;
-        self.draw_node(tree, id, scene);
+        self.draw_node(ui, tree, id, scene);
     }
 
-    fn draw_node(&mut self, tree: &LayoutBoxTree, id: LayoutBoxKey, scene: &mut impl PaintScene) {
+    fn draw_node(
+        &mut self,
+        ui: &Ui,
+        tree: &LayoutBoxTree,
+        id: LayoutBoxKey,
+        scene: &mut impl PaintScene,
+    ) {
         let Some(node) = tree.boxes.get(id) else {
             return;
         };
@@ -52,21 +68,18 @@ impl CometRenderer {
                 let y0 = self.offset_y;
                 let x1 = x0 + size.width as f64;
                 let y1 = y0 + size.height as f64;
-                scene.stroke(
-                    &Stroke::new(1.0),
-                    Affine::IDENTITY,
-                    Paint::Solid(AlphaColor::BLACK),
-                    None,
-                    &Rect::new(x0, y0, x1, y1),
-                );
+
+                if let Some(span) = node.span {
+                    self.draw_tmp(ui, span, &[Rect::new(x0, y0, x1, y1)], scene);
+                }
 
                 for child_id in tree.boxes.cursor(tree.boxes.first_child(id)) {
-                    self.draw_node(tree, child_id, scene);
+                    self.draw_node(ui, tree, child_id, scene);
                 }
             }
 
             LayoutTy::Inline(inline_box_id) => {
-                self.draw_inline_box(tree, inline_box_id, scene);
+                self.draw_inline_box(ui, tree, inline_box_id, scene);
             }
         }
 
@@ -76,6 +89,7 @@ impl CometRenderer {
 
     fn draw_inline_box(
         &mut self,
+        ui: &Ui,
         tree: &LayoutBoxTree,
         id: InlineBoxKey,
         scene: &mut impl PaintScene,
@@ -136,6 +150,7 @@ impl CometRenderer {
                         self.offset_y += inline_box.y as f64 + height_offset as f64;
 
                         self.draw_node(
+                            ui,
                             tree,
                             LayoutBoxKey::from(KeyData::from_ffi(inline_box.id)),
                             scene,
@@ -145,6 +160,23 @@ impl CometRenderer {
                         self.offset_y = last_offset.1;
                     }
                 };
+            }
+        }
+    }
+
+    fn draw_tmp(&self, ui: &Ui, id: NodeKey, rects: &[Rect], scene: &mut impl PaintScene) {
+        let Some(Node::Div(div)) = ui.elements.get(id) else {
+            return;
+        };
+
+        for &rect in rects {
+            let rect = RoundedRect::from_rect(rect, div.border_radius);
+            if let Some(fill) = &div.fill {
+                scene.fill(Fill::EvenOdd, div.transform, fill, None, &rect);
+            }
+
+            if let Some((stroke_style, stroke_paint)) = &div.stroke {
+                scene.stroke(stroke_style, div.transform, stroke_paint, None, &rect);
             }
         }
     }

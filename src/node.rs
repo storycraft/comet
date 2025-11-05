@@ -1,3 +1,5 @@
+use anyrender::Paint;
+use kurbo::{Affine, RoundedRectRadii, Stroke};
 use slotmap::new_key_type;
 use taffy::{
     BoxSizing, Dimension, LengthPercentage, LengthPercentageAuto, Overflow, Point, Position, Rect,
@@ -8,13 +10,13 @@ use crate::layout::{DisplayInner, DisplayOuter};
 
 new_key_type! { pub struct NodeKey; }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum Node {
     Div(Div),
     Text(String),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct Div {
     // Display
     pub display_outer: Option<DisplayOuter>,
@@ -36,6 +38,13 @@ pub struct Div {
     pub margin: Rect<LengthPercentageAuto>,
     pub padding: Rect<LengthPercentage>,
     pub border: Rect<LengthPercentage>,
+
+    // Box draw styles
+    // TODO:: move to a separate style struct
+    pub transform: Affine,
+    pub fill: Option<Paint>,
+    pub border_radius: RoundedRectRadii,
+    pub stroke: Option<(Stroke, Paint)>,
 }
 
 impl Div {
@@ -60,6 +69,11 @@ impl Div {
             margin: Rect::zero(),
             padding: Rect::zero(),
             border: Rect::zero(),
+
+            transform: Affine::IDENTITY,
+            fill: None,
+            border_radius: RoundedRectRadii::new(0.0, 0.0, 0.0, 0.0),
+            stroke: None,
         }
     }
 }
