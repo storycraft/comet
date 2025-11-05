@@ -114,7 +114,7 @@ impl CometRenderer {
                         let run = glyph_run.run();
                         scene.draw_glyphs(
                             &run.font(),
-                            16.0,
+                            run.font_size(),
                             true,
                             run.normalized_coords(),
                             StyleRef::Fill(peniko::Fill::NonZero),
