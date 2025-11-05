@@ -1,11 +1,8 @@
 use anyrender::{Paint, PaintScene};
 use color::AlphaColor;
 use kurbo::{Affine, Rect, RoundedRect};
-use parley::{
-    FontContext, GenericFamily, PositionedLayoutItem,
-    fontique::{SourceCache, SourceCacheOptions},
-};
-use peniko::{Fill, FontData, StyleRef};
+use parley::PositionedLayoutItem;
+use peniko::{Fill, StyleRef};
 use slotmap::KeyData;
 
 use crate::{
@@ -98,19 +95,6 @@ impl CometRenderer {
             return;
         };
 
-        // TODO:: move
-        let mut font_cx = FontContext::new();
-        let font_id = font_cx
-            .collection
-            .generic_families(GenericFamily::SansSerif)
-            .next()
-            .unwrap();
-        let font_info = font_cx.collection.family(font_id).unwrap();
-        let source = font_info.fonts()[0].source();
-        let mut cache = SourceCache::new(SourceCacheOptions::default());
-        let blob = cache.get(source).unwrap();
-        let font_data = FontData::new(blob, 0);
-
         for line in node.parley_layout.lines() {
             // TODO:: proper height calc
             let mut height_offset = 0.0f32;
@@ -128,7 +112,7 @@ impl CometRenderer {
                 match item {
                     PositionedLayoutItem::GlyphRun(glyph_run) => {
                         scene.draw_glyphs(
-                            &font_data,
+                            &glyph_run.run().font(),
                             16.0,
                             true,
                             &[],
