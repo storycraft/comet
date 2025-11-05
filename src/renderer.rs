@@ -16,12 +16,6 @@ pub struct CometRenderer {
     offset_y: f64,
 }
 
-impl Default for CometRenderer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl CometRenderer {
     pub fn new() -> Self {
         Self {
@@ -162,5 +156,11 @@ impl CometRenderer {
         if let Some((stroke_style, stroke_paint)) = &div.stroke {
             scene.stroke(stroke_style, div.transform, stroke_paint, None, &rect);
         }
+    }
+}
+
+impl Default for CometRenderer {
+    fn default() -> Self {
+        Self::new()
     }
 }
