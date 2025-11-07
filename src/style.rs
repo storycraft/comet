@@ -1,32 +1,40 @@
 pub mod container;
+pub mod resolve;
 
+pub use anyrender::Paint;
 pub use parley::style::{
     FontFamily, FontFeature, FontSettings, FontStack, FontStyle, FontVariation, FontWeight,
     FontWidth, LineHeight, OverflowWrap, WordBreakStrength,
 };
-
+use slotmap::new_key_type;
 pub use taffy::{
     Rect, Size,
     style::{BoxSizing, Dimension, LengthPercentage, LengthPercentageAuto, Position},
 };
 
+new_key_type! { pub struct LayoutStyleKey; }
+
 /// Style for a specific [`crate::layout::Layout`]
-pub trait LayoutStyle: 'static + Sized + Clone {}
+pub trait LayoutStyle: 'static + Sized + Clone {
+    type Resolved: Clone;
+
+    fn resolve(&self, parent: &Self::Resolved) -> Self::Resolved;
+}
 
 #[derive(Debug, Clone, PartialEq)]
 /// Text styles
-pub struct TextStyle<'a> {
+pub struct TextStyle {
     // Font settings
-    pub font_stack: FontStack<'a>,
+    pub font_stack: FontStack<'static>,
     pub font_size: f32,
     pub font_width: FontWidth,
     pub font_style: FontStyle,
     pub font_weight: FontWeight,
-    pub font_variations: FontSettings<'a, FontVariation>,
-    pub font_features: FontSettings<'a, FontFeature>,
+    pub font_variations: FontSettings<'static, FontVariation>,
+    pub font_features: FontSettings<'static, FontFeature>,
 
     // Locale
-    pub locale: Option<&'a str>,
+    pub locale: Option<&'static str>,
 
     // Underline
     pub underline_offset: f32,
