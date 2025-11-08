@@ -6,7 +6,7 @@ pub mod text;
 use kurbo::Size;
 
 /// Style for a specific [`crate::layout::Layout`]
-pub trait LayoutStyle: 'static + Sized + Clone {
+pub trait LayoutStyle: 'static + Sized + Clone + Default {
     type Resolved: Clone + Default;
 
     /// Using the given context and parent resolved style, resolve the style into absolute px values.
