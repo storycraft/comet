@@ -4,6 +4,8 @@ pub mod renderer;
 pub mod style;
 pub mod tree;
 
+pub use kurbo;
+
 use crate::{
     node::{Div, Node, NodeKey},
     style::container::LayoutStyleContainer,
