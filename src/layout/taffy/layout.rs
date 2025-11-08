@@ -6,6 +6,7 @@ use taffy::{
 
 use crate::{
     layout::{
+        Layout,
         taffy::{
             TaffyLayoutImpl, compute::compute_inline_layout, from_taffy_key, style::TaffyCoreStyle,
         },
@@ -26,7 +27,7 @@ impl LayoutPartialTree for TaffyLayoutImpl<'_> {
     }
 
     fn set_unrounded_layout(&mut self, node_id: taffy::NodeId, layout: &taffy::Layout) {
-        self.layout_tree.boxes[from_taffy_key(node_id)].taffy_layout = *layout;
+        self.layout_tree.boxes[from_taffy_key(node_id)].layout = Layout::from_taffy_layout(*layout);
     }
 
     #[inline]

@@ -47,14 +47,14 @@ impl CometRenderer {
             return;
         };
 
-        let location = node.taffy_layout.location;
+        let location = node.layout.location;
         let last_offset = (self.offset_x, self.offset_y);
         self.offset_x += location.x as f64;
         self.offset_y += location.y as f64;
 
         match node.ty {
             LayoutTy::Block => {
-                let size = node.taffy_layout.size;
+                let size = node.layout.size;
                 let x0 = self.offset_x;
                 let y0 = self.offset_y;
                 let x1 = x0 + size.width as f64;

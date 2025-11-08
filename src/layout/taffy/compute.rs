@@ -73,12 +73,12 @@ pub fn build_inline(
                     taffy::Size::min_content(),
                 );
 
-                let size = layout_box_tree.boxes[layout_box_key].taffy_layout.size;
+                let size = layout_box_tree.boxes[layout_box_key].layout.size;
                 builder.push_inline_box(InlineBox {
                     id: layout_box_key.data().as_ffi(),
                     index: *text_len,
-                    width: size.width,
-                    height: size.height,
+                    width: size.width as _,
+                    height: size.height as _,
                 });
             }
 
