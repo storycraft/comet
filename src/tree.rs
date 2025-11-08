@@ -2,9 +2,8 @@ pub mod cursor;
 #[cfg(test)]
 mod tests;
 
-use core::ops::{Index, IndexMut};
-
 use crate::tree::cursor::Cursor;
+use core::ops::{Index, IndexMut};
 use slotmap::{Key, SlotMap};
 
 pub struct SlotTree<K: Key, V> {
