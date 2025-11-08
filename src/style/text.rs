@@ -40,7 +40,8 @@ pub struct TextStyle {
 }
 
 impl TextStyle {
-    pub fn new() -> Self {
+    #[inline]
+    pub const fn new() -> Self {
         Self {
             font_stack: None,
             font_size: None,
