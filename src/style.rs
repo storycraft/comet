@@ -1,55 +1,84 @@
 pub mod container;
+pub mod div;
 pub mod resolve;
+pub mod text;
 
-pub use anyrender::Paint;
-pub use parley::style::{
-    FontFamily, FontFeature, FontSettings, FontStack, FontStyle, FontVariation, FontWeight,
-    FontWidth, LineHeight, OverflowWrap, WordBreakStrength,
-};
-use slotmap::new_key_type;
-pub use taffy::{
-    Rect, Size,
-    style::{BoxSizing, Dimension, LengthPercentage, LengthPercentageAuto, Position},
-};
-
-new_key_type! { pub struct LayoutStyleKey; }
+use kurbo::Size;
 
 /// Style for a specific [`crate::layout::Layout`]
 pub trait LayoutStyle: 'static + Sized + Clone {
-    type Resolved: Clone;
+    type Resolved: Clone + Default;
 
-    fn resolve(&self, parent: &Self::Resolved) -> Self::Resolved;
+    /// Using the given context and parent resolved style, resolve the style into absolute px values.
+    fn resolve(&self, cx: &LayoutStyleCx, parent: &Self::Resolved) -> Self::Resolved;
 }
 
 #[derive(Debug, Clone, PartialEq)]
-/// Text styles
-pub struct TextStyle {
-    // Font settings
-    pub font_stack: FontStack<'static>,
-    pub font_size: f32,
-    pub font_width: FontWidth,
-    pub font_style: FontStyle,
-    pub font_weight: FontWeight,
-    pub font_variations: FontSettings<'static, FontVariation>,
-    pub font_features: FontSettings<'static, FontFeature>,
+pub struct LayoutStyleCx {
+    pub root_size: Size,
+    pub root_font_size: f64,
+    pub parent_size: Size,
+    pub parent_font_size: f64,
+}
 
-    // Locale
-    pub locale: Option<&'static str>,
+#[derive(Debug, Clone, Copy, PartialEq)]
+/// Relative, Absolute size unit
+pub enum StyleUnit {
+    /// Pixel unit
+    Px(f64),
+    /// Percentage of parent width. 100% = 1.0
+    Pw(f64),
+    /// Percentage of parent height. 100% = 1.0
+    Ph(f64),
+    /// Em unit (relative to parent font size)
+    Em(f64),
+    /// Rem unit (relative to root font size)
+    Rem(f64),
+    /// Percentage of root width. 100vw = 1.0
+    Vw(f64),
+    /// Percentage of root height. 100vh = 1.0
+    Vh(f64),
+}
 
-    // Underline
-    pub underline_offset: f32,
-    pub underline_size: f32,
+impl StyleUnit {
+    pub const ZERO: StyleUnit = StyleUnit::Px(0.0);
 
-    // Strikethrough
-    pub strikethrough_offset: f32,
-    pub strikethrough_size: f32,
+    #[inline]
+    pub fn resolve(self, cx: &LayoutStyleCx) -> f64 {
+        match self {
+            Self::Px(v) => v,
+            Self::Pw(v) => v * cx.parent_size.width,
+            Self::Ph(v) => v * cx.parent_size.height,
+            Self::Em(v) => v * cx.parent_font_size,
+            Self::Rem(v) => v * cx.root_font_size,
+            Self::Vw(v) => v * cx.root_size.width,
+            Self::Vh(v) => v * cx.root_size.height,
+        }
+    }
+}
 
-    // Line settings
-    pub line_height: LineHeight,
-    pub overflow_wrap: OverflowWrap,
-    pub word_break: WordBreakStrength,
+impl Default for StyleUnit {
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
 
-    // Text spacing
-    pub word_spacing: f32,
-    pub letter_spacing: f32,
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StylePoint {
+    pub x: StyleUnit,
+    pub y: StyleUnit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StyleSize {
+    pub width: StyleUnit,
+    pub height: StyleUnit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StyleRect {
+    pub top: StyleUnit,
+    pub right: StyleUnit,
+    pub bottom: StyleUnit,
+    pub left: StyleUnit,
 }
