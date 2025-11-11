@@ -51,7 +51,7 @@ impl PartialEq for DisplayInner {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Layout {
     /// Relative z-index of the layout box
     pub z_index: u32,
