@@ -8,21 +8,18 @@ pub use kurbo;
 
 use crate::{
     node::{Div, Node, NodeKey},
-    style::container::LayoutStyleContainer,
     tree::SlotTree,
 };
 
 #[non_exhaustive]
 pub struct Ui {
     pub elements: SlotTree<NodeKey, Node>,
-    pub styles: LayoutStyleContainer,
 }
 
 impl Ui {
     pub fn new() -> Self {
         Self {
             elements: SlotTree::new(),
-            styles: LayoutStyleContainer::new(),
         }
     }
 
