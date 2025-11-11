@@ -4,7 +4,7 @@ use taffy::{AvailableSpace, Size};
 
 use crate::{
     Ui,
-    layout::{DisplayInner, DisplayOuter, Layout, taffy::TaffyLayoutImpl},
+    layout::{DisplayInner, DisplayOuter, BoxLayout, taffy::TaffyLayoutImpl},
     node::{Node, NodeKey},
     tree::SlotTree,
 };
@@ -20,7 +20,7 @@ pub struct LayoutBox {
     pub span: Option<NodeKey>,
 
     pub(crate) taffy_cache: taffy::Cache,
-    pub layout: Layout,
+    pub layout: BoxLayout,
 
     pub ty: LayoutTy,
 }
@@ -31,7 +31,7 @@ impl LayoutBox {
             span,
 
             taffy_cache: taffy::Cache::new(),
-            layout: Layout::new(),
+            layout: BoxLayout::new(),
 
             ty,
         }

@@ -52,7 +52,7 @@ impl PartialEq for DisplayInner {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Layout {
+pub struct BoxLayout {
     /// Relative z-index of the layout box
     pub z_index: u32,
 
@@ -76,7 +76,7 @@ pub struct Layout {
     pub margin: Rect,
 }
 
-impl Layout {
+impl BoxLayout {
     pub fn new() -> Self {
         Self {
             z_index: 0,
@@ -89,7 +89,7 @@ impl Layout {
         }
     }
 
-    fn from_taffy_layout(layout: ::taffy::Layout) -> Layout {
+    fn from_taffy_layout(layout: ::taffy::Layout) -> BoxLayout {
         #[inline]
         fn to_kurbo_rect(r: ::taffy::Rect<f32>) -> Rect {
             Rect::new(
@@ -122,7 +122,7 @@ impl Layout {
     }
 }
 
-impl Default for Layout {
+impl Default for BoxLayout {
     fn default() -> Self {
         Self::new()
     }
