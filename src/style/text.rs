@@ -3,8 +3,7 @@ pub use parley::style::{
     FontWidth, OverflowWrap, WordBreakStrength,
 };
 
-use crate::style::{LayoutStyle, LayoutStyleCx, StyleUnit};
-use parley::LineHeight;
+use crate::style::StyleUnit;
 
 #[derive(Debug, Clone, PartialEq)]
 /// Text styles
@@ -67,83 +66,5 @@ impl TextStyle {
 impl Default for TextStyle {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl LayoutStyle for TextStyle {
-    type Resolved = parley::TextStyle<'static, ()>;
-
-    fn resolve(&self, cx: &LayoutStyleCx, parent: &Self::Resolved) -> Self::Resolved {
-        fn resolve_or_default(
-            unit: Option<StyleUnit>,
-            cx: &LayoutStyleCx,
-            parent_value: f32,
-        ) -> f32 {
-            let Some(unit) = unit else {
-                return parent_value;
-            };
-
-            unit.resolve(cx) as f32
-        }
-
-        let strikethrough_size = resolve_or_default(
-            self.strikethrough_size,
-            cx,
-            parent.strikethrough_size.unwrap(),
-        );
-        let underline_size =
-            resolve_or_default(self.underline_size, cx, parent.underline_size.unwrap());
-
-        parley::TextStyle {
-            font_stack: self
-                .font_stack
-                .as_ref()
-                .unwrap_or(&parent.font_stack)
-                .clone(),
-            font_size: resolve_or_default(self.font_size, cx, parent.font_size),
-            font_width: self
-                .font_width
-                .as_ref()
-                .unwrap_or(&parent.font_width)
-                .clone(),
-            font_style: self.font_style.unwrap_or(parent.font_style),
-            font_weight: self.font_weight.unwrap_or(parent.font_weight),
-            font_variations: self
-                .font_variations
-                .as_ref()
-                .unwrap_or(&parent.font_variations)
-                .clone(),
-            font_features: self
-                .font_features
-                .as_ref()
-                .unwrap_or(&parent.font_features)
-                .clone(),
-            locale: self.locale,
-            brush: (),
-            has_underline: underline_size != 0.0,
-            underline_offset: Some(resolve_or_default(
-                self.underline_offset,
-                cx,
-                parent.underline_offset.unwrap_or_default(),
-            )),
-            underline_size: Some(underline_size),
-            underline_brush: None,
-            has_strikethrough: strikethrough_size != 0.0,
-            strikethrough_offset: Some(resolve_or_default(
-                self.strikethrough_offset,
-                cx,
-                parent.strikethrough_offset.unwrap_or_default(),
-            )),
-            strikethrough_size: Some(strikethrough_size),
-            strikethrough_brush: None,
-            line_height: self
-                .line_height
-                .map(|v| LineHeight::Absolute(v.resolve(cx) as f32))
-                .unwrap_or(parent.line_height),
-            word_spacing: resolve_or_default(self.word_spacing, cx, parent.word_spacing),
-            letter_spacing: resolve_or_default(self.letter_spacing, cx, parent.letter_spacing),
-            word_break: self.word_break.unwrap_or(parent.word_break),
-            overflow_wrap: self.overflow_wrap.unwrap_or(parent.overflow_wrap),
-        }
     }
 }
