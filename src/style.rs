@@ -1,3 +1,4 @@
+pub mod div;
 pub mod text;
 
 use kurbo::Size;
@@ -71,3 +72,23 @@ pub struct StyleRect {
     pub bottom: StyleUnit,
     pub left: StyleUnit,
 }
+
+#[macro_export]
+macro_rules! define_style_props {
+    (
+        $(
+            $(#[$attr:meta])*
+            $vis:vis $name:ident : $ty:ty
+        ),* $(,)?
+    ) => {$(
+        $(#[$attr])*
+        $vis struct $name(pub $ty);
+
+        impl ::core::convert::From<$ty> for $name {
+            fn from(v: $ty) -> Self {
+                Self(v)
+            }
+        }
+    )*};
+}
+pub use define_style_props;

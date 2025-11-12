@@ -1,5 +1,6 @@
 mod taffy;
 pub mod tree;
+pub mod components;
 
 use kurbo::{Point, Rect, Size};
 
