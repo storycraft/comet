@@ -29,7 +29,7 @@ pub enum DisplayOuter {
     Inline,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub enum DisplayInner {
     #[default]
     /// Generate layout boxes and display children using Flow layout.
@@ -40,16 +40,6 @@ pub enum DisplayInner {
     Container(ContainerLayout),
     /// Display a content inside. Children will not be laid out.
     Content,
-}
-
-impl PartialEq for DisplayInner {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Flow, Self::Flow) | (Self::FlowRoot, Self::FlowRoot) => true,
-            (Self::Container(f1), Self::Container(f2)) => f1 == f2,
-            _ => false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
