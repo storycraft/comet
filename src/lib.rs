@@ -8,19 +8,20 @@ pub mod store;
 pub use kurbo;
 
 use crate::{
-    node::{Div, Node, NodeKey},
-    tree::SlotTree,
+    node::{Div, Node, NodeKey}, store::PropStore, tree::SlotTree
 };
 
 #[non_exhaustive]
 pub struct Ui {
     pub elements: SlotTree<NodeKey, Node>,
+    pub styles: PropStore,
 }
 
 impl Ui {
     pub fn new() -> Self {
         Self {
             elements: SlotTree::new(),
+            styles: PropStore::new(),
         }
     }
 
