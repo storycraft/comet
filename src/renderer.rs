@@ -1,14 +1,15 @@
 use anyrender::{Paint, PaintScene};
 use color::AlphaColor;
-use kurbo::{Affine, Rect, RoundedRect};
+use kurbo::{Affine, Rect, RoundedRect, Stroke};
 use parley::PositionedLayoutItem;
-use peniko::{Fill, StyleRef};
+use peniko::StyleRef;
 use slotmap::KeyData;
 
 use crate::{
     Ui,
     layout::tree::{InlineBoxKey, LayoutBoxKey, LayoutBoxTree, LayoutTy},
-    node::{Node, NodeKey},
+    node::NodeKey,
+    style::div::{BorderFill, Fill},
 };
 
 pub struct CometRenderer {
@@ -143,19 +144,28 @@ impl CometRenderer {
         }
     }
 
+    // TODO::
     fn draw_block(&self, ui: &Ui, id: NodeKey, rect: Rect, scene: &mut impl PaintScene) {
-        // let Some(Node::Div(div)) = ui.elements.get(id) else {
-        //     return;
-        // };
+        let rect = RoundedRect::from_rect(rect, 0.0);
+        if let Some(fill) = ui.styles.get::<&Fill>(id) {
+            scene.fill(
+                peniko::Fill::EvenOdd,
+                Affine::IDENTITY,
+                &fill.0,
+                None,
+                &rect,
+            );
+        }
 
-        // let rect = RoundedRect::from_rect(rect, div.border_radius);
-        // if let Some(fill) = &div.fill {
-        //     scene.fill(Fill::EvenOdd, div.transform, fill, None, &rect);
-        // }
-
-        // if let Some((stroke_style, stroke_paint)) = &div.stroke {
-        //     scene.stroke(stroke_style, div.transform, stroke_paint, None, &rect);
-        // }
+        if let Some(stroke_paint) = ui.styles.get::<&BorderFill>(id) {
+            scene.stroke(
+                &Stroke::default(),
+                Affine::IDENTITY,
+                &stroke_paint.0,
+                None,
+                &rect,
+            );
+        }
     }
 }
 
