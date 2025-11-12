@@ -4,15 +4,12 @@ use taffy::{
     compute_leaf_layout,
 };
 
-use crate::{
-    layout::{
-        BoxLayout,
-        taffy::{
-            TaffyLayoutImpl, compute::compute_inline_layout, from_taffy_key, style::TaffyCoreStyle,
-        },
-        tree::LayoutTy,
+use crate::layout::{
+    BoxLayout,
+    taffy::{
+        TaffyLayoutImpl, compute::compute_inline_layout, from_taffy_key, style::TaffyCoreStyle,
     },
-    node::Node,
+    tree::LayoutTy,
 };
 
 impl LayoutPartialTree for TaffyLayoutImpl<'_> {
@@ -27,7 +24,8 @@ impl LayoutPartialTree for TaffyLayoutImpl<'_> {
     }
 
     fn set_unrounded_layout(&mut self, node_id: taffy::NodeId, layout: &taffy::Layout) {
-        self.layout_tree.boxes[from_taffy_key(node_id)].layout = BoxLayout::from_taffy_layout(*layout);
+        self.layout_tree.boxes[from_taffy_key(node_id)].layout =
+            BoxLayout::from_taffy_layout(*layout);
     }
 
     #[inline]
@@ -101,10 +99,6 @@ fn core_style_of<'a>(
     this: &'a TaffyLayoutImpl,
     node_id: taffy::NodeId,
 ) -> Option<TaffyCoreStyle<'a>> {
-    this.layout_tree.boxes[from_taffy_key(node_id)]
-        .span
-        .and_then(|span| match this.ui.elements.get(span)? {
-            Node::Div(div) => Some(TaffyCoreStyle(div)),
-            _ => None,
-        })
+    let span = this.layout_tree.boxes[from_taffy_key(node_id)].span?;
+    Some(TaffyCoreStyle(this.ui.styles.props(span)))
 }

@@ -144,18 +144,18 @@ impl CometRenderer {
     }
 
     fn draw_block(&self, ui: &Ui, id: NodeKey, rect: Rect, scene: &mut impl PaintScene) {
-        let Some(Node::Div(div)) = ui.elements.get(id) else {
-            return;
-        };
+        // let Some(Node::Div(div)) = ui.elements.get(id) else {
+        //     return;
+        // };
 
-        let rect = RoundedRect::from_rect(rect, div.border_radius);
-        if let Some(fill) = &div.fill {
-            scene.fill(Fill::EvenOdd, div.transform, fill, None, &rect);
-        }
+        // let rect = RoundedRect::from_rect(rect, div.border_radius);
+        // if let Some(fill) = &div.fill {
+        //     scene.fill(Fill::EvenOdd, div.transform, fill, None, &rect);
+        // }
 
-        if let Some((stroke_style, stroke_paint)) = &div.stroke {
-            scene.stroke(stroke_style, div.transform, stroke_paint, None, &rect);
-        }
+        // if let Some((stroke_style, stroke_paint)) = &div.stroke {
+        //     scene.stroke(stroke_style, div.transform, stroke_paint, None, &rect);
+        // }
     }
 }
 

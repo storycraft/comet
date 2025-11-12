@@ -5,15 +5,16 @@ use anyrender_vello::VelloImageRenderer;
 use color::AlphaColor;
 use comet::{
     Ui,
-    layout::{
-        DisplayInner, DisplayOuter,
-        tree::{InlineItem, LayoutBoxKey, LayoutBoxTree, LayoutBoxTreeCx, LayoutTy},
-    },
-    node::{Node, NodeKey},
+    layout::tree::{InlineItem, LayoutBoxKey, LayoutBoxTree, LayoutBoxTreeCx, LayoutTy},
+    node::NodeKey,
     renderer::CometRenderer,
+    style::{
+        StyleRect, StyleUnit,
+        div::{BorderRadius, DisplayInner, DisplayOuter, Fill, Padding},
+    },
 };
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
-use kurbo::{Affine, RoundedRectRadii};
+use kurbo::Affine;
 use peniko::Brush;
 use taffy::{LengthPercentage, Rect};
 
@@ -25,26 +26,36 @@ fn main() {
     let inner = ui.create_text("start");
     let div = ui.create_div();
     let div1 = ui.create_div();
-    if let Some(Node::Div(div)) = ui.elements.get_mut(div) {
-        div.display_outer = Some(DisplayOuter::Inline);
-        div.fill = Some(Paint::Solid(AlphaColor::from_rgb8(255, 0, 0)));
-    }
-    if let Some(Node::Div(div)) = ui.elements.get_mut(div1) {
-        div.display_outer = Some(DisplayOuter::Inline);
-        div.display_inner = DisplayInner::FlowRoot;
-    }
+    ui.styles.add_props(
+        div,
+        (
+            DisplayOuter::Inline,
+            Fill(Paint::Solid(AlphaColor::from_rgb8(255, 0, 0))),
+        ),
+    );
+
+    ui.styles
+        .add_props(div1, (DisplayOuter::Inline, DisplayInner::FlowRoot));
 
     let div2 = ui.create_div();
-    if let Some(Node::Div(div2)) = ui.elements.get_mut(div2) {
-        div2.padding = Rect {
-            left: LengthPercentage::length(16.0),
-            top: LengthPercentage::length(16.0),
-            bottom: LengthPercentage::length(16.0),
-            right: LengthPercentage::length(16.0),
-        };
-        div2.fill = Some(Paint::Solid(AlphaColor::from_rgb8(0, 255, 0)));
-        div2.border_radius = RoundedRectRadii::new(8.0, 0.0, 8.0, 0.0)
-    }
+    ui.styles.add_props(
+        div2,
+        (
+            Padding(Rect {
+                left: LengthPercentage::length(16.0),
+                top: LengthPercentage::length(16.0),
+                bottom: LengthPercentage::length(16.0),
+                right: LengthPercentage::length(16.0),
+            }),
+            Fill(Paint::Solid(AlphaColor::from_rgb8(0, 255, 0))),
+            BorderRadius(StyleRect {
+                top: StyleUnit::Px(8.0),
+                right: StyleUnit::ZERO,
+                bottom: StyleUnit::Px(8.0),
+                left: StyleUnit::ZERO,
+            }),
+        ),
+    );
 
     let inner2 = ui.create_text("end");
     let text2 = ui.create_text("1");

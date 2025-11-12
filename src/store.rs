@@ -1,4 +1,4 @@
-use hecs::{Component, ComponentRef, DynamicBundle, Entity, World};
+use hecs::{Component, ComponentRef, DynamicBundle, Entity, EntityRef, World};
 use slotmap::SecondaryMap;
 
 use crate::node::NodeKey;
@@ -29,6 +29,11 @@ impl PropStore {
         };
     }
 
+    pub fn props(&self, key: NodeKey) -> Option<Props> {
+        let entity = *self.map.get(key)?;
+        Some(Props(self.world.entity(entity).ok()?))
+    }
+
     pub fn remove<T: Component>(&mut self, key: NodeKey) -> Option<T> {
         let entity = *self.map.get(key)?;
         self.world.remove_one::<T>(entity).ok()
@@ -44,5 +49,22 @@ impl PropStore {
     pub fn get<'a, T: ComponentRef<'a>>(&'a self, key: NodeKey) -> Option<T::Ref> {
         let entity = *self.map.get(key)?;
         self.world.get::<T>(entity).ok()
+    }
+
+    pub fn get_cloned<T: Component + Clone>(&self, key: NodeKey) -> Option<T> {
+        Some((*self.get::<&T>(key)?).clone())
+    }
+}
+
+pub struct Props<'a>(EntityRef<'a>);
+
+impl<'a> Props<'a> {
+    #[inline]
+    pub fn get<T: ComponentRef<'a>>(&self) -> Option<T::Ref> {
+        self.0.get::<T>()
+    }
+
+    pub fn get_cloned<T: Component + Clone>(&self) -> Option<T> {
+        Some((*self.get::<&T>()?).clone())
     }
 }

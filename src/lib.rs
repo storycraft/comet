@@ -1,14 +1,16 @@
 pub mod layout;
 pub mod node;
 pub mod renderer;
+pub mod store;
 pub mod style;
 pub mod tree;
-pub mod store;
 
 pub use kurbo;
 
 use crate::{
-    node::{Div, Node, NodeKey}, store::PropStore, tree::SlotTree
+    node::{Node, NodeKey},
+    store::PropStore,
+    tree::SlotTree,
 };
 
 #[non_exhaustive]
@@ -25,16 +27,16 @@ impl Ui {
         }
     }
 
-    /// Create a new Text node
+    /// Create a new text node
     #[inline]
     pub fn create_text(&mut self, text: impl Into<String>) -> NodeKey {
         self.elements.insert(Node::Text(text.into()))
     }
 
-    /// Create a new [`Div`] node
+    /// Create a new div node
     #[inline]
     pub fn create_div(&mut self) -> NodeKey {
-        self.elements.insert(Node::Div(Div::new()))
+        self.elements.insert(Node::Div)
     }
 }
 

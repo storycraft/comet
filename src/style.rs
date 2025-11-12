@@ -78,17 +78,30 @@ macro_rules! define_style_props {
     (
         $(
             $(#[$attr:meta])*
-            $vis:vis $name:ident : $ty:ty
+            $vis:vis $name:ident : $ty:ty $(= $expr:expr)?
         ),* $(,)?
     ) => {$(
         $(#[$attr])*
         $vis struct $name(pub $ty);
+        const _: () = {
+            $(impl ::core::default::Default for $name {
+                fn default() -> Self {
+                    Self($expr)
+                }
+            })?
 
-        impl ::core::convert::From<$ty> for $name {
-            fn from(v: $ty) -> Self {
-                Self(v)
+            impl ::core::clone::Clone for $name {
+                fn clone(&self) -> Self {
+                    Self(::core::clone::Clone::clone(&self.0))
+                }
             }
-        }
+
+            impl ::core::convert::From<$ty> for $name {
+                fn from(v: $ty) -> Self {
+                    Self(v)
+                }
+            }
+        };
     )*};
 }
 pub use define_style_props;

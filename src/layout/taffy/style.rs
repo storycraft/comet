@@ -1,16 +1,30 @@
+use hecs::Component;
 use taffy::{
     BlockContainerStyle, BlockItemStyle, BoxGenerationMode, BoxSizing, CoreStyle,
     LengthPercentageAuto, Overflow, Point, Rect, TextAlign,
 };
 
-use crate::{layout::DisplayInner, node::Div};
+use crate::{
+    store::Props,
+    style::div::{
+        AspectRatio, BorderWidth, BoxSizing1, DisplayInner, Inset, Margin, MaxSize, MinSize,
+        Overflow1, Padding, Position1, Size1,
+    },
+};
 
 /// Taffy [`CoreStyle`], [`BlockContainerStyle`], [`BlockItemStyle`] wrapper
-pub struct TaffyCoreStyle<'a>(pub &'a Div);
+pub struct TaffyCoreStyle<'a>(pub Option<Props<'a>>);
+
+impl<'a> TaffyCoreStyle<'a> {
+    #[inline]
+    fn get_cloned<T: Component + Clone>(&self) -> Option<T> {
+        self.0.as_ref()?.get_cloned::<T>()
+    }
+}
 
 impl Default for TaffyCoreStyle<'_> {
     fn default() -> Self {
-        Self(const { &Div::new() })
+        Self(None)
     }
 }
 
@@ -18,16 +32,12 @@ impl CoreStyle for TaffyCoreStyle<'_> {
     type CustomIdent = String;
 
     fn box_generation_mode(&self) -> BoxGenerationMode {
-        if self.0.display_outer.is_some() {
-            BoxGenerationMode::Normal
-        } else {
-            BoxGenerationMode::None
-        }
+        BoxGenerationMode::Normal
     }
 
     fn is_block(&self) -> bool {
         matches!(
-            self.0.display_inner,
+            self.get_cloned::<DisplayInner>().unwrap_or_default(),
             DisplayInner::Flow | DisplayInner::FlowRoot
         )
     }
@@ -37,11 +47,11 @@ impl CoreStyle for TaffyCoreStyle<'_> {
     }
 
     fn box_sizing(&self) -> BoxSizing {
-        self.0.box_sizing
+        self.get_cloned::<BoxSizing1>().unwrap_or_default().0
     }
 
     fn overflow(&self) -> Point<Overflow> {
-        self.0.overflow
+        self.get_cloned::<Overflow1>().unwrap_or_default().0
     }
 
     fn scrollbar_width(&self) -> f32 {
@@ -49,39 +59,45 @@ impl CoreStyle for TaffyCoreStyle<'_> {
     }
 
     fn position(&self) -> taffy::Position {
-        self.0.position
+        self.get_cloned::<Position1>().unwrap_or_default().0
     }
 
     fn inset(&self) -> Rect<LengthPercentageAuto> {
-        self.0.inset
+        self.get_cloned::<Inset>().unwrap_or_default().0
     }
 
     fn size(&self) -> taffy::Size<taffy::Dimension> {
-        self.0.size
+        self.get_cloned::<Size1>().unwrap_or_default().0
     }
 
     fn min_size(&self) -> taffy::Size<taffy::Dimension> {
-        self.0.min_size
+        self.get_cloned::<MinSize>().unwrap_or_default().0
     }
 
     fn max_size(&self) -> taffy::Size<taffy::Dimension> {
-        self.0.max_size
+        self.get_cloned::<MaxSize>().unwrap_or_default().0
     }
 
     fn aspect_ratio(&self) -> Option<f32> {
-        self.0.aspect_ratio
+        self.get_cloned::<AspectRatio>().map(|v| v.0)
     }
 
     fn margin(&self) -> taffy::Rect<taffy::LengthPercentageAuto> {
-        self.0.margin
+        self.get_cloned::<Margin>().unwrap_or_default().0
     }
 
     fn padding(&self) -> taffy::Rect<taffy::LengthPercentage> {
-        self.0.padding
+        self.get_cloned::<Padding>().unwrap_or_default().0
     }
 
     fn border(&self) -> taffy::Rect<taffy::LengthPercentage> {
-        self.0.border
+        let width = self.get_cloned::<BorderWidth>().unwrap_or_default().0;
+        taffy::Rect {
+            left: width,
+            right: width,
+            top: width,
+            bottom: width,
+        }
     }
 }
 

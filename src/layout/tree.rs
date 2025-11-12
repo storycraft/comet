@@ -3,10 +3,7 @@ use std::fmt::Debug;
 use taffy::{AvailableSpace, Size};
 
 use crate::{
-    Ui,
-    layout::{DisplayInner, DisplayOuter, BoxLayout, taffy::TaffyLayoutImpl},
-    node::{Node, NodeKey},
-    tree::SlotTree,
+    Ui, layout::{BoxLayout, taffy::TaffyLayoutImpl}, node::{Node, NodeKey}, style::div::{DisplayInner, DisplayOuter}, tree::SlotTree
 };
 
 new_key_type! {
@@ -209,12 +206,10 @@ impl LayoutBoxTreeCx {
         };
 
         match node {
-            Node::Div(div) => {
+            Node::Div => {
                 self.commit_text(tree);
 
-                let Some(display_outer) = div.display_outer else {
-                    return;
-                };
+                let display_outer = ui.styles.get_cloned::<DisplayOuter>(id).unwrap_or_default();
                 match display_outer {
                     DisplayOuter::Block => {
                         self.commit_inline_box(tree);
@@ -226,7 +221,8 @@ impl LayoutBoxTreeCx {
                     }
                 }
 
-                let needs_new_cx = div.display_inner != DisplayInner::Flow;
+                let display_inner = ui.styles.get_cloned::<DisplayInner>(id).unwrap_or_default();
+                let needs_new_cx = display_inner != DisplayInner::Flow;
                 if needs_new_cx {
                     let id = tree.boxes.insert(LayoutBox::new(None, LayoutTy::Block));
                     self.parents.push(id);
