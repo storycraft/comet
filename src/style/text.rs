@@ -1,22 +1,19 @@
-pub use parley::style::{
-    FontFamily, FontFeature, FontSettings, FontStack, FontStyle, FontVariation, FontWeight,
-    FontWidth, GenericFamily, OverflowWrap, WordBreakStrength,
-};
-
+use crate::style::{StyleUnit, define_style_props};
 use anyrender::Paint;
+use parley::style::{
+    FontFamily, FontFeature, FontSettings, FontStack, FontVariation, GenericFamily,
+    WordBreakStrength,
+};
 use peniko::Color;
 use std::borrow::Cow;
 
-use crate::style::{StyleUnit, define_style_props};
+pub use parley::style::{FontStyle, FontWeight};
 
 // TODO:: change names
 define_style_props!(
     // Font settings
-    pub FontStack1: FontStack<'static> = FontStack::Single(FontFamily::Generic(GenericFamily::SansSerif)),
+    pub Font: FontStack<'static> = FontStack::Single(FontFamily::Generic(GenericFamily::SansSerif)),
     pub FontSize: StyleUnit = StyleUnit::Em(1.0),
-    pub FontWidth1: FontWidth = FontWidth::NORMAL,
-    pub FontStyle1: FontStyle = FontStyle::Normal,
-    pub FontWeight1: FontWeight = FontWeight::NORMAL,
     pub FontVariations: FontSettings<'static, FontVariation> = FontSettings::List(Cow::Borrowed(&[])),
     pub FontFeatures: FontSettings<'static, FontFeature> = FontSettings::List(Cow::Borrowed(&[])),
 
@@ -33,7 +30,6 @@ define_style_props!(
 
     // Line settings
     pub LineHeight: StyleUnit = StyleUnit::ZERO,
-    pub OverflowWrap1: OverflowWrap = OverflowWrap::Normal,
     pub WordBreak: WordBreakStrength = WordBreakStrength::Normal,
 
     // Text spacing

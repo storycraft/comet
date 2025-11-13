@@ -6,6 +6,8 @@ pub mod style;
 pub mod tree;
 
 pub use kurbo;
+pub use peniko;
+pub use parley;
 
 use crate::{
     node::{Node, NodeKey},

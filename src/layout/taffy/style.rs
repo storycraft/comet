@@ -1,14 +1,13 @@
 use hecs::Component;
 use taffy::{
-    BlockContainerStyle, BlockItemStyle, BoxGenerationMode, BoxSizing, CoreStyle,
-    LengthPercentageAuto, Overflow, Point, Rect, TextAlign,
+    BlockContainerStyle, BlockItemStyle, BoxGenerationMode, BoxSizing, CoreStyle, LengthPercentageAuto, Overflow, Point, Position, Rect, TextAlign
 };
 
 use crate::{
     store::Props,
     style::div::{
-        AspectRatio, BorderWidth, BoxSizing1, DisplayInner, Inset, Margin, MaxSize, MinSize,
-        Overflow1, Padding, Position1, Size1,
+        AspectRatio, BorderWidth, DisplayInner, Inset, Margin, MaxSize, MinSize,
+        Overflow1, Padding, Size1,
     },
 };
 
@@ -47,7 +46,7 @@ impl CoreStyle for TaffyCoreStyle<'_> {
     }
 
     fn box_sizing(&self) -> BoxSizing {
-        self.get_cloned::<BoxSizing1>().unwrap_or_default().0
+        self.get_cloned::<BoxSizing>().unwrap_or_default()
     }
 
     fn overflow(&self) -> Point<Overflow> {
@@ -58,8 +57,8 @@ impl CoreStyle for TaffyCoreStyle<'_> {
         0.0
     }
 
-    fn position(&self) -> taffy::Position {
-        self.get_cloned::<Position1>().unwrap_or_default().0
+    fn position(&self) -> Position {
+        self.get_cloned::<Position>().unwrap_or_default()
     }
 
     fn inset(&self) -> Rect<LengthPercentageAuto> {

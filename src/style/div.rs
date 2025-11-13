@@ -1,14 +1,12 @@
-pub use anyrender::Paint;
-pub use kurbo::{Cap, Dashes, Join};
-pub use taffy::{
-    BoxSizing, Dimension, LengthPercentage, LengthPercentageAuto, Overflow, Point, Position, Rect,
-    Size,
-};
-
 use crate::{
     layout::ContainerLayout,
     style::{StyleRect, StyleUnit, define_style_props},
 };
+use anyrender::Paint;
+use kurbo::{Cap, Dashes, Join};
+use taffy::{Dimension, LengthPercentage, LengthPercentageAuto, Overflow, Point, Rect, Size};
+
+pub use taffy::{BoxSizing, Position};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DisplayOuter {
@@ -35,11 +33,9 @@ pub enum DisplayInner {
 // TODO:: change names
 define_style_props!(
     // Position
-    pub Position1: Position = Position::Relative,
     pub Inset: Rect<LengthPercentageAuto> = Rect::auto(),
 
     // Size and modes
-    pub BoxSizing1: BoxSizing = BoxSizing::BorderBox,
     pub Size1: Size<Dimension> = Size::auto(),
     pub MinSize: Size<Dimension> = Size::auto(),
     pub MaxSize: Size<Dimension> = Size::auto(),
