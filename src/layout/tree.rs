@@ -1,9 +1,12 @@
-use slotmap::SlotMap;
+use slotmap::{Key, SlotMap};
 use std::fmt::Debug;
 use taffy::{AvailableSpace, Size};
 
 use crate::{
-    layout::{InlineBox, InlineItem, InlineKey, LayoutBox, LayoutBoxKey, taffy::TaffyLayoutImpl},
+    layout::{
+        InlineBox, InlineBoxKey, InlineItem, InlineKey, LayoutBox, LayoutBoxKey, LayoutTy,
+        taffy::TaffyLayoutImpl,
+    },
     style::div::{DisplayInner, DisplayOuter},
     tree::SlotTree,
     ui::{Node, NodeKey, Ui},
