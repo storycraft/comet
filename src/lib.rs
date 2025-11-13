@@ -4,6 +4,7 @@ pub mod renderer;
 pub mod store;
 pub mod style;
 pub mod tree;
+pub mod tree2;
 
 pub use kurbo;
 pub use peniko;

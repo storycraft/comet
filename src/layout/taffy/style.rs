@@ -1,13 +1,14 @@
 use hecs::Component;
 use taffy::{
-    BlockContainerStyle, BlockItemStyle, BoxGenerationMode, BoxSizing, CoreStyle, LengthPercentageAuto, Overflow, Point, Position, Rect, TextAlign
+    BlockContainerStyle, BlockItemStyle, BoxGenerationMode, BoxSizing, CoreStyle,
+    LengthPercentageAuto, Overflow, Point, Position, Rect, TextAlign,
 };
 
 use crate::{
     store::Props,
     style::div::{
-        AspectRatio, BorderWidth, DisplayInner, Inset, Margin, MaxSize, MinSize,
-        Overflow1, Padding, Size1,
+        AspectRatio, BorderWidth, DisplayInner, Inset, Margin, MaxSize, MinSize, Overflow1,
+        Padding, Size1,
     },
 };
 
