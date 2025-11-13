@@ -5,11 +5,10 @@ use taffy::{
 };
 
 use crate::layout::{
-    BoxLayout,
+    BoxLayout, LayoutTy,
     taffy::{
         TaffyLayoutImpl, compute::compute_inline_layout, from_taffy_key, style::TaffyCoreStyle,
     },
-    tree::LayoutTy,
 };
 
 impl LayoutPartialTree for TaffyLayoutImpl<'_> {

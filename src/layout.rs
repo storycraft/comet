@@ -1,8 +1,12 @@
 mod taffy;
 pub mod tree;
 pub mod components;
+pub mod tree2;
 
 use kurbo::{Point, Rect, Size};
+use slotmap::new_key_type;
+
+use crate::ui::NodeKey;
 
 pub type ContainerLayoutFn = fn();
 
@@ -95,4 +99,67 @@ impl Default for BoxLayout {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[derive(Debug)]
+pub struct LayoutBox {
+    pub span: Option<NodeKey>,
+
+    pub(crate) taffy_cache: ::taffy::Cache,
+    pub layout: BoxLayout,
+
+    pub ty: LayoutTy,
+}
+
+impl LayoutBox {
+    pub fn new(span: Option<NodeKey>, ty: LayoutTy) -> Self {
+        Self {
+            span,
+
+            taffy_cache: ::taffy::Cache::new(),
+            layout: BoxLayout::new(),
+
+            ty,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutTy {
+    Block,
+    Inline(InlineBoxKey),
+}
+
+new_key_type! {
+    pub struct LayoutBoxKey;
+    pub struct InlineBoxKey;
+    pub struct InlineKey;
+}
+
+pub struct InlineBox {
+    pub parley_layout: parley::Layout<Option<NodeKey>>,
+    pub item_start: Option<InlineKey>,
+    pub texts: String,
+}
+
+impl InlineBox {
+    pub fn new() -> Self {
+        Self {
+            parley_layout: parley::Layout::new(),
+            item_start: None,
+            texts: String::new(),
+        }
+    }
+}
+
+impl Default for InlineBox {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum InlineItem {
+    Text { start: usize, end: usize },
+    Box(LayoutBoxKey),
 }

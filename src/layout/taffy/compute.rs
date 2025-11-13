@@ -3,11 +3,12 @@ use slotmap::Key;
 use taffy::compute_root_layout;
 
 use crate::{
-    ui::{Ui, NodeKey},
     layout::{
+        InlineBoxKey, InlineItem, InlineKey, LayoutTy,
         taffy::{TaffyLayoutImpl, to_taffy_key},
-        tree::{InlineBoxKey, InlineItem, InlineKey, LayoutBoxTree, LayoutTy},
+        tree::LayoutBoxTree,
     },
+    ui::{NodeKey, Ui},
 };
 
 pub fn compute_inline_layout(ui: &mut Ui, layout_tree: &mut LayoutBoxTree, id: InlineBoxKey) {

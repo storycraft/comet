@@ -2,8 +2,8 @@ use taffy::{TraversePartialTree, TraverseTree};
 
 use crate::{
     layout::{
+        LayoutBox, LayoutBoxKey,
         taffy::{TaffyLayoutImpl, from_taffy_key, to_taffy_key},
-        tree::{LayoutBox, LayoutBoxKey},
     },
     tree::cursor::Cursor,
 };

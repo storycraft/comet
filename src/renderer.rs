@@ -6,7 +6,7 @@ use peniko::StyleRef;
 use slotmap::KeyData;
 
 use crate::{
-    layout::tree::{InlineBoxKey, LayoutBoxKey, LayoutBoxTree, LayoutTy},
+    layout::{InlineBoxKey, LayoutBoxKey, LayoutTy, tree::LayoutBoxTree},
     style::div::{BorderFill, Fill},
     ui::{NodeKey, Ui},
 };
