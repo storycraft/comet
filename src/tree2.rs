@@ -4,32 +4,42 @@ mod tests;
 
 use crate::tree2::cursor::Cursor;
 use core::num::NonZeroU64;
-use hecs::{Bundle, Component, ComponentRef, DynamicBundle, Entity, EntityRef, World};
+use hecs::{Component, ComponentRef, DynamicBundle, Entity, EntityBuilder, EntityRef, World};
 
 pub struct EntityTree {
     world: World,
+    builder: EntityBuilder,
 }
 
 impl EntityTree {
     pub fn new() -> Self {
         Self {
             world: World::new(),
+            builder: EntityBuilder::new(),
         }
     }
 
-    pub fn spawn(&mut self, bundle: impl DynamicBundle + Send + Sync + 'static) -> EntityId {
-        EntityId(self.world.spawn(NodeBundle(Node::new(), bundle)))
+    pub fn spawn(&mut self, bundle: impl DynamicBundle + Send + Sync) -> EntityId {
+        EntityId(
+            self.world
+                .spawn(self.builder.add(Node::new()).add_bundle(bundle).build()),
+        )
     }
 
-    pub fn props(&self, key: EntityId) -> Option<Props> {
-        Some(Props(self.world.entity(key.0).ok()?))
+    pub fn components(&self, key: EntityId) -> Option<Components> {
+        Some(Components(self.world.entity(key.0).ok()?))
     }
 
-    pub fn add_props(&mut self, key: EntityId, props: impl DynamicBundle) {
-        _ = self.world.insert(key.0, props);
+    #[inline]
+    pub fn get<'a, T: ComponentRef<'a>>(&'a self, key: EntityId) -> Option<T::Ref> {
+        self.components(key)?.get::<T>()
     }
 
-    pub fn remove<T: Component>(&mut self, key: EntityId) -> Option<T> {
+    pub fn add_components(&mut self, key: EntityId, components: impl DynamicBundle) {
+        _ = self.world.insert(key.0, components);
+    }
+
+    pub fn remove_component<T: Component>(&mut self, key: EntityId) -> Option<T> {
         self.world.remove_one::<T>(key.0).ok()
     }
 
@@ -281,9 +291,9 @@ impl Node {
     }
 }
 
-pub struct Props<'a>(EntityRef<'a>);
+pub struct Components<'a>(EntityRef<'a>);
 
-impl<'a> Props<'a> {
+impl<'a> Components<'a> {
     #[inline]
     pub fn get<T: ComponentRef<'a>>(&self) -> Option<T::Ref> {
         self.0.get::<T>()
@@ -293,10 +303,6 @@ impl<'a> Props<'a> {
         Some((*self.get::<&T>()?).clone())
     }
 }
-
-
-#[derive(Bundle)]
-struct NodeBundle<T: DynamicBundle>(Node, T);
 
 #[extend::ext]
 impl World {

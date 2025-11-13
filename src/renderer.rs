@@ -6,10 +6,9 @@ use peniko::StyleRef;
 use slotmap::KeyData;
 
 use crate::{
-    Ui,
     layout::tree::{InlineBoxKey, LayoutBoxKey, LayoutBoxTree, LayoutTy},
-    node::NodeKey,
     style::div::{BorderFill, Fill},
+    ui::{NodeKey, Ui},
 };
 
 pub struct CometRenderer {
@@ -147,7 +146,7 @@ impl CometRenderer {
     // TODO::
     fn draw_block(&self, ui: &Ui, id: NodeKey, rect: Rect, scene: &mut impl PaintScene) {
         let rect = RoundedRect::from_rect(rect, 0.0);
-        if let Some(fill) = ui.styles.get::<&Fill>(id) {
+        if let Some(fill) = ui.prop::<&Fill>(id) {
             scene.fill(
                 peniko::Fill::EvenOdd,
                 Affine::IDENTITY,
@@ -157,7 +156,7 @@ impl CometRenderer {
             );
         }
 
-        if let Some(stroke_paint) = ui.styles.get::<&BorderFill>(id) {
+        if let Some(stroke_paint) = ui.prop::<&BorderFill>(id) {
             scene.stroke(
                 &Stroke::default(),
                 Affine::IDENTITY,

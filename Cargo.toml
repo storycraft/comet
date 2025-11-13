@@ -10,7 +10,7 @@ accesskit = "0.21.1"
 anyrender = "0.6.2"
 anyrender_vello = "0.6.1"
 color = "0.3.2"
-hecs = { version = "0.10.5", features = ["macros"] }
+hecs = "0.10.5"
 image = "0.25.8"
 kurbo = "0.12.0"
 nohash-hasher = "0.2.0"

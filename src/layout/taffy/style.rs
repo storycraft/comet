@@ -5,15 +5,14 @@ use taffy::{
 };
 
 use crate::{
-    store::Props,
     style::div::{
         AspectRatio, BorderWidth, DisplayInner, Inset, Margin, MaxSize, MinSize, Overflow1,
         Padding, Size1,
-    },
+    }, tree2::Components,
 };
 
 /// Taffy [`CoreStyle`], [`BlockContainerStyle`], [`BlockItemStyle`] wrapper
-pub struct TaffyCoreStyle<'a>(pub Option<Props<'a>>);
+pub struct TaffyCoreStyle<'a>(pub Option<Components<'a>>);
 
 impl<'a> TaffyCoreStyle<'a> {
     #[inline]

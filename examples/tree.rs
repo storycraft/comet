@@ -4,14 +4,13 @@ use anyrender::{ImageRenderer, Paint, PaintScene};
 use anyrender_vello::VelloImageRenderer;
 use color::AlphaColor;
 use comet::{
-    Ui,
     layout::tree::{InlineItem, LayoutBoxKey, LayoutBoxTree, LayoutBoxTreeCx, LayoutTy},
-    node::NodeKey,
     renderer::CometRenderer,
     style::{
         StyleRect, StyleUnit,
         div::{BorderRadius, DisplayInner, DisplayOuter, Fill, Padding},
     },
+    ui::{Node, NodeKey, Ui},
 };
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use kurbo::Affine;
@@ -20,26 +19,21 @@ use taffy::{LengthPercentage, Rect};
 
 fn main() {
     let mut ui = Ui::new();
-    let root = ui.create_div();
-    let text0 = ui.create_text("sample ");
-    let text1 = ui.create_text(" text");
-    let inner = ui.create_text("start");
-    let div = ui.create_div();
-    let div1 = ui.create_div();
-    ui.styles.add_props(
-        div,
+    let root = ui.create_node(Node::Div, ());
+    let text0 = ui.create_node(Node::Text("sample ".to_string()), ());
+    let text1 = ui.create_node(Node::Text(" text".to_string()), ());
+    let inner = ui.create_node(Node::Text("start".to_string()), ());
+    let div = ui.create_node(
+        Node::Div,
         (
             DisplayOuter::Inline,
             Fill(Paint::Solid(AlphaColor::from_rgb8(255, 0, 0))),
         ),
     );
+    let div1 = ui.create_node(Node::Div, (DisplayOuter::Inline, DisplayInner::FlowRoot));
 
-    ui.styles
-        .add_props(div1, (DisplayOuter::Inline, DisplayInner::FlowRoot));
-
-    let div2 = ui.create_div();
-    ui.styles.add_props(
-        div2,
+    let div2 = ui.create_node(
+        Node::Div,
         (
             Padding(Rect {
                 left: LengthPercentage::length(16.0),
@@ -57,16 +51,16 @@ fn main() {
         ),
     );
 
-    let inner2 = ui.create_text("end");
-    let text2 = ui.create_text("1");
-    ui.elements.append(div, text0);
-    ui.elements.append(div, div1);
-    ui.elements.append(div, text1);
-    ui.elements.append(root, div);
-    ui.elements.append(div1, inner);
-    ui.elements.append(root, div2);
-    ui.elements.append(div2, inner2);
-    ui.elements.append(root, text2);
+    let inner2 = ui.create_node(Node::Text("end".to_string()), ());
+    let text2 = ui.create_node(Node::Text("1".to_string()), ());
+    ui.append(div, text0);
+    ui.append(div, div1);
+    ui.append(div, text1);
+    ui.append(root, div);
+    ui.append(div1, inner);
+    ui.append(root, div2);
+    ui.append(div2, inner2);
+    ui.append(root, text2);
 
     let mut layout_tree = LayoutBoxTree::new();
     let mut tree_cx = LayoutBoxTreeCx::new();
@@ -147,8 +141,8 @@ fn print(tree: &Ui, id: NodeKey, space: u32) {
     for _ in 0..space {
         print!(" ");
     }
-    println!("- {:?}", tree.elements.get(id));
-    for child in tree.elements.cursor(tree.elements.first_child(id)) {
+    println!("- {id:?} {:?}", tree.node(id));
+    for child in tree.cursor(tree.first_child(id)) {
         print(tree, child, space + 4);
     }
 }
