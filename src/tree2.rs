@@ -298,10 +298,6 @@ impl<'a> Components<'a> {
     pub fn get<T: ComponentRef<'a>>(&self) -> Option<T::Ref> {
         self.0.get::<T>()
     }
-
-    pub fn get_cloned<T: Component + Clone>(&self) -> Option<T> {
-        Some((*self.get::<&T>()?).clone())
-    }
 }
 
 #[extend::ext]

@@ -8,7 +8,8 @@ use crate::{
     style::div::{
         AspectRatio, BorderWidth, DisplayInner, Inset, Margin, MaxSize, MinSize, Overflow1,
         Padding, Size1,
-    }, tree2::Components,
+    },
+    tree2::Components,
 };
 
 /// Taffy [`CoreStyle`], [`BlockContainerStyle`], [`BlockItemStyle`] wrapper
@@ -17,7 +18,7 @@ pub struct TaffyCoreStyle<'a>(pub Option<Components<'a>>);
 impl<'a> TaffyCoreStyle<'a> {
     #[inline]
     fn get_cloned<T: Component + Clone>(&self) -> Option<T> {
-        self.0.as_ref()?.get_cloned::<T>()
+        Some(Clone::clone(&*self.0.as_ref()?.get::<&T>()?))
     }
 }
 
