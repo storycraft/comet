@@ -17,7 +17,6 @@ pub struct LayoutBoxTree {
     pub boxes: SlotTree<LayoutBoxKey, LayoutBox>,
     pub inline_boxes: SlotMap<InlineBoxKey, InlineBox>,
     pub inlines: SlotTree<InlineKey, InlineItem>,
-    pub texts: String,
 }
 
 impl LayoutBoxTree {
@@ -27,7 +26,6 @@ impl LayoutBoxTree {
             boxes: SlotTree::new(),
             inline_boxes: SlotMap::with_key(),
             inlines: SlotTree::new(),
-            texts: String::new(),
         }
     }
 
@@ -50,7 +48,6 @@ impl Default for LayoutBoxTree {
 pub struct LayoutBoxTreeCx {
     parents: Vec<LayoutBoxKey>,
     inline_cx: Vec<InlineBoxCx>,
-    inline_text_buf: String,
 }
 
 impl Default for LayoutBoxTreeCx {
@@ -64,22 +61,7 @@ impl LayoutBoxTreeCx {
         Self {
             parents: Vec::new(),
             inline_cx: Vec::new(),
-            inline_text_buf: String::new(),
         }
-    }
-
-    fn commit_text(&mut self, tree: &mut LayoutBoxTree) {
-        if self.inline_text_buf.is_empty() {
-            return;
-        }
-
-        let start = tree.texts.len();
-        let end = start + self.inline_text_buf.len();
-        tree.texts.extend(self.inline_text_buf.drain(..));
-        self.inline_cx
-            .last_mut()
-            .unwrap()
-            .push_item(tree, InlineItem::Text { start, end });
     }
 
     fn commit_inline_box(&mut self, tree: &mut LayoutBoxTree) {
@@ -134,8 +116,6 @@ impl LayoutBoxTreeCx {
         self.parents.push(root_id);
         self.inline_cx.push(InlineBoxCx::new());
         self.build_inner(ui, root, tree);
-        // commit remaining texts
-        self.commit_text(tree);
         // commit remaining inline box
         self.commit_inline_box(tree);
 
@@ -150,8 +130,6 @@ impl LayoutBoxTreeCx {
 
         match *node {
             Node::Div => {
-                self.commit_text(tree);
-
                 let display_outer = ui
                     .prop::<DisplayOuter>(id)
                     .as_deref()
@@ -187,7 +165,6 @@ impl LayoutBoxTreeCx {
                 for child in ui.cursor(ui.first_child(id)) {
                     self.build_inner(ui, child, tree);
                 }
-                self.commit_text(tree);
 
                 if needs_new_cx {
                     if let Some((span, inline_box_id)) = self.inline_cx.pop().unwrap().finish(tree)
@@ -211,8 +188,11 @@ impl LayoutBoxTreeCx {
                 }
             }
 
-            Node::Text(ref text) => {
-                self.inline_text_buf.push_str(text);
+            Node::Text(_) => {
+                self.inline_cx
+                    .last_mut()
+                    .unwrap()
+                    .push_item(tree, InlineItem::Text(id));
             }
         }
     }

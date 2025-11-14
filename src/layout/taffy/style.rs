@@ -1,24 +1,23 @@
-use hecs::Component;
 use taffy::{
     BlockContainerStyle, BlockItemStyle, BoxGenerationMode, BoxSizing, CoreStyle,
     LengthPercentageAuto, Overflow, Point, Position, Rect, TextAlign,
 };
 
 use crate::{
-    style::div::{
+    style::{StyleProp, div::{
         AspectRatio, BorderWidth, DisplayInner, Inset, Margin, MaxSize, MinSize, Overflow1,
         Padding, Size1,
-    },
-    tree2::Components,
+    }},
+    ui::Props,
 };
 
 /// Taffy [`CoreStyle`], [`BlockContainerStyle`], [`BlockItemStyle`] wrapper
-pub struct TaffyCoreStyle<'a>(pub Option<Components<'a>>);
+pub struct TaffyCoreStyle<'a>(pub Option<Props<'a>>);
 
 impl<'a> TaffyCoreStyle<'a> {
     #[inline]
-    fn get_cloned<T: Component + Clone>(&self) -> Option<T> {
-        Some(Clone::clone(&*self.0.as_ref()?.get::<&T>()?))
+    fn get_cloned<T: StyleProp + Clone>(&self) -> Option<T> {
+        Some(Clone::clone(&*self.0.as_ref()?.get::<T>()?))
     }
 }
 

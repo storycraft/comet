@@ -77,7 +77,7 @@ fn main() {
             height: taffy::AvailableSpace::Definite(256.0),
         },
     );
-    print_box_tree(&layout_tree, box_root, 0);
+    print_box_tree(&ui, &layout_tree, box_root, 0);
 
     print(&ui, root, 0);
 
@@ -102,7 +102,7 @@ fn main() {
         .unwrap();
 }
 
-fn print_box_tree(layout_tree: &LayoutBoxTree, id: LayoutBoxKey, space: u32) {
+fn print_box_tree(ui: &Ui, layout_tree: &LayoutBoxTree, id: LayoutBoxKey, space: u32) {
     let Some(node) = layout_tree.boxes.get(id) else {
         return;
     };
@@ -121,14 +121,17 @@ fn print_box_tree(layout_tree: &LayoutBoxTree, id: LayoutBoxKey, space: u32) {
             let inline_box = &layout_tree.inline_boxes[inline_box_id];
             for child_id in layout_tree.inlines.cursor(inline_box.item_start) {
                 match layout_tree.inlines[child_id] {
-                    InlineItem::Text { start, end } => {
-                        for _ in 0..space {
-                            print!(" ");
+                    InlineItem::Text(span) => {
+                        if let Some(Node::Text(text)) = ui.node(span).as_deref() {
+                            for _ in 0..space {
+                                print!(" ");
+                            }
+
+                            println!("    - text: {:?}", &text);
                         }
-                        println!("    - text: {:?}", &layout_tree.texts[start..end]);
                     }
                     InlineItem::Box(child_box) => {
-                        print_box_tree(layout_tree, child_box, space + 4);
+                        print_box_tree(ui, layout_tree, child_box, space + 4);
                     }
                 }
             }
@@ -136,7 +139,7 @@ fn print_box_tree(layout_tree: &LayoutBoxTree, id: LayoutBoxKey, space: u32) {
     }
 
     for child_id in layout_tree.boxes.cursor(layout_tree.boxes.first_child(id)) {
-        print_box_tree(layout_tree, child_id, space + 4);
+        print_box_tree(ui, layout_tree, child_id, space + 4);
     }
 }
 

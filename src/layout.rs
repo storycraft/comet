@@ -160,6 +160,6 @@ impl Default for InlineBox {
 
 #[derive(Debug, Clone, Copy)]
 pub enum InlineItem {
-    Text { start: usize, end: usize },
+    Text(NodeKey),
     Box(LayoutBoxKey),
 }

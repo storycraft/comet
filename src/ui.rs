@@ -5,9 +5,9 @@ use crate::{
     tree2::{ArchetypalTree, Components, EntityId},
     ui::cursor::Cursor,
 };
-use hecs::{Component, DynamicBundle, EntityBuilder, Ref, RefMut};
+use hecs::{DynamicBundle, EntityBuilder, Ref, RefMut};
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct NodeKey(EntityId);
 

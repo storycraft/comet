@@ -8,7 +8,7 @@ use crate::{
         taffy::{TaffyLayoutImpl, to_taffy_key},
         tree::LayoutBoxTree,
     },
-    ui::{NodeKey, Ui},
+    ui::{Node, NodeKey, Ui},
 };
 
 pub fn compute_inline_layout(ui: &mut Ui, layout_tree: &mut LayoutBoxTree, id: InlineBoxKey) {
@@ -60,9 +60,11 @@ pub fn build_inline(
 
     // TODO:: fix temp workaround
     match inline_item {
-        InlineItem::Text { start, end } => {
-            builder.push_text(&layout_box_tree.texts[start..end]);
-            *text_len += end - start;
+        InlineItem::Text(span) => {
+            if let Some(Node::Text(text)) = ui.node(span).as_deref() {
+                builder.push_text(&text);
+                *text_len += text.len();
+            }
         }
 
         InlineItem::Box(layout_box_key) => match layout_box_tree.boxes[layout_box_key].ty {
