@@ -3,6 +3,16 @@ pub mod text;
 
 use kurbo::Size;
 
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PropLevel {
+    Paint = 0,
+    Layout = 1,
+}
+
+pub trait StyleProp: Sized + Send + Sync + 'static {
+    const LEVEL: PropLevel;
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutStyleCx {
     pub root_size: Size,
@@ -104,4 +114,5 @@ macro_rules! define_style_props {
         };
     )*};
 }
+
 pub use define_style_props;
