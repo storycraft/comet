@@ -6,12 +6,12 @@ use crate::tree2::cursor::Cursor;
 use core::num::NonZeroU64;
 use hecs::{Component, ComponentRef, DynamicBundle, Entity, EntityBuilder, EntityRef, World};
 
-pub struct EntityTree {
+pub struct ArchetypalTree {
     world: World,
     builder: EntityBuilder,
 }
 
-impl EntityTree {
+impl ArchetypalTree {
     pub fn new() -> Self {
         Self {
             world: World::new(),
@@ -97,7 +97,7 @@ impl EntityTree {
 
     /// Insert a node before `target`. Returns previous parent id
     pub fn before(&mut self, target: EntityId, id: EntityId) -> Option<EntityId> {
-        fn inner(tree: &mut EntityTree, target: EntityId, id: EntityId) -> Option<()> {
+        fn inner(tree: &mut ArchetypalTree, target: EntityId, id: EntityId) -> Option<()> {
             let mut target_node = tree.world.node_mut(target)?;
             let parent = target_node.parent;
             let prev_sibling = target_node.prev_sibling.replace(id);
@@ -127,7 +127,7 @@ impl EntityTree {
 
     /// Insert a node after `target`. Returns previous parent id
     pub fn after(&mut self, target: EntityId, id: EntityId) -> Option<EntityId> {
-        fn inner(tree: &mut EntityTree, target: EntityId, id: EntityId) -> Option<()> {
+        fn inner(tree: &mut ArchetypalTree, target: EntityId, id: EntityId) -> Option<()> {
             let mut target_node = tree.world.node_mut(target)?;
             let parent = target_node.parent;
             let next_sibling = target_node.next_sibling.replace(id);
@@ -221,7 +221,7 @@ impl EntityTree {
 
     /// Delete node including and its children
     pub fn delete(&mut self, id: EntityId) {
-        fn inner(tree: &mut EntityTree, id: EntityId) {
+        fn inner(tree: &mut ArchetypalTree, id: EntityId) {
             let mut child = tree.world.node(id).and_then(|node| node.first_child);
             _ = tree.world.despawn(id.0);
             while let Some(child_id) = child.take() {
@@ -241,7 +241,7 @@ impl EntityTree {
     }
 }
 
-impl Default for EntityTree {
+impl Default for ArchetypalTree {
     fn default() -> Self {
         Self::new()
     }

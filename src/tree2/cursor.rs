@@ -1,13 +1,13 @@
-use crate::tree2::{EntityId, EntityTree};
+use crate::tree2::{EntityId, ArchetypalTree};
 
 pub struct Cursor<'a> {
-    tree: &'a EntityTree,
+    tree: &'a ArchetypalTree,
     current: Option<EntityId>,
 }
 
 impl<'a> Cursor<'a> {
     #[inline]
-    pub fn new(tree: &'a EntityTree, start: Option<EntityId>) -> Self {
+    pub fn new(tree: &'a ArchetypalTree, start: Option<EntityId>) -> Self {
         Self {
             tree,
             current: start,

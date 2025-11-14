@@ -1,7 +1,7 @@
 pub mod cursor;
 
 use crate::{
-    tree2::{Components, EntityId, EntityTree},
+    tree2::{Components, EntityId, ArchetypalTree},
     ui::cursor::Cursor,
 };
 use hecs::{Component, ComponentRef, DynamicBundle, EntityBuilder, Ref, RefMut};
@@ -18,14 +18,14 @@ pub enum Node {
 
 #[non_exhaustive]
 pub struct Ui {
-    inner: EntityTree,
+    inner: ArchetypalTree,
     builder: EntityBuilder,
 }
 
 impl Ui {
     pub fn new() -> Self {
         Self {
-            inner: EntityTree::new(),
+            inner: ArchetypalTree::new(),
             builder: EntityBuilder::new(),
         }
     }

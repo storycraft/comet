@@ -1,8 +1,8 @@
-use crate::tree2::EntityTree;
+use crate::tree2::ArchetypalTree;
 
 #[test]
 fn test_child() {
-    let mut tree = EntityTree::new();
+    let mut tree = ArchetypalTree::new();
 
     /*
      * Create a following tree
