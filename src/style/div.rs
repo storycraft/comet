@@ -1,12 +1,20 @@
 use crate::{
     layout::ContainerLayout,
-    style::{StyleRect, StyleUnit, define_style_props},
+    style::{PropLevel, StyleProp, StyleRect, StyleUnit, define_style_props},
 };
 use anyrender::Paint;
 use kurbo::{Cap, Dashes, Join};
 use taffy::{Dimension, LengthPercentage, LengthPercentageAuto, Overflow, Point, Rect, Size};
 
 pub use taffy::{BoxSizing, Position};
+
+impl StyleProp for BoxSizing {
+    const LEVEL: PropLevel = PropLevel::Layout;
+}
+
+impl StyleProp for Position {
+    const LEVEL: PropLevel = PropLevel::Layout;
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DisplayOuter {
@@ -15,6 +23,10 @@ pub enum DisplayOuter {
     Block,
     /// Element is part of inline content.
     Inline,
+}
+
+impl StyleProp for DisplayOuter {
+    const LEVEL: PropLevel = PropLevel::Layout;
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -28,6 +40,10 @@ pub enum DisplayInner {
     Container(ContainerLayout),
     /// Display a content inside. Children will not be laid out.
     Content,
+}
+
+impl StyleProp for DisplayInner {
+    const LEVEL: PropLevel = PropLevel::Layout;
 }
 
 // TODO:: change names

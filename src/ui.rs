@@ -1,10 +1,11 @@
 pub mod cursor;
 
 use crate::{
-    tree2::{Components, EntityId, ArchetypalTree},
+    style::{PropLevel, StyleProp},
+    tree2::{ArchetypalTree, Components, EntityId},
     ui::cursor::Cursor,
 };
-use hecs::{Component, ComponentRef, DynamicBundle, EntityBuilder, Ref, RefMut};
+use hecs::{Component, DynamicBundle, EntityBuilder, Ref, RefMut};
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[repr(transparent)]
@@ -46,23 +47,28 @@ impl Ui {
     }
 
     #[inline]
-    pub fn props(&self, key: NodeKey) -> Option<Components> {
-        self.inner.components(key.0)
+    pub fn props(&self, key: NodeKey) -> Option<Props> {
+        Some(Props(self.inner.components(key.0)?))
     }
 
     #[inline]
-    pub fn prop<'a, T: ComponentRef<'a>>(&'a self, key: NodeKey) -> Option<T::Ref> {
+    pub fn prop<T: StyleProp>(&self, key: NodeKey) -> Option<Ref<T>> {
         self.props(key)?.get::<T>()
     }
 
     #[inline]
+    pub fn prop_mut<T: StyleProp>(&self, key: NodeKey) -> Option<RefMut<T>> {
+        self.props(key)?.get_mut::<T>()
+    }
+
+    #[inline]
     pub fn node(&self, key: NodeKey) -> Option<Ref<Node>> {
-        Some(Ref::map(self.prop::<&NodeWrapper>(key)?, |v| &v.0))
+        Some(Ref::map(self.prop::<NodeWrapper>(key)?, |v| &v.0))
     }
 
     #[inline]
     pub fn node_mut(&self, key: NodeKey) -> Option<RefMut<Node>> {
-        Some(RefMut::map(self.prop::<&mut NodeWrapper>(key)?, |v| {
+        Some(RefMut::map(self.prop_mut::<NodeWrapper>(key)?, |v| {
             &mut v.0
         }))
     }
@@ -145,3 +151,21 @@ impl Default for Ui {
 }
 
 struct NodeWrapper(Node);
+
+impl StyleProp for NodeWrapper {
+    const LEVEL: PropLevel = PropLevel::Layout;
+}
+
+pub struct Props<'a>(Components<'a>);
+
+impl<'a> Props<'a> {
+    #[inline]
+    pub fn get<T: StyleProp>(&self) -> Option<Ref<'a, T>> {
+        self.0.get::<&T>()
+    }
+
+    #[inline]
+    pub fn get_mut<T: StyleProp>(&self) -> Option<RefMut<'a, T>> {
+        self.0.get::<&mut T>()
+    }
+}

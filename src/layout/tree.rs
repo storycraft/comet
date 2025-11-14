@@ -153,7 +153,7 @@ impl LayoutBoxTreeCx {
                 self.commit_text(tree);
 
                 let display_outer = ui
-                    .prop::<&DisplayOuter>(id)
+                    .prop::<DisplayOuter>(id)
                     .as_deref()
                     .cloned()
                     .unwrap_or_default();
@@ -169,7 +169,7 @@ impl LayoutBoxTreeCx {
                 }
 
                 let display_inner = ui
-                    .prop::<&DisplayInner>(id)
+                    .prop::<DisplayInner>(id)
                     .as_deref()
                     .cloned()
                     .unwrap_or_default();

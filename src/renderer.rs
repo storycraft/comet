@@ -150,7 +150,7 @@ impl CometRenderer {
         };
         let rect = RoundedRect::from_rect(rect, 0.0);
 
-        if let Some(fill) = props.get::<&Fill>() {
+        if let Some(fill) = props.get::<Fill>() {
             scene.fill(
                 peniko::Fill::EvenOdd,
                 Affine::IDENTITY,
@@ -160,7 +160,7 @@ impl CometRenderer {
             );
         }
 
-        if let Some(stroke_paint) = props.get::<&BorderFill>() {
+        if let Some(stroke_paint) = props.get::<BorderFill>() {
             scene.stroke(
                 &Stroke::default(),
                 Affine::IDENTITY,

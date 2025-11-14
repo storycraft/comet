@@ -111,6 +111,10 @@ macro_rules! define_style_props {
                     Self(v)
                 }
             }
+
+            impl $crate::style::StyleProp for $name {
+                const LEVEL: $crate::style::PropLevel = $crate::style::PropLevel::Layout;
+            }
         };
     )*};
 }
