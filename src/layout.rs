@@ -1,7 +1,6 @@
 mod taffy;
 pub mod tree;
 pub mod components;
-pub mod tree2;
 
 use kurbo::{Point, Rect, Size};
 use slotmap::new_key_type;

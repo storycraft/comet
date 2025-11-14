@@ -4,10 +4,7 @@ use anyrender::{ImageRenderer, Paint, PaintScene};
 use anyrender_vello::VelloImageRenderer;
 use color::AlphaColor;
 use comet::{
-    layout::{
-        InlineItem, LayoutBoxKey, LayoutTy,
-        tree::{LayoutBoxTree, LayoutBoxTreeCx},
-    },
+    layout::{InlineItem, LayoutBoxKey, LayoutTy, tree::{LayoutBoxTree, builder::LayoutTreeBuilder}},
     renderer::CometRenderer,
     style::{
         StyleRect, StyleUnit,
@@ -66,18 +63,19 @@ fn main() {
     ui.append(root, text2);
 
     let mut layout_tree = LayoutBoxTree::new();
-    let mut tree_cx = LayoutBoxTreeCx::new();
-    tree_cx.build(&ui, root, &mut layout_tree);
-    let box_root = layout_tree.root;
+    let layout_root = layout_tree.create_root_box();
+    let mut tree_builder = LayoutTreeBuilder::new();
+    tree_builder.build_children(&ui, &mut layout_tree, root, layout_root);
 
     layout_tree.compute_layout(
         &mut ui,
+        layout_root,
         taffy::Size {
             width: taffy::AvailableSpace::Definite(256.0),
             height: taffy::AvailableSpace::Definite(256.0),
         },
     );
-    print_box_tree(&ui, &layout_tree, box_root, 0);
+    print_box_tree(&ui, &layout_tree, layout_root, 0);
 
     print(&ui, root, 0);
 
@@ -92,7 +90,7 @@ fn main() {
                 None,
                 &kurbo::Rect::new(0.0, 0.0, 256.0, 256.0),
             );
-            CometRenderer::new().draw(&ui, &layout_tree, box_root, scene);
+            CometRenderer::new().draw(&ui, &layout_tree, layout_root, scene);
         },
         &mut data[..],
     );
