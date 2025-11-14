@@ -1,6 +1,7 @@
 use crate::{
     layout::{
-        InlineBox, InlineBoxKey, InlineItem, InlineKey, LayoutBox, LayoutBoxKey, LayoutTy, tree::LayoutBoxTree
+        InlineBox, InlineBoxKey, InlineItem, InlineKey, LayoutBox, LayoutBoxKey, LayoutTy,
+        tree::LayoutBoxTree,
     },
     style::div::{DisplayInner, DisplayOuter},
     ui::{Node, NodeKey, Ui},
@@ -9,6 +10,12 @@ use crate::{
 pub struct LayoutTreeBuilder {
     parents: Vec<LayoutBoxKey>,
     inline_cx: Vec<InlineBoxCx>,
+}
+
+impl Default for LayoutTreeBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LayoutTreeBuilder {

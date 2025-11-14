@@ -1,6 +1,6 @@
 use crate::ui::NodeKey;
 
-pub struct Cursor<'a>(pub(super) crate::tree2::cursor::Cursor<'a>);
+pub struct Cursor<'a>(pub(super) crate::tree::archetypal::cursor::Cursor<'a>);
 
 impl<'a> Iterator for Cursor<'a> {
     type Item = NodeKey;

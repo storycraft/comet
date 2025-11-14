@@ -1,13 +1,15 @@
-use crate::tree2::{EntityId, ArchetypalTree};
+use slotmap::Key;
 
-pub struct Cursor<'a> {
-    tree: &'a ArchetypalTree,
-    current: Option<EntityId>,
+use crate::tree::slot::SlotTree;
+
+pub struct Cursor<'a, K: Key, V> {
+    tree: &'a SlotTree<K, V>,
+    current: Option<K>,
 }
 
-impl<'a> Cursor<'a> {
+impl<'a, K: Key, V> Cursor<'a, K, V> {
     #[inline]
-    pub fn new(tree: &'a ArchetypalTree, start: Option<EntityId>) -> Self {
+    pub fn new(tree: &'a SlotTree<K, V>, start: Option<K>) -> Self {
         Self {
             tree,
             current: start,
@@ -15,8 +17,8 @@ impl<'a> Cursor<'a> {
     }
 }
 
-impl<'a> Iterator for Cursor<'a> {
-    type Item = EntityId;
+impl<'a, K: Key, V> Iterator for Cursor<'a, K, V> {
+    type Item = K;
 
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.current?;
@@ -25,7 +27,7 @@ impl<'a> Iterator for Cursor<'a> {
     }
 }
 
-impl<'a> DoubleEndedIterator for Cursor<'a> {
+impl<'a, K: Key, V> DoubleEndedIterator for Cursor<'a, K, V> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let current = self.current?;
         self.current = self.tree.prev_sibling(current);

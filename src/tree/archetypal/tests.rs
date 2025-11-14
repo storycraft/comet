@@ -1,4 +1,4 @@
-use crate::tree2::ArchetypalTree;
+use crate::tree::archetypal::ArchetypalTree;
 
 #[test]
 fn test_child() {
@@ -19,7 +19,7 @@ fn test_child() {
     tree.append(a, b);
     tree.before(b, c);
     tree.after(c, d);
-    assert_eq!(tree.cursor(Some(a)).skip(1).next(), None);
+    assert_eq!(tree.cursor(Some(a)).nth(1), None);
 
     let mut child_cursor = tree.cursor(Some(b));
     assert_eq!(child_cursor.next_back(), Some(b));

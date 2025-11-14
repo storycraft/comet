@@ -4,14 +4,18 @@ use taffy::{
 };
 
 use crate::{
-    style::{StyleProp, div::{
-        AspectRatio, BorderWidth, DisplayInner, Inset, Margin, MaxSize, MinSize, Overflow1,
-        Padding, Size1,
-    }},
+    style::{
+        StyleProp,
+        div::{
+            AspectRatio, BorderWidth, DisplayInner, Inset, Margin, MaxSize, MinSize, Overflow1,
+            Padding, Size1,
+        },
+    },
     ui::Props,
 };
 
 /// Taffy [`CoreStyle`], [`BlockContainerStyle`], [`BlockItemStyle`] wrapper
+#[derive(Default)]
 pub struct TaffyCoreStyle<'a>(pub Option<Props<'a>>);
 
 impl<'a> TaffyCoreStyle<'a> {
@@ -21,11 +25,6 @@ impl<'a> TaffyCoreStyle<'a> {
     }
 }
 
-impl Default for TaffyCoreStyle<'_> {
-    fn default() -> Self {
-        Self(None)
-    }
-}
 
 impl CoreStyle for TaffyCoreStyle<'_> {
     type CustomIdent = String;

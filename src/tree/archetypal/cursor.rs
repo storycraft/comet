@@ -1,15 +1,14 @@
-use slotmap::Key;
+use crate::tree::archetypal::ArchetypalTree;
+use hecs::Entity;
 
-use crate::tree::SlotTree;
-
-pub struct Cursor<'a, K: Key, V> {
-    tree: &'a SlotTree<K, V>,
-    current: Option<K>,
+pub struct Cursor<'a> {
+    tree: &'a ArchetypalTree,
+    current: Option<Entity>,
 }
 
-impl<'a, K: Key, V> Cursor<'a, K, V> {
+impl<'a> Cursor<'a> {
     #[inline]
-    pub fn new(tree: &'a SlotTree<K, V>, start: Option<K>) -> Self {
+    pub fn new(tree: &'a ArchetypalTree, start: Option<Entity>) -> Self {
         Self {
             tree,
             current: start,
@@ -17,8 +16,8 @@ impl<'a, K: Key, V> Cursor<'a, K, V> {
     }
 }
 
-impl<'a, K: Key, V> Iterator for Cursor<'a, K, V> {
-    type Item = K;
+impl<'a> Iterator for Cursor<'a> {
+    type Item = Entity;
 
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.current?;
@@ -27,7 +26,7 @@ impl<'a, K: Key, V> Iterator for Cursor<'a, K, V> {
     }
 }
 
-impl<'a, K: Key, V> DoubleEndedIterator for Cursor<'a, K, V> {
+impl<'a> DoubleEndedIterator for Cursor<'a> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let current = self.current?;
         self.current = self.tree.prev_sibling(current);

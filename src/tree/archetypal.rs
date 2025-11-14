@@ -2,9 +2,8 @@ pub mod cursor;
 #[cfg(test)]
 mod tests;
 
-use crate::tree2::cursor::Cursor;
-use core::num::NonZeroU64;
-use hecs::{Component, ComponentRef, DynamicBundle, Entity, EntityBuilder, EntityRef, World};
+use crate::tree::archetypal::cursor::Cursor;
+use hecs::{Component, ComponentRef, DynamicBundle, Entity, EntityBuilder, EntityRef, Ref, RefMut, World};
 
 pub struct ArchetypalTree {
     world: World,
@@ -19,38 +18,36 @@ impl ArchetypalTree {
         }
     }
 
-    pub fn spawn(&mut self, bundle: impl DynamicBundle + Send + Sync) -> EntityId {
-        EntityId(
-            self.world
-                .spawn(self.builder.add(Node::new()).add_bundle(bundle).build()),
-        )
+    pub fn spawn(&mut self, bundle: impl DynamicBundle + Send + Sync) -> Entity {
+        self.world
+            .spawn(self.builder.add(Node::new()).add_bundle(bundle).build())
     }
 
-    pub fn components(&self, key: EntityId) -> Option<Components> {
-        Some(Components(self.world.entity(key.0).ok()?))
+    pub fn components(&self, key: Entity) -> Option<Components> {
+        Some(Components(self.world.entity(key).ok()?))
     }
 
     #[inline]
-    pub fn get<'a, T: ComponentRef<'a>>(&'a self, key: EntityId) -> Option<T::Ref> {
+    pub fn get<'a, T: ComponentRef<'a>>(&'a self, key: Entity) -> Option<T::Ref> {
         self.components(key)?.get::<T>()
     }
 
-    pub fn add_components(&mut self, key: EntityId, components: impl DynamicBundle) {
-        _ = self.world.insert(key.0, components);
+    pub fn add_components(&mut self, key: Entity, components: impl DynamicBundle) {
+        _ = self.world.insert(key, components);
     }
 
-    pub fn remove_component<T: Component>(&mut self, key: EntityId) -> Option<T> {
-        self.world.remove_one::<T>(key.0).ok()
+    pub fn remove_component<T: Component>(&mut self, key: Entity) -> Option<T> {
+        self.world.remove_one::<T>(key).ok()
     }
 
     #[inline]
     /// Create a new [`Cursor`] for iterative traversal
-    pub fn cursor(&self, id: Option<EntityId>) -> Cursor {
+    pub fn cursor(&self, id: Option<Entity>) -> Cursor {
         Cursor::new(self, id)
     }
 
     /// Append child to parent node and return last parent node id
-    pub fn append(&mut self, parent: EntityId, id: EntityId) -> Option<EntityId> {
+    pub fn append(&mut self, parent: Entity, id: Entity) -> Option<Entity> {
         let mut parent_node = self.world.node_mut(parent)?;
         match (parent_node.first_child, parent_node.last_child) {
             (_, Some(last_child)) => {
@@ -73,7 +70,7 @@ impl ArchetypalTree {
 
     #[inline]
     /// Prepend child to parent node and return last parent node id
-    pub fn prepend(&mut self, parent: EntityId, id: EntityId) -> Option<EntityId> {
+    pub fn prepend(&mut self, parent: Entity, id: Entity) -> Option<Entity> {
         let mut parent_node = self.world.node_mut(id)?;
         match (parent_node.first_child, parent_node.last_child) {
             (Some(first_child), _) => {
@@ -96,8 +93,8 @@ impl ArchetypalTree {
     }
 
     /// Insert a node before `target`. Returns previous parent id
-    pub fn before(&mut self, target: EntityId, id: EntityId) -> Option<EntityId> {
-        fn inner(tree: &mut ArchetypalTree, target: EntityId, id: EntityId) -> Option<()> {
+    pub fn before(&mut self, target: Entity, id: Entity) -> Option<Entity> {
+        fn inner(tree: &mut ArchetypalTree, target: Entity, id: Entity) -> Option<()> {
             let mut target_node = tree.world.node_mut(target)?;
             let parent = target_node.parent;
             let prev_sibling = target_node.prev_sibling.replace(id);
@@ -126,8 +123,8 @@ impl ArchetypalTree {
     }
 
     /// Insert a node after `target`. Returns previous parent id
-    pub fn after(&mut self, target: EntityId, id: EntityId) -> Option<EntityId> {
-        fn inner(tree: &mut ArchetypalTree, target: EntityId, id: EntityId) -> Option<()> {
+    pub fn after(&mut self, target: Entity, id: Entity) -> Option<Entity> {
+        fn inner(tree: &mut ArchetypalTree, target: Entity, id: Entity) -> Option<()> {
             let mut target_node = tree.world.node_mut(target)?;
             let parent = target_node.parent;
             let next_sibling = target_node.next_sibling.replace(id);
@@ -158,36 +155,36 @@ impl ArchetypalTree {
 
     #[inline]
     /// Get parent node id
-    pub fn parent(&self, id: EntityId) -> Option<EntityId> {
+    pub fn parent(&self, id: Entity) -> Option<Entity> {
         self.world.node(id)?.parent
     }
 
     #[inline]
     /// Get first child node id
-    pub fn first_child(&self, id: EntityId) -> Option<EntityId> {
+    pub fn first_child(&self, id: Entity) -> Option<Entity> {
         self.world.node(id)?.first_child
     }
 
     #[inline]
     /// Get last child node id
-    pub fn last_child(&self, id: EntityId) -> Option<EntityId> {
+    pub fn last_child(&self, id: Entity) -> Option<Entity> {
         self.world.node(id)?.last_child
     }
 
     #[inline]
     /// Get next sibling node id
-    pub fn next_sibling(&self, id: EntityId) -> Option<EntityId> {
+    pub fn next_sibling(&self, id: Entity) -> Option<Entity> {
         self.world.node(id)?.next_sibling
     }
 
     #[inline]
     /// Get previous sibling node id
-    pub fn prev_sibling(&self, id: EntityId) -> Option<EntityId> {
+    pub fn prev_sibling(&self, id: Entity) -> Option<Entity> {
         self.world.node(id)?.prev_sibling
     }
 
     /// Disconnect node from the parent and return the parent node id
-    pub fn remove_parent(&mut self, id: EntityId) -> Option<EntityId> {
+    pub fn remove_parent(&mut self, id: Entity) -> Option<Entity> {
         let mut node = self.world.node_mut(id)?;
         let parent_id = node.parent.take()?;
         let prev_sibling_id = node.prev_sibling.take();
@@ -220,14 +217,14 @@ impl ArchetypalTree {
     }
 
     /// Delete node including and its children
-    pub fn delete(&mut self, id: EntityId) {
-        fn inner(tree: &mut ArchetypalTree, id: EntityId) {
+    pub fn delete(&mut self, id: Entity) {
+        fn inner(tree: &mut ArchetypalTree, id: Entity) {
             let mut child = tree.world.node(id).and_then(|node| node.first_child);
-            _ = tree.world.despawn(id.0);
+            _ = tree.world.despawn(id);
             while let Some(child_id) = child.take() {
                 inner(tree, child_id);
                 child = tree.world.node(id).and_then(|node| node.first_child);
-                _ = tree.world.despawn(child_id.0);
+                _ = tree.world.despawn(child_id);
             }
         }
 
@@ -247,40 +244,14 @@ impl Default for ArchetypalTree {
     }
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[repr(transparent)]
-pub struct EntityId(Entity);
-
-impl EntityId {
-    #[inline]
-    pub const fn bits(self) -> NonZeroU64 {
-        self.0.to_bits()
-    }
-
-    #[inline]
-    pub const fn from_bits(bits: u64) -> Option<Self> {
-        if let Some(entity) = Entity::from_bits(bits) {
-            Some(Self(entity))
-        } else {
-            None
-        }
-    }
-}
-
-impl Default for EntityId {
-    fn default() -> Self {
-        Self(Entity::DANGLING)
-    }
-}
-
 struct Node {
-    parent: Option<EntityId>,
+    parent: Option<Entity>,
 
-    first_child: Option<EntityId>,
-    last_child: Option<EntityId>,
+    first_child: Option<Entity>,
+    last_child: Option<Entity>,
 
-    prev_sibling: Option<EntityId>,
-    next_sibling: Option<EntityId>,
+    prev_sibling: Option<Entity>,
+    next_sibling: Option<Entity>,
 }
 
 impl Node {
@@ -309,12 +280,12 @@ impl<'a> Components<'a> {
 #[extend::ext]
 impl World {
     #[inline]
-    fn node(&self, id: EntityId) -> Option<<&Node as ComponentRef>::Ref> {
-        self.get::<&Node>(id.0).ok()
+    fn node(&self, id: Entity) -> Option<Ref<Node>> {
+        self.get::<&Node>(id).ok()
     }
 
     #[inline]
-    fn node_mut(&self, id: EntityId) -> Option<<&mut Node as ComponentRef>::Ref> {
-        self.get::<&mut Node>(id.0).ok()
+    fn node_mut(&self, id: Entity) -> Option<RefMut<Node>> {
+        self.get::<&mut Node>(id).ok()
     }
 }

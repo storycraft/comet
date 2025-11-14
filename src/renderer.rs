@@ -49,16 +49,16 @@ impl CometRenderer {
 
         let location = node.layout.location;
         let last_offset = (self.offset_x, self.offset_y);
-        self.offset_x += location.x as f64;
-        self.offset_y += location.y as f64;
+        self.offset_x += location.x;
+        self.offset_y += location.y;
 
         match node.ty {
             LayoutTy::Block => {
                 let size = node.layout.size;
                 let x0 = self.offset_x;
                 let y0 = self.offset_y;
-                let x1 = x0 + size.width as f64;
-                let y1 = y0 + size.height as f64;
+                let x1 = x0 + size.width;
+                let y1 = y0 + size.height;
 
                 if let Some(span) = node.span {
                     self.draw_block(ui, span, Rect::new(x0, y0, x1, y1), scene);
@@ -107,7 +107,7 @@ impl CometRenderer {
                     PositionedLayoutItem::GlyphRun(glyph_run) => {
                         let run = glyph_run.run();
                         scene.draw_glyphs(
-                            &run.font(),
+                            run.font(),
                             run.font_size(),
                             true,
                             run.normalized_coords(),

@@ -62,7 +62,7 @@ pub fn build_inline(
     match inline_item {
         InlineItem::Text(span) => {
             if let Some(Node::Text(text)) = ui.node(span).as_deref() {
-                builder.push_text(&text);
+                builder.push_text(text);
                 *text_len += text.len();
             }
         }

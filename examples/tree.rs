@@ -4,7 +4,10 @@ use anyrender::{ImageRenderer, Paint, PaintScene};
 use anyrender_vello::VelloImageRenderer;
 use color::AlphaColor;
 use comet::{
-    layout::{InlineItem, LayoutBoxKey, LayoutTy, tree::{LayoutBoxTree, builder::LayoutTreeBuilder}},
+    layout::{
+        InlineItem, LayoutBoxKey, LayoutTy,
+        tree::{LayoutBoxTree, builder::LayoutTreeBuilder},
+    },
     renderer::CometRenderer,
     style::{
         StyleRect, StyleUnit,

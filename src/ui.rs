@@ -2,14 +2,14 @@ pub mod cursor;
 
 use crate::{
     style::{PropLevel, StyleProp},
-    tree2::{ArchetypalTree, Components, EntityId},
+    tree::archetypal::{ArchetypalTree, Components},
     ui::cursor::Cursor,
 };
-use hecs::{DynamicBundle, EntityBuilder, Ref, RefMut};
+use hecs::{DynamicBundle, Entity, EntityBuilder, Ref, RefMut};
 
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
-pub struct NodeKey(EntityId);
+pub struct NodeKey(Entity);
 
 #[derive(Debug)]
 pub enum Node {

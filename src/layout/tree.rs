@@ -8,7 +8,7 @@ use crate::{
         InlineBox, InlineBoxKey, InlineItem, InlineKey, LayoutBox, LayoutBoxKey, LayoutTy,
         taffy::TaffyLayoutImpl,
     },
-    tree::SlotTree,
+    tree::slot::SlotTree,
     ui::Ui,
 };
 
@@ -16,6 +16,12 @@ pub struct LayoutBoxTree {
     pub boxes: SlotTree<LayoutBoxKey, LayoutBox>,
     pub inline_boxes: SlotMap<InlineBoxKey, InlineBox>,
     pub inlines: SlotTree<InlineKey, InlineItem>,
+}
+
+impl Default for LayoutBoxTree {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LayoutBoxTree {

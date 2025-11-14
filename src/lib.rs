@@ -2,7 +2,6 @@ pub mod layout;
 pub mod renderer;
 pub mod style;
 pub mod tree;
-pub mod tree2;
 pub mod ui;
 
 pub use kurbo;

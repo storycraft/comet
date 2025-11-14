@@ -5,7 +5,7 @@ use crate::{
         LayoutBox, LayoutBoxKey,
         taffy::{TaffyLayoutImpl, from_taffy_key, to_taffy_key},
     },
-    tree::cursor::Cursor,
+    tree::slot::cursor::Cursor,
 };
 
 impl TraversePartialTree for TaffyLayoutImpl<'_> {
