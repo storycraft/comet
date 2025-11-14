@@ -247,7 +247,7 @@ impl Default for ArchetypalTree {
     }
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct EntityId(Entity);
 
@@ -264,6 +264,12 @@ impl EntityId {
         } else {
             None
         }
+    }
+}
+
+impl Default for EntityId {
+    fn default() -> Self {
+        Self(Entity::DANGLING)
     }
 }
 
