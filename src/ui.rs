@@ -74,12 +74,12 @@ impl Ui {
     }
 
     #[inline]
-    pub fn add_props(&mut self, key: NodeKey, props: impl DynamicBundle) {
+    pub fn set_props(&mut self, key: NodeKey, props: impl DynamicBundle) {
         self.inner.add_components(key.0, props);
     }
 
     #[inline]
-    pub fn remove_prop<T: Component>(&mut self, key: NodeKey) -> Option<T> {
+    pub fn remove_prop<T: StyleProp>(&mut self, key: NodeKey) -> Option<T> {
         self.inner.remove_component::<T>(key.0)
     }
 
