@@ -14,11 +14,11 @@ use crate::{
 
 pub struct TaffyLayoutImpl<'a> {
     layout_tree: &'a mut LayoutBoxTree,
-    ui: &'a mut Ui,
+    ui: &'a Ui,
 }
 
 impl<'a> TaffyLayoutImpl<'a> {
-    pub fn new(layout_tree: &'a mut LayoutBoxTree, ui: &'a mut Ui) -> Self {
+    pub fn new(layout_tree: &'a mut LayoutBoxTree, ui: &'a Ui) -> Self {
         Self { layout_tree, ui }
     }
 
