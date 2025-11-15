@@ -6,7 +6,7 @@ use color::AlphaColor;
 use comet::{
     layout::{
         InlineItem, LayoutBoxKey, LayoutTy,
-        tree::{LayoutBoxTree, builder::LayoutTreeBuilder},
+        tree::{LayoutBoxTree, builder::LayoutTreeBuilderCx},
     },
     renderer::CometRenderer,
     style::{
@@ -67,8 +67,10 @@ fn main() {
 
     let mut layout_tree = LayoutBoxTree::new();
     let layout_root = layout_tree.create_root_box();
-    let mut tree_builder = LayoutTreeBuilder::new();
-    tree_builder.build_children(&ui, &mut layout_tree, root, layout_root);
+    let mut tree_builder = LayoutTreeBuilderCx::new();
+    tree_builder
+        .builder(&ui, &mut layout_tree)
+        .build_children(root, layout_root);
 
     layout_tree.compute_layout(
         &mut ui,
