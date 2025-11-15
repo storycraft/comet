@@ -29,7 +29,7 @@ impl<K: Key, V> SlotTree<K, V> {
 
     #[inline]
     /// Create a new [`Cursor`] for iterative traversal
-    pub fn cursor(&self, id: Option<K>) -> Cursor<K, V> {
+    pub fn cursor(&'_ self, id: Option<K>) -> Cursor<'_, K, V> {
         Cursor::new(self, id)
     }
 

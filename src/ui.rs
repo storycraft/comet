@@ -44,27 +44,27 @@ impl Ui {
     }
 
     #[inline]
-    pub fn props(&self, key: NodeKey) -> Option<Props> {
+    pub fn props(&'_ self, key: NodeKey) -> Option<Props<'_>> {
         Some(Props(self.inner.components(key.0)?))
     }
 
     #[inline]
-    pub fn prop<T: StyleProp>(&self, key: NodeKey) -> Option<Ref<T>> {
+    pub fn prop<T: StyleProp>(&'_ self, key: NodeKey) -> Option<Ref<'_, T>> {
         self.props(key)?.get::<T>()
     }
 
     #[inline]
-    pub fn prop_mut<T: StyleProp>(&self, key: NodeKey) -> Option<RefMut<T>> {
+    pub fn prop_mut<T: StyleProp>(&'_ self, key: NodeKey) -> Option<RefMut<'_, T>> {
         self.props(key)?.get_mut::<T>()
     }
 
     #[inline]
-    pub fn node(&self, key: NodeKey) -> Option<Ref<Node>> {
+    pub fn node(&'_ self, key: NodeKey) -> Option<Ref<'_, Node>> {
         Some(Ref::map(self.prop::<NodeWrapper>(key)?, |v| &v.0))
     }
 
     #[inline]
-    pub fn node_mut(&self, key: NodeKey) -> Option<RefMut<Node>> {
+    pub fn node_mut(&'_ self, key: NodeKey) -> Option<RefMut<'_, Node>> {
         Some(RefMut::map(self.prop_mut::<NodeWrapper>(key)?, |v| {
             &mut v.0
         }))
@@ -82,7 +82,7 @@ impl Ui {
 
     #[inline]
     /// Create a new [`Cursor`] for iterative traversal
-    pub fn cursor(&self, id: Option<NodeKey>) -> Cursor {
+    pub fn cursor(&'_ self, id: Option<NodeKey>) -> Cursor<'_> {
         Cursor(self.inner.cursor(id.map(|v| v.0)))
     }
 

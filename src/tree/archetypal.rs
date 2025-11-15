@@ -23,7 +23,7 @@ impl ArchetypalTree {
             .spawn(self.builder.add(Node::new()).add_bundle(bundle).build())
     }
 
-    pub fn components(&self, key: Entity) -> Option<Components> {
+    pub fn components(&'_ self, key: Entity) -> Option<Components<'_>> {
         Some(Components(self.world.entity(key).ok()?))
     }
 
@@ -42,7 +42,7 @@ impl ArchetypalTree {
 
     #[inline]
     /// Create a new [`Cursor`] for iterative traversal
-    pub fn cursor(&self, id: Option<Entity>) -> Cursor {
+    pub fn cursor(&'_ self, id: Option<Entity>) -> Cursor<'_> {
         Cursor::new(self, id)
     }
 
@@ -280,12 +280,12 @@ impl<'a> Components<'a> {
 #[extend::ext]
 impl World {
     #[inline]
-    fn node(&self, id: Entity) -> Option<Ref<Node>> {
+    fn node(&'_ self, id: Entity) -> Option<Ref<'_, Node>> {
         self.get::<&Node>(id).ok()
     }
 
     #[inline]
-    fn node_mut(&self, id: Entity) -> Option<RefMut<Node>> {
+    fn node_mut(&'_ self, id: Entity) -> Option<RefMut<'_, Node>> {
         self.get::<&mut Node>(id).ok()
     }
 }
