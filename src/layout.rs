@@ -137,7 +137,7 @@ new_key_type! {
 
 pub struct InlineBox {
     pub parley_layout: parley::Layout<Option<NodeKey>>,
-    pub item_start: Option<InlineKey>,
+    pub inline_start: Option<InlineKey>,
     pub texts: String,
 }
 
@@ -145,7 +145,7 @@ impl InlineBox {
     pub fn new() -> Self {
         Self {
             parley_layout: parley::Layout::new(),
-            item_start: None,
+            inline_start: None,
             texts: String::new(),
         }
     }
@@ -158,7 +158,13 @@ impl Default for InlineBox {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum InlineItem {
-    Text(NodeKey),
+pub enum InlineIns {
+    /// A text
+    Text(NodeKey),    
+    /// Push new inline node
+    PushSpan(NodeKey),
+    /// Pop inline node
+    PopSpan,
+    /// A new layout box
     Box(LayoutBoxKey),
 }
