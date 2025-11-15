@@ -1,7 +1,7 @@
 pub mod cursor;
 
 use crate::{
-    style::{PropLevel, StyleProp},
+    style::{PropLevel, StyleProp, StyleProps},
     tree::archetypal::{ArchetypalTree, Components},
     ui::cursor::Cursor,
 };
@@ -32,10 +32,7 @@ impl Ui {
     }
 
     #[inline]
-    pub fn create_node<Props>(&mut self, node: Node, props: Props) -> NodeKey
-    where
-        Props: DynamicBundle + Send + Sync + 'static,
-    {
+    pub fn create_node(&mut self, node: Node, props: impl StyleProps) -> NodeKey {
         NodeKey(
             self.inner.spawn(
                 self.builder
