@@ -57,4 +57,15 @@ impl LayoutBoxTree {
         }
         Some(inline_box)
     }
+
+    pub fn invalidate(&mut self, key: LayoutBoxKey) {
+        let Some(layout_box) = self.boxes.get_mut(key) else {
+            return;
+        };
+        layout_box.invalidate();
+
+        if let Some(parent) = self.boxes.parent(key) {
+            self.invalidate(parent);
+        }
+    }
 }
