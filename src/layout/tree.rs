@@ -62,6 +62,9 @@ impl LayoutBoxTree {
         let Some(layout_box) = self.boxes.get_mut(key) else {
             return;
         };
+        if layout_box.taffy_cache.is_empty() {
+            return;
+        }
         layout_box.invalidate();
 
         if let Some(parent) = self.boxes.parent(key) {
