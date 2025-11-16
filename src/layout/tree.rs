@@ -43,6 +43,26 @@ impl LayoutBoxTree {
         self.boxes.insert(LayoutBox::new(None, LayoutTy::Block))
     }
 
+    pub fn delete_layout_box(&mut self, key: LayoutBoxKey) -> Option<LayoutBox> {
+        let layout_box = self.boxes.delete_node(key)?;
+        match layout_box.ty {
+            LayoutTy::Block => {}
+            LayoutTy::Inline(key) => {
+                self.delete_inline_box(key);
+            }
+        }
+
+        Some(layout_box)
+    }
+
+    pub fn delete_inline_box(&mut self, key: InlineBoxKey) -> Option<InlineBox> {
+        let inline_box = self.inline_boxes.remove(key)?;
+        if let Some(inline) = inline_box.inline_start {
+            self.inlines.delete_node(inline);
+        }
+        Some(inline_box)
+    }
+
     pub fn compute_layout(
         &mut self,
         ui: &mut Ui,
