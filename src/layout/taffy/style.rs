@@ -7,7 +7,7 @@ use crate::{
     style::{
         StyleProp,
         div::{
-            AspectRatio, BorderWidth, DisplayInner, Inset, Margin, MaxSize, MinSize, Overflow1,
+            AspectRatio, BorderWidth, Inset, Margin, MaxSize, MinSize, Overflow1,
             Padding, Size1,
         },
     },
@@ -34,10 +34,7 @@ impl CoreStyle for TaffyCoreStyle<'_> {
     }
 
     fn is_block(&self) -> bool {
-        matches!(
-            self.get_cloned::<DisplayInner>().unwrap_or_default(),
-            DisplayInner::Flow | DisplayInner::FlowRoot
-        )
+        true
     }
 
     fn is_compressible_replaced(&self) -> bool {
