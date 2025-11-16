@@ -85,6 +85,16 @@ pub struct StyleRect {
 }
 
 #[macro_export]
+macro_rules! style_prop {
+    ($ty:ty = $level:expr) => {
+        impl $crate::style::StyleProp for $ty {
+            const LEVEL: $crate::style::PropLevel = $level;
+        }
+    };
+}
+pub use style_prop;
+
+#[macro_export]
 macro_rules! define_style_props {
     (
         $(
@@ -119,7 +129,6 @@ macro_rules! define_style_props {
         };
     )*};
 }
-
 pub use define_style_props;
 
 pub trait StyleProps: DynamicBundle {}

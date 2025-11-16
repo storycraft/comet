@@ -1,6 +1,6 @@
 use crate::{
     layout::ContainerLayout,
-    style::{PropLevel, StyleProp, StyleRect, StyleUnit, define_style_props},
+    style::{PropLevel, StyleProp, StyleRect, StyleUnit, define_style_props}, style_prop,
 };
 use anyrender::Paint;
 use kurbo::{Cap, Dashes, Join};
@@ -8,13 +8,8 @@ use taffy::{Dimension, LengthPercentage, LengthPercentageAuto, Overflow, Point, 
 
 pub use taffy::{BoxSizing, Position};
 
-impl StyleProp for BoxSizing {
-    const LEVEL: PropLevel = PropLevel::Layout;
-}
-
-impl StyleProp for Position {
-    const LEVEL: PropLevel = PropLevel::Layout;
-}
+style_prop!(BoxSizing = PropLevel::Layout);
+style_prop!(Position = PropLevel::Layout);
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DisplayOuter {
