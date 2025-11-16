@@ -130,6 +130,10 @@ impl LayoutBox {
         }
     }
 
+    pub fn invalidated(&self) -> bool {
+        self.taffy_cache.is_empty()
+    }
+
     pub fn invalidate(&mut self) {
         self.taffy_cache.clear();
         self.layout = BoxLayout::new();

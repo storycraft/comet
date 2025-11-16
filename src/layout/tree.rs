@@ -62,7 +62,7 @@ impl LayoutBoxTree {
         let Some(layout_box) = self.boxes.get_mut(key) else {
             return;
         };
-        if layout_box.taffy_cache.is_empty() {
+        if layout_box.invalidated() {
             return;
         }
         layout_box.invalidate();
