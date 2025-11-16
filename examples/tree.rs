@@ -71,7 +71,7 @@ fn main() {
     let mut tree_builder = LayoutTreeBuilderCx::new();
     tree_builder
         .builder(&ui, &mut layout_tree)
-        .build_children(root, layout_root);
+        .build(root, layout_root);
 
     let mut layout_cx = LayoutContext::new();
     layout_cx.layout(
