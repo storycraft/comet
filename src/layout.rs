@@ -174,10 +174,10 @@ impl Default for InlineBox {
 pub enum InlineIns {
     /// A text
     Text(NodeKey),
-    /// Push new inline node
-    PushSpan(NodeKey),
-    /// Pop inline node
-    PopSpan,
+    /// Push new inline box
+    PushInlineBox(NodeKey),
+    /// Pop inline box
+    PopInlineBox,
     /// A new layout box
     Box(LayoutBoxKey),
 }

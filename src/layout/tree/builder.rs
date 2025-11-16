@@ -75,7 +75,7 @@ impl LayoutTreeBuilder<'_> {
                         self.cx.parents.push(id);
                     }
                     DisplayOuter::Inline => {
-                        self.cx.inlines.push(InlineIns::PushSpan(id));
+                        self.cx.inlines.push(InlineIns::PushInlineBox(id));
                     }
                 }
 
@@ -110,7 +110,7 @@ impl LayoutTreeBuilder<'_> {
                         self.cx.parents.pop();
                     }
                     DisplayOuter::Inline => {
-                        self.cx.inlines.push(InlineIns::PopSpan);
+                        self.cx.inlines.push(InlineIns::PopInlineBox);
                     }
                 }
             }

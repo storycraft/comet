@@ -67,8 +67,8 @@ impl<'a> InlineLayout<'a> {
                 }
             }
 
-            InlineIns::PushSpan(_) => {}
-            InlineIns::PopSpan => {}
+            InlineIns::PushInlineBox(_) => {}
+            InlineIns::PopInlineBox => {}
 
             InlineIns::Box(layout_box_key) => {
                 // TODO:: remove temporary layout context
