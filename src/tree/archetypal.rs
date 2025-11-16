@@ -3,7 +3,9 @@ pub mod cursor;
 mod tests;
 
 use crate::tree::archetypal::cursor::Cursor;
-use hecs::{Component, ComponentRef, DynamicBundle, Entity, EntityBuilder, EntityRef, Ref, RefMut, World};
+use hecs::{
+    Component, ComponentRef, DynamicBundle, Entity, EntityBuilder, EntityRef, Ref, RefMut, World,
+};
 
 pub struct ArchetypalTree {
     world: World,

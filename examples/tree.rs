@@ -5,7 +5,7 @@ use anyrender_vello::VelloImageRenderer;
 use color::AlphaColor;
 use comet::{
     layout::{
-        LayoutBoxKey, LayoutTy,
+        LayoutBoxKey, LayoutContext, LayoutTy,
         tree::{LayoutBoxTree, builder::LayoutTreeBuilderCx},
     },
     renderer::CometRenderer,
@@ -67,19 +67,23 @@ fn main() {
 
     let mut layout_tree = LayoutBoxTree::new();
     let layout_root = layout_tree.create_root_box();
+
     let mut tree_builder = LayoutTreeBuilderCx::new();
     tree_builder
         .builder(&ui, &mut layout_tree)
         .build_children(root, layout_root);
 
-    layout_tree.compute_layout(
-        &mut ui,
+    let mut layout_cx = LayoutContext::new();
+    layout_cx.layout(
+        &ui,
+        &mut layout_tree,
         layout_root,
         taffy::Size {
             width: taffy::AvailableSpace::Definite(256.0),
             height: taffy::AvailableSpace::Definite(256.0),
         },
     );
+
     print_box_tree(&ui, &layout_tree, layout_root, 0);
 
     print(&ui, root, 0);

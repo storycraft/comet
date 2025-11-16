@@ -1,15 +1,10 @@
 pub mod builder;
 
 use slotmap::SlotMap;
-use taffy::{AvailableSpace, Size};
 
 use crate::{
-    layout::{
-        InlineBox, InlineBoxKey, InlineIns, InlineKey, LayoutBox, LayoutBoxKey, LayoutTy,
-        taffy::TaffyLayoutImpl,
-    },
+    layout::{InlineBox, InlineBoxKey, InlineIns, InlineKey, LayoutBox, LayoutBoxKey, LayoutTy},
     tree::slot::SlotTree,
-    ui::Ui,
 };
 
 pub struct LayoutBoxTree {
@@ -61,14 +56,5 @@ impl LayoutBoxTree {
             self.inlines.delete_node(inline);
         }
         Some(inline_box)
-    }
-
-    pub fn compute_layout(
-        &mut self,
-        ui: &mut Ui,
-        root: LayoutBoxKey,
-        available_space: Size<AvailableSpace>,
-    ) {
-        TaffyLayoutImpl::new(self, ui).compute_layout(root, available_space);
     }
 }

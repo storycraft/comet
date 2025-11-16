@@ -1,12 +1,19 @@
 pub mod components;
+pub mod resolver;
 mod taffy;
 pub mod tree;
-pub mod resolver;
 
+use ::taffy::AvailableSpace;
 use kurbo::{Point, Rect, Size};
 use slotmap::new_key_type;
 
-use crate::ui::NodeKey;
+use crate::{
+    layout::{
+        taffy::{TaffyLayoutImpl, to_taffy_key},
+        tree::LayoutBoxTree,
+    },
+    ui::{NodeKey, Ui},
+};
 
 pub type ContainerLayoutFn = fn();
 
@@ -142,7 +149,7 @@ new_key_type! {
 }
 
 pub struct InlineBox {
-    pub parley_layout: parley::Layout<Option<NodeKey>>,
+    pub parley_layout: parley::Layout<NodeKey>,
     pub inline_start: Option<InlineKey>,
     pub texts: String,
 }
@@ -166,11 +173,37 @@ impl Default for InlineBox {
 #[derive(Debug, Clone, Copy)]
 pub enum InlineIns {
     /// A text
-    Text(NodeKey),    
+    Text(NodeKey),
     /// Push new inline node
     PushSpan(NodeKey),
     /// Pop inline node
     PopSpan,
     /// A new layout box
     Box(LayoutBoxKey),
+}
+
+pub struct LayoutContext {
+    parley: parley::LayoutContext<NodeKey>,
+}
+
+impl LayoutContext {
+    pub fn new() -> Self {
+        Self {
+            parley: parley::LayoutContext::new(),
+        }
+    }
+
+    pub fn layout<'a>(
+        &mut self,
+        ui: &'a Ui,
+        tree: &'a mut LayoutBoxTree,
+        root: LayoutBoxKey,
+        available_space: ::taffy::Size<AvailableSpace>,
+    ) {
+        ::taffy::compute::compute_root_layout(
+            &mut TaffyLayoutImpl { cx: self, ui, tree },
+            to_taffy_key(root),
+            available_space,
+        )
+    }
 }

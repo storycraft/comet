@@ -11,6 +11,12 @@ use hecs::{DynamicBundle, Entity, EntityBuilder, Ref, RefMut};
 #[repr(transparent)]
 pub struct NodeKey(Entity);
 
+impl Default for NodeKey {
+    fn default() -> Self {
+        Self(Entity::DANGLING)
+    }
+}
+
 #[derive(Debug)]
 pub enum Node {
     Div,

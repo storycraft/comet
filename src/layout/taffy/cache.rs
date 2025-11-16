@@ -10,9 +10,11 @@ impl CacheTree for TaffyLayoutImpl<'_> {
         available_space: Size<AvailableSpace>,
         run_mode: RunMode,
     ) -> Option<LayoutOutput> {
-        self.layout_tree.boxes[from_taffy_key(node_id)]
-            .taffy_cache
-            .get(known_dimensions, available_space, run_mode)
+        self.tree.boxes[from_taffy_key(node_id)].taffy_cache.get(
+            known_dimensions,
+            available_space,
+            run_mode,
+        )
     }
 
     fn cache_store(
@@ -23,14 +25,15 @@ impl CacheTree for TaffyLayoutImpl<'_> {
         run_mode: RunMode,
         layout_output: LayoutOutput,
     ) {
-        self.layout_tree.boxes[from_taffy_key(node_id)]
-            .taffy_cache
-            .store(known_dimensions, available_space, run_mode, layout_output);
+        self.tree.boxes[from_taffy_key(node_id)].taffy_cache.store(
+            known_dimensions,
+            available_space,
+            run_mode,
+            layout_output,
+        );
     }
 
     fn cache_clear(&mut self, node_id: NodeId) {
-        self.layout_tree.boxes[from_taffy_key(node_id)]
-            .taffy_cache
-            .clear();
+        self.tree.boxes[from_taffy_key(node_id)].taffy_cache.clear();
     }
 }

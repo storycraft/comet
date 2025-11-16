@@ -7,8 +7,7 @@ use crate::{
     style::{
         StyleProp,
         div::{
-            AspectRatio, BorderWidth, Inset, Margin, MaxSize, MinSize, Overflow1,
-            Padding, Size1,
+            AspectRatio, BorderWidth, Inset, Margin, MaxSize, MinSize, Overflow1, Padding, Size1,
         },
     },
     ui::Props,
@@ -24,7 +23,6 @@ impl<'a> TaffyCoreStyle<'a> {
         Some(Clone::clone(&*self.0.as_ref()?.get::<T>()?))
     }
 }
-
 
 impl CoreStyle for TaffyCoreStyle<'_> {
     type CustomIdent = String;
