@@ -44,7 +44,7 @@ impl LayoutTreeBuilder<'_> {
         let mut next_child = self.tree.boxes.first_child(box_id);
         while let Some(child) = next_child {
             next_child = self.tree.boxes.next_sibling(child);
-            self.tree.boxes.delete_node(child);
+            self.tree.delete_layout_box(child);
         }
 
         self.cx.parents.push(box_id);
