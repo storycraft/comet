@@ -11,21 +11,26 @@ use crate::{
     },
     ui::Ui,
 };
-use parley::{Alignment, AlignmentOptions};
+use parley::{Alignment, AlignmentOptions, TextStyle};
 use slotmap::{Key, KeyData};
 use taffy::{
     AvailableSpace, LayoutBlockContainer, LayoutPartialTree, Size, compute_block_layout,
     compute_cached_layout, compute_leaf_layout, compute_root_layout,
 };
 
-pub struct TaffyLayoutImpl<'a> {
+pub(super) struct TaffyLayoutImpl<'a> {
     layout_tree: &'a mut LayoutBoxTree,
     ui: &'a Ui,
+    text_styles: Vec<TextStyle<'a, ()>>,
 }
 
 impl<'a> TaffyLayoutImpl<'a> {
     pub fn new(layout_tree: &'a mut LayoutBoxTree, ui: &'a Ui) -> Self {
-        Self { layout_tree, ui }
+        Self {
+            layout_tree,
+            ui,
+            text_styles: vec![],
+        }
     }
 
     pub fn compute_layout(&mut self, root: LayoutBoxKey, available_space: Size<AvailableSpace>) {

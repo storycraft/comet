@@ -1,6 +1,7 @@
 pub mod components;
 mod taffy;
 pub mod tree;
+pub mod resolver;
 
 use kurbo::{Point, Rect, Size};
 use slotmap::new_key_type;
@@ -120,6 +121,11 @@ impl LayoutBox {
 
             ty,
         }
+    }
+
+    pub fn invalidate(&mut self) {
+        self.taffy_cache.clear();
+        self.layout = BoxLayout::new();
     }
 }
 

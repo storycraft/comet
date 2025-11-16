@@ -5,7 +5,7 @@ use anyrender_vello::VelloImageRenderer;
 use color::AlphaColor;
 use comet::{
     layout::{
-        InlineItem, LayoutBoxKey, LayoutTy,
+        LayoutBoxKey, LayoutTy,
         tree::{LayoutBoxTree, builder::LayoutTreeBuilderCx},
     },
     renderer::CometRenderer,
@@ -122,22 +122,14 @@ fn print_box_tree(ui: &Ui, layout_tree: &LayoutBoxTree, id: LayoutBoxKey, space:
         LayoutTy::Block => {}
         LayoutTy::Inline(inline_box_id) => {
             let inline_box = &layout_tree.inline_boxes[inline_box_id];
-            for child_id in layout_tree.inlines.cursor(inline_box.item_start) {
-                match layout_tree.inlines[child_id] {
-                    InlineItem::Text(span) => {
-                        if let Some(Node::Text(text)) = ui.node(span).as_deref() {
-                            for _ in 0..space {
-                                print!(" ");
-                            }
-
-                            println!("    - text: {:?}", &text);
-                        }
-                    }
-                    InlineItem::Box(child_box) => {
-                        print_box_tree(ui, layout_tree, child_box, space + 4);
-                    }
-                }
+            for _ in 0..(space + 4) {
+                print!(" ");
             }
+
+            for child_id in layout_tree.inlines.cursor(inline_box.inline_start) {
+                print!("{:?}, ", layout_tree.inlines[child_id]);
+            }
+            println!();
         }
     }
 

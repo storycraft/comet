@@ -4,7 +4,7 @@ use taffy::compute_root_layout;
 
 use crate::{
     layout::{
-        InlineBoxKey, InlineItem, InlineKey, LayoutTy,
+        InlineBoxKey, InlineIns, InlineKey,
         taffy::{TaffyLayoutImpl, to_taffy_key},
         tree::LayoutBoxTree,
     },
@@ -40,7 +40,7 @@ pub fn traverse_inline_box(
     };
 
     let mut text_len = 0;
-    let mut next_id = inline_box.item_start;
+    let mut next_id = inline_box.inline_start;
     while let Some(inline_id) = next_id {
         build_inline(builder, ui, layout_box_tree, inline_id, &mut text_len);
         next_id = layout_box_tree.inlines.next_sibling(inline_id);
@@ -60,35 +60,32 @@ pub fn build_inline(
 
     // TODO:: fix temp workaround
     match inline_item {
-        InlineItem::Text(span) => {
+        InlineIns::Text(span) => {
             if let Some(Node::Text(text)) = ui.node(span).as_deref() {
                 builder.push_text(text);
                 *text_len += text.len();
             }
         }
 
-        InlineItem::Box(layout_box_key) => match layout_box_tree.boxes[layout_box_key].ty {
-            LayoutTy::Block => {
-                compute_root_layout(
-                    &mut TaffyLayoutImpl::new(layout_box_tree, ui),
-                    to_taffy_key(layout_box_key),
-                    taffy::Size::min_content(),
-                );
+        InlineIns::PushSpan(node_key) => {
+            
+        }
+        InlineIns::PopSpan => {}
 
-                let size = layout_box_tree.boxes[layout_box_key].layout.size;
-                builder.push_inline_box(InlineBox {
-                    id: layout_box_key.data().as_ffi(),
-                    index: *text_len,
-                    width: size.width as _,
-                    height: size.height as _,
-                });
-            }
+        InlineIns::Box(layout_box_key) => {
+            compute_root_layout(
+                &mut TaffyLayoutImpl::new(layout_box_tree, ui),
+                to_taffy_key(layout_box_key),
+                taffy::Size::min_content(),
+            );
 
-            LayoutTy::Inline(inline_box_id) => {
-                if let Some(inline_start) = layout_box_tree.inline_boxes[inline_box_id].item_start {
-                    build_inline(builder, ui, layout_box_tree, inline_start, text_len);
-                }
-            }
-        },
+            let size = layout_box_tree.boxes[layout_box_key].layout.size;
+            builder.push_inline_box(InlineBox {
+                id: layout_box_key.data().as_ffi(),
+                index: *text_len,
+                width: size.width as _,
+                height: size.height as _,
+            });
+        }
     }
 }

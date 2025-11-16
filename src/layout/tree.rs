@@ -5,7 +5,7 @@ use taffy::{AvailableSpace, Size};
 
 use crate::{
     layout::{
-        InlineBox, InlineBoxKey, InlineItem, InlineKey, LayoutBox, LayoutBoxKey, LayoutTy,
+        InlineBox, InlineBoxKey, InlineIns, InlineKey, LayoutBox, LayoutBoxKey, LayoutTy,
         taffy::TaffyLayoutImpl,
     },
     tree::slot::SlotTree,
@@ -15,7 +15,7 @@ use crate::{
 pub struct LayoutBoxTree {
     pub boxes: SlotTree<LayoutBoxKey, LayoutBox>,
     pub inline_boxes: SlotMap<InlineBoxKey, InlineBox>,
-    pub inlines: SlotTree<InlineKey, InlineItem>,
+    pub inlines: SlotTree<InlineKey, InlineIns>,
 }
 
 impl Default for LayoutBoxTree {

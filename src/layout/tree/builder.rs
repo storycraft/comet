@@ -1,15 +1,12 @@
 use crate::{
-    layout::{
-        InlineBox, InlineBoxKey, InlineItem, InlineKey, LayoutBox, LayoutBoxKey, LayoutTy,
-        tree::LayoutBoxTree,
-    },
+    layout::{InlineBox, InlineIns, LayoutBox, LayoutBoxKey, LayoutTy, tree::LayoutBoxTree},
     style::div::{DisplayInner, DisplayOuter},
     ui::{Node, NodeKey, Ui},
 };
 
 pub struct LayoutTreeBuilderCx {
     parents: Vec<LayoutBoxKey>,
-    inline_cx: Vec<InlineBoxCx>,
+    inlines: Vec<InlineIns>,
 }
 
 impl Default for LayoutTreeBuilderCx {
@@ -22,7 +19,7 @@ impl LayoutTreeBuilderCx {
     pub fn new() -> Self {
         Self {
             parents: vec![],
-            inline_cx: vec![],
+            inlines: vec![],
         }
     }
 
@@ -31,16 +28,12 @@ impl LayoutTreeBuilderCx {
         ui: &'a Ui,
         tree: &'a mut LayoutBoxTree,
     ) -> LayoutTreeBuilder<'a> {
-        LayoutTreeBuilder {
-            inner: self,
-            ui,
-            tree,
-        }
+        LayoutTreeBuilder { cx: self, ui, tree }
     }
 }
 
 pub struct LayoutTreeBuilder<'a> {
-    inner: &'a mut LayoutTreeBuilderCx,
+    cx: &'a mut LayoutTreeBuilderCx,
     ui: &'a Ui,
     tree: &'a mut LayoutBoxTree,
 }
@@ -54,13 +47,11 @@ impl LayoutTreeBuilder<'_> {
             self.tree.boxes.delete_node(child);
         }
 
-        self.inner.parents.push(box_id);
-        self.inner.inline_cx.push(InlineBoxCx::new());
+        self.cx.parents.push(box_id);
         self.build_inner(id);
-        // commit remaining inline box
-        self.commit_inline_box();
-        self.inner.parents.clear();
-        self.inner.inline_cx.clear();
+        // commit remaining inlines
+        self.commit_inlines();
+        self.cx.parents.clear();
     }
 
     fn build_inner(&mut self, id: NodeKey) {
@@ -79,12 +70,12 @@ impl LayoutTreeBuilder<'_> {
 
                 match display_outer {
                     DisplayOuter::Block => {
-                        self.commit_inline_box();
+                        self.commit_inlines();
                         let id = self.add_child(LayoutBox::new(Some(id), LayoutTy::Block));
-                        self.inner.parents.push(id);
+                        self.cx.parents.push(id);
                     }
                     DisplayOuter::Inline => {
-                        self.inner.inline_cx.last_mut().unwrap().push_span(id);
+                        self.cx.inlines.push(InlineIns::PushSpan(id));
                     }
                 }
 
@@ -100,13 +91,7 @@ impl LayoutTreeBuilder<'_> {
                         .tree
                         .boxes
                         .insert(LayoutBox::new(None, LayoutTy::Block));
-                    self.inner.parents.push(id);
-                    self.inner
-                        .inline_cx
-                        .last_mut()
-                        .unwrap()
-                        .push_item(self.tree, InlineItem::Box(id));
-                    self.inner.inline_cx.push(InlineBoxCx::new());
+                    self.cx.parents.push(id);
                 }
 
                 for child in self.ui.cursor(self.ui.first_child(id)) {
@@ -114,49 +99,50 @@ impl LayoutTreeBuilder<'_> {
                 }
 
                 if needs_new_cx {
-                    if let Some((span, inline_box_id)) =
-                        self.inner.inline_cx.pop().unwrap().finish(self.tree)
-                    {
-                        let id = self
-                            .tree
-                            .boxes
-                            .insert(LayoutBox::new(span, LayoutTy::Inline(inline_box_id)));
-                        self.add_child_id(id);
-                    }
-                    self.inner.parents.pop();
+                    self.cx
+                        .inlines
+                        .push(InlineIns::Box(self.cx.parents.pop().unwrap()));
                 }
 
                 match display_outer {
                     DisplayOuter::Block => {
-                        self.commit_inline_box();
-                        self.inner.parents.pop();
+                        self.commit_inlines();
+                        self.cx.parents.pop();
                     }
                     DisplayOuter::Inline => {
-                        self.inner.inline_cx.last_mut().unwrap().pop_span();
+                        self.cx.inlines.push(InlineIns::PopSpan);
                     }
                 }
             }
 
             Node::Text(_) => {
-                self.inner
-                    .inline_cx
-                    .last_mut()
-                    .unwrap()
-                    .push_item(self.tree, InlineItem::Text(id));
+                self.cx.inlines.push(InlineIns::Text(id));
             }
         }
     }
 
-    fn commit_inline_box(&mut self) {
-        if let Some((span, inline_box_id)) =
-            self.inner.inline_cx.last_mut().unwrap().finish(self.tree)
-        {
-            let id = self
-                .tree
-                .boxes
-                .insert(LayoutBox::new(span, LayoutTy::Inline(inline_box_id)));
-            self.add_child_id(id);
+    fn commit_inlines(&mut self) {
+        let mut drain = self.cx.inlines.drain(..);
+        let Some(first) = drain.next() else {
+            return;
+        };
+        let first = self.tree.inlines.insert(first);
+        let mut prev = first;
+        for ins in drain {
+            let key = self.tree.inlines.insert(ins);
+            self.tree.inlines.after(prev, key);
+            prev = key;
         }
+
+        let inline_key = self.tree.inline_boxes.insert(InlineBox {
+            inline_start: Some(first),
+            ..Default::default()
+        });
+        let key = self
+            .tree
+            .boxes
+            .insert(LayoutBox::new(None, LayoutTy::Inline(inline_key)));
+        self.add_child_id(key);
     }
 
     fn add_child(&mut self, node: LayoutBox) -> LayoutBoxKey {
@@ -166,7 +152,7 @@ impl LayoutTreeBuilder<'_> {
     }
 
     fn add_child_id(&mut self, id: LayoutBoxKey) {
-        let Some(parent) = self.inner.parents.last().copied() else {
+        let Some(parent) = self.cx.parents.last().copied() else {
             return;
         };
 
@@ -184,77 +170,14 @@ impl LayoutTreeBuilder<'_> {
                     .tree
                     .inline_boxes
                     .get(inline_box_key)
-                    .and_then(|node| node.item_start)
+                    .and_then(|node| node.inline_start)
                 else {
                     return;
                 };
 
-                let inline_id = self.tree.inlines.insert(InlineItem::Box(id));
+                let inline_id = self.tree.inlines.insert(InlineIns::Box(id));
                 self.tree.inlines.after(item_start, inline_id);
             }
         }
-    }
-}
-
-#[derive(Debug)]
-struct InlineBoxCx {
-    span_stack: Vec<NodeKey>,
-    first_key: Option<InlineKey>,
-    last_key: Option<InlineKey>,
-}
-
-impl InlineBoxCx {
-    pub fn new() -> Self {
-        Self {
-            span_stack: Vec::new(),
-            first_key: None,
-            last_key: None,
-        }
-    }
-
-    pub fn push_span(&mut self, key: NodeKey) {
-        self.span_stack.push(key);
-    }
-
-    pub fn pop_span(&mut self) -> Option<NodeKey> {
-        self.span_stack.pop()
-    }
-
-    pub fn push_item(&mut self, tree: &mut LayoutBoxTree, item: InlineItem) {
-        let span = self.span_stack.last().copied();
-
-        let id = if let Some(span) = span {
-            let mut inline_box = InlineBox::new();
-            let inline_id = tree.inlines.insert(item);
-            inline_box.item_start = Some(inline_id);
-            let inner_box_id = tree.inline_boxes.insert(inline_box);
-
-            let id = tree
-                .boxes
-                .insert(LayoutBox::new(Some(span), LayoutTy::Inline(inner_box_id)));
-
-            tree.inlines.insert(InlineItem::Box(id))
-        } else {
-            tree.inlines.insert(item)
-        };
-
-        if self.first_key.is_none() {
-            self.first_key = Some(id);
-        }
-
-        if let Some(prev_last_id) = self.last_key.replace(id) {
-            tree.inlines.after(prev_last_id, id);
-        }
-    }
-
-    pub fn finish(&mut self, tree: &mut LayoutBoxTree) -> Option<(Option<NodeKey>, InlineBoxKey)> {
-        let span = self.span_stack.last().copied();
-        let first_key = self.first_key?;
-        self.first_key = None;
-        self.last_key = None;
-
-        let mut inline_box = InlineBox::new();
-        inline_box.item_start = Some(first_key);
-        Some((span, tree.inline_boxes.insert(inline_box)))
     }
 }
