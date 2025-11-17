@@ -5,6 +5,7 @@ pub mod tree;
 
 use ::taffy::AvailableSpace;
 use kurbo::{Point, Rect, Size};
+use parley::FontContext;
 use slotmap::new_key_type;
 
 use crate::{
@@ -199,13 +200,19 @@ impl LayoutContext {
 
     pub fn layout<'a>(
         &mut self,
+        font_cx: &'a mut FontContext,
         ui: &'a Ui,
         tree: &'a mut LayoutBoxTree,
         root: LayoutBoxKey,
         available_space: ::taffy::Size<AvailableSpace>,
     ) {
         ::taffy::compute::compute_root_layout(
-            &mut TaffyLayoutImpl { cx: self, ui, tree },
+            &mut TaffyLayoutImpl {
+                font_cx,
+                cx: self,
+                ui,
+                tree,
+            },
             to_taffy_key(root),
             available_space,
         )

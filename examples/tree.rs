@@ -9,14 +9,12 @@ use comet::{
         tree::{LayoutBoxTree, builder::LayoutTreeBuilderCx},
     },
     renderer::CometRenderer,
-    style::{
-        StyleRect, StyleUnit,
-        div::{BorderRadius, DisplayInner, DisplayOuter, Fill, Padding},
-    },
+    style::div::{DisplayInner, DisplayOuter, Fill, Padding},
     ui::{Node, NodeKey, Ui},
 };
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use kurbo::Affine;
+use parley::FontContext;
 use peniko::Brush;
 use taffy::{LengthPercentage, Rect};
 
@@ -26,13 +24,7 @@ fn main() {
     let text0 = ui.create_node(Node::Text("sample ".to_string()), ());
     let text1 = ui.create_node(Node::Text(" text".to_string()), ());
     let inner = ui.create_node(Node::Text("start".to_string()), ());
-    let div = ui.create_node(
-        Node::Div,
-        (
-            DisplayOuter::Inline,
-            Fill(Paint::Solid(AlphaColor::from_rgb8(255, 0, 0))),
-        ),
-    );
+    let div = ui.create_node(Node::Div, (DisplayOuter::Inline,));
     let div1 = ui.create_node(Node::Div, (DisplayOuter::Inline, DisplayInner::FlowRoot));
 
     let div2 = ui.create_node(
@@ -45,12 +37,6 @@ fn main() {
                 right: LengthPercentage::length(16.0),
             }),
             Fill(Paint::Solid(AlphaColor::from_rgb8(0, 255, 0))),
-            BorderRadius(StyleRect {
-                top: StyleUnit::Px(8.0),
-                right: StyleUnit::ZERO,
-                bottom: StyleUnit::Px(8.0),
-                left: StyleUnit::ZERO,
-            }),
         ),
     );
 
@@ -75,6 +61,7 @@ fn main() {
 
     let mut layout_cx = LayoutContext::new();
     layout_cx.layout(
+        &mut FontContext::new(),
         &ui,
         &mut layout_tree,
         layout_root,

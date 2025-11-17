@@ -11,6 +11,13 @@ use hecs::{DynamicBundle, Entity, EntityBuilder, Ref, RefMut};
 #[repr(transparent)]
 pub struct NodeKey(Entity);
 
+impl NodeKey {
+    #[inline]
+    pub const fn id(self) -> u32 {
+        self.0.id()
+    }
+}
+
 impl Default for NodeKey {
     fn default() -> Self {
         Self(Entity::DANGLING)
