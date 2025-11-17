@@ -1,12 +1,14 @@
 use crate::{
-    layout::{InlineBox, InlineIns, LayoutBox, LayoutBoxKey, LayoutTy, tree::LayoutBoxTree},
+    layout::{
+        InlineBox, InlineIns, InlineKey, LayoutBox, LayoutBoxKey, LayoutTy, tree::LayoutBoxTree,
+    },
     style::div::{DisplayInner, DisplayOuter},
     ui::{Node, NodeKey, Ui},
 };
 
 pub struct LayoutTreeBuilderCx {
     parents: Vec<LayoutBoxKey>,
-    inlines: Vec<InlineIns>,
+    inline: Option<(InlineKey, InlineKey)>,
 }
 
 impl Default for LayoutTreeBuilderCx {
@@ -19,7 +21,7 @@ impl LayoutTreeBuilderCx {
     pub fn new() -> Self {
         Self {
             parents: vec![],
-            inlines: vec![],
+            inline: None,
         }
     }
 
@@ -63,7 +65,7 @@ impl LayoutTreeBuilder<'_> {
     }
 
     fn build_text(&mut self, id: NodeKey) {
-        self.cx.inlines.push(InlineIns::Text(id));
+        self.push_inline(InlineIns::Text(id));
     }
 
     fn build_div(&mut self, id: NodeKey) {
@@ -81,7 +83,7 @@ impl LayoutTreeBuilder<'_> {
                 self.cx.parents.push(id);
             }
             DisplayOuter::Inline => {
-                self.cx.inlines.push(InlineIns::PushInlineBox(id));
+                self.push_inline(InlineIns::PushInlineBox(id));
             }
         }
 
@@ -92,7 +94,9 @@ impl LayoutTreeBuilder<'_> {
             .cloned()
             .unwrap_or_default();
         let needs_new_cx = display_inner != DisplayInner::Flow;
+        let last_inline = self.cx.inline;
         if needs_new_cx {
+            self.cx.inline.take();
             let id = self
                 .tree
                 .boxes
@@ -105,9 +109,10 @@ impl LayoutTreeBuilder<'_> {
         }
 
         if needs_new_cx {
-            self.cx
-                .inlines
-                .push(InlineIns::Box(self.cx.parents.pop().unwrap()));
+            self.commit_inlines();
+            self.cx.inline = last_inline;
+            let box_key = self.cx.parents.pop().unwrap();
+            self.push_inline(InlineIns::Box(box_key));
         }
 
         match display_outer {
@@ -116,24 +121,28 @@ impl LayoutTreeBuilder<'_> {
                 self.cx.parents.pop();
             }
             DisplayOuter::Inline => {
-                self.cx.inlines.push(InlineIns::PopInlineBox);
+                self.push_inline(InlineIns::PopInlineBox);
             }
         }
     }
 
+    fn push_inline(&mut self, ins: InlineIns) {
+        let key = self.tree.inlines.insert(ins);
+        match self.cx.inline {
+            Some((first, last)) => {
+                self.tree.inlines.after(last, key);
+                self.cx.inline = Some((first, key));
+            },
+            None => {
+                self.cx.inline = Some((key, key));
+            },
+        }
+    }
+
     fn commit_inlines(&mut self) {
-        let mut drain = self.cx.inlines.drain(..);
-        let Some(first) = drain.next() else {
+        let Some((first, _)) = self.cx.inline.take() else {
             return;
         };
-        let first = self.tree.inlines.insert(first);
-        let mut prev = first;
-        for ins in drain {
-            let key = self.tree.inlines.insert(ins);
-            self.tree.inlines.after(prev, key);
-            prev = key;
-        }
-
         let inline_key = self.tree.inline_boxes.insert(InlineBox {
             inline_start: Some(first),
             ..Default::default()
