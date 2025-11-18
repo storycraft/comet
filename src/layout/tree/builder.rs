@@ -44,16 +44,46 @@ impl LayoutTreeBuilder<'_> {
     /// Build a node into layout boxes and append inside box_id
     pub fn build(&mut self, id: NodeKey, box_id: LayoutBoxKey) {
         self.cx.parents.push(box_id);
-        self.build_inner(id);
+        self.build_siblings(Some(id), false);
         // commit remaining inlines
         self.commit_inlines();
         self.cx.parents.clear();
+    }
+
+    fn build_siblings(&mut self, start: Option<NodeKey>, force_block: bool) {
+        for id in self.ui.cursor(start) {
+            let node = self.ui.node(id);
+            let display_outer = self
+                .ui
+                .prop::<DisplayOuter>(id)
+                .as_deref()
+                .cloned()
+                .unwrap_or_default();
+
+            match (node.as_deref(), force_block, display_outer) {
+                (Some(Node::Text(_)), _, _) | (_, false, DisplayOuter::Inline) => {
+                    self.push_inline(InlineIns::PushInlineBox(id));
+                    self.build_inner(id);
+                    self.push_inline(InlineIns::PopInlineBox);
+                }
+
+                (_, _, DisplayOuter::Block) | (_, true, _) => {
+                    self.commit_inlines();
+                    let layout_box_id = self.add_child(LayoutBox::new(Some(id), LayoutTy::Block));
+                    self.cx.parents.push(layout_box_id);
+                    self.build_inner(id);
+                    self.commit_inlines();
+                    self.cx.parents.pop();
+                }
+            }
+        }
     }
 
     fn build_inner(&mut self, id: NodeKey) {
         let Some(node) = self.ui.node(id) else {
             return;
         };
+
         match *node {
             Node::Div => {
                 self.build_div(id);
@@ -67,60 +97,39 @@ impl LayoutTreeBuilder<'_> {
     }
 
     fn build_div(&mut self, id: NodeKey) {
-        let display_outer = self
-            .ui
-            .prop::<DisplayOuter>(id)
-            .as_deref()
-            .cloned()
-            .unwrap_or_default();
-
-        match display_outer {
-            DisplayOuter::Block => {
-                self.commit_inlines();
-                let id = self.add_child(LayoutBox::new(Some(id), LayoutTy::Block));
-                self.cx.parents.push(id);
-            }
-            DisplayOuter::Inline => {
-                self.push_inline(InlineIns::PushInlineBox(id));
-            }
-        }
-
         let display_inner = self
             .ui
             .prop::<DisplayInner>(id)
             .as_deref()
             .cloned()
             .unwrap_or_default();
-        let needs_new_cx = display_inner != DisplayInner::Flow;
-        let last_inline = self.cx.inline;
-        if needs_new_cx {
-            self.cx.inline.take();
-            let id = self
-                .tree
-                .boxes
-                .insert(LayoutBox::new(None, LayoutTy::Block));
-            self.cx.parents.push(id);
-        }
 
-        for child in self.ui.cursor(self.ui.first_child(id)) {
-            self.build_inner(child);
-        }
+        match display_inner {
+            DisplayInner::Flow => {
+                self.build_siblings(self.ui.first_child(id), false);
+            }
 
-        if needs_new_cx {
-            self.commit_inlines();
-            self.cx.inline = last_inline;
-            let box_key = self.cx.parents.pop().unwrap();
-            self.push_inline(InlineIns::Box(box_key));
-        }
+            DisplayInner::FlowRoot => {
+                let last_inline = self.cx.inline.take();
+                let layout_box_id = self
+                    .tree
+                    .boxes
+                    .insert(LayoutBox::new(None, LayoutTy::Block));
+                self.cx.parents.push(layout_box_id);
 
-        match display_outer {
-            DisplayOuter::Block => {
+                self.build_siblings(self.ui.first_child(id), true);
+
                 self.commit_inlines();
-                self.cx.parents.pop();
+                self.cx.inline = last_inline;
+                let box_key = self.cx.parents.pop().unwrap();
+                self.push_inline(InlineIns::Box(box_key));
             }
-            DisplayOuter::Inline => {
-                self.push_inline(InlineIns::PopInlineBox);
+
+            DisplayInner::Container(_) => {
+                self.build_siblings(self.ui.first_child(id), true);
             }
+
+            DisplayInner::Content => {}
         }
     }
 
