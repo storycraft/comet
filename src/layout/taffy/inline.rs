@@ -1,9 +1,11 @@
-use parley::{FontContext, InlineBox, TextStyle};
+use core::mem;
+
+use parley::{FontContext, InlineBox};
 use slotmap::Key;
 
 use crate::{
     layout::{InlineBoxKey, InlineIns, taffy::LayoutContext, tree::LayoutBoxTree},
-    ui::{Node, Ui},
+    ui::Ui,
 };
 
 pub struct InlineLayout<'a> {
@@ -32,15 +34,17 @@ impl<'a> InlineLayout<'a> {
 
     pub fn compute_layout(mut self, id: InlineBoxKey) {
         self.compute_inline_boxes(id);
-
-        let mut builder =
-            self.cx
-                .parley
-                .tree_builder(self.font_cx, 1.0, false, &TextStyle::default());
         let Some(inline_box) = self.tree.inline_boxes.get_mut(id) else {
             return;
         };
+
+        let text = mem::replace(&mut inline_box.texts, String::new());
+        let mut builder = self
+            .cx
+            .parley
+            .ranged_builder(self.font_cx, &text, 1.0, false);
         let mut next_id = inline_box.inline_start;
+
         while let Some(inline_id) = next_id {
             next_id = self.tree.inlines.next_sibling(inline_id);
             let Some(&inline_item) = self.tree.inlines.get(inline_id) else {
@@ -48,11 +52,8 @@ impl<'a> InlineLayout<'a> {
             };
 
             match inline_item {
-                InlineIns::Text(span) => {
-                    if let Some(Node::Text(text)) = self.ui.node(span).as_deref() {
-                        builder.push_text(text);
-                        self.text_len += text.len();
-                    }
+                InlineIns::Text(length) => {
+                    self.text_len += length;
                 }
 
                 InlineIns::PushInlineBox(_) => {}
@@ -73,9 +74,8 @@ impl<'a> InlineLayout<'a> {
         let Some(inline_box) = self.tree.inline_boxes.get_mut(id) else {
             return;
         };
-        let (layout, texts) = builder.build();
-        inline_box.parley_layout = layout;
-        inline_box.texts = texts;
+        builder.build_into(&mut inline_box.parley_layout, &text);
+        inline_box.texts = text;
     }
 
     fn compute_inline_boxes(&mut self, id: InlineBoxKey) {
