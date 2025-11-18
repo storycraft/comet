@@ -120,7 +120,7 @@ impl LayoutTreeBuilder<'_> {
                 let layout_box_id = self
                     .tree
                     .boxes
-                    .insert(LayoutBox::new(None, LayoutTy::Block));
+                    .insert(LayoutBox::new(Some(id), LayoutTy::Block));
                 self.cx.parents.push(layout_box_id);
 
                 self.build_siblings(self.ui.first_child(id), true);
