@@ -21,11 +21,17 @@ use taffy::{LengthPercentage, Rect};
 fn main() {
     let mut ui = Ui::new();
     let root = ui.create_node(Node::Div, ());
-    let text0 = ui.create_node(Node::Text("sample ".to_string()), ());
-    let text1 = ui.create_node(Node::Text(" text".to_string()), ());
+    let text0 = ui.create_node(Node::Text("sample".to_string()), ());
+    let text1 = ui.create_node(Node::Text("text".to_string()), ());
     let inner = ui.create_node(Node::Text("start".to_string()), ());
-    let div = ui.create_node(Node::Div, (DisplayOuter::Inline,));
-    let div1 = ui.create_node(Node::Div, (DisplayOuter::Inline, DisplayInner::FlowRoot));
+    let div = ui.create_node(
+        Node::Div,
+        (
+            DisplayOuter::Inline,
+            Fill(Paint::Solid(AlphaColor::from_rgb8(255, 0, 0))),
+        ),
+    );
+    let div1 = ui.create_node(Node::Div, (DisplayOuter::Block, DisplayInner::FlowRoot));
 
     let div2 = ui.create_node(
         Node::Div,
