@@ -58,14 +58,12 @@ impl LayoutTreeBuilder<'_> {
             Node::Div => {
                 self.build_div(id);
             }
-            Node::Text(_) => {
-                self.build_text(id);
+            Node::Text(ref text) => {
+                if !text.is_empty() {
+                    self.push_inline(InlineIns::Text(id));
+                }
             }
         }
-    }
-
-    fn build_text(&mut self, id: NodeKey) {
-        self.push_inline(InlineIns::Text(id));
     }
 
     fn build_div(&mut self, id: NodeKey) {
@@ -132,10 +130,10 @@ impl LayoutTreeBuilder<'_> {
             Some((first, last)) => {
                 self.tree.inlines.after(last, key);
                 self.cx.inline = Some((first, key));
-            },
+            }
             None => {
                 self.cx.inline = Some((key, key));
-            },
+            }
         }
     }
 
