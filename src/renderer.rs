@@ -1,12 +1,12 @@
 use anyrender::{Paint, PaintScene};
 use color::AlphaColor;
 use kurbo::{Affine, Rect, RoundedRect, Stroke};
-use parley::{Line, LineMetrics, PositionedLayoutItem};
+use parley::{Cluster, ClusterPath, PositionedLayoutItem};
 use peniko::StyleRef;
 use slotmap::KeyData;
 
 use crate::{
-    layout::{InlineBoxKey, InlineIns, InlineKey, LayoutBoxKey, LayoutTy, tree::LayoutBoxTree},
+    layout::{InlineBoxKey, InlineIns, LayoutBoxKey, LayoutTy, tree::LayoutBoxTree},
     style::div::{BorderFill, Fill},
     ui::{NodeKey, Ui},
 };
@@ -64,7 +64,7 @@ impl CometRenderer {
                 let x1 = x0 + size.width;
                 let y1 = y0 + size.height;
 
-                if let Some(span) = node.span {
+                if let Some(&span) = tree.spans.get_by_right(&id) {
                     self.draw_block(ui, span, Rect::new(x0, y0, x1, y1), scene);
                 }
 
@@ -92,78 +92,101 @@ impl CometRenderer {
         &mut self,
         inline_state: &InlineState,
         ui: &Ui,
-        line_index: usize,
-        metrics: &LineMetrics,
+        to: ClusterPath,
+        end_inline: InlineBoxKey,
+        layout: &parley::Layout<()>,
         scene: &mut impl PaintScene,
     ) {
-        let offset = if inline_state.start_line_index == line_index {
-            inline_state.start_line_offset
-        } else {
-            0.0
-        };
-
         let Some(props) = ui.props(inline_state.span) else {
             return;
         };
 
+        let Some(start_cluster) = inline_state.start.cluster(layout) else {
+            return;
+        };
+        let start_line = start_cluster.line();
+        let start_line_metrics = start_line.metrics();
+
+        let Some(end_cluster) = to.cluster(layout) else {
+            return;
+        };
+        let end_line = end_cluster.line();
+
+        if inline_state.start.line_index() == to.line_index() {
+            if let Some(fill) = props.get::<Fill>() {
+                let x0 =
+                    self.offset_x as f64 + start_cluster.visual_offset().unwrap_or_default() as f64;
+                let y0 = self.offset_y as f64 + start_line_metrics.min_coord as f64;
+                let x1 = self.offset_x as f64
+                    + end_cluster.visual_offset().unwrap_or_default() as f64
+                    + end_cluster.advance() as f64;
+                let y1 = self.offset_y as f64 + start_line_metrics.max_coord as f64;
+
+                scene.fill(
+                    peniko::Fill::EvenOdd,
+                    Affine::IDENTITY,
+                    &fill.0,
+                    None,
+                    &Rect::new(x0, y0, x1, y1),
+                );
+            }
+
+            return;
+        }
+
         if let Some(fill) = props.get::<Fill>() {
-            let x0 = self.offset_x as f64 + offset as f64;
-            let y0 = self.offset_y as f64 + metrics.min_coord as f64;
-            let x1 = self.offset_x as f64 + (metrics.advance - metrics.trailing_whitespace) as f64;
-            let y1 = self.offset_y as f64 + metrics.max_coord as f64;
+            let start_line_metrics = start_line.metrics();
             scene.fill(
                 peniko::Fill::EvenOdd,
                 Affine::IDENTITY,
                 &fill.0,
                 None,
-                &Rect::new(x0, y0, x1, y1),
+                &Rect::new(
+                    self.offset_x as f64 + start_cluster.visual_offset().unwrap_or_default() as f64,
+                    self.offset_y as f64 + start_line.metrics().min_coord as f64,
+                    self.offset_x as f64
+                        + (start_line_metrics.advance - start_line_metrics.trailing_whitespace)
+                            as f64,
+                    self.offset_y as f64 + start_line.metrics().max_coord as f64,
+                ),
+            );
+
+            for line_index in inline_state.start.line_index()..to.line_index() {
+                let Some(line) = layout.get(line_index) else {
+                    break;
+                };
+                let metrics = line.metrics();
+
+                scene.fill(
+                    peniko::Fill::EvenOdd,
+                    Affine::IDENTITY,
+                    &fill.0,
+                    None,
+                    &Rect::new(
+                        self.offset_x as f64,
+                        self.offset_y as f64 + metrics.min_coord as f64,
+                        self.offset_x as f64
+                            + (metrics.advance - metrics.trailing_whitespace) as f64,
+                        self.offset_y as f64 + metrics.max_coord as f64,
+                    ),
+                );
+            }
+
+            scene.fill(
+                peniko::Fill::EvenOdd,
+                Affine::IDENTITY,
+                &fill.0,
+                None,
+                &Rect::new(
+                    self.offset_x as f64,
+                    self.offset_y as f64 + end_line.metrics().min_coord as f64,
+                    self.offset_x as f64
+                        + end_cluster.visual_offset().unwrap_or_default() as f64
+                        + end_cluster.advance() as f64,
+                    self.offset_y as f64 + end_line.metrics().max_coord as f64,
+                ),
             );
         }
-    }
-
-    fn draw_inline_until(
-        &mut self,
-        ui: &Ui,
-        tree: &LayoutBoxTree,
-        start: Option<InlineKey>,
-        span: NodeKey,
-        line_index: usize,
-        line: Line<NodeKey>,
-        offset: f32,
-        scene: &mut impl PaintScene,
-    ) -> Option<InlineKey> {
-        let mut next_inline = start;
-        while let Some(inline) = next_inline {
-            next_inline = tree.inlines.next_sibling(inline);
-            let Some(ins) = tree.inlines.get(inline) else {
-                continue;
-            };
-
-            match *ins {
-                InlineIns::Text(key) => {
-                    if span == key {
-                        return Some(inline);
-                    }
-                }
-                InlineIns::PushInlineBox(span) => {
-                    self.inline_states.push(InlineState {
-                        start_line_index: line_index,
-                        start_line_offset: offset,
-                        span,
-                    });
-                }
-                InlineIns::PopInlineBox => {
-                    let Some(inline_state) = self.inline_states.pop() else {
-                        continue;
-                    };
-
-                    self.draw_inline_state(&inline_state, ui, line_index, line.metrics(), scene);
-                }
-                _ => {}
-            }
-        }
-
-        None
     }
 
     // TODO:: optimize render path
@@ -178,33 +201,52 @@ impl CometRenderer {
             return;
         };
 
+        let mut text_index = 0;
         let mut next_inline = node.inline_start;
-        for (line_index, line) in node.parley_layout.lines().enumerate() {
-            for item in line.items() {
-                let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
-                    continue;
-                };
+        while let Some(inline) = next_inline {
+            next_inline = tree.inlines.next_sibling(inline);
+            let Some(ins) = tree.inlines.get(inline) else {
+                continue;
+            };
 
-                next_inline = self.draw_inline_until(
-                    ui,
-                    tree,
-                    next_inline,
-                    glyph_run.style().brush,
-                    line_index,
-                    line,
-                    glyph_run.offset(),
-                    scene,
-                );
-            }
+            match *ins {
+                InlineIns::Text(length) => {
+                    text_index += length;
+                }
 
-            // TODO
-            for inline_state in self
-                .inline_states
-                .clone()
-                .iter()
-                .skip(self.inline_start.last().copied().unwrap_or(0))
-            {
-                self.draw_inline_state(inline_state, ui, line_index, line.metrics(), scene);
+                InlineIns::PushInlineBox(span) => {
+                    let Some(cluster) = Cluster::from_byte_index(&node.parley_layout, text_index)
+                    else {
+                        continue;
+                    };
+                    self.inline_states.push(InlineState {
+                        start: cluster.path(),
+                        start_inline: id,
+                        span,
+                    });
+                }
+
+                InlineIns::PopInlineBox => {
+                    let Some(inline_state) = self.inline_states.pop() else {
+                        continue;
+                    };
+                    let Some(cluster) =
+                        Cluster::from_byte_index(&node.parley_layout, text_index - 1)
+                    else {
+                        continue;
+                    };
+
+                    self.draw_inline_state(
+                        &inline_state,
+                        ui,
+                        cluster.path(),
+                        id,
+                        &node.parley_layout,
+                        scene,
+                    );
+                }
+
+                InlineIns::Box(_) => {}
             }
         }
     }
@@ -311,7 +353,7 @@ impl Default for CometRenderer {
 
 #[derive(Debug, Clone, Copy)]
 struct InlineState {
-    pub start_line_index: usize,
-    pub start_line_offset: f32,
+    pub start: ClusterPath,
+    pub start_inline: InlineBoxKey,
     pub span: NodeKey,
 }

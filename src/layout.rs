@@ -1,7 +1,10 @@
 pub mod components;
+pub mod layer;
 pub mod resolver;
 mod taffy;
 pub mod tree;
+pub mod fragment;
+pub mod input;
 
 use ::taffy::AvailableSpace;
 use kurbo::{Point, Rect, Size};
@@ -111,8 +114,6 @@ impl Default for BoxLayout {
 
 #[derive(Debug)]
 pub struct LayoutBox {
-    pub span: Option<NodeKey>,
-
     pub(crate) taffy_cache: ::taffy::Cache,
     pub layout: BoxLayout,
 
@@ -120,10 +121,8 @@ pub struct LayoutBox {
 }
 
 impl LayoutBox {
-    pub fn new(span: Option<NodeKey>, ty: LayoutTy) -> Self {
+    pub fn new(ty: LayoutTy) -> Self {
         Self {
-            span,
-
             taffy_cache: ::taffy::Cache::new(),
             layout: BoxLayout::new(),
 
@@ -154,7 +153,7 @@ new_key_type! {
 }
 
 pub struct InlineBox {
-    pub parley_layout: parley::Layout<NodeKey>,
+    pub parley_layout: parley::Layout<()>,
     pub inline_start: Option<InlineKey>,
     pub texts: String,
 }
@@ -175,10 +174,10 @@ impl Default for InlineBox {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InlineIns {
-    /// A text
-    Text(NodeKey),
+    /// A text with length
+    Text(usize),
     /// Push new inline box
     PushInlineBox(NodeKey),
     /// Pop inline box
@@ -188,7 +187,7 @@ pub enum InlineIns {
 }
 
 pub struct LayoutContext {
-    parley: parley::LayoutContext<NodeKey>,
+    parley: parley::LayoutContext<()>,
 }
 
 impl LayoutContext {

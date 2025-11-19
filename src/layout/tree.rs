@@ -1,16 +1,20 @@
 pub mod builder;
 
+use bimap::BiHashMap;
+use rustc_hash::FxBuildHasher;
 use slotmap::SlotMap;
 
 use crate::{
     layout::{InlineBox, InlineBoxKey, InlineIns, InlineKey, LayoutBox, LayoutBoxKey, LayoutTy},
     tree::slot::SlotTree,
+    ui::NodeKey,
 };
 
 pub struct LayoutBoxTree {
     pub boxes: SlotTree<LayoutBoxKey, LayoutBox>,
     pub inline_boxes: SlotMap<InlineBoxKey, InlineBox>,
     pub inlines: SlotTree<InlineKey, InlineIns>,
+    pub spans: BiHashMap<NodeKey, LayoutBoxKey, FxBuildHasher, FxBuildHasher>,
 }
 
 impl Default for LayoutBoxTree {
@@ -25,6 +29,7 @@ impl LayoutBoxTree {
             boxes: SlotTree::new(),
             inline_boxes: SlotMap::with_key(),
             inlines: SlotTree::new(),
+            spans: BiHashMap::default(),
         }
     }
 
@@ -35,7 +40,7 @@ impl LayoutBoxTree {
     }
 
     pub fn create_root_box(&mut self) -> LayoutBoxKey {
-        self.boxes.insert(LayoutBox::new(None, LayoutTy::Block))
+        self.boxes.insert(LayoutBox::new(LayoutTy::Block))
     }
 
     pub fn delete_layout_box(&mut self, key: LayoutBoxKey) -> Option<LayoutBox> {
