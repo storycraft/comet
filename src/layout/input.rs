@@ -1,7 +1,5 @@
 pub mod builder;
 
-use bimap::BiHashMap;
-use rustc_hash::FxBuildHasher;
 use slotmap::new_key_type;
 
 use crate::{tree::slot::SlotTree, ui::NodeKey};
@@ -47,7 +45,6 @@ new_key_type! {
 pub struct LayoutInputTree {
     pub nodes: SlotTree<InputNodeKey, InputNode>,
     pub inlines: SlotTree<InlineKey, InlineIns>,
-    pub spans: BiHashMap<NodeKey, InputNodeKey, FxBuildHasher, FxBuildHasher>,
 }
 
 impl LayoutInputTree {
@@ -55,7 +52,6 @@ impl LayoutInputTree {
         Self {
             nodes: SlotTree::new(),
             inlines: SlotTree::new(),
-            spans: BiHashMap::default(),
         }
     }
 
@@ -66,7 +62,6 @@ impl LayoutInputTree {
     pub fn clear(&mut self) {
         self.nodes.clear();
         self.inlines.clear();
-        self.spans.clear();
     }
 
     pub fn delete_node(&mut self, key: InputNodeKey) -> Option<InputNode> {

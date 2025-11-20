@@ -1,3 +1,5 @@
+use slotmap::SecondaryMap;
+
 use crate::{
     layout::input::{InlineIns, InlineKey, InlineNode, InputNode, InputNodeKey, LayoutInputTree},
     style::div::{DisplayInner, DisplayOuter},
@@ -7,6 +9,7 @@ use crate::{
 pub struct LayoutInputTreeBuilderContext {
     parents: Vec<InputNodeKey>,
     inline: Option<(InlineNode, InlineKey)>,
+    map: SecondaryMap<InputNodeKey, NodeKey>,
 }
 
 impl LayoutInputTreeBuilderContext {
@@ -14,6 +17,7 @@ impl LayoutInputTreeBuilderContext {
         Self {
             parents: vec![],
             inline: None,
+            map: SecondaryMap::new(),
         }
     }
 
@@ -116,7 +120,6 @@ impl LayoutInputTreeBuilder<'_> {
             DisplayInner::FlowRoot => {
                 let last_inline = self.cx.inline.take();
                 let block_node_id = self.tree.nodes.insert(InputNode::Block);
-                self.tree.spans.insert(id, block_node_id);
                 self.cx.parents.push(block_node_id);
 
                 self.build_siblings(self.ui.first_child(id), true);
@@ -187,7 +190,7 @@ impl LayoutInputTreeBuilder<'_> {
         }
 
         if let Some(span) = span {
-            self.tree.spans.insert(span, id);
+            self.cx.map.insert(id, span);
         }
     }
 }

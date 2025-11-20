@@ -1,6 +1,7 @@
 use crate::{
     layout::ContainerLayout,
-    style::{PropLevel, StyleProp, StyleRect, StyleUnit, define_style_props}, style_prop,
+    style::{PropLevel, StyleProp, StyleRect, StyleUnit, define_style_props},
+    style_prop,
 };
 use anyrender::Paint;
 use kurbo::{Cap, Dashes, Join};

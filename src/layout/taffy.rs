@@ -112,7 +112,7 @@ fn core_style_of<'a>(
     this: &'a TaffyLayoutImpl,
     node_id: taffy::NodeId,
 ) -> Option<TaffyCoreStyle<'a>> {
-    let span = this.tree.boxes[from_taffy_key(node_id)].span?;
+    let span = *this.tree.spans.get_by_right(&from_taffy_key(node_id))?;
     Some(TaffyCoreStyle(this.ui.props(span)))
 }
 
