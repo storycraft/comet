@@ -80,7 +80,7 @@ impl LayoutTreeBuilder<'_> {
 
                 (_, _, DisplayOuter::Block) | (_, true, _) => {
                     self.commit_inlines();
-                    let layout_box_id = self.add_child(Some(id), LayoutBox::new(LayoutTy::Block));
+                    let layout_box_id = self.add_child(LayoutBox::new(Some(id), LayoutTy::Block));
                     self.cx.parents.push(layout_box_id);
                     self.build_inner(id, display_inner);
                     self.commit_inlines();
@@ -117,8 +117,10 @@ impl LayoutTreeBuilder<'_> {
 
             DisplayInner::FlowRoot => {
                 let last_inline = self.cx.inline.take();
-                let layout_box_id = self.tree.boxes.insert(LayoutBox::new(LayoutTy::Block));
-                self.tree.spans.insert(id, layout_box_id);
+                let layout_box_id = self
+                    .tree
+                    .boxes
+                    .insert(LayoutBox::new(Some(id), LayoutTy::Block));
                 self.cx.parents.push(layout_box_id);
 
                 self.build_siblings(self.ui.first_child(id), true);
@@ -160,17 +162,17 @@ impl LayoutTreeBuilder<'_> {
         let key = self
             .tree
             .boxes
-            .insert(LayoutBox::new(LayoutTy::Inline(inline_key)));
-        self.add_child_id(None, key);
+            .insert(LayoutBox::new(None, LayoutTy::Inline(inline_key)));
+        self.add_child_id(key);
     }
 
-    fn add_child(&mut self, span: Option<NodeKey>, node: LayoutBox) -> LayoutBoxKey {
+    fn add_child(&mut self, node: LayoutBox) -> LayoutBoxKey {
         let id = self.tree.boxes.insert(node);
-        self.add_child_id(span, id);
+        self.add_child_id(id);
         id
     }
 
-    fn add_child_id(&mut self, span: Option<NodeKey>, id: LayoutBoxKey) {
+    fn add_child_id(&mut self, id: LayoutBoxKey) {
         let Some(parent) = self.cx.parents.last().copied() else {
             return;
         };
@@ -197,10 +199,6 @@ impl LayoutTreeBuilder<'_> {
                 let inline_id = self.tree.inlines.insert(InlineIns::Box(id));
                 self.tree.inlines.after(item_start, inline_id);
             }
-        }
-
-        if let Some(span) = span {
-            self.tree.spans.insert(span, id);
         }
     }
 }

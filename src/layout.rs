@@ -8,7 +8,7 @@ pub mod tree;
 
 use ::taffy::AvailableSpace;
 use kurbo::{Point, Rect, Size};
-use parley::FontContext;
+use parley::{ClusterPath, FontContext};
 use slotmap::new_key_type;
 
 use crate::{
@@ -114,6 +114,7 @@ impl Default for BoxLayout {
 
 #[derive(Debug)]
 pub struct LayoutBox {
+    pub span: Option<NodeKey>,
     pub(crate) taffy_cache: ::taffy::Cache,
     pub layout: BoxLayout,
 
@@ -121,8 +122,9 @@ pub struct LayoutBox {
 }
 
 impl LayoutBox {
-    pub fn new(ty: LayoutTy) -> Self {
+    pub fn new(span: Option<NodeKey>, ty: LayoutTy) -> Self {
         Self {
+            span,
             taffy_cache: ::taffy::Cache::new(),
             layout: BoxLayout::new(),
 
@@ -188,12 +190,14 @@ pub enum InlineIns {
 
 pub struct LayoutContext {
     parley: parley::LayoutContext<()>,
+    inline_states: Vec<InlineState>,
 }
 
 impl LayoutContext {
     pub fn new() -> Self {
         Self {
             parley: parley::LayoutContext::new(),
+            inline_states: vec![],
         }
     }
 
@@ -217,3 +221,12 @@ impl LayoutContext {
         )
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+struct InlineState {
+    pub start: ClusterPath,
+    pub start_inline: InlineBoxKey,
+    pub span: NodeKey,
+}
+
+pub struct LayoutLineBox {}

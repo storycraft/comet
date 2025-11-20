@@ -64,7 +64,7 @@ impl CometRenderer {
                 let x1 = x0 + size.width;
                 let y1 = y0 + size.height;
 
-                if let Some(&span) = tree.spans.get_by_right(&id) {
+                if let Some(span) = node.span {
                     self.draw_block(ui, span, Rect::new(x0, y0, x1, y1), scene);
                 }
 
