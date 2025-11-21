@@ -18,7 +18,6 @@ pub struct Builder<'a> {
 impl Builder<'_> {
     /// Build siblings of [`Node`] inside given [`LayoutNode`]
     pub fn build(mut self, id: NodeKey, input_node_id: LayoutNodeKey) {
-        self.cx.inline.push();
         self.cx.parents.push(input_node_id);
         self.build_siblings(Some(id), false);
         // commit remaining inlines
@@ -163,8 +162,5 @@ impl Builder<'_> {
             self.cx.mappings.insert(span.id(), key);
         }
         self.add_child_id(key);
-        if self.cx.inline.is_empty() {
-            self.cx.inline.push();
-        }
     }
 }

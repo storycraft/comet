@@ -19,11 +19,6 @@ impl InlineStack {
         }
     }
 
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.states.is_empty()
-    }
-
     pub fn push(&mut self) {
         self.states.push(InlineState {
             node: InlineLayoutNode::new(None),
@@ -44,9 +39,10 @@ impl InlineStack {
     }
 
     pub fn add_ins(&mut self, tree: &mut LayoutTree, item: InlineIns) {
-        let Some(state) = self.states.last_mut() else {
-            return;
-        };
+        if self.states.is_empty() {
+            self.push();
+        }
+        let state = self.states.last_mut().unwrap();
 
         let key = tree.inlines.insert(item);
         if state.node.inline_start.is_none() {
@@ -58,15 +54,16 @@ impl InlineStack {
     }
 
     pub fn add_text(&mut self, text: &str) {
-        let Some(state) = self.states.last_mut() else {
-            return;
-        };
+        if self.states.is_empty() {
+            self.push();
+        }
+        let state = self.states.last_mut().unwrap();
         state.node.texts.push_str(text);
     }
 
     pub fn add_span(&mut self, span: NodeKey) {
         if self.states.is_empty() {
-            return;
+            self.push();
         }
         self.inline_mappings.push(span);
     }
