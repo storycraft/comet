@@ -40,7 +40,6 @@ impl InlineStack {
 
     pub fn add_ins(&mut self, tree: &mut LayoutInputTree, item: InlineIns) {
         let Some(state) = self.states.last_mut() else {
-            dbg!("ignored");
             return;
         };
 
