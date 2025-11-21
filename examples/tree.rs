@@ -9,22 +9,20 @@ use comet::{
         tree::{LayoutBoxTree, builder::LayoutTreeBuilderCx},
     },
     renderer::CometRenderer,
-    style::{
-        StyleRect, StyleUnit,
-        div::{BorderRadius, DisplayInner, DisplayOuter, Fill, Padding},
-    },
+    style::div::{DisplayInner, DisplayOuter, Fill, Padding},
     ui::{Node, NodeKey, Ui},
 };
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use kurbo::Affine;
+use parley::FontContext;
 use peniko::Brush;
 use taffy::{LengthPercentage, Rect};
 
 fn main() {
     let mut ui = Ui::new();
     let root = ui.create_node(Node::Div, ());
-    let text0 = ui.create_node(Node::Text("sample ".to_string()), ());
-    let text1 = ui.create_node(Node::Text(" text".to_string()), ());
+    let text0 = ui.create_node(Node::Text("sample".to_string()), ());
+    let text1 = ui.create_node(Node::Text("text".to_string()), ());
     let inner = ui.create_node(Node::Text("start".to_string()), ());
     let div = ui.create_node(
         Node::Div,
@@ -33,7 +31,14 @@ fn main() {
             Fill(Paint::Solid(AlphaColor::from_rgb8(255, 0, 0))),
         ),
     );
-    let div1 = ui.create_node(Node::Div, (DisplayOuter::Inline, DisplayInner::FlowRoot));
+    let div1 = ui.create_node(
+        Node::Div,
+        (
+            DisplayOuter::Inline,
+            DisplayInner::FlowRoot,
+            Fill(Paint::Solid(AlphaColor::from_rgb8(255, 255, 0))),
+        ),
+    );
 
     let div2 = ui.create_node(
         Node::Div,
@@ -45,12 +50,6 @@ fn main() {
                 right: LengthPercentage::length(16.0),
             }),
             Fill(Paint::Solid(AlphaColor::from_rgb8(0, 255, 0))),
-            BorderRadius(StyleRect {
-                top: StyleUnit::Px(8.0),
-                right: StyleUnit::ZERO,
-                bottom: StyleUnit::Px(8.0),
-                left: StyleUnit::ZERO,
-            }),
         ),
     );
 
@@ -75,6 +74,7 @@ fn main() {
 
     let mut layout_cx = LayoutContext::new();
     layout_cx.layout(
+        &mut FontContext::new(),
         &ui,
         &mut layout_tree,
         layout_root,
@@ -118,8 +118,8 @@ fn print_box_tree(ui: &Ui, layout_tree: &LayoutBoxTree, id: LayoutBoxKey, space:
         print!(" ");
     }
     println!(
-        "- id: {id:?} span: {:?} ty: {:?} location: {:?} size: {:?}",
-        node.span, node.ty, node.layout.location, node.layout.size
+        "- id: {id:?} ty: {:?} location: {:?} size: {:?}",
+        node.ty, node.layout.location, node.layout.size
     );
 
     match node.ty {

@@ -1,4 +1,7 @@
-use crate::style::{StyleUnit, define_style_props};
+use crate::{
+    style::{PropLevel, StyleUnit, define_style_props},
+    style_prop,
+};
 use anyrender::Paint;
 use parley::style::{
     FontFamily, FontFeature, FontSettings, FontStack, FontVariation, GenericFamily,
@@ -8,6 +11,9 @@ use peniko::Color;
 use std::borrow::Cow;
 
 pub use parley::style::{FontStyle, FontWeight};
+
+style_prop!(FontStyle = PropLevel::Layout);
+style_prop!(FontWeight = PropLevel::Layout);
 
 // TODO:: change names
 define_style_props!(

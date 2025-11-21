@@ -207,18 +207,18 @@ impl<K: Key, V> SlotTree<K, V> {
 
     /// Delete node including and its children
     pub fn delete_node(&mut self, id: K) -> Option<V> {
-        fn inner<K: Key, V>(tree: &mut SlotMap<K, Node<K, V>>, id: K) -> Option<Node<K, V>> {
-            let node = tree.remove(id)?;
-            let mut child = node.first_child;
-            while let Some(child_id) = child.take() {
-                inner(tree, child_id);
-                child = tree.remove(child_id).and_then(|node| node.next_sibling);
-            }
-
-            Some(node)
+        self.remove_parent(id);
+        let node = self.arena.remove(id)?;
+        let mut child = node.first_child;
+        while let Some(child_id) = child.take() {
+            self.delete_node(child_id);
+            child = self
+                .arena
+                .remove(child_id)
+                .and_then(|node| node.next_sibling);
         }
 
-        Some(inner(&mut self.arena, id)?.data)
+        Some(node.data)
     }
 
     #[inline]

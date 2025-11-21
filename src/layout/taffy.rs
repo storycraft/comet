@@ -19,6 +19,7 @@ use taffy::{
 };
 
 pub(super) struct TaffyLayoutImpl<'a> {
+    pub font_cx: &'a mut FontContext,
     pub cx: &'a mut LayoutContext,
     pub ui: &'a Ui,
     pub tree: &'a mut LayoutBoxTree,
@@ -65,8 +66,8 @@ impl TaffyLayoutImpl<'_> {
                 &taffy::Style::<String>::DEFAULT,
                 |_, _| 0.0,
                 |_, available_space| {
-                    // TODO:: move font context
-                    InlineLayout::new(&mut FontContext::new(), self).compute_layout(inline_box_key);
+                    InlineLayout::new(self.font_cx, self.cx, self.ui, self.tree)
+                        .compute_layout(inline_box_key);
 
                     let available_size = available_space.width.into_option();
                     let inline_box = &mut self.tree.inline_boxes[inline_box_key];
@@ -111,7 +112,7 @@ fn core_style_of<'a>(
     this: &'a TaffyLayoutImpl,
     node_id: taffy::NodeId,
 ) -> Option<TaffyCoreStyle<'a>> {
-    let span = this.tree.boxes[from_taffy_key(node_id)].span?;
+    let span = this.tree.boxes.get(from_taffy_key(node_id))?.span?;
     Some(TaffyCoreStyle(this.ui.props(span)))
 }
 
