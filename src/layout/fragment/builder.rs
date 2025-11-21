@@ -1,6 +1,6 @@
 mod inline;
 
-use parley::{ClusterPath, FontContext};
+use parley::FontContext;
 use slotmap::SecondaryMap;
 
 use crate::{

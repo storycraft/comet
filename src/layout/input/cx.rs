@@ -41,7 +41,7 @@ impl LayoutInputTreeContext {
         }
     }
 
-    pub fn invalidate(
+    pub fn invalidate_layout(
         &mut self,
         tree: &mut LayoutInputTree,
         node: NodeKey,
@@ -93,9 +93,7 @@ impl LayoutInputTreeContext {
         Builder { cx: self, ui, tree }.build(root_node, root_input_node);
     }
 
-    pub fn layout(&mut self, tree: &mut LayoutInputTree, root: InputNodeKey) {
-        
-    }
+    pub fn layout(&mut self, tree: &mut LayoutInputTree, root: InputNodeKey) {}
 }
 
 impl Default for LayoutInputTreeContext {

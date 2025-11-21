@@ -1,4 +1,3 @@
-
 use parley::{FontContext, InlineBox};
 use slotmap::Key;
 

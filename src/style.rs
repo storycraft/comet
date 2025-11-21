@@ -10,7 +10,7 @@ pub enum PropLevel {
     Paint = 0,
     /// Node's layout is invalidated
     Layout = 1,
-    /// Need to rebuild layout tree from the nearest block ancestor 
+    /// Need to rebuild layout tree from the nearest block ancestor
     FullLayout = 2,
 }
 

@@ -1,16 +1,33 @@
-pub mod builder;
+pub mod cx;
 mod inline;
 
 use slotmap::new_key_type;
+use taffy::Cache;
 
 use crate::{tree::slot::SlotTree, ui::NodeKey};
 
 #[derive(Debug, Clone)]
-pub enum InputNode {
+pub enum InputNodeTy {
     /// Block node with optional span
     Block(Option<NodeKey>),
     /// Inline node
     Inline(InlineNode),
+}
+
+#[derive(Debug, Clone)]
+/// A layout input block with constraints
+pub struct InputNode {
+    pub ty: InputNodeTy,
+    pub cache: Cache,
+}
+
+impl InputNode {
+    pub fn new(ty: InputNodeTy) -> Self {
+        Self {
+            ty,
+            cache: Cache::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -61,7 +78,7 @@ impl LayoutInputTree {
     }
 
     pub fn create_root(&mut self) -> InputNodeKey {
-        self.nodes.insert(InputNode::Block(None))
+        self.nodes.insert(InputNode::new(InputNodeTy::Block(None)))
     }
 
     pub fn clear(&mut self) {
@@ -71,14 +88,17 @@ impl LayoutInputTree {
 
     pub fn delete_node(&mut self, key: InputNodeKey) -> Option<InputNode> {
         let node = self.nodes.delete_node(key)?;
-        match node {
-            InputNode::Block(_) => {}
-            InputNode::Inline(ref node) => {
-                let mut next_id = node.inline_start;
-                while let Some(id) = next_id {
-                    next_id = self.inlines.next_sibling(id);
-                    self.inlines.delete_node(id);
-                }
+        let InputNodeTy::Inline(ref inline_node) = node.ty else {
+            return Some(node);
+        };
+
+        let mut next_id = inline_node.inline_start;
+        while let Some(id) = next_id {
+            next_id = self.inlines.next_sibling(id);
+            if let Some(deleted) = self.inlines.delete_node(id)
+                && let InlineIns::Node(input_node) = deleted
+            {
+                self.delete_node(input_node);
             }
         }
 

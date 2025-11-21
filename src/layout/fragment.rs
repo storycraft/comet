@@ -1,6 +1,6 @@
 pub mod builder;
-mod inline;
 pub mod cx;
+mod inline;
 
 use slotmap::{SlotMap, new_key_type};
 
