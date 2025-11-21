@@ -224,6 +224,8 @@ impl Builder<'_> {
             self.cx.mappings.insert(span.id(), key);
         }
         self.add_child_id(key);
-        self.cx.inline.push();
+        if self.cx.inline.is_empty() {
+            self.cx.inline.push();
+        }
     }
 }

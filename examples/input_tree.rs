@@ -54,7 +54,7 @@ fn print_input_box_tree(ui: &Ui, input_tree: &LayoutInputTree, id: InputNodeKey,
             println!(" ty: Block span: {span:?}");
         }
         InputNode::Inline(inline_node) => {
-            println!(" ty: Inline");
+            println!(" ty: Inline text: {}", inline_node.texts);
             for _ in 0..(space + 4) {
                 print!(" ");
             }

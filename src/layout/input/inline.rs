@@ -16,6 +16,11 @@ impl InlineStack {
         }
     }
 
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.states.is_empty()
+    }
+
     pub fn push(&mut self) {
         self.states.push(InlineState {
             node: InlineNode::new(None),
@@ -35,6 +40,7 @@ impl InlineStack {
 
     pub fn add_ins(&mut self, tree: &mut LayoutInputTree, item: InlineIns) {
         let Some(state) = self.states.last_mut() else {
+            dbg!("ignored");
             return;
         };
 
