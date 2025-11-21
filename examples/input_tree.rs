@@ -1,5 +1,7 @@
 use comet::{
-    layout::input::{InputNode, InputNodeKey, LayoutInputTree, builder::LayoutInputTreeContext},
+    layout::input::{
+        InputNode, InputNodeKey, InputNodeTy, LayoutInputTree, cx::LayoutInputTreeContext,
+    },
     style::div::{DisplayInner, DisplayOuter},
     ui::{Node, Ui},
 };
@@ -31,7 +33,7 @@ fn main() {
     let input_root = input_tree.create_root();
 
     let mut input_tree_cx = LayoutInputTreeContext::new();
-    input_tree_cx.build_full(&ui, root, &mut input_tree, input_root);
+    input_tree_cx.build(&ui, root, &mut input_tree, input_root);
 
     print_input_box_tree(&ui, &input_tree, input_root, 0);
 
@@ -49,11 +51,11 @@ fn print_input_box_tree(ui: &Ui, input_tree: &LayoutInputTree, id: InputNodeKey,
         println!();
         return;
     };
-    match node {
-        InputNode::Block(span) => {
+    match node.ty {
+        InputNodeTy::Block(span) => {
             println!(" ty: Block span: {span:?}");
         }
-        InputNode::Inline(inline_node) => {
+        InputNodeTy::Inline(ref inline_node) => {
             println!(" ty: Inline text: {}", inline_node.texts);
             for _ in 0..(space + 4) {
                 print!(" ");

@@ -46,12 +46,12 @@ impl LayoutInputTreeContext {
         tree: &mut LayoutInputTree,
         node: NodeKey,
     ) -> Option<InputNodeKey> {
-        let mut target_node_key = self.mappings.get(&node.id()).copied()?;
+        let target_node_key = *self.mappings.get(&node.id())?;
         self.invalidate_inner(tree, target_node_key);
         Some(target_node_key)
     }
 
-    pub fn reflow(
+    pub fn update(
         &mut self,
         ui: &Ui,
         tree: &mut LayoutInputTree,
@@ -78,12 +78,12 @@ impl LayoutInputTreeContext {
         let Some(first_child) = ui.first_child(target_span) else {
             return None;
         };
-        self.full_layout(ui, first_child, tree, target_node_key);
+        self.build(ui, first_child, tree, target_node_key);
 
         Some(target_node_key)
     }
 
-    pub fn full_layout(
+    pub fn build(
         &mut self,
         ui: &Ui,
         root_node: NodeKey,
@@ -91,6 +91,10 @@ impl LayoutInputTreeContext {
         root_input_node: InputNodeKey,
     ) {
         Builder { cx: self, ui, tree }.build(root_node, root_input_node);
+    }
+
+    pub fn layout(&mut self, tree: &mut LayoutInputTree, root: InputNodeKey) {
+        
     }
 }
 
