@@ -35,13 +35,13 @@ impl LayoutBoxTree {
     }
 
     pub fn create_root_box(&mut self) -> LayoutBoxKey {
-        self.boxes.insert(LayoutBox::new(None, LayoutTy::Block))
+        self.boxes.insert(LayoutBox::new(LayoutTy::Block(None)))
     }
 
     pub fn delete_layout_box(&mut self, key: LayoutBoxKey) -> Option<LayoutBox> {
         let layout_box = self.boxes.delete_node(key)?;
         match layout_box.ty {
-            LayoutTy::Block => {}
+            LayoutTy::Block(_) => {}
             LayoutTy::Inline(key) => {
                 self.delete_inline_box(key);
             }

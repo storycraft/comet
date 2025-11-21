@@ -114,7 +114,6 @@ impl Default for BoxLayout {
 
 #[derive(Debug)]
 pub struct LayoutBox {
-    pub span: Option<NodeKey>,
     pub(crate) taffy_cache: ::taffy::Cache,
     pub layout: BoxLayout,
 
@@ -122,9 +121,8 @@ pub struct LayoutBox {
 }
 
 impl LayoutBox {
-    pub fn new(span: Option<NodeKey>, ty: LayoutTy) -> Self {
+    pub fn new(ty: LayoutTy) -> Self {
         Self {
-            span,
             taffy_cache: ::taffy::Cache::new(),
             layout: BoxLayout::new(),
 
@@ -144,7 +142,7 @@ impl LayoutBox {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutTy {
-    Block,
+    Block(Option<NodeKey>),
     Inline(InlineBoxKey),
 }
 

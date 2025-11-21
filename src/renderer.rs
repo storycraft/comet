@@ -57,14 +57,14 @@ impl CometRenderer {
         self.offset_y += location.y;
 
         match node.ty {
-            LayoutTy::Block => {
+            LayoutTy::Block(span) => {
                 let size = node.layout.size;
                 let x0 = self.offset_x;
                 let y0 = self.offset_y;
                 let x1 = x0 + size.width;
                 let y1 = y0 + size.height;
 
-                if let Some(span) = node.span {
+                if let Some(span) = span {
                     self.draw_block(ui, span, Rect::new(x0, y0, x1, y1), scene);
                 }
 
