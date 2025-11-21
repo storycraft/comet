@@ -115,12 +115,12 @@ impl CometRenderer {
         if inline_state.start.line_index() == to.line_index() {
             if let Some(fill) = props.get::<Fill>() {
                 let x0 =
-                    self.offset_x as f64 + start_cluster.visual_offset().unwrap_or_default() as f64;
-                let y0 = self.offset_y as f64 + start_line_metrics.min_coord as f64;
-                let x1 = self.offset_x as f64
+                    self.offset_x + start_cluster.visual_offset().unwrap_or_default() as f64;
+                let y0 = self.offset_y + start_line_metrics.min_coord as f64;
+                let x1 = self.offset_x
                     + end_cluster.visual_offset().unwrap_or_default() as f64
                     + end_cluster.advance() as f64;
-                let y1 = self.offset_y as f64 + start_line_metrics.max_coord as f64;
+                let y1 = self.offset_y + start_line_metrics.max_coord as f64;
 
                 scene.fill(
                     peniko::Fill::EvenOdd,
@@ -142,12 +142,12 @@ impl CometRenderer {
                 &fill.0,
                 None,
                 &Rect::new(
-                    self.offset_x as f64 + start_cluster.visual_offset().unwrap_or_default() as f64,
-                    self.offset_y as f64 + start_line.metrics().min_coord as f64,
-                    self.offset_x as f64
+                    self.offset_x + start_cluster.visual_offset().unwrap_or_default() as f64,
+                    self.offset_y + start_line.metrics().min_coord as f64,
+                    self.offset_x
                         + (start_line_metrics.advance - start_line_metrics.trailing_whitespace)
                             as f64,
-                    self.offset_y as f64 + start_line.metrics().max_coord as f64,
+                    self.offset_y + start_line.metrics().max_coord as f64,
                 ),
             );
 
@@ -163,11 +163,11 @@ impl CometRenderer {
                     &fill.0,
                     None,
                     &Rect::new(
-                        self.offset_x as f64,
-                        self.offset_y as f64 + metrics.min_coord as f64,
-                        self.offset_x as f64
+                        self.offset_x,
+                        self.offset_y + metrics.min_coord as f64,
+                        self.offset_x
                             + (metrics.advance - metrics.trailing_whitespace) as f64,
-                        self.offset_y as f64 + metrics.max_coord as f64,
+                        self.offset_y + metrics.max_coord as f64,
                     ),
                 );
             }
@@ -178,12 +178,12 @@ impl CometRenderer {
                 &fill.0,
                 None,
                 &Rect::new(
-                    self.offset_x as f64,
-                    self.offset_y as f64 + end_line.metrics().min_coord as f64,
-                    self.offset_x as f64
+                    self.offset_x,
+                    self.offset_y + end_line.metrics().min_coord as f64,
+                    self.offset_x
                         + end_cluster.visual_offset().unwrap_or_default() as f64
                         + end_cluster.advance() as f64,
-                    self.offset_y as f64 + end_line.metrics().max_coord as f64,
+                    self.offset_y + end_line.metrics().max_coord as f64,
                 ),
             );
         }

@@ -1,4 +1,3 @@
-use core::mem;
 
 use parley::{FontContext, InlineBox};
 use slotmap::Key;
@@ -38,7 +37,7 @@ impl<'a> InlineLayout<'a> {
             return;
         };
 
-        let text = mem::replace(&mut inline_box.texts, String::new());
+        let text = std::mem::take(&mut inline_box.texts);
         let mut builder = self
             .cx
             .parley

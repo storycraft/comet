@@ -28,9 +28,7 @@ impl InlineStack {
     pub fn commit<'a>(&'a mut self) -> Option<(InlineNode, impl Iterator<Item = NodeKey> + 'a)> {
         let state = self.states.pop()?;
         let iter = self.inline_mappings.drain(state.span_start..);
-        if state.node.inline_start.is_none() {
-            return None;
-        }
+        state.node.inline_start?;
 
         Some((state.node, iter))
     }

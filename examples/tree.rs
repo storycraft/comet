@@ -6,7 +6,6 @@ use color::AlphaColor;
 use comet::{
     layout::{
         LayoutBoxKey, LayoutContext, LayoutTy,
-        input::{InputNode, InputNodeKey, LayoutInputTree, builder::LayoutInputTreeBuilderContext},
         tree::{LayoutBoxTree, builder::LayoutTreeBuilderCx},
     },
     renderer::CometRenderer,
@@ -73,16 +72,6 @@ fn main() {
         .builder(&ui, &mut layout_tree)
         .build(root, layout_root);
 
-    let mut input_tree = LayoutInputTree::new();
-    let input_root = input_tree.create_root();
-
-    let mut input_tree_builder = LayoutInputTreeBuilderContext::new();
-    input_tree_builder
-        .builder(&ui, &mut input_tree)
-        .build(root, input_root);
-
-    print_input_box_tree(&ui, &input_tree, input_root, 0);
-
     let mut layout_cx = LayoutContext::new();
     layout_cx.layout(
         &mut FontContext::new(),
@@ -118,37 +107,6 @@ fn main() {
     PngEncoder::new(BufWriter::new(fs::File::create("render.png").unwrap()))
         .write_image(&data, 256, 256, ExtendedColorType::Rgba8)
         .unwrap();
-}
-
-fn print_input_box_tree(ui: &Ui, input_tree: &LayoutInputTree, id: InputNodeKey, space: u32) {
-    let Some(node) = input_tree.nodes.get(id) else {
-        return;
-    };
-
-    for _ in 0..space {
-        print!(" ");
-    }
-    print!("- id: {id:?}");
-    match node {
-        InputNode::Block => {
-            println!(" ty: Block");
-        }
-        InputNode::Inline(inline_node) => {
-            println!(" ty: Inline");
-            for _ in 0..(space + 4) {
-                print!(" ");
-            }
-
-            for child_id in input_tree.inlines.cursor(inline_node.inline_start) {
-                print!("{:?}, ", input_tree.inlines[child_id]);
-            }
-            println!();
-        }
-    }
-
-    for child_id in input_tree.nodes.cursor(input_tree.nodes.first_child(id)) {
-        print_input_box_tree(ui, input_tree, child_id, space + 4);
-    }
 }
 
 fn print_box_tree(ui: &Ui, layout_tree: &LayoutBoxTree, id: LayoutBoxKey, space: u32) {

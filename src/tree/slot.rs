@@ -212,7 +212,10 @@ impl<K: Key, V> SlotTree<K, V> {
         let mut child = node.first_child;
         while let Some(child_id) = child.take() {
             self.delete_node(child_id);
-            child = self.arena.remove(child_id).and_then(|node| node.next_sibling);
+            child = self
+                .arena
+                .remove(child_id)
+                .and_then(|node| node.next_sibling);
         }
 
         Some(node.data)

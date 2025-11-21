@@ -193,6 +193,12 @@ pub struct LayoutContext {
     inline_states: Vec<InlineState>,
 }
 
+impl Default for LayoutContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LayoutContext {
     pub fn new() -> Self {
         Self {

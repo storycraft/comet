@@ -15,6 +15,12 @@ pub struct InlineStyleResolver {
     map: FxHashMap<u32, InlineStyleKey>,
 }
 
+impl Default for InlineStyleResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InlineStyleResolver {
     pub fn new() -> Self {
         Self {
