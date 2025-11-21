@@ -1,5 +1,5 @@
 use crate::{
-    layout::input::{InlineIns, InlineKey, InlineNode, InputNode, InputNodeKey, LayoutInputTree},
+    layout::input::{InlineIns, InlineKey, InlineNode, LayoutInputTree},
     ui::NodeKey,
 };
 
@@ -25,19 +25,13 @@ impl InlineStack {
     }
 
     #[must_use]
-    pub fn commit<'a>(
-        &'a mut self,
-        tree: &mut LayoutInputTree,
-    ) -> Option<(InputNodeKey, impl Iterator<Item = NodeKey> + 'a)> {
+    pub fn commit<'a>(&'a mut self) -> Option<(InlineNode, impl Iterator<Item = NodeKey> + 'a)> {
         let state = self.states.pop()?;
         if state.node.inline_start.is_none() {
             return None;
         }
 
-        Some((
-            tree.nodes.insert(InputNode::Inline(state.node)),
-            self.inline_mappings.drain(state.span_start..),
-        ))
+        Some((state.node, self.inline_mappings.drain(state.span_start..)))
     }
 
     pub fn add_ins(&mut self, tree: &mut LayoutInputTree, item: InlineIns) {
