@@ -80,7 +80,7 @@ impl LayoutTreeBuilder<'_> {
 
                 (_, _, DisplayOuter::Block) | (_, true, _) => {
                     self.commit_inlines();
-                    let layout_box_id = self.add_child(LayoutBox::new(Some(id), LayoutTy::Block));
+                    let layout_box_id = self.add_child(LayoutBox::new(LayoutTy::Block(Some(id))));
                     self.cx.parents.push(layout_box_id);
                     self.build_inner(id, display_inner);
                     self.commit_inlines();
@@ -120,7 +120,7 @@ impl LayoutTreeBuilder<'_> {
                 let layout_box_id = self
                     .tree
                     .boxes
-                    .insert(LayoutBox::new(Some(id), LayoutTy::Block));
+                    .insert(LayoutBox::new(LayoutTy::Block(Some(id))));
                 self.cx.parents.push(layout_box_id);
 
                 self.build_siblings(self.ui.first_child(id), true);
@@ -162,7 +162,7 @@ impl LayoutTreeBuilder<'_> {
         let key = self
             .tree
             .boxes
-            .insert(LayoutBox::new(None, LayoutTy::Inline(inline_key)));
+            .insert(LayoutBox::new(LayoutTy::Inline(inline_key)));
         self.add_child_id(key);
     }
 
@@ -182,7 +182,7 @@ impl LayoutTreeBuilder<'_> {
         };
 
         match parent_node.ty {
-            LayoutTy::Block => {
+            LayoutTy::Block(_) => {
                 self.tree.boxes.append(parent, id);
             }
 

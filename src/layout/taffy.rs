@@ -60,7 +60,7 @@ impl TaffyLayoutImpl<'_> {
         let node = &mut self.tree.boxes[id];
 
         match node.ty {
-            LayoutTy::Block => compute_block_layout(self, node_id, inputs),
+            LayoutTy::Block(_) => compute_block_layout(self, node_id, inputs),
             LayoutTy::Inline(inline_box_key) => compute_leaf_layout(
                 inputs,
                 &taffy::Style::<String>::DEFAULT,
@@ -112,8 +112,10 @@ fn core_style_of<'a>(
     this: &'a TaffyLayoutImpl,
     node_id: taffy::NodeId,
 ) -> Option<TaffyCoreStyle<'a>> {
-    let span = this.tree.boxes.get(from_taffy_key(node_id))?.span?;
-    Some(TaffyCoreStyle(this.ui.props(span)))
+    let LayoutTy::Block(span) = this.tree.boxes.get(from_taffy_key(node_id))?.ty else {
+        return None;
+    };
+    Some(TaffyCoreStyle(this.ui.props(span?)))
 }
 
 pub fn from_taffy_key(id: taffy::NodeId) -> LayoutBoxKey {
