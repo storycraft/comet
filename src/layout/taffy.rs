@@ -63,7 +63,7 @@ impl<'a> TaffyLayout<'a> {
     ) -> taffy::LayoutOutput {
         let id = from_taffy_key(node_id);
         let node = &mut self.tree.nodes[id];
-
+        let need_reshape = node.cache.is_empty();
         match node.ty {
             LayoutNodeTy::Block(_) => {
                 self.with_child(id, |this| compute_block_layout(this, node_id, inputs))
@@ -73,21 +73,23 @@ impl<'a> TaffyLayout<'a> {
                 &taffy::Style::<String>::DEFAULT,
                 |_, _| 0.0,
                 |_, available_space| {
-                    InlineLayout::new(self.font_cx, self.cx, self.ui, self.tree)
-                        .compute_layout(inline_node_key);
+                    if need_reshape {
+                        InlineLayout::new(self.font_cx, self.cx, self.ui, self.tree)
+                            .compute_layout(inline_node_key);
+                    }
 
                     let available_size = available_space.width.into_option();
-                    let inline_box = &mut self.tree.inline_nodes[inline_node_key];
-                    inline_box.layout.break_all_lines(available_size);
-                    inline_box.layout.align(
+                    let inline_node = &mut self.tree.inline_nodes[inline_node_key];
+                    inline_node.layout.break_all_lines(available_size);
+                    inline_node.layout.align(
                         available_size,
                         Alignment::Start,
                         AlignmentOptions::default(),
                     );
 
                     taffy::Size {
-                        width: inline_box.layout.full_width(),
-                        height: inline_box.layout.height(),
+                        width: inline_node.layout.full_width(),
+                        height: inline_node.layout.height(),
                     }
                 },
             ),
