@@ -3,10 +3,7 @@ use parley::TextStyle;
 use rustc_hash::FxHashMap;
 use slotmap::{SlotMap, new_key_type};
 
-use crate::{
-    layout::{LayoutBoxKey, tree::LayoutBoxTree},
-    ui::NodeKey,
-};
+use crate::ui::NodeKey;
 
 new_key_type! { pub struct InlineStyleKey; }
 
@@ -28,19 +25,6 @@ impl InlineStyleResolver {
             map: FxHashMap::default(),
         }
     }
-
-    pub fn resolve(
-        &mut self,
-        tree: &LayoutBoxTree,
-        root: LayoutBoxKey,
-        key: LayoutBoxKey,
-    ) -> Option<InlineStyleKey> {
-        let span = find_nearest_span(tree, key)?;
-
-        None
-    }
-
-    fn resolve_inner(&mut self, tree: &LayoutBoxTree, key: NodeKey) {}
 }
 
 pub struct InlineStyle {
@@ -49,7 +33,7 @@ pub struct InlineStyle {
     pub text: TextStyle<'static, ()>,
 }
 
-fn find_nearest_span(tree: &LayoutBoxTree, key: LayoutBoxKey) -> Option<NodeKey> {
+fn find_nearest_span() -> Option<NodeKey> {
     todo!()
     // let node = tree.boxes.get(key)?;
     // match node.span {

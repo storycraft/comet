@@ -6,7 +6,10 @@ use peniko::StyleRef;
 use slotmap::KeyData;
 
 use crate::{
-    layout::{InlineBoxKey, InlineIns, LayoutBoxKey, LayoutTy, tree::LayoutBoxTree},
+    layout::tree::{
+        LayoutTree,
+        node::{InlineIns, InlineLayoutNodeKey, LayoutNodeKey, LayoutNodeTy},
+    },
     style::div::{BorderFill, Fill},
     ui::{NodeKey, Ui},
 };
@@ -31,8 +34,8 @@ impl CometRenderer {
     pub fn draw(
         &mut self,
         ui: &Ui,
-        tree: &LayoutBoxTree,
-        id: LayoutBoxKey,
+        tree: &LayoutTree,
+        id: LayoutNodeKey,
         scene: &mut impl PaintScene,
     ) {
         self.offset_x = 0.0;
@@ -43,11 +46,11 @@ impl CometRenderer {
     fn draw_node(
         &mut self,
         ui: &Ui,
-        tree: &LayoutBoxTree,
-        id: LayoutBoxKey,
+        tree: &LayoutTree,
+        id: LayoutNodeKey,
         scene: &mut impl PaintScene,
     ) {
-        let Some(node) = tree.boxes.get(id) else {
+        let Some(node) = tree.nodes.get(id) else {
             return;
         };
 
@@ -57,7 +60,7 @@ impl CometRenderer {
         self.offset_y += location.y;
 
         match node.ty {
-            LayoutTy::Block(span) => {
+            LayoutNodeTy::Block(span) => {
                 let size = node.layout.size;
                 let x0 = self.offset_x;
                 let y0 = self.offset_y;
@@ -71,16 +74,16 @@ impl CometRenderer {
                 let next_start = self.inline_states.len();
                 self.inline_start.push(next_start);
 
-                for child_id in tree.boxes.cursor(tree.boxes.first_child(id)) {
+                for child_id in tree.nodes.cursor(tree.nodes.first_child(id)) {
                     self.draw_node(ui, tree, child_id, scene);
                 }
 
                 self.inline_start.pop();
             }
 
-            LayoutTy::Inline(inline_box_id) => {
-                self.draw_inline_background(ui, tree, inline_box_id, scene);
-                self.draw_inline_box(ui, tree, inline_box_id, scene);
+            LayoutNodeTy::Inline(inline_node_id) => {
+                self.draw_inline_background(ui, tree, inline_node_id, scene);
+                self.draw_inline_box(ui, tree, inline_node_id, scene);
             }
         }
 
@@ -93,7 +96,7 @@ impl CometRenderer {
         inline_state: &InlineState,
         ui: &Ui,
         to: ClusterPath,
-        end_inline: InlineBoxKey,
+        end_inline: InlineLayoutNodeKey,
         layout: &parley::Layout<()>,
         scene: &mut impl PaintScene,
     ) {
@@ -191,11 +194,11 @@ impl CometRenderer {
     fn draw_inline_background(
         &mut self,
         ui: &Ui,
-        tree: &LayoutBoxTree,
-        id: InlineBoxKey,
+        tree: &LayoutTree,
+        id: InlineLayoutNodeKey,
         scene: &mut impl PaintScene,
     ) {
-        let Some(node) = tree.inline_boxes.get(id) else {
+        let Some(node) = tree.inline_nodes.get(id) else {
             return;
         };
 
@@ -213,8 +216,7 @@ impl CometRenderer {
                 }
 
                 InlineIns::PushInlineBox(span) => {
-                    let Some(cluster) = Cluster::from_byte_index(&node.parley_layout, text_index)
-                    else {
+                    let Some(cluster) = Cluster::from_byte_index(&node.layout, text_index) else {
                         continue;
                     };
                     self.inline_states.push(InlineState {
@@ -228,8 +230,7 @@ impl CometRenderer {
                     let Some(inline_state) = self.inline_states.pop() else {
                         continue;
                     };
-                    let Some(cluster) =
-                        Cluster::from_byte_index(&node.parley_layout, text_index - 1)
+                    let Some(cluster) = Cluster::from_byte_index(&node.layout, text_index - 1)
                     else {
                         continue;
                     };
@@ -239,12 +240,12 @@ impl CometRenderer {
                         ui,
                         cluster.path(),
                         id,
-                        &node.parley_layout,
+                        &node.layout,
                         scene,
                     );
                 }
 
-                InlineIns::Box(_) => {}
+                InlineIns::Node(_) => {}
             }
         }
     }
@@ -252,15 +253,15 @@ impl CometRenderer {
     fn draw_inline_box(
         &mut self,
         ui: &Ui,
-        tree: &LayoutBoxTree,
-        id: InlineBoxKey,
+        tree: &LayoutTree,
+        id: InlineLayoutNodeKey,
         scene: &mut impl PaintScene,
     ) {
-        let Some(node) = tree.inline_boxes.get(id) else {
+        let Some(node) = tree.inline_nodes.get(id) else {
             return;
         };
 
-        for line in node.parley_layout.lines() {
+        for line in node.layout.lines() {
             // TODO:: proper height calc
             let mut height_offset = 0.0f32;
             for item in line.items() {
@@ -302,7 +303,7 @@ impl CometRenderer {
                         self.draw_node(
                             ui,
                             tree,
-                            LayoutBoxKey::from(KeyData::from_ffi(inline_box.id)),
+                            LayoutNodeKey::from(KeyData::from_ffi(inline_box.id)),
                             scene,
                         );
 
@@ -352,6 +353,6 @@ impl Default for CometRenderer {
 #[derive(Debug, Clone, Copy)]
 struct InlineState {
     pub start: ClusterPath,
-    pub start_inline: InlineBoxKey,
+    pub start_inline: InlineLayoutNodeKey,
     pub span: NodeKey,
 }

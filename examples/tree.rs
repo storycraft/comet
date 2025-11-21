@@ -5,12 +5,12 @@ use anyrender_vello::VelloImageRenderer;
 use color::AlphaColor;
 use comet::{
     layout::{
-        LayoutBoxKey, LayoutContext, LayoutTy,
-        tree::{LayoutBoxTree, builder::LayoutTreeBuilderCx},
+        cx::LayoutContext,
+        tree::{LayoutTree, node::{LayoutNodeKey, LayoutNodeTy}},
     },
     renderer::CometRenderer,
     style::div::{DisplayInner, DisplayOuter, Fill, Padding},
-    ui::{Node, NodeKey, Ui},
+    ui::{Node, NodeKey, Ui, layout::UiLayoutBuilder},
 };
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use kurbo::Affine;
@@ -64,13 +64,11 @@ fn main() {
     ui.append(div2, inner2);
     ui.append(root, text2);
 
-    let mut layout_tree = LayoutBoxTree::new();
-    let layout_root = layout_tree.create_root_box();
+    let mut layout_tree = LayoutTree::new();
+    let layout_root = layout_tree.create_root();
 
-    let mut tree_builder = LayoutTreeBuilderCx::new();
-    tree_builder
-        .builder(&ui, &mut layout_tree)
-        .build(root, layout_root);
+    let mut tree_builder = UiLayoutBuilder::new();
+    tree_builder.build(&ui, root, &mut layout_tree, layout_root);
 
     let mut layout_cx = LayoutContext::new();
     layout_cx.layout(
@@ -84,7 +82,7 @@ fn main() {
         },
     );
 
-    print_box_tree(&ui, &layout_tree, layout_root, 0);
+    print_layout_tree(&ui, &layout_tree, layout_root, 0);
 
     print(&ui, root, 0);
 
@@ -109,8 +107,8 @@ fn main() {
         .unwrap();
 }
 
-fn print_box_tree(ui: &Ui, layout_tree: &LayoutBoxTree, id: LayoutBoxKey, space: u32) {
-    let Some(node) = layout_tree.boxes.get(id) else {
+fn print_layout_tree(ui: &Ui, layout_tree: &LayoutTree, id: LayoutNodeKey, space: u32) {
+    let Some(node) = layout_tree.nodes.get(id) else {
         return;
     };
 
@@ -123,9 +121,9 @@ fn print_box_tree(ui: &Ui, layout_tree: &LayoutBoxTree, id: LayoutBoxKey, space:
     );
 
     match node.ty {
-        LayoutTy::Block(_) => {}
-        LayoutTy::Inline(inline_box_id) => {
-            let inline_box = &layout_tree.inline_boxes[inline_box_id];
+        LayoutNodeTy::Block(_) => {}
+        LayoutNodeTy::Inline(inline_node_id) => {
+            let inline_box = &layout_tree.inline_nodes[inline_node_id];
             for _ in 0..(space + 4) {
                 print!(" ");
             }
@@ -137,8 +135,8 @@ fn print_box_tree(ui: &Ui, layout_tree: &LayoutBoxTree, id: LayoutBoxKey, space:
         }
     }
 
-    for child_id in layout_tree.boxes.cursor(layout_tree.boxes.first_child(id)) {
-        print_box_tree(ui, layout_tree, child_id, space + 4);
+    for child_id in layout_tree.nodes.cursor(layout_tree.nodes.first_child(id)) {
+        print_layout_tree(ui, layout_tree, child_id, space + 4);
     }
 }
 

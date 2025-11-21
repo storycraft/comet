@@ -1,27 +1,15 @@
 pub mod components;
-pub mod fragment;
-pub mod input;
+pub mod cx;
 pub mod layer;
 pub mod resolver;
 mod taffy;
 pub mod tree;
 
-use ::taffy::AvailableSpace;
 use kurbo::{Point, Rect, Size};
-use parley::{ClusterPath, FontContext};
-use slotmap::new_key_type;
-
-use crate::{
-    layout::{
-        taffy::{TaffyLayoutImpl, to_taffy_key},
-        tree::LayoutBoxTree,
-    },
-    ui::{NodeKey, Ui},
-};
 
 pub type ContainerLayoutFn = fn();
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq)]
 #[repr(transparent)]
 pub struct ContainerLayout(ContainerLayoutFn);
 
@@ -111,126 +99,3 @@ impl Default for BoxLayout {
         Self::new()
     }
 }
-
-#[derive(Debug)]
-pub struct LayoutBox {
-    pub(crate) taffy_cache: ::taffy::Cache,
-    pub layout: BoxLayout,
-
-    pub ty: LayoutTy,
-}
-
-impl LayoutBox {
-    pub fn new(ty: LayoutTy) -> Self {
-        Self {
-            taffy_cache: ::taffy::Cache::new(),
-            layout: BoxLayout::new(),
-
-            ty,
-        }
-    }
-
-    pub fn invalidated(&self) -> bool {
-        self.taffy_cache.is_empty()
-    }
-
-    pub fn invalidate(&mut self) {
-        self.taffy_cache.clear();
-        self.layout = BoxLayout::new();
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LayoutTy {
-    Block(Option<NodeKey>),
-    Inline(InlineBoxKey),
-}
-
-new_key_type! {
-    pub struct LayoutBoxKey;
-    pub struct InlineBoxKey;
-    pub struct InlineKey;
-}
-
-pub struct InlineBox {
-    pub parley_layout: parley::Layout<()>,
-    pub inline_start: Option<InlineKey>,
-    pub texts: String,
-}
-
-impl InlineBox {
-    pub fn new() -> Self {
-        Self {
-            parley_layout: parley::Layout::new(),
-            inline_start: None,
-            texts: String::new(),
-        }
-    }
-}
-
-impl Default for InlineBox {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum InlineIns {
-    /// A text with length
-    Text(usize),
-    /// Push new inline box
-    PushInlineBox(NodeKey),
-    /// Pop inline box
-    PopInlineBox,
-    /// A new layout box
-    Box(LayoutBoxKey),
-}
-
-pub struct LayoutContext {
-    parley: parley::LayoutContext<()>,
-    inline_states: Vec<InlineState>,
-}
-
-impl Default for LayoutContext {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl LayoutContext {
-    pub fn new() -> Self {
-        Self {
-            parley: parley::LayoutContext::new(),
-            inline_states: vec![],
-        }
-    }
-
-    pub fn layout<'a>(
-        &mut self,
-        font_cx: &'a mut FontContext,
-        ui: &'a Ui,
-        tree: &'a mut LayoutBoxTree,
-        root: LayoutBoxKey,
-        available_space: ::taffy::Size<AvailableSpace>,
-    ) {
-        ::taffy::compute::compute_root_layout(
-            &mut TaffyLayoutImpl {
-                font_cx,
-                cx: self,
-                ui,
-                tree,
-            },
-            to_taffy_key(root),
-            available_space,
-        )
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct InlineState {
-    pub start: ClusterPath,
-    pub start_inline: InlineBoxKey,
-    pub span: NodeKey,
-}
-
-pub struct LayoutLineBox {}

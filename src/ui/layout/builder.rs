@@ -1,21 +1,23 @@
+pub mod inline;
+
 use crate::{
-    layout::input::{
-        InlineIns, InputNode, InputNodeKey, InputNodeTy, LayoutInputTree,
-        cx::LayoutInputTreeContext,
+    layout::tree::{
+        LayoutTree,
+        node::{InlineIns, LayoutNode, LayoutNodeKey, LayoutNodeTy},
     },
     style::div::{DisplayInner, DisplayOuter},
-    ui::{Node, NodeKey, Ui},
+    ui::{Node, NodeKey, Ui, layout::UiLayoutBuilder},
 };
 
 pub struct Builder<'a> {
-    pub cx: &'a mut LayoutInputTreeContext,
+    pub cx: &'a mut UiLayoutBuilder,
     pub ui: &'a Ui,
-    pub tree: &'a mut LayoutInputTree,
+    pub tree: &'a mut LayoutTree,
 }
 
 impl Builder<'_> {
-    /// Build siblings of [`Node`] inside given [`InputNode`]
-    pub fn build(mut self, id: NodeKey, input_node_id: InputNodeKey) {
+    /// Build siblings of [`Node`] inside given [`LayoutNode`]
+    pub fn build(mut self, id: NodeKey, input_node_id: LayoutNodeKey) {
         self.cx.inline.push();
         self.cx.parents.push(input_node_id);
         self.build_siblings(Some(id), false);
@@ -79,7 +81,7 @@ impl Builder<'_> {
                 (_, _, DisplayOuter::Block) | (_, true, _) => {
                     self.commit_inlines();
                     let layout_box_id =
-                        self.add_child(InputNode::new(InputNodeTy::Block(Some(id))));
+                        self.add_child(LayoutNode::new(LayoutNodeTy::Block(Some(id))));
                     self.cx.parents.push(layout_box_id);
                     self.build_inner(id, display_inner);
                     self.commit_inlines();
@@ -100,7 +102,7 @@ impl Builder<'_> {
                 let block_node_id = self
                     .tree
                     .nodes
-                    .insert(InputNode::new(InputNodeTy::Block(Some(id))));
+                    .insert(LayoutNode::new(LayoutNodeTy::Block(Some(id))));
                 self.cx.parents.push(block_node_id);
 
                 self.build_siblings(self.ui.first_child(id), false);
@@ -120,13 +122,13 @@ impl Builder<'_> {
         }
     }
 
-    fn add_child(&mut self, node: InputNode) -> InputNodeKey {
+    fn add_child(&mut self, node: LayoutNode) -> LayoutNodeKey {
         let id = self.tree.nodes.insert(node);
         self.add_child_id(id);
         id
     }
 
-    fn add_child_id(&mut self, id: InputNodeKey) {
+    fn add_child_id(&mut self, id: LayoutNodeKey) {
         let Some(parent) = self.cx.parents.last().copied() else {
             return;
         };
@@ -136,21 +138,14 @@ impl Builder<'_> {
         };
 
         match parent_node.ty {
-            InputNodeTy::Block(span) => {
+            LayoutNodeTy::Block(span) => {
                 if let Some(span) = span {
                     self.cx.mappings.insert(span.id(), id);
                 }
                 self.tree.nodes.append(parent, id);
             }
 
-            InputNodeTy::Inline(ref inline_node) => {
-                let Some(item_start) = inline_node.inline_start else {
-                    return;
-                };
-
-                let inline_id = self.tree.inlines.insert(InlineIns::Node(id));
-                self.tree.inlines.after(item_start, inline_id);
-            }
+            LayoutNodeTy::Inline(_) => {}
         }
     }
 
@@ -158,10 +153,12 @@ impl Builder<'_> {
         let Some((inline_node, mappings)) = self.cx.inline.commit() else {
             return;
         };
+
+        let inline_input_key = self.tree.inline_nodes.insert(inline_node);
         let key = self
             .tree
             .nodes
-            .insert(InputNode::new(InputNodeTy::Inline(inline_node)));
+            .insert(LayoutNode::new(LayoutNodeTy::Inline(inline_input_key)));
         for span in mappings {
             self.cx.mappings.insert(span.id(), key);
         }

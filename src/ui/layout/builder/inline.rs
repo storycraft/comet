@@ -1,5 +1,8 @@
 use crate::{
-    layout::input::{InlineIns, InlineKey, InlineNode, LayoutInputTree},
+    layout::tree::{
+        LayoutTree,
+        node::{InlineIns, InlineKey, InlineLayoutNode},
+    },
     ui::NodeKey,
 };
 
@@ -23,14 +26,16 @@ impl InlineStack {
 
     pub fn push(&mut self) {
         self.states.push(InlineState {
-            node: InlineNode::new(None),
+            node: InlineLayoutNode::new(None),
             last_inline: None,
             span_start: self.inline_mappings.len(),
         });
     }
 
     #[must_use]
-    pub fn commit<'a>(&'a mut self) -> Option<(InlineNode, impl Iterator<Item = NodeKey> + 'a)> {
+    pub fn commit<'a>(
+        &'a mut self,
+    ) -> Option<(InlineLayoutNode, impl Iterator<Item = NodeKey> + 'a)> {
         let state = self.states.pop()?;
         let iter = self.inline_mappings.drain(state.span_start..);
         state.node.inline_start?;
@@ -38,7 +43,7 @@ impl InlineStack {
         Some((state.node, iter))
     }
 
-    pub fn add_ins(&mut self, tree: &mut LayoutInputTree, item: InlineIns) {
+    pub fn add_ins(&mut self, tree: &mut LayoutTree, item: InlineIns) {
         let Some(state) = self.states.last_mut() else {
             return;
         };
@@ -68,7 +73,7 @@ impl InlineStack {
 }
 
 struct InlineState {
-    node: InlineNode,
+    node: InlineLayoutNode,
     last_inline: Option<InlineKey>,
     span_start: usize,
 }

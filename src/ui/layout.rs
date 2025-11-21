@@ -3,21 +3,26 @@ mod builder;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    layout::input::{
-        InputNodeKey, InputNodeTy, LayoutInputTree, cx::builder::Builder, inline::InlineStack,
+    layout::tree::{
+        LayoutTree,
+        node::{LayoutNodeKey, LayoutNodeTy},
     },
-    ui::{NodeKey, Ui},
+    ui::{
+        NodeKey, Ui,
+        layout::builder::{Builder, inline::InlineStack},
+    },
 };
 
-pub struct LayoutInputTreeContext {
-    parents: Vec<InputNodeKey>,
+/// Incremental [`LayoutTree`] builder
+pub struct UiLayoutBuilder {
+    parents: Vec<LayoutNodeKey>,
     inline: InlineStack,
 
-    /// Mappings from [`NodeKey`] to [`InputNodeKey`] for invalidation
-    mappings: FxHashMap<u32, InputNodeKey>,
+    /// Mappings from [`NodeKey`] to [`LayoutNodeKey`] for invalidation
+    mappings: FxHashMap<u32, LayoutNodeKey>,
 }
 
-impl LayoutInputTreeContext {
+impl UiLayoutBuilder {
     pub fn new() -> Self {
         Self {
             parents: vec![],
@@ -26,42 +31,27 @@ impl LayoutInputTreeContext {
         }
     }
 
-    fn invalidate_inner(&mut self, tree: &mut LayoutInputTree, key: InputNodeKey) {
-        let Some(node) = tree.nodes.get_mut(key) else {
-            return;
-        };
-        if node.cache.is_empty() {
-            return;
-        }
-
-        node.cache.clear();
-        let parent = tree.nodes.parent(key);
-        if let Some(parent) = parent {
-            self.invalidate_inner(tree, parent);
-        }
-    }
-
     pub fn invalidate_layout(
         &mut self,
-        tree: &mut LayoutInputTree,
+        tree: &mut LayoutTree,
         node: NodeKey,
-    ) -> Option<InputNodeKey> {
+    ) -> Option<LayoutNodeKey> {
         let target_node_key = *self.mappings.get(&node.id())?;
-        self.invalidate_inner(tree, target_node_key);
+        tree.invalidate(target_node_key);
         Some(target_node_key)
     }
 
     pub fn update(
         &mut self,
         ui: &Ui,
-        tree: &mut LayoutInputTree,
+        tree: &mut LayoutTree,
         node: NodeKey,
-    ) -> Option<InputNodeKey> {
+    ) -> Option<LayoutNodeKey> {
         let mut target_node_key = self.mappings.get(&node.id()).copied()?;
         // Find nearest spanned block parent
         let target_span = loop {
             let node = tree.nodes.get(target_node_key)?;
-            if let InputNodeTy::Block(Some(span)) = node.ty {
+            if let LayoutNodeTy::Block(Some(span)) = node.ty {
                 break span;
             }
 
@@ -87,16 +77,14 @@ impl LayoutInputTreeContext {
         &mut self,
         ui: &Ui,
         root_node: NodeKey,
-        tree: &mut LayoutInputTree,
-        root_input_node: InputNodeKey,
+        tree: &mut LayoutTree,
+        root_input_node: LayoutNodeKey,
     ) {
         Builder { cx: self, ui, tree }.build(root_node, root_input_node);
     }
-
-    pub fn layout(&mut self, tree: &mut LayoutInputTree, root: InputNodeKey) {}
 }
 
-impl Default for LayoutInputTreeContext {
+impl Default for UiLayoutBuilder {
     fn default() -> Self {
         Self::new()
     }

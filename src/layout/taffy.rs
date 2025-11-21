@@ -5,27 +5,97 @@ mod traverse;
 
 use crate::{
     layout::{
-        BoxLayout, LayoutBoxKey, LayoutContext, LayoutTy,
+        BoxLayout,
+        cx::LayoutContext,
         taffy::{inline::InlineLayout, style::TaffyCoreStyle},
-        tree::LayoutBoxTree,
+        tree::{
+            LayoutTree,
+            node::{LayoutNodeKey, LayoutNodeTy},
+        },
     },
     ui::Ui,
 };
 use parley::{Alignment, AlignmentOptions, FontContext};
 use slotmap::{Key, KeyData};
 use taffy::{
-    LayoutBlockContainer, LayoutPartialTree, compute_block_layout, compute_cached_layout,
-    compute_leaf_layout,
+    AvailableSpace, LayoutBlockContainer, LayoutPartialTree, compute_block_layout,
+    compute_cached_layout, compute_leaf_layout,
 };
 
-pub(super) struct TaffyLayoutImpl<'a> {
-    pub font_cx: &'a mut FontContext,
-    pub cx: &'a mut LayoutContext,
-    pub ui: &'a Ui,
-    pub tree: &'a mut LayoutBoxTree,
+pub(super) struct TaffyLayout<'a> {
+    font_cx: &'a mut FontContext,
+    cx: &'a mut LayoutContext,
+    ui: &'a Ui,
+    tree: &'a mut LayoutTree,
 }
 
-impl LayoutPartialTree for TaffyLayoutImpl<'_> {
+impl<'a> TaffyLayout<'a> {
+    pub fn layout(
+        font_cx: &'a mut FontContext,
+        cx: &'a mut LayoutContext,
+        ui: &'a Ui,
+        tree: &'a mut LayoutTree,
+        root: LayoutNodeKey,
+        available_space: ::taffy::Size<AvailableSpace>,
+    ) {
+        Self {
+            font_cx,
+            cx,
+            ui,
+            tree,
+        }
+        .with_child(root, |this| {
+            ::taffy::compute::compute_root_layout(this, to_taffy_key(root), available_space)
+        })
+    }
+
+    fn with_child<R>(&mut self, parent: LayoutNodeKey, f: impl FnOnce(&mut Self) -> R) -> R {
+        self.cx.children.push(self.tree, parent);
+        f(&mut scopeguard::guard(self, |this| {
+            this.cx.children.pop();
+        }))
+    }
+
+    fn layout_child(
+        &mut self,
+        node_id: taffy::NodeId,
+        inputs: taffy::LayoutInput,
+    ) -> taffy::LayoutOutput {
+        let id = from_taffy_key(node_id);
+        let node = &mut self.tree.nodes[id];
+
+        match node.ty {
+            LayoutNodeTy::Block(_) => {
+                self.with_child(id, |this| compute_block_layout(this, node_id, inputs))
+            }
+            LayoutNodeTy::Inline(inline_node_key) => compute_leaf_layout(
+                inputs,
+                &taffy::Style::<String>::DEFAULT,
+                |_, _| 0.0,
+                |_, available_space| {
+                    InlineLayout::new(self.font_cx, self.cx, self.ui, self.tree)
+                        .compute_layout(inline_node_key);
+
+                    let available_size = available_space.width.into_option();
+                    let inline_box = &mut self.tree.inline_nodes[inline_node_key];
+                    inline_box.layout.break_all_lines(available_size);
+                    inline_box.layout.align(
+                        available_size,
+                        Alignment::Start,
+                        AlignmentOptions::default(),
+                    );
+
+                    taffy::Size {
+                        width: inline_box.layout.full_width(),
+                        height: inline_box.layout.height(),
+                    }
+                },
+            ),
+        }
+    }
+}
+
+impl LayoutPartialTree for TaffyLayout<'_> {
     type CoreContainerStyle<'a>
         = TaffyCoreStyle<'a>
     where
@@ -37,7 +107,7 @@ impl LayoutPartialTree for TaffyLayoutImpl<'_> {
     }
 
     fn set_unrounded_layout(&mut self, node_id: taffy::NodeId, layout: &taffy::Layout) {
-        self.tree.boxes[from_taffy_key(node_id)].layout = BoxLayout::from_taffy_layout(*layout);
+        self.tree.nodes[from_taffy_key(node_id)].layout = BoxLayout::from_taffy_layout(*layout);
     }
 
     #[inline]
@@ -46,49 +116,11 @@ impl LayoutPartialTree for TaffyLayoutImpl<'_> {
         node_id: taffy::NodeId,
         inputs: taffy::LayoutInput,
     ) -> taffy::LayoutOutput {
-        compute_cached_layout(self, node_id, inputs, Self::compute_uncached_layout)
+        compute_cached_layout(self, node_id, inputs, Self::layout_child)
     }
 }
 
-impl TaffyLayoutImpl<'_> {
-    fn compute_uncached_layout(
-        &mut self,
-        node_id: taffy::NodeId,
-        inputs: taffy::LayoutInput,
-    ) -> taffy::LayoutOutput {
-        let id = from_taffy_key(node_id);
-        let node = &mut self.tree.boxes[id];
-
-        match node.ty {
-            LayoutTy::Block(_) => compute_block_layout(self, node_id, inputs),
-            LayoutTy::Inline(inline_box_key) => compute_leaf_layout(
-                inputs,
-                &taffy::Style::<String>::DEFAULT,
-                |_, _| 0.0,
-                |_, available_space| {
-                    InlineLayout::new(self.font_cx, self.cx, self.ui, self.tree)
-                        .compute_layout(inline_box_key);
-
-                    let available_size = available_space.width.into_option();
-                    let inline_box = &mut self.tree.inline_boxes[inline_box_key];
-                    inline_box.parley_layout.break_all_lines(available_size);
-                    inline_box.parley_layout.align(
-                        available_size,
-                        Alignment::Start,
-                        AlignmentOptions::default(),
-                    );
-
-                    taffy::Size {
-                        width: inline_box.parley_layout.full_width(),
-                        height: inline_box.parley_layout.height(),
-                    }
-                },
-            ),
-        }
-    }
-}
-
-impl LayoutBlockContainer for TaffyLayoutImpl<'_> {
+impl LayoutBlockContainer for TaffyLayout<'_> {
     type BlockContainerStyle<'a>
         = TaffyCoreStyle<'a>
     where
@@ -108,20 +140,18 @@ impl LayoutBlockContainer for TaffyLayoutImpl<'_> {
     }
 }
 
-fn core_style_of<'a>(
-    this: &'a TaffyLayoutImpl,
-    node_id: taffy::NodeId,
-) -> Option<TaffyCoreStyle<'a>> {
-    let LayoutTy::Block(span) = this.tree.boxes.get(from_taffy_key(node_id))?.ty else {
+fn core_style_of<'a>(this: &'a TaffyLayout, node_id: taffy::NodeId) -> Option<TaffyCoreStyle<'a>> {
+    let LayoutNodeTy::Block(span) = this.tree.nodes.get(from_taffy_key(node_id))?.ty else {
         return None;
     };
+
     Some(TaffyCoreStyle(this.ui.props(span?)))
 }
 
-pub fn from_taffy_key(id: taffy::NodeId) -> LayoutBoxKey {
-    LayoutBoxKey::from(KeyData::from_ffi(id.into()))
+pub fn from_taffy_key(id: taffy::NodeId) -> LayoutNodeKey {
+    LayoutNodeKey::from(KeyData::from_ffi(id.into()))
 }
 
-pub fn to_taffy_key(id: LayoutBoxKey) -> taffy::NodeId {
+pub fn to_taffy_key(id: LayoutNodeKey) -> taffy::NodeId {
     taffy::NodeId::new(id.data().as_ffi())
 }

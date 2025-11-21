@@ -1,49 +1,41 @@
-use taffy::{TraversePartialTree, TraverseTree};
+use core::slice;
 
-use crate::{
-    layout::{
-        LayoutBox, LayoutBoxKey,
-        taffy::{TaffyLayoutImpl, from_taffy_key, to_taffy_key},
-    },
-    tree::slot::cursor::Cursor,
+use taffy::TraversePartialTree;
+
+use crate::layout::{
+    taffy::{TaffyLayout, to_taffy_key},
+    tree::node::LayoutNodeKey,
 };
 
-impl TraversePartialTree for TaffyLayoutImpl<'_> {
+impl TraversePartialTree for TaffyLayout<'_> {
     type ChildIter<'a>
         = ChildIter<'a>
     where
         Self: 'a;
 
-    fn child_ids(&self, parent_node_id: taffy::NodeId) -> Self::ChildIter<'_> {
-        let first_id = self.tree.boxes.first_child(from_taffy_key(parent_node_id));
-
+    fn child_ids(&self, _: taffy::NodeId) -> Self::ChildIter<'_> {
         ChildIter {
-            iter: self.tree.boxes.cursor(first_id),
+            iter: self.cx.children.iter(),
         }
     }
 
-    fn child_count(&self, parent_node_id: taffy::NodeId) -> usize {
-        self.tree
-            .boxes
-            .cursor(self.tree.boxes.first_child(from_taffy_key(parent_node_id)))
-            .count()
+    fn child_count(&self, _: taffy::NodeId) -> usize {
+        self.cx.children.len()
     }
 
-    fn get_child_id(&self, parent_node_id: taffy::NodeId, child_index: usize) -> taffy::NodeId {
-        self.child_ids(parent_node_id).nth(child_index).unwrap()
+    fn get_child_id(&self, _: taffy::NodeId, child_index: usize) -> taffy::NodeId {
+        to_taffy_key(self.cx.children.get_child(child_index).unwrap())
     }
 }
 
-impl TraverseTree for TaffyLayoutImpl<'_> {}
-
 pub struct ChildIter<'a> {
-    iter: Cursor<'a, LayoutBoxKey, LayoutBox>,
+    iter: slice::Iter<'a, LayoutNodeKey>,
 }
 
 impl Iterator for ChildIter<'_> {
     type Item = taffy::NodeId;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Some(to_taffy_key(self.iter.next()?))
+        Some(to_taffy_key(*self.iter.next()?))
     }
 }

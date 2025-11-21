@@ -2,7 +2,13 @@ use parley::{FontContext, InlineBox};
 use slotmap::Key;
 
 use crate::{
-    layout::{InlineBoxKey, InlineIns, taffy::LayoutContext, tree::LayoutBoxTree},
+    layout::{
+        cx::LayoutContext,
+        tree::{
+            LayoutTree,
+            node::{InlineIns, InlineLayoutNodeKey},
+        },
+    },
     ui::Ui,
 };
 
@@ -10,7 +16,7 @@ pub struct InlineLayout<'a> {
     font_cx: &'a mut FontContext,
     cx: &'a mut LayoutContext,
     ui: &'a Ui,
-    tree: &'a mut LayoutBoxTree,
+    tree: &'a mut LayoutTree,
     text_len: usize,
 }
 
@@ -19,7 +25,7 @@ impl<'a> InlineLayout<'a> {
         font_cx: &'a mut FontContext,
         cx: &'a mut LayoutContext,
         ui: &'a Ui,
-        tree: &'a mut LayoutBoxTree,
+        tree: &'a mut LayoutTree,
     ) -> Self {
         Self {
             font_cx,
@@ -30,19 +36,19 @@ impl<'a> InlineLayout<'a> {
         }
     }
 
-    pub fn compute_layout(mut self, id: InlineBoxKey) {
-        self.compute_inline_boxes(id);
-        let Some(inline_box) = self.tree.inline_boxes.get_mut(id) else {
+    pub fn compute_layout(mut self, id: InlineLayoutNodeKey) {
+        self.compute_inline_nodes(id);
+        let Some(inline_node) = self.tree.inline_nodes.get_mut(id) else {
             return;
         };
 
-        let text = std::mem::take(&mut inline_box.texts);
+        let text = std::mem::take(&mut inline_node.texts);
         let mut builder = self
             .cx
             .parley
             .ranged_builder(self.font_cx, &text, 1.0, false);
-        let mut next_id = inline_box.inline_start;
 
+        let mut next_id = inline_node.inline_start;
         while let Some(inline_id) = next_id {
             next_id = self.tree.inlines.next_sibling(inline_id);
             let Some(&inline_item) = self.tree.inlines.get(inline_id) else {
@@ -57,10 +63,10 @@ impl<'a> InlineLayout<'a> {
                 InlineIns::PushInlineBox(_) => {}
                 InlineIns::PopInlineBox => {}
 
-                InlineIns::Box(layout_box_key) => {
-                    let size = self.tree.boxes[layout_box_key].layout.size;
+                InlineIns::Node(inline_node_key) => {
+                    let size = self.tree.nodes[inline_node_key].layout.size;
                     builder.push_inline_box(InlineBox {
-                        id: layout_box_key.data().as_ffi(),
+                        id: inline_node_key.data().as_ffi(),
                         index: self.text_len,
                         width: size.width as _,
                         height: size.height as _,
@@ -69,23 +75,23 @@ impl<'a> InlineLayout<'a> {
             }
         }
 
-        let Some(inline_box) = self.tree.inline_boxes.get_mut(id) else {
+        let Some(inline_node) = self.tree.inline_nodes.get_mut(id) else {
             return;
         };
-        builder.build_into(&mut inline_box.parley_layout, &text);
-        inline_box.texts = text;
+        builder.build_into(&mut inline_node.layout, &text);
+        inline_node.texts = text;
     }
 
-    fn compute_inline_boxes(&mut self, id: InlineBoxKey) {
-        let Some(inline_box) = self.tree.inline_boxes.get_mut(id) else {
+    fn compute_inline_nodes(&mut self, id: InlineLayoutNodeKey) {
+        let Some(inline_node) = self.tree.inline_nodes.get(id) else {
             return;
         };
-        let mut next_id = inline_box.inline_start;
 
+        let mut next_id = inline_node.inline_start;
         while let Some(inline_id) = next_id {
             next_id = self.tree.inlines.next_sibling(inline_id);
 
-            let Some(InlineIns::Box(layout_box_key)) = self.tree.inlines.get(inline_id) else {
+            let Some(InlineIns::Node(inline_node_key)) = self.tree.inlines.get(inline_id) else {
                 continue;
             };
 
@@ -93,7 +99,7 @@ impl<'a> InlineLayout<'a> {
                 self.font_cx,
                 self.ui,
                 self.tree,
-                *layout_box_key,
+                *inline_node_key,
                 taffy::Size::min_content(),
             );
         }

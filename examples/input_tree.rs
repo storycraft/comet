@@ -1,9 +1,10 @@
 use comet::{
-    layout::input::{
-        InputNode, InputNodeKey, InputNodeTy, LayoutInputTree, cx::LayoutInputTreeContext,
+    layout::tree::{
+        LayoutTree,
+        node::{LayoutNodeKey, LayoutNodeTy},
     },
     style::div::{DisplayInner, DisplayOuter},
-    ui::{Node, Ui},
+    ui::{Node, Ui, layout::UiLayoutBuilder},
 };
 
 fn main() {
@@ -29,46 +30,50 @@ fn main() {
     ui.append(div2, inner2);
     ui.append(root, text2);
 
-    let mut input_tree = LayoutInputTree::new();
-    let input_root = input_tree.create_root();
+    let mut layout_tree = LayoutTree::new();
+    let input_root = layout_tree.create_root();
 
-    let mut input_tree_cx = LayoutInputTreeContext::new();
-    input_tree_cx.build(&ui, root, &mut input_tree, input_root);
+    let mut layout_builder = UiLayoutBuilder::new();
+    layout_builder.build(&ui, root, &mut layout_tree, input_root);
 
-    print_input_box_tree(&ui, &input_tree, input_root, 0);
+    print_input_box_tree(&ui, &layout_tree, input_root, 0);
 
-    dbg!(input_tree_cx.update(&ui, &mut input_tree, text2));
-    print_input_box_tree(&ui, &input_tree, input_root, 0);
+    dbg!(layout_builder.update(&ui, &mut layout_tree, text2));
+    print_input_box_tree(&ui, &layout_tree, input_root, 0);
 }
 
-fn print_input_box_tree(ui: &Ui, input_tree: &LayoutInputTree, id: InputNodeKey, space: u32) {
+fn print_input_box_tree(ui: &Ui, tree: &LayoutTree, id: LayoutNodeKey, space: u32) {
     for _ in 0..space {
         print!(" ");
     }
     print!("- id: {id:?}");
 
-    let Some(node) = input_tree.nodes.get(id) else {
+    let Some(node) = tree.nodes.get(id) else {
         println!();
         return;
     };
     match node.ty {
-        InputNodeTy::Block(span) => {
+        LayoutNodeTy::Block(span) => {
             println!(" ty: Block span: {span:?}");
         }
-        InputNodeTy::Inline(ref inline_node) => {
+        LayoutNodeTy::Inline(inline_node_key) => {
+            let Some(inline_node) = tree.inline_nodes.get(inline_node_key) else {
+                return;
+            };
+
             println!(" ty: Inline text: {}", inline_node.texts);
             for _ in 0..(space + 4) {
                 print!(" ");
             }
 
-            for child_id in input_tree.inlines.cursor(inline_node.inline_start) {
-                print!("{:?}, ", input_tree.inlines[child_id]);
+            for child_id in tree.inlines.cursor(inline_node.inline_start) {
+                print!("{:?}, ", tree.inlines[child_id]);
             }
             println!();
         }
     }
 
-    for child_id in input_tree.nodes.cursor(input_tree.nodes.first_child(id)) {
-        print_input_box_tree(ui, input_tree, child_id, space + 4);
+    for child_id in tree.nodes.cursor(tree.nodes.first_child(id)) {
+        print_input_box_tree(ui, tree, child_id, space + 4);
     }
 }

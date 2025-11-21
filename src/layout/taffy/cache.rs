@@ -1,8 +1,8 @@
 use taffy::{AvailableSpace, CacheTree, LayoutOutput, NodeId, RunMode, Size};
 
-use crate::layout::taffy::{TaffyLayoutImpl, from_taffy_key};
+use crate::layout::taffy::{TaffyLayout, from_taffy_key};
 
-impl CacheTree for TaffyLayoutImpl<'_> {
+impl CacheTree for TaffyLayout<'_> {
     fn cache_get(
         &self,
         node_id: NodeId,
@@ -10,7 +10,7 @@ impl CacheTree for TaffyLayoutImpl<'_> {
         available_space: Size<AvailableSpace>,
         run_mode: RunMode,
     ) -> Option<LayoutOutput> {
-        self.tree.boxes[from_taffy_key(node_id)].taffy_cache.get(
+        self.tree.nodes[from_taffy_key(node_id)].cache.get(
             known_dimensions,
             available_space,
             run_mode,
@@ -25,7 +25,7 @@ impl CacheTree for TaffyLayoutImpl<'_> {
         run_mode: RunMode,
         layout_output: LayoutOutput,
     ) {
-        self.tree.boxes[from_taffy_key(node_id)].taffy_cache.store(
+        self.tree.nodes[from_taffy_key(node_id)].cache.store(
             known_dimensions,
             available_space,
             run_mode,
@@ -34,6 +34,6 @@ impl CacheTree for TaffyLayoutImpl<'_> {
     }
 
     fn cache_clear(&mut self, node_id: NodeId) {
-        self.tree.boxes[from_taffy_key(node_id)].taffy_cache.clear();
+        self.tree.nodes[from_taffy_key(node_id)].cache.clear();
     }
 }
