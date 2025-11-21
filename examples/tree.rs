@@ -123,7 +123,7 @@ fn print_box_tree(ui: &Ui, layout_tree: &LayoutBoxTree, id: LayoutBoxKey, space:
     );
 
     match node.ty {
-        LayoutTy::Block => {}
+        LayoutTy::Block(_) => {}
         LayoutTy::Inline(inline_box_id) => {
             let inline_box = &layout_tree.inline_boxes[inline_box_id];
             for _ in 0..(space + 4) {
