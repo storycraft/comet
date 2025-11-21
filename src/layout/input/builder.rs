@@ -1,50 +1,87 @@
-use slotmap::SecondaryMap;
+use rustc_hash::FxHashMap;
 
 use crate::{
-    layout::input::{InlineIns, InlineKey, InlineNode, InputNode, InputNodeKey, LayoutInputTree},
+    layout::input::{InlineIns, InputNode, InputNodeKey, LayoutInputTree, inline::InlineStack},
     style::div::{DisplayInner, DisplayOuter},
     ui::{Node, NodeKey, Ui},
 };
 
-pub struct LayoutInputTreeBuilderContext {
+pub struct LayoutInputTreeContext {
     parents: Vec<InputNodeKey>,
-    inline: Option<(InlineNode, InlineKey)>,
-    map: SecondaryMap<InputNodeKey, NodeKey>,
+    inline: InlineStack,
+
+    /// Mappings from [`NodeKey`] to [`InputNodeKey`] for invalidation
+    mappings: FxHashMap<u32, InputNodeKey>,
 }
 
-impl LayoutInputTreeBuilderContext {
+impl LayoutInputTreeContext {
     pub fn new() -> Self {
         Self {
             parents: vec![],
-            inline: None,
-            map: SecondaryMap::new(),
+            inline: InlineStack::new(),
+            mappings: FxHashMap::default(),
         }
     }
 
-    pub fn builder<'a>(
-        &'a mut self,
-        ui: &'a Ui,
-        tree: &'a mut LayoutInputTree,
-    ) -> LayoutInputTreeBuilder<'a> {
-        LayoutInputTreeBuilder { cx: self, ui, tree }
+    pub fn update(
+        &mut self,
+        ui: &Ui,
+        tree: &mut LayoutInputTree,
+        node: NodeKey,
+    ) -> Option<InputNodeKey> {
+        let mut target_node_key = self.mappings.get(&node.id()).copied()?;
+        // Find nearest spanned block parent
+        let target_span = loop {
+            let node = tree.nodes.get(target_node_key)?;
+            if let InputNode::Block(Some(span)) = node {
+                break *span;
+            }
+
+            target_node_key = tree.nodes.parent(target_node_key)?;
+        };
+
+        // Clear all children
+        let mut next_child = tree.nodes.first_child(target_node_key);
+        while let Some(child) = next_child {
+            next_child = tree.nodes.next_sibling(child);
+            tree.delete_node(child);
+        }
+
+        let Some(first_child) = ui.first_child(target_span) else {
+            return None;
+        };
+        self.build_full(ui, first_child, tree, target_node_key);
+
+        Some(target_node_key)
+    }
+
+    pub fn build_full(
+        &mut self,
+        ui: &Ui,
+        root_node: NodeKey,
+        tree: &mut LayoutInputTree,
+        root_input_node: InputNodeKey,
+    ) {
+        Builder { cx: self, ui, tree }.build(root_node, root_input_node);
     }
 }
 
-impl Default for LayoutInputTreeBuilderContext {
+impl Default for LayoutInputTreeContext {
     fn default() -> Self {
         Self::new()
     }
 }
 
-pub struct LayoutInputTreeBuilder<'a> {
-    cx: &'a mut LayoutInputTreeBuilderContext,
+struct Builder<'a> {
+    cx: &'a mut LayoutInputTreeContext,
     ui: &'a Ui,
     tree: &'a mut LayoutInputTree,
 }
 
-impl LayoutInputTreeBuilder<'_> {
-    /// Build a node into layout boxes and append inside box_id
-    pub fn build(&mut self, id: NodeKey, input_node_id: InputNodeKey) {
+impl Builder<'_> {
+    /// Build siblings of [`Node`] inside given [`InputNode`]
+    fn build(mut self, id: NodeKey, input_node_id: InputNodeKey) {
+        self.cx.inline.push();
         self.cx.parents.push(input_node_id);
         self.build_siblings(Some(id), false);
         // commit remaining inlines
@@ -52,7 +89,28 @@ impl LayoutInputTreeBuilder<'_> {
         self.cx.parents.clear();
     }
 
-    fn build_siblings(&mut self, start: Option<NodeKey>, force_block: bool) {
+    fn build_inner(&mut self, id: NodeKey, inner: DisplayInner) {
+        let Some(node) = self.ui.node(id) else {
+            return;
+        };
+
+        match *node {
+            Node::Div => {
+                self.build_div(id, inner);
+            }
+            Node::Text(ref text) => {
+                if !text.is_empty() {
+                    self.cx
+                        .inline
+                        .add_ins(self.tree, InlineIns::Text(text.len()));
+                    self.cx.inline.add_span(id);
+                    self.cx.inline.add_text(text);
+                }
+            }
+        }
+    }
+
+    fn build_siblings(&mut self, start: Option<NodeKey>, container: bool) {
         for id in self.ui.cursor(start) {
             let node = self.ui.node(id);
             let display_outer = self
@@ -69,12 +127,15 @@ impl LayoutInputTreeBuilder<'_> {
                 .cloned()
                 .unwrap_or_default();
 
-            match (node.as_deref(), force_block, display_outer) {
+            match (node.as_deref(), container, display_outer) {
                 (Some(Node::Text(_)), _, _) | (_, false, DisplayOuter::Inline) => {
                     if display_inner == DisplayInner::Flow {
-                        self.push_inline(InlineIns::PushInlineBox(id));
+                        self.cx
+                            .inline
+                            .add_ins(self.tree, InlineIns::PushInlineBox(id));
+                        self.cx.inline.add_span(id);
                         self.build_inner(id, display_inner);
-                        self.push_inline(InlineIns::PopInlineBox);
+                        self.cx.inline.add_ins(self.tree, InlineIns::PopInlineBox);
                     } else {
                         self.build_inner(id, display_inner);
                     }
@@ -82,30 +143,11 @@ impl LayoutInputTreeBuilder<'_> {
 
                 (_, _, DisplayOuter::Block) | (_, true, _) => {
                     self.commit_inlines();
-                    let block_node_id = self.add_child(Some(id), InputNode::Block);
-                    self.cx.parents.push(block_node_id);
+                    let layout_box_id = self.add_child(InputNode::Block(Some(id)));
+                    self.cx.parents.push(layout_box_id);
                     self.build_inner(id, display_inner);
                     self.commit_inlines();
                     self.cx.parents.pop();
-                }
-            }
-        }
-    }
-
-    fn build_inner(&mut self, id: NodeKey, inner: DisplayInner) {
-        let Some(node) = self.ui.node(id) else {
-            return;
-        };
-
-        match *node {
-            Node::Div => {
-                self.build_div(id, inner);
-            }
-            Node::Text(ref text) => {
-                if !text.is_empty() {
-                    self.push_inline(InlineIns::Text(text.len()));
-                    // TODO
-                    self.cx.inline.as_mut().unwrap().0.texts.push_str(text);
                 }
             }
         }
@@ -118,16 +160,17 @@ impl LayoutInputTreeBuilder<'_> {
             }
 
             DisplayInner::FlowRoot => {
-                let last_inline = self.cx.inline.take();
-                let block_node_id = self.tree.nodes.insert(InputNode::Block);
+                self.cx.inline.push();
+                let block_node_id = self.tree.nodes.insert(InputNode::Block(Some(id)));
                 self.cx.parents.push(block_node_id);
 
-                self.build_siblings(self.ui.first_child(id), true);
+                self.build_siblings(self.ui.first_child(id), false);
 
                 self.commit_inlines();
-                self.cx.inline = last_inline;
                 let input_node_id = self.cx.parents.pop().unwrap();
-                self.push_inline(InlineIns::Node(input_node_id));
+                self.cx
+                    .inline
+                    .add_ins(self.tree, InlineIns::Node(input_node_id));
             }
 
             DisplayInner::Container(_) => {
@@ -138,34 +181,13 @@ impl LayoutInputTreeBuilder<'_> {
         }
     }
 
-    fn push_inline(&mut self, item: InlineIns) {
-        let key = self.tree.inlines.insert(item);
-        match self.cx.inline {
-            Some((_, ref mut last)) => {
-                self.tree.inlines.after(*last, key);
-                *last = key;
-            }
-            None => {
-                self.cx.inline = Some((InlineNode::new(Some(key)), key));
-            }
-        }
-    }
-
-    fn commit_inlines(&mut self) {
-        let Some((inline_box, _)) = self.cx.inline.take() else {
-            return;
-        };
-        let key = self.tree.nodes.insert(InputNode::Inline(inline_box));
-        self.add_child_id(None, key);
-    }
-
-    fn add_child(&mut self, span: Option<NodeKey>, node: InputNode) -> InputNodeKey {
+    fn add_child(&mut self, node: InputNode) -> InputNodeKey {
         let id = self.tree.nodes.insert(node);
-        self.add_child_id(span, id);
+        self.add_child_id(id);
         id
     }
 
-    fn add_child_id(&mut self, span: Option<NodeKey>, id: InputNodeKey) {
+    fn add_child_id(&mut self, id: InputNodeKey) {
         let Some(parent) = self.cx.parents.last().copied() else {
             return;
         };
@@ -175,7 +197,10 @@ impl LayoutInputTreeBuilder<'_> {
         };
 
         match parent_node {
-            InputNode::Block => {
+            InputNode::Block(span) => {
+                if let Some(span) = *span {
+                    self.cx.mappings.insert(span.id(), id);
+                }
                 self.tree.nodes.append(parent, id);
             }
 
@@ -188,9 +213,17 @@ impl LayoutInputTreeBuilder<'_> {
                 self.tree.inlines.after(item_start, inline_id);
             }
         }
+    }
 
-        if let Some(span) = span {
-            self.cx.map.insert(id, span);
+    fn commit_inlines(&mut self) {
+        let Some((inline_node, mappings)) = self.cx.inline.commit() else {
+            return;
+        };
+        let key = self.tree.nodes.insert(InputNode::Inline(inline_node));
+        for span in mappings {
+            self.cx.mappings.insert(span.id(), key);
         }
+        self.add_child_id(key);
+        self.cx.inline.push();
     }
 }
