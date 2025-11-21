@@ -65,7 +65,7 @@ impl UiLayoutBuilder {
             tree.delete_node(child);
         }
 
-        /// Perform rebuild
+        // Perform rebuild
         self.build(ui, ui.first_child(target_span)?, tree, target_node_key);
         Some(target_node_key)
     }
