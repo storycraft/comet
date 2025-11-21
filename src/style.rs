@@ -6,8 +6,12 @@ use kurbo::Size;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PropLevel {
+    /// Redraw is required
     Paint = 0,
+    /// Node's layout is invalidated
     Layout = 1,
+    /// Need to rebuild layout tree from the nearest block ancestor 
+    FullLayout = 2,
 }
 
 pub trait StyleProp: Sized + Send + Sync + 'static {
@@ -124,7 +128,7 @@ macro_rules! define_style_props {
             }
 
             impl $crate::style::StyleProp for $name {
-                const LEVEL: $crate::style::PropLevel = $crate::style::PropLevel::Layout;
+                const LEVEL: $crate::style::PropLevel = $crate::style::PropLevel::FullLayout;
             }
         };
     )*};
