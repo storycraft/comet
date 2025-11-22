@@ -1,5 +1,6 @@
 pub mod components;
 pub mod cx;
+pub mod inline;
 pub mod layer;
 pub mod resolver;
 mod taffy;

@@ -6,7 +6,9 @@ use color::AlphaColor;
 use comet::{
     layout::{
         cx::LayoutContext,
-        tree::{LayoutTree, node::{LayoutNodeKey, LayoutNodeTy}},
+        tree::{
+            LayoutTree, {LayoutNodeKey, LayoutNodeTy},
+        },
     },
     renderer::CometRenderer,
     style::div::{DisplayInner, DisplayOuter, Fill, Padding},

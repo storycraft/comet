@@ -7,8 +7,7 @@ use slotmap::KeyData;
 
 use crate::{
     layout::tree::{
-        LayoutTree,
-        node::{InlineIns, InlineLayoutNodeKey, LayoutNodeKey, LayoutNodeTy},
+        LayoutTree, {InlineIns, InlineLayoutNodeKey, LayoutNodeKey, LayoutNodeTy},
     },
     style::div::{BorderFill, Fill},
     ui::{NodeKey, Ui},

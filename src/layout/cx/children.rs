@@ -1,6 +1,6 @@
 use core::slice;
 
-use crate::layout::tree::{LayoutTree, node::LayoutNodeKey};
+use crate::layout::tree::{LayoutNodeKey, LayoutTree};
 
 /// Fast nested layout children buffer in flat structure
 pub struct ChildrenStack {

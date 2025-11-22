@@ -4,8 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     layout::tree::{
-        LayoutTree,
-        node::{LayoutNodeKey, LayoutNodeTy},
+        LayoutTree, {LayoutNodeKey, LayoutNodeTy},
     },
     ui::{
         NodeKey, Ui,

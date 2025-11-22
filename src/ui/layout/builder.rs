@@ -2,8 +2,7 @@ pub mod inline;
 
 use crate::{
     layout::tree::{
-        LayoutTree,
-        node::{InlineIns, LayoutNode, LayoutNodeKey, LayoutNodeTy},
+        LayoutTree, {InlineIns, LayoutNode, LayoutNodeKey, LayoutNodeTy},
     },
     style::div::{DisplayInner, DisplayOuter},
     ui::{Node, NodeKey, Ui, layout::UiLayoutBuilder},

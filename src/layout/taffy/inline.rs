@@ -4,10 +4,7 @@ use slotmap::Key;
 use crate::{
     layout::{
         cx::LayoutContext,
-        tree::{
-            LayoutTree,
-            node::{InlineIns, InlineLayoutNodeKey},
-        },
+        tree::{InlineIns, InlineLayoutNodeKey, LayoutTree},
     },
     ui::Ui,
 };

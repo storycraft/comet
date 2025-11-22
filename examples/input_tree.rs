@@ -1,7 +1,6 @@
 use comet::{
     layout::tree::{
-        LayoutTree,
-        node::{LayoutNodeKey, LayoutNodeTy},
+        LayoutTree, {LayoutNodeKey, LayoutNodeTy},
     },
     style::div::{DisplayInner, DisplayOuter},
     ui::{Node, Ui, layout::UiLayoutBuilder},

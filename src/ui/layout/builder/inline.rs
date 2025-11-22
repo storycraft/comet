@@ -1,7 +1,6 @@
 use crate::{
     layout::tree::{
-        LayoutTree,
-        node::{InlineIns, InlineKey, InlineLayoutNode},
+        LayoutTree, {InlineIns, InlineKey, InlineLayoutNode},
     },
     ui::NodeKey,
 };

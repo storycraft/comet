@@ -7,7 +7,7 @@ use crate::{
     layout::{
         cx::children::ChildrenStack,
         taffy::TaffyLayout,
-        tree::{LayoutTree, node::LayoutNodeKey},
+        tree::{LayoutNodeKey, LayoutTree},
     },
     ui::Ui,
 };

@@ -8,10 +8,7 @@ use crate::{
         BoxLayout,
         cx::LayoutContext,
         taffy::{inline::InlineLayout, style::TaffyCoreStyle},
-        tree::{
-            LayoutTree,
-            node::{LayoutNodeKey, LayoutNodeTy},
-        },
+        tree::{LayoutNodeKey, LayoutNodeTy, LayoutTree},
     },
     ui::Ui,
 };

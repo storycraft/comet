@@ -4,7 +4,7 @@ use taffy::TraversePartialTree;
 
 use crate::layout::{
     taffy::{TaffyLayout, to_taffy_key},
-    tree::node::LayoutNodeKey,
+    tree::LayoutNodeKey,
 };
 
 impl TraversePartialTree for TaffyLayout<'_> {
