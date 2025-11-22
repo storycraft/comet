@@ -50,7 +50,9 @@ pub struct BoxLayout {
 }
 
 impl BoxLayout {
-    pub fn new() -> Self {
+    pub const EMPTY: Self = BoxLayout::new();
+
+    pub const fn new() -> Self {
         Self {
             z_index: 0,
             location: Point::ORIGIN,
