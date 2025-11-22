@@ -1,6 +1,6 @@
 use crate::{
     layout::tree::{
-        LayoutTree, {InlineIns, InlineKey, InlineLayoutNode},
+        LayoutTree, {InlineIns, InlineInsKey, InlineLayoutNode},
     },
     ui::NodeKey,
 };
@@ -70,6 +70,6 @@ impl InlineStack {
 
 struct InlineState {
     node: InlineLayoutNode,
-    last_inline: Option<InlineKey>,
+    last_inline: Option<InlineInsKey>,
     span_start: usize,
 }

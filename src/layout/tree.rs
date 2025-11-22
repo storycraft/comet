@@ -6,7 +6,7 @@ use crate::{layout::BoxLayout, tree::slot::SlotTree, ui::NodeKey};
 pub struct LayoutTree {
     pub nodes: SlotTree<LayoutNodeKey, LayoutNode>,
     pub inline_nodes: SlotMap<InlineLayoutNodeKey, InlineLayoutNode>,
-    pub inlines: SlotTree<InlineKey, InlineIns>,
+    pub inlines: SlotTree<InlineInsKey, InlineIns>,
 }
 
 impl LayoutTree {
@@ -104,7 +104,7 @@ impl LayoutNode {
 #[derive(Clone)]
 pub struct InlineLayoutNode {
     /// Start to inline content
-    pub inline_start: Option<InlineKey>,
+    pub inline_start: Option<InlineInsKey>,
     /// Concatenated inline texts
     pub texts: String,
     /// Inline text layout
@@ -112,7 +112,7 @@ pub struct InlineLayoutNode {
 }
 
 impl InlineLayoutNode {
-    pub fn new(inline_start: Option<InlineKey>) -> Self {
+    pub fn new(inline_start: Option<InlineInsKey>) -> Self {
         Self {
             inline_start,
             texts: String::new(),
@@ -136,5 +136,5 @@ pub enum InlineIns {
 new_key_type! {
     pub struct LayoutNodeKey;
     pub struct InlineLayoutNodeKey;
-    pub struct InlineKey;
+    pub struct InlineInsKey;
 }
