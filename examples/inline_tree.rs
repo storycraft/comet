@@ -72,14 +72,17 @@ fn print_inline_tree(ui: &Ui, tree: &InlineTree, id: InlineNodeKey, space: u32) 
     for _ in 0..space {
         print!(" ");
     }
-    print!("- id: {id:?} layout: {:?}", node.layout);
+    print!(
+        "- id: {id:?} part: {:?} layout: {:?}",
+        node.part, node.layout
+    );
 
     match node.ty {
         InlineNodeTy::Box(span) => {
             println!(" ty: Box span: {span:?}");
         }
-        InlineNodeTy::Text { .. } => {
-            println!(" ty: Text");
+        InlineNodeTy::Text(run) => {
+            println!(" ty: Text run: {run:?}");
         }
         InlineNodeTy::LayoutNode(span) => {
             println!(" ty: Node span: {span:?}");

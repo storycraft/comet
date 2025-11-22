@@ -53,6 +53,7 @@ impl InlineTreeBuilder {
             cx: self,
             layout_tree,
             tree,
+            next_height: 0.0,
         }
         .build(layout_node)
     }

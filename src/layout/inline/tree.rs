@@ -1,6 +1,10 @@
 use slotmap::new_key_type;
 
-use crate::{layout::{BoxLayout, tree::LayoutNodeKey}, tree::slot::SlotTree, ui::NodeKey};
+use crate::{
+    layout::{BoxLayout, tree::LayoutNodeKey},
+    tree::slot::SlotTree,
+    ui::NodeKey,
+};
 
 pub struct InlineTree {
     pub nodes: SlotTree<InlineNodeKey, InlineNode>,
@@ -31,13 +35,19 @@ impl Default for InlineTree {
 #[derive(Debug, Clone)]
 pub struct InlineNode {
     pub ty: InlineNodeTy,
+    pub part: InlineNodePart,
     pub layout: BoxLayout,
 }
 
 impl InlineNode {
     pub fn new(ty: InlineNodeTy) -> Self {
+        Self::new_parted(ty, InlineNodePart::Full)
+    }
+
+    pub fn new_parted(ty: InlineNodeTy, part: InlineNodePart) -> Self {
         Self {
             ty,
+            part,
             layout: BoxLayout::new(),
         }
     }
@@ -47,12 +57,23 @@ impl InlineNode {
 pub enum InlineNodeTy {
     LayoutNode(LayoutNodeKey),
     Box(Option<NodeKey>),
-    Text {
-        run_start_index: usize,
-        cluster_start: usize,
-        run_end_index: usize,
-        cluster_end: usize,
-    },
+    Text(InlineTextRun),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InlineNodePart {
+    Full,
+    Start,
+    Middle,
+    End,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct InlineTextRun {
+    pub run_start_index: usize,
+    pub cluster_start: usize,
+    pub run_end_index: usize,
+    pub cluster_end: usize,
 }
 
 new_key_type! {
