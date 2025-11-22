@@ -31,6 +31,8 @@ impl UiLayoutBuilder {
         }
     }
 
+    /// Invalidate resolved layout of [`NodeKey`].
+    /// Returns affected [`LayoutNodeKey`].
     pub fn invalidate_layout(
         &mut self,
         tree: &mut LayoutTree,
@@ -41,6 +43,8 @@ impl UiLayoutBuilder {
         Some(target_node_key)
     }
 
+    /// Try rebuilding [`LayoutTree`] incrementally within [`NodeKey`].
+    /// Returns affected parent [`LayoutNodeKey`].
     pub fn update(
         &mut self,
         ui: &Ui,
