@@ -29,6 +29,11 @@ impl InlineTreeBuilder {
         }
     }
 
+    #[inline]
+    pub fn get(&self, key: InlineLayoutNodeKey) -> Option<InlineNodeKey> {
+        self.mappings.get(key).copied()
+    }
+
     /// Invalidate inline tree built with layout_node.
     /// Old tree is deleted.
     pub fn invalidate(
