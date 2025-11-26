@@ -5,10 +5,7 @@ use parley::{Cluster, Line};
 use crate::layout::{
     inline::{
         builder::InlineTreeBuilder,
-        clusters::LineClusters,
-        tree::{
-            InlineNode, InlineNodeKey, InlineNodePart, InlineNodeTy, InlineTextRun, InlineTree,
-        },
+        tree::{InlineNode, InlineNodeKey, InlineNodePart, InlineNodeTy, InlineRun, InlineTree},
     },
     tree::{InlineIns, InlineLayoutNodeKey, LayoutNodeKey, LayoutTree},
 };
@@ -71,15 +68,18 @@ where
         self.cx.parents.push(line_box_key);
         self.restore_unfinished_parents();
 
-        let mut line_clusters = LineClusters::new(self.line.runs()).peekable();
-        while let Some(ins) = self.ins_iter.peek().copied() {
-            if self.process_ins(ins, &mut line_clusters) {
-                _ = self.ins_iter.next();
-                continue;
-            }
+        for run in self.line.runs() {
+            let mut run_clusters = run.clusters().peekable();
 
-            if line_clusters.peek().is_none() {
-                break;
+            while let Some(ins) = self.ins_iter.peek().copied() {
+                if self.process_ins(ins, run.index(), &mut run_clusters) {
+                    _ = self.ins_iter.next();
+                    continue;
+                }
+
+                if run_clusters.peek().is_none() {
+                    break;
+                }
             }
         }
 
@@ -89,6 +89,7 @@ where
     fn process_ins<'b>(
         &mut self,
         ins: InlineIns,
+        run_index: usize,
         clusters: &mut Peekable<impl Iterator<Item = Cluster<'b, ()>>>,
     ) -> bool {
         match ins {
@@ -112,11 +113,10 @@ where
                 };
 
                 let run = self.tree.nodes.insert(InlineNode::new_parted(
-                    InlineNodeTy::Text(InlineTextRun {
-                        run_start_index: start.run_index(),
-                        cluster_start: start.logical_index(),
-                        run_end_index: end.run_index(),
-                        cluster_end: end.logical_index(),
+                    InlineNodeTy::Text(InlineRun {
+                        run_index,
+                        cluster_start: start,
+                        cluster_end: end,
                     }),
                     InlineNodePart::Full,
                 ));

@@ -57,7 +57,7 @@ impl InlineNode {
 pub enum InlineNodeTy {
     LayoutNode(LayoutNodeKey),
     Box(Option<NodeKey>),
-    Text(InlineTextRun),
+    Text(InlineRun),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,10 +69,9 @@ pub enum InlineNodePart {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct InlineTextRun {
-    pub run_start_index: usize,
+pub struct InlineRun {
+    pub run_index: usize,
     pub cluster_start: usize,
-    pub run_end_index: usize,
     pub cluster_end: usize,
 }
 

@@ -1,6 +1,6 @@
 use core::mem;
 
-use parley::{Cluster, ClusterPath};
+use parley::Cluster;
 
 use crate::ui::NodeKey;
 
@@ -41,7 +41,7 @@ impl InlineStack {
     pub fn read<'a>(
         &mut self,
         clusters: impl Iterator<Item = Cluster<'a, ()>>,
-    ) -> Option<(ClusterPath, ClusterPath, bool)> {
+    ) -> Option<(usize, usize, bool)> {
         let mut last = self.states.pop()?;
         if last.remaining_texts <= 0 {
             return None;
@@ -49,19 +49,19 @@ impl InlineStack {
 
         let mut clusters = clusters.peekable();
         let mut cluster = clusters.peek().copied()?;
-        let start = cluster.path();
+        let start = cluster.path().logical_index();
         loop {
             if let Some(next) = clusters.next() {
                 cluster = next;
             } else {
                 self.states.push(last);
-                return Some((start, cluster.path(), false));
+                return Some((start, cluster.path().logical_index(), false));
             }
 
             last.remaining_texts -= cluster.text_range().len() as isize;
             if last.remaining_texts <= 0 {
                 self.start_offset = last.remaining_texts;
-                return Some((start, cluster.path(), true));
+                return Some((start, cluster.path().logical_index(), true));
             }
         }
     }
