@@ -133,6 +133,18 @@ pub enum InlineIns {
     Node(LayoutNodeKey),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum InlineIns2 {
+    /// A text with length
+    Text(usize),
+    /// Push new inline box
+    PushInlineBox(NodeKey),
+    /// Pop inline box
+    PopInlineBox,
+    /// A new Node
+    Node(LayoutNodeKey),
+}
+
 new_key_type! {
     pub struct LayoutNodeKey;
     pub struct InlineLayoutNodeKey;

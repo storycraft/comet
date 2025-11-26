@@ -14,7 +14,7 @@ use parley::FontContext;
 
 fn main() {
     let mut ui = Ui::new();
-    let text0 = ui.create_node(Node::Text("sample".to_string()), ());
+    let text0 = ui.create_node(Node::Text("sam\nple".to_string()), ());
     let text1 = ui.create_node(Node::Text("text".to_string()), ());
     let inner = ui.create_node(Node::Text("start".to_string()), ());
     let root = ui.create_node(Node::Div, (DisplayOuter::Inline,));
@@ -61,6 +61,7 @@ fn main() {
         .unwrap();
 
     print_inline_tree(&ui, &inline_tree, inline_node, 0);
+    print_inline_tree(&ui, &inline_tree, inline_tree.nodes.next_sibling(inline_node).unwrap(), 0);
 }
 
 fn print_inline_tree(ui: &Ui, tree: &InlineTree, id: InlineNodeKey, space: u32) {

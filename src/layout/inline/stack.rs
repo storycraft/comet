@@ -1,0 +1,74 @@
+use core::mem;
+
+use parley::{Cluster, ClusterPath};
+
+use crate::ui::NodeKey;
+
+pub struct InlineStack {
+    states: Vec<InlineState>,
+    start_offset: isize,
+}
+
+impl InlineStack {
+    pub fn new() -> Self {
+        Self {
+            states: vec![],
+            start_offset: 0,
+        }
+    }
+
+    #[inline]
+    pub fn push_state(&mut self, span: NodeKey) {
+        self.states.push(InlineState {
+            span,
+            remaining_texts: mem::replace(&mut self.start_offset, 0),
+        });
+    }
+
+    #[inline]
+    pub fn spans(&mut self) -> impl Iterator<Item = NodeKey> {
+        self.states.iter().map(|state| state.span)
+    }
+
+    pub fn add_texts(&mut self, texts: usize) {
+        let Some(last) = self.states.last_mut() else {
+            return;
+        };
+
+        last.remaining_texts += texts as isize;
+    }
+
+    pub fn read<'a>(
+        &mut self,
+        clusters: impl Iterator<Item = Cluster<'a, ()>>,
+    ) -> Option<(ClusterPath, ClusterPath, bool)> {
+        let mut last = self.states.pop()?;
+        if last.remaining_texts <= 0 {
+            return None;
+        }
+
+        let mut clusters = clusters.peekable();
+        let mut cluster = clusters.peek().copied()?;
+        let start = cluster.path();
+        loop {
+            if let Some(next) = clusters.next() {
+                cluster = next;
+            } else {
+                self.states.push(last);
+                return Some((start, cluster.path(), false));
+            }
+
+            last.remaining_texts -= cluster.text_range().len() as isize;
+            if last.remaining_texts <= 0 {
+                self.start_offset = last.remaining_texts;
+                return Some((start, cluster.path(), true));
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct InlineState {
+    span: NodeKey,
+    remaining_texts: isize,
+}

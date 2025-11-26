@@ -25,7 +25,7 @@ fn main() {
     let root = ui.create_node(Node::Div, ());
     let text0 = ui.create_node(Node::Text("sample".to_string()), ());
     let text1 = ui.create_node(Node::Text("text".to_string()), ());
-    let inner = ui.create_node(Node::Text("start".to_string()), ());
+    let inner = ui.create_node(Node::Text("inline block".to_string()), ());
     let div = ui.create_node(
         Node::Div,
         (

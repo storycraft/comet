@@ -10,7 +10,7 @@ fn main() {
     let mut ui = Ui::new();
 
     let root = ui.create_node(Node::Div, ());
-    let text0 = ui.create_node(Node::Text("sample".to_string()), ());
+    let text0 = ui.create_node(Node::Text("sam\nple".to_string()), ());
     let text1 = ui.create_node(Node::Text("text".to_string()), ());
     let inner = ui.create_node(Node::Text("start".to_string()), ());
     let div = ui.create_node(Node::Div, (DisplayOuter::Inline,));
@@ -60,7 +60,7 @@ fn print_input_box_tree(ui: &Ui, tree: &LayoutTree, id: LayoutNodeKey, space: u3
                 return;
             };
 
-            println!(" ty: Inline text: {}", inline_node.texts);
+            println!(" ty: Inline text: {:?}", inline_node.texts);
             for _ in 0..(space + 4) {
                 print!(" ");
             }

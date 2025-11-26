@@ -5,7 +5,8 @@ use slotmap::SparseSecondaryMap;
 
 use crate::layout::{
     inline::{
-        builder::inner::{Builder, InlineState},
+        builder::inner::Builder,
+        stack::InlineStack,
         tree::{InlineNodeKey, InlineTree},
     },
     tree::{InlineLayoutNodeKey, LayoutTree},
@@ -14,7 +15,7 @@ use crate::layout::{
 /// Build [`InlineTree`] and keep synced with [`LayoutTree`]
 pub struct InlineTreeBuilder {
     parents: Vec<InlineNodeKey>,
-    states: Vec<InlineState>,
+    stack: InlineStack,
 
     /// Mappings from [`InlineLayoutNodeKey`] to [`InlineNodeKey`] for invalidation
     mappings: SparseSecondaryMap<InlineLayoutNodeKey, InlineNodeKey, FxBuildHasher>,
@@ -24,7 +25,7 @@ impl InlineTreeBuilder {
     pub fn new() -> Self {
         Self {
             parents: vec![],
-            states: vec![],
+            stack: InlineStack::new(),
             mappings: SparseSecondaryMap::default(),
         }
     }
@@ -58,7 +59,6 @@ impl InlineTreeBuilder {
             cx: self,
             layout_tree,
             tree,
-            next_height: 0.0,
         }
         .build(layout_node)
     }
