@@ -17,7 +17,8 @@ impl InlineTree {
         }
     }
 
-    pub fn delete_node(&mut self, line_start: InlineNodeKey) {
+    /// Delete lines from line_start
+    pub fn delete_lines(&mut self, line_start: InlineNodeKey) {
         let mut next_sibling = Some(line_start);
         while let Some(id) = next_sibling {
             next_sibling = self.nodes.next_sibling(id);

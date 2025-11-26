@@ -43,7 +43,7 @@ impl InlineTreeBuilder {
         layout_node: InlineLayoutNodeKey,
     ) -> Option<InlineNodeKey> {
         let line_start_key = self.mappings.remove(layout_node)?;
-        tree.delete_node(line_start_key);
+        tree.delete_lines(line_start_key);
         Some(line_start_key)
     }
 
