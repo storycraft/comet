@@ -14,7 +14,7 @@ use parley::FontContext;
 
 fn main() {
     let mut ui = Ui::new();
-    let text0 = ui.create_node(Node::Text("sa\nmp\nle".to_string()), ());
+    let text0 = ui.create_node(Node::Text("sample".to_string()), ());
     let text1 = ui.create_node(Node::Text("text".to_string()), ());
     let inner = ui.create_node(Node::Text("start".to_string()), ());
     let root = ui.create_node(Node::Div, (DisplayOuter::Inline,));

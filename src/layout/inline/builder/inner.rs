@@ -5,6 +5,7 @@ use parley::{Cluster, Line};
 use crate::layout::{
     inline::{
         builder::InlineTreeBuilder,
+        stack::ReadResult,
         tree::{InlineNode, InlineNodeKey, InlineNodePart, InlineNodeTy, InlineRun, InlineTree},
     },
     tree::{InlineIns, InlineLayoutNodeKey, LayoutNodeKey, LayoutTree},
@@ -106,28 +107,24 @@ where
                 self.add_child_id(child);
                 self.cx.parents.push(child);
             }
-            InlineIns::PopInlineBox => {
-                let Some((start, end, ended)) = self.cx.stack.read(clusters) else {
+            InlineIns::PopInlineBox => match self.cx.stack.read(clusters) {
+                ReadResult::NoState | ReadResult::EndRead => {
                     self.close_parent();
-                    return true;
-                };
-
-                let run = self.tree.nodes.insert(InlineNode::new_parted(
-                    InlineNodeTy::Text(InlineRun {
-                        run_index,
-                        cluster_start: start,
-                        cluster_end: end,
-                    }),
-                    InlineNodePart::Full,
-                ));
-                self.add_child_id(run);
-
-                if ended {
-                    self.close_parent();
-                } else {
+                }
+                ReadResult::Exhausted => return false,
+                ReadResult::Read { start, to } => {
+                    let run = self.tree.nodes.insert(InlineNode::new_parted(
+                        InlineNodeTy::Text(InlineRun {
+                            run_index,
+                            cluster_start: start,
+                            cluster_end: to,
+                        }),
+                        InlineNodePart::Full,
+                    ));
+                    self.add_child_id(run);
                     return false;
                 }
-            }
+            },
             InlineIns::Node(span) => {
                 self.add_layout_node(span);
             }

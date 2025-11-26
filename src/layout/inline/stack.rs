@@ -38,33 +38,50 @@ impl InlineStack {
         last.remaining_texts += texts as isize;
     }
 
-    pub fn read<'a>(
-        &mut self,
-        clusters: impl Iterator<Item = Cluster<'a, ()>>,
-    ) -> Option<(usize, usize, bool)> {
-        let mut last = self.states.pop()?;
+    pub fn read<'a>(&mut self, mut clusters: impl Iterator<Item = Cluster<'a, ()>>) -> ReadResult {
+        let Some(mut last) = self.states.pop() else {
+            return ReadResult::NoState;
+        };
         if last.remaining_texts <= 0 {
-            return None;
+            return ReadResult::EndRead;
         }
 
-        let mut clusters = clusters.peekable();
-        let mut cluster = clusters.peek().copied()?;
+        let Some(mut cluster) = clusters.next() else {
+            return ReadResult::Exhausted;
+        };
         let start = cluster.path().logical_index();
         loop {
+            last.remaining_texts -= cluster.text_range().len() as isize;
+            if last.remaining_texts <= 0 {
+                self.start_offset = last.remaining_texts;
+                return ReadResult::Read {
+                    start,
+                    to: cluster.path().logical_index(),
+                };
+            }
+
             if let Some(next) = clusters.next() {
                 cluster = next;
             } else {
                 self.states.push(last);
-                return Some((start, cluster.path().logical_index(), false));
-            }
-
-            last.remaining_texts -= cluster.text_range().len() as isize;
-            if last.remaining_texts <= 0 {
-                self.start_offset = last.remaining_texts;
-                return Some((start, cluster.path().logical_index(), true));
+                return ReadResult::Read {
+                    start,
+                    to: cluster.path().logical_index(),
+                };
             }
         }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ReadResult {
+    NoState,
+    Exhausted,
+    Read {
+        start: usize,
+        to: usize,
+    },
+    EndRead,
 }
 
 #[derive(Clone, Copy)]

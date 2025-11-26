@@ -12,7 +12,7 @@ use crate::{
     },
     ui::Ui,
 };
-use parley::{Alignment, AlignmentOptions, FontContext};
+use parley::FontContext;
 use slotmap::{Key, KeyData};
 use taffy::{
     AvailableSpace, LayoutBlockContainer, LayoutPartialTree, compute_block_layout,
@@ -78,11 +78,6 @@ impl<'a> TaffyLayout<'a> {
                     let available_size = available_space.width.into_option();
                     let inline_node = &mut self.tree.inline_nodes[inline_node_key];
                     inline_node.layout.break_all_lines(available_size);
-                    inline_node.layout.align(
-                        available_size,
-                        Alignment::Start,
-                        AlignmentOptions::default(),
-                    );
 
                     taffy::Size {
                         width: inline_node.layout.full_width(),
