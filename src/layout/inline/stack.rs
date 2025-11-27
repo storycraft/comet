@@ -43,10 +43,12 @@ impl InlineStack {
             return ReadResult::NoState;
         };
         if last.remaining_texts <= 0 {
+            self.states.push(last);
             return ReadResult::EndRead;
         }
 
         let Some(mut cluster) = clusters.next() else {
+            self.states.push(last);
             return ReadResult::Exhausted;
         };
         let start = cluster.path().logical_index();
@@ -77,10 +79,7 @@ impl InlineStack {
 pub enum ReadResult {
     NoState,
     Exhausted,
-    Read {
-        start: usize,
-        to: usize,
-    },
+    Read { start: usize, to: usize },
     EndRead,
 }
 

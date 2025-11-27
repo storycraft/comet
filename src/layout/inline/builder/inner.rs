@@ -71,16 +71,12 @@ where
 
         for run in self.line.runs() {
             let mut run_clusters = run.clusters().peekable();
-
             while let Some(ins) = self.ins_iter.peek().copied() {
-                if self.process_ins(ins, run.index(), &mut run_clusters) {
-                    _ = self.ins_iter.next();
-                    continue;
-                }
-
-                if run_clusters.peek().is_none() {
+                if !self.process_ins(ins, run.index(), &mut run_clusters) {
                     break;
                 }
+
+                _ = self.ins_iter.next();
             }
         }
 
@@ -91,7 +87,7 @@ where
         &mut self,
         ins: InlineIns,
         run_index: usize,
-        clusters: &mut Peekable<impl Iterator<Item = Cluster<'b, ()>>>,
+        mut clusters: &mut Peekable<impl Iterator<Item = Cluster<'b, ()>>>,
     ) -> bool {
         match ins {
             InlineIns::Text(len) => {
@@ -107,7 +103,7 @@ where
                 self.add_child_id(child);
                 self.cx.parents.push(child);
             }
-            InlineIns::PopInlineBox => match self.cx.stack.read(clusters) {
+            InlineIns::PopInlineBox => match self.cx.stack.read(&mut clusters) {
                 ReadResult::NoState | ReadResult::EndRead => {
                     self.close_parent();
                 }
@@ -122,7 +118,7 @@ where
                         InlineNodePart::Full,
                     ));
                     self.add_child_id(run);
-                    return false;
+                    return self.process_ins(ins, run_index, clusters);
                 }
             },
             InlineIns::Node(span) => {
