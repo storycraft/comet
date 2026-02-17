@@ -1,0 +1,71 @@
+mod inner;
+
+use rustc_hash::FxBuildHasher;
+use slotmap::SparseSecondaryMap;
+
+use crate::{
+    inline::{
+        builder::inner::Builder,
+        stack::InlineStack,
+        tree::{InlineNodeKey, InlineTree},
+    },
+    tree::{InlineLayoutNodeKey, LayoutTree},
+};
+
+/// Build [`InlineTree`] and keep synced with [`LayoutTree`]
+pub struct InlineTreeBuilder {
+    parents: Vec<InlineNodeKey>,
+    stack: InlineStack,
+
+    /// Mappings from [`InlineLayoutNodeKey`] to [`InlineNodeKey`] for invalidation
+    mappings: SparseSecondaryMap<InlineLayoutNodeKey, InlineNodeKey, FxBuildHasher>,
+}
+
+impl InlineTreeBuilder {
+    pub fn new() -> Self {
+        Self {
+            parents: vec![],
+            stack: InlineStack::new(),
+            mappings: SparseSecondaryMap::default(),
+        }
+    }
+
+    #[inline]
+    pub fn get(&self, key: InlineLayoutNodeKey) -> Option<InlineNodeKey> {
+        self.mappings.get(key).copied()
+    }
+
+    /// Invalidate inline tree built with layout_node.
+    /// Old tree is deleted.
+    pub fn invalidate(
+        &mut self,
+        tree: &mut InlineTree,
+        layout_node: InlineLayoutNodeKey,
+    ) -> Option<InlineNodeKey> {
+        let line_start_key = self.mappings.remove(layout_node)?;
+        tree.delete_lines(line_start_key);
+        Some(line_start_key)
+    }
+
+    /// Invalidate old inline tree and rebuild inline tree
+    pub fn build(
+        &mut self,
+        layout_tree: &LayoutTree,
+        tree: &mut InlineTree,
+        layout_node: InlineLayoutNodeKey,
+    ) -> Option<InlineNodeKey> {
+        self.invalidate(tree, layout_node);
+        Builder {
+            cx: self,
+            layout_tree,
+            tree,
+        }
+        .build(layout_node)
+    }
+}
+
+impl Default for InlineTreeBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
