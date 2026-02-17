@@ -2,10 +2,7 @@ use crate::{
     layout_box::ContainerLayout,
     style::{StyleRect, StyleUnit},
 };
-use comet_div::{
-    define_style_props,
-    style::{PropLevel, StyleProp},
-};
+use comet_div::{define_style_props, style::PropLevel, style_prop};
 use kurbo::{Cap, Dashes, Join};
 use taffy::{
     BoxSizing, Dimension, LengthPercentage, LengthPercentageAuto, Overflow, Point, Rect, Size,
@@ -19,10 +16,7 @@ pub enum DisplayOuter {
     /// Element is part of inline content.
     Inline,
 }
-
-impl StyleProp for DisplayOuter {
-    const LEVEL: PropLevel = PropLevel::Layout;
-}
+style_prop!(DisplayInner = PropLevel::Layout);
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub enum DisplayInner {
@@ -36,10 +30,7 @@ pub enum DisplayInner {
     /// Display a content inside. Children will not be laid out.
     Content,
 }
-
-impl StyleProp for DisplayInner {
-    const LEVEL: PropLevel = PropLevel::Layout;
-}
+style_prop!(DisplayInner = PropLevel::Layout);
 
 // TODO:: change names
 define_style_props!(
