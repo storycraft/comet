@@ -1,9 +1,8 @@
 use anyrender::Paint;
+use comet_div::ui::NodeKey;
 use parley::TextStyle;
 use rustc_hash::FxHashMap;
 use slotmap::{SlotMap, new_key_type};
-
-use crate::ui::NodeKey;
 
 new_key_type! { pub struct InlineStyleKey; }
 

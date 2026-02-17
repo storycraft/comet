@@ -1,37 +1,17 @@
 pub mod cursor;
-pub mod layout;
+
+#[cfg(test)]
+mod tests;
+
+use hecs::{DynamicBundle, Entity, EntityBuilder, EntityRef, Ref, RefMut};
 
 use crate::{
+    node::Node,
     style::{PropLevel, StyleProp, StyleProps},
-    tree::archetypal::{ArchetypalTree, Components},
+    tree::ArchetypalTree,
     ui::cursor::Cursor,
 };
-use hecs::{DynamicBundle, Entity, EntityBuilder, Ref, RefMut};
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[repr(transparent)]
-pub struct NodeKey(Entity);
-
-impl NodeKey {
-    #[inline]
-    pub const fn id(self) -> u32 {
-        self.0.id()
-    }
-}
-
-impl Default for NodeKey {
-    fn default() -> Self {
-        Self(Entity::DANGLING)
-    }
-}
-
-#[derive(Debug)]
-pub enum Node {
-    Div,
-    Text(String),
-}
-
-#[non_exhaustive]
 pub struct Ui {
     inner: ArchetypalTree,
     builder: EntityBuilder,
@@ -46,7 +26,7 @@ impl Ui {
     }
 
     #[inline]
-    pub fn create_node(&mut self, node: Node, props: impl StyleProps) -> NodeKey {
+    pub fn create(&mut self, node: Node, props: impl StyleProps) -> NodeKey {
         NodeKey(
             self.inner.spawn(
                 self.builder
@@ -58,22 +38,34 @@ impl Ui {
     }
 
     #[inline]
-    pub fn props(&'_ self, key: NodeKey) -> Option<Props<'_>> {
+    /// Remove node and its children recursively
+    pub fn delete(&mut self, id: NodeKey) {
+        self.inner.delete(id.0);
+    }
+
+    #[inline]
+    /// Remove all nodes
+    pub fn clear(&mut self) {
+        self.inner.clear();
+    }
+
+    #[inline]
+    pub fn props(&self, key: NodeKey) -> Option<Props<'_>> {
         Some(Props(self.inner.components(key.0)?))
     }
 
     #[inline]
-    pub fn prop<T: StyleProp>(&'_ self, key: NodeKey) -> Option<Ref<'_, T>> {
+    pub fn prop<T: StyleProp>(&self, key: NodeKey) -> Option<Ref<'_, T>> {
         self.props(key)?.get::<T>()
     }
 
     #[inline]
-    pub fn prop_mut<T: StyleProp>(&'_ self, key: NodeKey) -> Option<RefMut<'_, T>> {
+    pub fn prop_mut<T: StyleProp>(&self, key: NodeKey) -> Option<RefMut<'_, T>> {
         self.props(key)?.get_mut::<T>()
     }
 
     #[inline]
-    pub fn node(&'_ self, key: NodeKey) -> Option<Ref<'_, Node>> {
+    pub fn node(&self, key: NodeKey) -> Option<Ref<'_, Node>> {
         Some(Ref::map(self.prop::<NodeWrapper>(key)?, |v| &v.0))
     }
 
@@ -161,13 +153,18 @@ impl Default for Ui {
     }
 }
 
-struct NodeWrapper(Node);
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(transparent)]
+pub struct NodeKey(Entity);
 
-impl StyleProp for NodeWrapper {
-    const LEVEL: PropLevel = PropLevel::Layout;
+impl NodeKey {
+    #[inline]
+    pub const fn id(self) -> u32 {
+        self.0.id()
+    }
 }
 
-pub struct Props<'a>(Components<'a>);
+pub struct Props<'a>(EntityRef<'a>);
 
 impl<'a> Props<'a> {
     #[inline]
@@ -179,4 +176,11 @@ impl<'a> Props<'a> {
     pub fn get_mut<T: StyleProp>(&self) -> Option<RefMut<'a, T>> {
         self.0.get::<&mut T>()
     }
+}
+
+/// Private wrapper for storing node type in the world
+struct NodeWrapper(Node);
+
+impl StyleProp for NodeWrapper {
+    const LEVEL: PropLevel = PropLevel::Layout;
 }

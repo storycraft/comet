@@ -1,12 +1,10 @@
+use comet_div::ui::Ui;
 use parley::{FontContext, InlineBox};
 use slotmap::Key;
 
-use crate::{
-    layout::{
-        cx::LayoutContext,
-        tree::{InlineIns, InlineLayoutNodeKey, LayoutTree},
-    },
-    ui::Ui,
+use crate::layout::{
+    cx::LayoutContext,
+    tree::{InlineIns, InlineLayoutNodeKey, LayoutTree},
 };
 
 pub struct InlineLayout<'a> {

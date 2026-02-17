@@ -1,16 +1,16 @@
 use crate::{
     layout::ContainerLayout,
-    style::{PropLevel, StyleProp, StyleRect, StyleUnit, define_style_props},
-    style_prop,
+    style::{StyleRect, StyleUnit},
 };
 use anyrender::Paint;
+use comet_div::{
+    define_style_props,
+    style::{PropLevel, StyleProp},
+};
 use kurbo::{Cap, Dashes, Join};
-use taffy::{Dimension, LengthPercentage, LengthPercentageAuto, Overflow, Point, Rect, Size};
-
-pub use taffy::{BoxSizing, Position};
-
-style_prop!(BoxSizing = PropLevel::Layout);
-style_prop!(Position = PropLevel::Layout);
+use taffy::{
+    BoxSizing, Dimension, LengthPercentage, LengthPercentageAuto, Overflow, Point, Rect, Size,
+};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DisplayOuter {
@@ -45,6 +45,7 @@ impl StyleProp for DisplayInner {
 // TODO:: change names
 define_style_props!(
     // Position
+    pub Position1: taffy::Position = taffy::Position::Relative,
     pub Inset: Rect<LengthPercentageAuto> = Rect::auto(),
 
     // Size and modes
@@ -53,6 +54,7 @@ define_style_props!(
     pub MaxSize: Size<Dimension> = Size::auto(),
     pub AspectRatio: f32,
     pub Overflow1: Point<Overflow> = Point { x: Overflow::Visible, y: Overflow::Visible },
+    pub BoxSizing1: BoxSizing = BoxSizing::BorderBox,
 
     // Margin, padding
     pub Margin: Rect<LengthPercentageAuto> = Rect::zero(),

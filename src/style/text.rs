@@ -1,8 +1,5 @@
-use crate::{
-    style::{PropLevel, StyleUnit, define_style_props},
-    style_prop,
-};
 use anyrender::Paint;
+use comet_div::define_style_props;
 use parley::style::{
     FontFamily, FontFeature, FontSettings, FontStack, FontVariation, GenericFamily,
     WordBreakStrength,
@@ -12,8 +9,7 @@ use std::borrow::Cow;
 
 pub use parley::style::{FontStyle, FontWeight};
 
-style_prop!(FontStyle = PropLevel::Layout);
-style_prop!(FontWeight = PropLevel::Layout);
+use crate::style::StyleUnit;
 
 // TODO:: change names
 define_style_props!(
@@ -22,6 +18,8 @@ define_style_props!(
     pub FontSize: StyleUnit = StyleUnit::Em(1.0),
     pub FontVariations: FontSettings<'static, FontVariation> = FontSettings::List(Cow::Borrowed(&[])),
     pub FontFeatures: FontSettings<'static, FontFeature> = FontSettings::List(Cow::Borrowed(&[])),
+    pub FontStyle1: FontStyle = FontStyle::Normal,
+    pub FontWeight1: FontWeight = FontWeight::NORMAL,
 
     // Locale
     pub Locale: &'static str = "en",

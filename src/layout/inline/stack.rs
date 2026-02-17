@@ -1,8 +1,7 @@
 use core::mem;
 
+use comet_div::ui::NodeKey;
 use parley::Cluster;
-
-use crate::ui::NodeKey;
 
 pub struct InlineStack {
     states: Vec<InlineState>,

@@ -1,25 +1,24 @@
 use comet::{
-    layout::tree::{
-        LayoutTree, {LayoutNodeKey, LayoutNodeTy},
-    },
+    layout::tree::{LayoutNodeKey, LayoutNodeTy, LayoutTree},
     style::div::{DisplayInner, DisplayOuter},
-    ui::{Node, Ui, layout::UiLayoutBuilder},
+    ui::layout::UiLayoutBuilder,
 };
+use comet_div::prelude::*;
 
 fn main() {
     let mut ui = Ui::new();
 
-    let root = ui.create_node(Node::Div, ());
-    let text0 = ui.create_node(Node::Text("sam\nple".to_string()), ());
-    let text1 = ui.create_node(Node::Text("text".to_string()), ());
-    let inner = ui.create_node(Node::Text("start".to_string()), ());
-    let div = ui.create_node(Node::Div, (DisplayOuter::Inline,));
-    let div1 = ui.create_node(Node::Div, (DisplayOuter::Inline, DisplayInner::FlowRoot));
+    let root = ui.create(Node::Div, ());
+    let text0 = ui.create(Node::Text("sam\nple".to_string()), ());
+    let text1 = ui.create(Node::Text("text".to_string()), ());
+    let inner = ui.create(Node::Text("start".to_string()), ());
+    let div = ui.create(Node::Div, (DisplayOuter::Inline,));
+    let div1 = ui.create(Node::Div, (DisplayOuter::Inline, DisplayInner::FlowRoot));
 
-    let div2 = ui.create_node(Node::Div, ());
+    let div2 = ui.create(Node::Div, ());
 
-    let inner2 = ui.create_node(Node::Text("end".to_string()), ());
-    let text2 = ui.create_node(Node::Text("1".to_string()), ());
+    let inner2 = ui.create(Node::Text("end".to_string()), ());
+    let text2 = ui.create(Node::Text("1".to_string()), ());
     ui.append(div, text0);
     ui.append(div, div1);
     ui.append(div, text1);

@@ -1,11 +1,16 @@
 pub mod inline;
 
+use comet_div::{
+    node::Node,
+    ui::{NodeKey, Ui},
+};
+
 use crate::{
     layout::tree::{
         LayoutTree, {InlineIns, LayoutNode, LayoutNodeKey, LayoutNodeTy},
     },
     style::div::{DisplayInner, DisplayOuter},
-    ui::{Node, NodeKey, Ui, layout::UiLayoutBuilder},
+    ui::layout::UiLayoutBuilder,
 };
 
 pub struct Builder<'a> {

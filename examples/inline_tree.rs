@@ -3,22 +3,24 @@ use comet::{
         cx::LayoutContext,
         inline::{
             builder::InlineTreeBuilder,
+            layout::InlineLayoutContext,
             tree::{InlineNodeKey, InlineNodeTy, InlineTree},
         },
         tree::{LayoutNode, LayoutNodeTy, LayoutTree},
     },
     style::div::{DisplayInner, DisplayOuter},
-    ui::{Node, Ui, layout::UiLayoutBuilder},
+    ui::layout::UiLayoutBuilder,
 };
+use comet_div::prelude::*;
 use parley::FontContext;
 
 fn main() {
     let mut ui = Ui::new();
-    let text0 = ui.create_node(Node::Text("sample".to_string()), ());
-    let text1 = ui.create_node(Node::Text("text".to_string()), ());
-    let inner = ui.create_node(Node::Text("start".to_string()), ());
-    let root = ui.create_node(Node::Div, (DisplayOuter::Inline,));
-    let div1 = ui.create_node(Node::Div, (DisplayOuter::Inline, DisplayInner::FlowRoot));
+    let text0 = ui.create(Node::Text("sa\nmple".to_string()), ());
+    let text1 = ui.create(Node::Text("t\next".to_string()), ());
+    let inner = ui.create(Node::Text("start".to_string()), ());
+    let root = ui.create(Node::Div, (DisplayOuter::Inline,));
+    let div1 = ui.create(Node::Div, (DisplayOuter::Inline, DisplayInner::FlowRoot));
 
     ui.append(root, text0);
     ui.append(root, div1);
@@ -59,6 +61,16 @@ fn main() {
     let inline_node = inline_builder
         .build(&layout_tree, &mut inline_tree, *inline_node_key)
         .unwrap();
+
+    let inline_start_node = layout_tree.inline_nodes.get(*inline_node_key).unwrap();
+
+    let mut inline_layout_cx = InlineLayoutContext::new();
+    inline_layout_cx.layout(
+        &layout_tree,
+        &mut inline_tree,
+        &inline_start_node.layout,
+        inline_node,
+    );
 
     for (i, line) in inline_tree.nodes.cursor(Some(inline_node)).enumerate() {
         println!("line {i}");

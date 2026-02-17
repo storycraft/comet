@@ -1,9 +1,9 @@
+use comet_div::ui::NodeKey;
 use slotmap::new_key_type;
 
 use crate::{
     layout::{BoxLayout, tree::LayoutNodeKey},
     tree::slot::SlotTree,
-    ui::NodeKey,
 };
 
 pub struct InlineTree {

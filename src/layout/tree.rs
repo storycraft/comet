@@ -1,7 +1,8 @@
+use comet_div::ui::NodeKey;
 use slotmap::{SlotMap, new_key_type};
 use taffy::Cache;
 
-use crate::{layout::BoxLayout, tree::slot::SlotTree, ui::NodeKey};
+use crate::{layout::BoxLayout, tree::slot::SlotTree};
 
 pub struct LayoutTree {
     pub nodes: SlotTree<LayoutNodeKey, LayoutNode>,

@@ -1,15 +1,13 @@
 pub(crate) mod children;
 
+use comet_div::ui::Ui;
 use parley::FontContext;
 use taffy::AvailableSpace;
 
-use crate::{
-    layout::{
-        cx::children::ChildrenStack,
-        taffy::TaffyLayout,
-        tree::{LayoutNodeKey, LayoutTree},
-    },
-    ui::Ui,
+use crate::layout::{
+    cx::children::ChildrenStack,
+    taffy::TaffyLayout,
+    tree::{LayoutNodeKey, LayoutTree},
 };
 
 pub struct LayoutContext {

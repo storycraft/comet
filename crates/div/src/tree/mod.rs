@@ -1,11 +1,11 @@
 pub mod cursor;
+
 #[cfg(test)]
 mod tests;
 
-use crate::tree::archetypal::cursor::Cursor;
-use hecs::{
-    Component, ComponentRef, DynamicBundle, Entity, EntityBuilder, EntityRef, Ref, RefMut, World,
-};
+use hecs::{Component, DynamicBundle, Entity, EntityBuilder, EntityRef, Ref, RefMut, World};
+
+use crate::tree::cursor::Cursor;
 
 pub struct ArchetypalTree {
     world: World,
@@ -25,13 +25,8 @@ impl ArchetypalTree {
             .spawn(self.builder.add(Node::new()).add_bundle(bundle).build())
     }
 
-    pub fn components(&'_ self, key: Entity) -> Option<Components<'_>> {
-        Some(Components(self.world.entity(key).ok()?))
-    }
-
-    #[inline]
-    pub fn get<'a, T: ComponentRef<'a>>(&'a self, key: Entity) -> Option<T::Ref> {
-        self.components(key)?.get::<T>()
+    pub fn components(&'_ self, key: Entity) -> Option<EntityRef<'_>> {
+        Some(self.world.entity(key).ok()?)
     }
 
     pub fn add_components(&mut self, key: Entity, components: impl DynamicBundle) {
@@ -218,7 +213,7 @@ impl ArchetypalTree {
         Some(parent_id)
     }
 
-    /// Delete node including and its children
+    /// Delete node recursively
     pub fn delete(&mut self, id: Entity) {
         fn inner(tree: &mut ArchetypalTree, id: Entity) {
             let mut child = tree.world.node(id).and_then(|node| node.first_child);
@@ -267,15 +262,6 @@ impl Node {
             prev_sibling: None,
             next_sibling: None,
         }
-    }
-}
-
-pub struct Components<'a>(EntityRef<'a>);
-
-impl<'a> Components<'a> {
-    #[inline]
-    pub fn get<T: ComponentRef<'a>>(&self) -> Option<T::Ref> {
-        self.0.get::<T>()
     }
 }
 

@@ -1,16 +1,12 @@
+use comet_div::{style::StyleProp, ui::Props};
 use taffy::{
     BlockContainerStyle, BlockItemStyle, BoxGenerationMode, BoxSizing, CoreStyle,
     LengthPercentageAuto, Overflow, Point, Position, Rect, TextAlign,
 };
 
-use crate::{
-    style::{
-        StyleProp,
-        div::{
-            AspectRatio, BorderWidth, Inset, Margin, MaxSize, MinSize, Overflow1, Padding, Size1,
-        },
-    },
-    ui::Props,
+use crate::style::div::{
+    AspectRatio, BorderWidth, BoxSizing1, Inset, Margin, MaxSize, MinSize, Overflow1, Padding,
+    Position1, Size1,
 };
 
 /// Taffy [`CoreStyle`], [`BlockContainerStyle`], [`BlockItemStyle`] wrapper
@@ -40,7 +36,7 @@ impl CoreStyle for TaffyCoreStyle<'_> {
     }
 
     fn box_sizing(&self) -> BoxSizing {
-        self.get_cloned::<BoxSizing>().unwrap_or_default()
+        self.get_cloned::<BoxSizing1>().unwrap_or_default().0
     }
 
     fn overflow(&self) -> Point<Overflow> {
@@ -52,7 +48,7 @@ impl CoreStyle for TaffyCoreStyle<'_> {
     }
 
     fn position(&self) -> Position {
-        self.get_cloned::<Position>().unwrap_or_default()
+        self.get_cloned::<Position1>().unwrap_or_default().0
     }
 
     fn inset(&self) -> Rect<LengthPercentageAuto> {

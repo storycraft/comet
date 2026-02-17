@@ -1,5 +1,6 @@
 use anyrender::{Paint, PaintScene};
 use color::AlphaColor;
+use comet_div::ui::{NodeKey, Ui};
 use kurbo::{Affine, Rect, RoundedRect, Stroke};
 use parley::{Cluster, ClusterPath, PositionedLayoutItem};
 use peniko::StyleRef;
@@ -10,7 +11,6 @@ use crate::{
         LayoutTree, {InlineIns, InlineLayoutNodeKey, LayoutNodeKey, LayoutNodeTy},
     },
     style::div::{BorderFill, Fill},
-    ui::{NodeKey, Ui},
 };
 
 pub struct CometRenderer {

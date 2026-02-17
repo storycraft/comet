@@ -1,15 +1,13 @@
 mod builder;
 
+use comet_div::ui::{NodeKey, Ui};
 use rustc_hash::FxHashMap;
 
 use crate::{
     layout::tree::{
         LayoutTree, {LayoutNodeKey, LayoutNodeTy},
     },
-    ui::{
-        NodeKey, Ui,
-        layout::builder::{Builder, inline::InlineStack},
-    },
+    ui::layout::builder::{Builder, inline::InlineStack},
 };
 
 /// Incremental [`LayoutTree`] builder

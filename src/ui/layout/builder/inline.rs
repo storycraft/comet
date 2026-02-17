@@ -1,8 +1,7 @@
-use crate::{
-    layout::tree::{
-        LayoutTree, {InlineIns, InlineInsKey, InlineLayoutNode},
-    },
-    ui::NodeKey,
+use comet_div::ui::NodeKey;
+
+use crate::layout::tree::{
+    LayoutTree, {InlineIns, InlineInsKey, InlineLayoutNode},
 };
 
 pub struct InlineStack {
