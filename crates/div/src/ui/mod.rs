@@ -3,6 +3,8 @@ pub mod cursor;
 #[cfg(test)]
 mod tests;
 
+use core::num::NonZeroU64;
+
 use hecs::{DynamicBundle, Entity, EntityBuilder, EntityRef, Ref, RefMut};
 
 use crate::{
@@ -158,6 +160,11 @@ impl Default for Ui {
 pub struct NodeKey(Entity);
 
 impl NodeKey {
+    #[inline]
+    pub const fn bits(self) -> NonZeroU64 {
+        self.0.to_bits()
+    }
+
     #[inline]
     pub const fn id(self) -> u32 {
         self.0.id()
