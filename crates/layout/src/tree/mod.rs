@@ -6,6 +6,7 @@ use taffy::Cache;
 
 use crate::{layout_box::BoxLayout, slot_tree::SlotTree};
 
+#[non_exhaustive]
 pub struct LayoutTree {
     pub nodes: SlotTree<LayoutNodeKey, LayoutNode>,
     pub inline_nodes: SlotMap<InlineLayoutNodeKey, InlineLayoutNode>,
