@@ -16,7 +16,7 @@ pub enum DisplayOuter {
     /// Element is part of inline content.
     Inline,
 }
-style_prop!(DisplayInner = PropLevel::Layout);
+style_prop!(DisplayOuter = PropLevel::Layout);
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub enum DisplayInner {
