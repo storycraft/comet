@@ -7,6 +7,7 @@ use slotmap::{Key, SlotMap};
 
 use crate::slot_tree::cursor::Cursor;
 
+/// An N-ary tree backed by SlotMap
 pub struct SlotTree<K: Key, V> {
     arena: SlotMap<K, Node<K, V>>,
 }
