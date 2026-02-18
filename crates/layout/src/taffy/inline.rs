@@ -55,6 +55,7 @@ impl<'a> InlineLayout<'a> {
                     self.text_len += length;
                 }
 
+                // TODO:: push resolved text styles
                 InlineIns::PushInlineBox(_) | InlineIns::PopInlineBox => {}
 
                 InlineIns::Node(inline_node_key) => {
