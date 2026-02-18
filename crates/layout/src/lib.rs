@@ -1,5 +1,4 @@
 pub mod cx;
-pub mod inline;
 pub mod layout_box;
 mod slot_tree;
 pub mod style;

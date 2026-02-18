@@ -17,7 +17,7 @@ use taffy::{
     compute_cached_layout, compute_leaf_layout,
 };
 
-pub(super) struct TaffyLayout<'a> {
+pub struct TaffyLayout<'a> {
     font_cx: &'a mut FontContext,
     cx: &'a mut LayoutContext,
     ui: &'a Ui,
@@ -45,9 +45,9 @@ impl<'a> TaffyLayout<'a> {
     }
 
     fn with_child<R>(&mut self, parent: LayoutNodeKey, f: impl FnOnce(&mut Self) -> R) -> R {
-        self.cx.children.push(self.tree, parent);
+        self.cx.buffer.push(self.tree, parent);
         f(&mut scopeguard::guard(self, |this| {
-            this.cx.children.pop();
+            this.cx.buffer.pop();
         }))
     }
 

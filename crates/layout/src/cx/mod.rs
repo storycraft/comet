@@ -12,14 +12,14 @@ use crate::{
 
 pub struct LayoutContext {
     pub(crate) parley: parley::LayoutContext<()>,
-    pub(crate) children: ChildrenStack,
+    pub(crate) buffer: ChildrenStack,
 }
 
 impl LayoutContext {
     pub fn new() -> Self {
         Self {
             parley: parley::LayoutContext::new(),
-            children: ChildrenStack::new(),
+            buffer: ChildrenStack::new(),
         }
     }
 

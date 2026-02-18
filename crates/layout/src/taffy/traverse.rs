@@ -15,16 +15,16 @@ impl TraversePartialTree for TaffyLayout<'_> {
 
     fn child_ids(&self, _: taffy::NodeId) -> Self::ChildIter<'_> {
         ChildIter {
-            iter: self.cx.children.iter(),
+            iter: self.cx.buffer.iter(),
         }
     }
 
     fn child_count(&self, _: taffy::NodeId) -> usize {
-        self.cx.children.len()
+        self.cx.buffer.len()
     }
 
     fn get_child_id(&self, _: taffy::NodeId, child_index: usize) -> taffy::NodeId {
-        to_taffy_key(self.cx.children.get_child(child_index).unwrap())
+        to_taffy_key(self.cx.buffer.get_child(child_index).unwrap())
     }
 }
 

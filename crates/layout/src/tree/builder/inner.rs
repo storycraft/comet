@@ -36,13 +36,15 @@ impl Builder<'_> {
                 self.build_div(id, inner);
             }
             Node::Text(ref text) => {
-                if !text.is_empty() {
-                    self.cx
-                        .inline
-                        .add_ins(self.tree, InlineIns::Text(text.len()));
-                    self.cx.inline.add_span(id);
-                    self.cx.inline.add_text(text);
+                if text.is_empty() {
+                    return;
                 }
+
+                self.cx
+                    .inline
+                    .add_ins(self.tree, InlineIns::Text(text.len()));
+                self.cx.inline.add_span(id);
+                self.cx.inline.add_text(text);
             }
         }
     }

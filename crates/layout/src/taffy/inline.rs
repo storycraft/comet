@@ -55,8 +55,7 @@ impl<'a> InlineLayout<'a> {
                     self.text_len += length;
                 }
 
-                InlineIns::PushInlineBox(_) => {}
-                InlineIns::PopInlineBox => {}
+                InlineIns::PushInlineBox(_) | InlineIns::PopInlineBox => {}
 
                 InlineIns::Node(inline_node_key) => {
                     let size = self.tree.nodes[inline_node_key].layout.size;
