@@ -1,4 +1,4 @@
-use comet_div::define_style_props;
+use comet_div::{define_style_props, style::PropLevel};
 use parley::style::{
     FontFamily, FontFeature, FontSettings, FontStack, FontVariation, GenericFamily,
     WordBreakStrength,
@@ -12,29 +12,29 @@ use crate::style::StyleUnit;
 // TODO:: change names
 define_style_props!(
     // Font settings
-    pub Font: FontStack<'static> = FontStack::Single(FontFamily::Generic(GenericFamily::SansSerif)),
-    pub FontSize: StyleUnit = StyleUnit::Em(1.0),
-    pub FontVariations: FontSettings<'static, FontVariation> = FontSettings::List(Cow::Borrowed(&[])),
-    pub FontFeatures: FontSettings<'static, FontFeature> = FontSettings::List(Cow::Borrowed(&[])),
-    pub FontStyle1: FontStyle = FontStyle::Normal,
-    pub FontWeight1: FontWeight = FontWeight::NORMAL,
+    pub Font(PropLevel::FullLayout): FontStack<'static> = FontStack::Single(FontFamily::Generic(GenericFamily::SansSerif)),
+    pub FontSize(PropLevel::FullLayout): StyleUnit = StyleUnit::Em(1.0),
+    pub FontVariations(PropLevel::FullLayout): FontSettings<'static, FontVariation> = FontSettings::List(Cow::Borrowed(&[])),
+    pub FontFeatures(PropLevel::FullLayout): FontSettings<'static, FontFeature> = FontSettings::List(Cow::Borrowed(&[])),
+    pub FontStyle1(PropLevel::FullLayout): FontStyle = FontStyle::Normal,
+    pub FontWeight1(PropLevel::FullLayout): FontWeight = FontWeight::NORMAL,
 
     // Locale
-    pub Locale: &'static str = "en",
+    pub Locale(PropLevel::FullLayout): &'static str = "en",
 
     // Underline
-    pub UnderlineOffset: StyleUnit = StyleUnit::ZERO,
-    pub UnderlineSize: StyleUnit = StyleUnit::ZERO,
+    pub UnderlineOffset(PropLevel::FullLayout): StyleUnit = StyleUnit::ZERO,
+    pub UnderlineSize(PropLevel::FullLayout): StyleUnit = StyleUnit::ZERO,
 
     // Strikethrough
-    pub StrikethroughOffset: StyleUnit = StyleUnit::ZERO,
-    pub StrikethroughSize: StyleUnit = StyleUnit::ZERO,
+    pub StrikethroughOffset(PropLevel::FullLayout): StyleUnit = StyleUnit::ZERO,
+    pub StrikethroughSize(PropLevel::FullLayout): StyleUnit = StyleUnit::ZERO,
 
     // Line settings
-    pub LineHeight: StyleUnit = StyleUnit::ZERO,
-    pub WordBreak: WordBreakStrength = WordBreakStrength::Normal,
+    pub LineHeight(PropLevel::FullLayout): StyleUnit = StyleUnit::ZERO,
+    pub WordBreak(PropLevel::FullLayout): WordBreakStrength = WordBreakStrength::Normal,
 
     // Text spacing
-    pub WordSpacing: StyleUnit = StyleUnit::ZERO,
-    pub LetterSpacing: StyleUnit = StyleUnit::ZERO,
+    pub WordSpacing(PropLevel::FullLayout): StyleUnit = StyleUnit::ZERO,
+    pub LetterSpacing(PropLevel::FullLayout): StyleUnit = StyleUnit::ZERO,
 );

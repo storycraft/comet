@@ -29,34 +29,30 @@ macro_rules! define_style_props {
     (
         $(
             $(#[$attr:meta])*
-            $vis:vis $name:ident : $ty:ty $(= $expr:expr)?
+            $vis:vis $name:ident ($prop_expr:expr) : $ty:ty $(= $expr:expr)?
         ),* $(,)?
     ) => {$(
         $(#[$attr])*
         $vis struct $name(pub $ty);
-        const _: () = {
-            $(impl ::core::default::Default for $name {
-                fn default() -> Self {
-                    Self($expr)
-                }
-            })?
-
-            impl ::core::clone::Clone for $name {
-                fn clone(&self) -> Self {
-                    Self(::core::clone::Clone::clone(&self.0))
-                }
+        $(impl ::core::default::Default for $name {
+            fn default() -> Self {
+                Self($expr)
             }
+        })?
 
-            impl ::core::convert::From<$ty> for $name {
-                fn from(v: $ty) -> Self {
-                    Self(v)
-                }
+        impl ::core::clone::Clone for $name {
+            fn clone(&self) -> Self {
+                Self(::core::clone::Clone::clone(&self.0))
             }
+        }
 
-            impl $crate::style::StyleProp for $name {
-                const LEVEL: $crate::style::PropLevel = $crate::style::PropLevel::FullLayout;
+        impl ::core::convert::From<$ty> for $name {
+            fn from(v: $ty) -> Self {
+                Self(v)
             }
-        };
+        }
+
+        $crate::style::style_prop!($name = $prop_expr);
     )*};
 }
 pub use define_style_props;

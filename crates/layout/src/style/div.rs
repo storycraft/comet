@@ -35,30 +35,30 @@ style_prop!(DisplayInner = PropLevel::Layout);
 // TODO:: change names
 define_style_props!(
     // Position
-    pub Position1: taffy::Position = taffy::Position::Relative,
-    pub Inset: Rect<LengthPercentageAuto> = Rect::auto(),
+    pub Position1(PropLevel::FullLayout): taffy::Position = taffy::Position::Relative,
+    pub Inset(PropLevel::FullLayout): Rect<LengthPercentageAuto> = Rect::auto(),
 
     // Size and modes
-    pub Size1: Size<Dimension> = Size::auto(),
-    pub MinSize: Size<Dimension> = Size::auto(),
-    pub MaxSize: Size<Dimension> = Size::auto(),
-    pub AspectRatio: f32,
-    pub Overflow1: Point<Overflow> = Point { x: Overflow::Visible, y: Overflow::Visible },
-    pub BoxSizing1: BoxSizing = BoxSizing::BorderBox,
+    pub Size1(PropLevel::FullLayout): Size<Dimension> = Size::auto(),
+    pub MinSize(PropLevel::FullLayout): Size<Dimension> = Size::auto(),
+    pub MaxSize(PropLevel::FullLayout): Size<Dimension> = Size::auto(),
+    pub AspectRatio(PropLevel::FullLayout): f32,
+    pub Overflow1(PropLevel::FullLayout): Point<Overflow> = Point { x: Overflow::Visible, y: Overflow::Visible },
+    pub BoxSizing1(PropLevel::FullLayout): BoxSizing = BoxSizing::BorderBox,
 
     // Margin, padding
-    pub Margin: Rect<LengthPercentageAuto> = Rect::zero(),
-    pub Padding: Rect<LengthPercentage> = Rect::zero(),
+    pub Margin(PropLevel::FullLayout): Rect<LengthPercentageAuto> = Rect::zero(),
+    pub Padding(PropLevel::FullLayout): Rect<LengthPercentage> = Rect::zero(),
 
     // border styles.
-    pub BorderWidth: LengthPercentage = LengthPercentage::length(0.0),
-    pub BorderRadius: StyleRect,
-    pub BorderJoin: Join = Join::Bevel,
-    pub BorderMiterLimit: StyleUnit,
-    pub BorderStartCap: Cap = Cap::Butt,
-    pub BorderEndCap: Cap = Cap::Butt,
-    pub BorderDashPattern: Dashes,
-    pub BorderDashOffset: StyleUnit,
+    pub BorderWidth(PropLevel::FullLayout): LengthPercentage = LengthPercentage::length(0.0),
+    pub BorderRadius(PropLevel::FullLayout): StyleRect,
+    pub BorderJoin(PropLevel::FullLayout): Join = Join::Bevel,
+    pub BorderMiterLimit(PropLevel::FullLayout): StyleUnit,
+    pub BorderStartCap(PropLevel::FullLayout): Cap = Cap::Butt,
+    pub BorderEndCap(PropLevel::FullLayout): Cap = Cap::Butt,
+    pub BorderDashPattern(PropLevel::FullLayout): Dashes,
+    pub BorderDashOffset(PropLevel::FullLayout): StyleUnit,
 );
 
 unsafe impl Send for Inset {}
