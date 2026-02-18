@@ -43,6 +43,7 @@ impl LayoutTree {
 
     pub fn clear(&mut self) {
         self.nodes.clear();
+        self.inline_nodes.clear();
         self.inlines.clear();
     }
 
@@ -127,18 +128,6 @@ impl InlineLayoutNode {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InlineIns {
-    /// A text with length
-    Text(usize),
-    /// Push new inline box
-    PushInlineBox(NodeKey),
-    /// Pop inline box
-    PopInlineBox,
-    /// A new Node
-    Node(LayoutNodeKey),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum InlineIns2 {
     /// A text with length
     Text(usize),
     /// Push new inline box
