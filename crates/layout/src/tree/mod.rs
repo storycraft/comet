@@ -113,7 +113,7 @@ pub struct InlineLayoutNode {
     /// Concatenated inline texts
     pub texts: String,
     /// Inline text layout
-    pub layout: parley::Layout<()>,
+    pub layout: parley::Layout<Option<NodeKey>>,
 }
 
 impl InlineLayoutNode {

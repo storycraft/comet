@@ -48,7 +48,7 @@ impl<'a> InlineLayout<'a> {
         let mut builder =
             self.cx
                 .parley
-                .tree_builder(self.font_cx, 1.0, false, &default_text_style(()));
+                .tree_builder(self.font_cx, 1.0, false, &default_text_style(None));
 
         let mut next_id = inline_node.inline_start;
         while let Some(inline_id) = next_id {

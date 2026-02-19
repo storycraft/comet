@@ -7,10 +7,10 @@ use parley::TextStyle;
 
 use crate::{parley::default_text_style, style::*};
 
-struct ResolvedTextStyle(TextStyle<'static, ()>);
+struct ResolvedTextStyle(TextStyle<'static, Option<NodeKey>>);
 style_prop!(ResolvedTextStyle);
 
-pub fn resolve_text_style(ui: &mut Ui, id: NodeKey, root_size: Size) -> TextStyle<'static, ()> {
+pub fn resolve_text_style(ui: &mut Ui, id: NodeKey, root_size: Size) -> TextStyle<'static, Option<NodeKey>> {
     if let Some(resolved) = ui.prop::<ResolvedTextStyle>(id) {
         return resolved.0.clone();
     }
@@ -18,8 +18,9 @@ pub fn resolve_text_style(ui: &mut Ui, id: NodeKey, root_size: Size) -> TextStyl
     let mut style = if let Some(parent_id) = ui.parent(id) {
         resolve_text_style(ui, parent_id, root_size)
     } else {
-        default_text_style(())
+        default_text_style(None)
     };
+    style.brush = Some(id);
     let props = ui.props(id).unwrap();
 
     // TODO:: proper style cx

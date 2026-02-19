@@ -1,6 +1,6 @@
 pub(crate) mod children;
 
-use comet_div::ui::Ui;
+use comet_div::ui::{NodeKey, Ui};
 use kurbo::Size;
 use parley::FontContext;
 
@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub struct LayoutContext {
-    pub(crate) parley: parley::LayoutContext<()>,
+    pub(crate) parley: parley::LayoutContext<Option<NodeKey>>,
     pub(crate) buffer: ChildrenStack,
 }
 
