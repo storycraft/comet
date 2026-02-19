@@ -6,6 +6,7 @@ use crate::{
     cx::LayoutContext,
     parley::default_text_style,
     resolve::text::resolve_text_style,
+    taffy::TaffyLayout,
     tree::{InlineIns, InlineLayoutNodeKey, LayoutTree},
 };
 
@@ -98,8 +99,9 @@ impl<'a> InlineLayout<'a> {
                 continue;
             };
 
-            self.cx.layout(
+            TaffyLayout::layout(
                 self.font_cx,
+                self.cx,
                 self.ui,
                 self.tree,
                 *inline_node_key,
