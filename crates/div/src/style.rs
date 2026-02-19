@@ -1,11 +1,11 @@
 use hecs::DynamicBundle;
 
 pub trait StyleProp: Sized + Send + Sync + 'static {
-    const LEVEL: PropLevel;
+    const HINT: PropHint;
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub enum PropLevel {
+pub enum PropHint {
     None,
     /// Redraw is required
     Paint,
@@ -19,12 +19,12 @@ pub enum PropLevel {
 macro_rules! style_prop {
     ($ty:ty = $level:expr) => {
         impl $crate::style::StyleProp for $ty {
-            const LEVEL: $crate::style::PropLevel = $level;
+            const HINT: $crate::style::PropHint = $level;
         }
     };
 
     ($ty:ty) => {
-        $crate::style::style_prop!($ty = $crate::style::PropLevel::None);
+        $crate::style::style_prop!($ty = $crate::style::PropHint::None);
     };
 }
 pub use style_prop;
