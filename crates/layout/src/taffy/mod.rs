@@ -20,7 +20,7 @@ use taffy::{
 pub struct TaffyLayout<'a> {
     font_cx: &'a mut FontContext,
     cx: &'a mut LayoutContext,
-    ui: &'a Ui,
+    ui: &'a mut Ui,
     tree: &'a mut LayoutTree,
 }
 
@@ -28,7 +28,7 @@ impl<'a> TaffyLayout<'a> {
     pub fn layout(
         font_cx: &'a mut FontContext,
         cx: &'a mut LayoutContext,
-        ui: &'a Ui,
+        ui: &'a mut Ui,
         tree: &'a mut LayoutTree,
         root: LayoutNodeKey,
         available_space: ::taffy::Size<AvailableSpace>,

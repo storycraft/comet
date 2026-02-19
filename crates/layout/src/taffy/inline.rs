@@ -4,13 +4,15 @@ use slotmap::Key;
 
 use crate::{
     cx::LayoutContext,
+    parley::default_text_style,
+    resolve::text::resolve_text_style,
     tree::{InlineIns, InlineLayoutNodeKey, LayoutTree},
 };
 
 pub struct InlineLayout<'a> {
     font_cx: &'a mut FontContext,
     cx: &'a mut LayoutContext,
-    ui: &'a Ui,
+    ui: &'a mut Ui,
     tree: &'a mut LayoutTree,
     text_len: usize,
 }
@@ -19,7 +21,7 @@ impl<'a> InlineLayout<'a> {
     pub fn new(
         font_cx: &'a mut FontContext,
         cx: &'a mut LayoutContext,
-        ui: &'a Ui,
+        ui: &'a mut Ui,
         tree: &'a mut LayoutTree,
     ) -> Self {
         Self {
@@ -38,10 +40,10 @@ impl<'a> InlineLayout<'a> {
         };
 
         let text = std::mem::take(&mut inline_node.texts);
-        let mut builder = self
-            .cx
-            .parley
-            .ranged_builder(self.font_cx, &text, 1.0, false);
+        let mut builder =
+            self.cx
+                .parley
+                .tree_builder(self.font_cx, 1.0, false, &default_text_style(()));
 
         let mut next_id = inline_node.inline_start;
         while let Some(inline_id) = next_id {
@@ -52,11 +54,17 @@ impl<'a> InlineLayout<'a> {
 
             match inline_item {
                 InlineIns::Text(length) => {
+                    builder.push_text(&text[self.text_len..][..length]);
                     self.text_len += length;
                 }
 
-                // TODO:: push resolved text styles
-                InlineIns::PushInlineBox(_) | InlineIns::PopInlineBox => {}
+                InlineIns::PushInlineBox(node) => {
+                    builder.push_style_span(resolve_text_style(self.ui, node));
+                }
+
+                InlineIns::PopInlineBox => {
+                    builder.pop_style_span();
+                }
 
                 InlineIns::Node(inline_node_key) => {
                     let size = self.tree.nodes[inline_node_key].layout.size;
@@ -73,7 +81,7 @@ impl<'a> InlineLayout<'a> {
         let Some(inline_node) = self.tree.inline_nodes.get_mut(id) else {
             return;
         };
-        builder.build_into(&mut inline_node.layout, &text);
+        builder.build_into(&mut inline_node.layout);
         inline_node.texts = text;
     }
 

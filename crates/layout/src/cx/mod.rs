@@ -27,7 +27,7 @@ impl LayoutContext {
     pub fn layout<'a>(
         &mut self,
         font_cx: &'a mut FontContext,
-        ui: &'a Ui,
+        ui: &'a mut Ui,
         tree: &'a mut LayoutTree,
         root: LayoutNodeKey,
         available_space: ::taffy::Size<AvailableSpace>,

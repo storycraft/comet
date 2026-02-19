@@ -8,7 +8,11 @@ use core::num::NonZeroU64;
 use hecs::{DynamicBundle, Entity, EntityBuilder, EntityRef, Ref, RefMut};
 
 use crate::{
-    node::Node, style::{PropLevel, StyleProp, StyleProps}, style_prop, tree::ArchetypalTree, ui::cursor::Cursor
+    node::Node,
+    style::{StyleProp, StyleProps},
+    style_prop,
+    tree::ArchetypalTree,
+    ui::cursor::Cursor,
 };
 
 pub struct Ui {
@@ -66,13 +70,6 @@ impl Ui {
     #[inline]
     pub fn node(&self, key: NodeKey) -> Option<Ref<'_, Node>> {
         Some(Ref::map(self.prop::<NodeWrapper>(key)?, |v| &v.0))
-    }
-
-    #[inline]
-    pub fn node_mut(&'_ self, key: NodeKey) -> Option<RefMut<'_, Node>> {
-        Some(RefMut::map(self.prop_mut::<NodeWrapper>(key)?, |v| {
-            &mut v.0
-        }))
     }
 
     #[inline]
@@ -184,4 +181,4 @@ impl<'a> Props<'a> {
 
 /// Private wrapper for storing node type in the world
 struct NodeWrapper(Node);
-style_prop!(NodeWrapper = PropLevel::Layout);
+style_prop!(NodeWrapper);

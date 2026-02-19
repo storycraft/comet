@@ -27,6 +27,7 @@ fn main() {
         (
             DisplayOuter::Inline,
             Fill(Paint::Solid(AlphaColor::from_rgb8(255, 0, 0))),
+            FontSize(StyleUnit::Em(1.2))
         ),
     );
     let div1 = ui.create(
@@ -35,6 +36,7 @@ fn main() {
             DisplayOuter::Inline,
             DisplayInner::FlowRoot,
             Fill(Paint::Solid(AlphaColor::from_rgb8(255, 255, 0))),
+             FontSize(StyleUnit::Px(14.0))
         ),
     );
 
@@ -71,7 +73,7 @@ fn main() {
     let mut layout_cx = LayoutContext::new();
     layout_cx.layout(
         &mut FontContext::new(),
-        &ui,
+        &mut ui,
         &mut layout_tree,
         layout_root,
         taffy::Size {
