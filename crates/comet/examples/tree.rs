@@ -21,7 +21,7 @@ fn main() {
     let root = ui.create(Node::Div, ());
     let text0 = ui.create(Node::Text("sa\nmple".to_string()), ());
     let text1 = ui.create(Node::Text("text".to_string()), ());
-    let inner = ui.create(Node::Text("🎉".to_string()), ());
+    let inner = ui.create(Node::Text("Inline\nbox\n🎉".to_string()), ());
     let div = ui.create(
         Node::Div,
         (
@@ -36,7 +36,7 @@ fn main() {
             DisplayOuter::Inline,
             DisplayInner::FlowRoot,
             Fill(Paint::Solid(AlphaColor::from_rgb8(255, 255, 0))),
-            FontSize(StyleUnit::Px(32.0)),
+            FontSize(StyleUnit::Px(14.0)),
         ),
     );
 
