@@ -5,10 +5,7 @@ use comet_div::{
 use kurbo::Size;
 use parley::TextStyle;
 
-use crate::{
-    parley::default_text_style,
-    style::{FontSize, LayoutStyleCx},
-};
+use crate::{parley::default_text_style, style::*};
 
 struct ResolvedTextStyle(TextStyle<'static, ()>);
 style_prop!(ResolvedTextStyle);
@@ -29,13 +26,57 @@ pub fn resolve_text_style(ui: &mut Ui, id: NodeKey, root_size: Size) -> TextStyl
     let cx = LayoutStyleCx {
         root_size,
         root_font_size: 16.0,
-        parent_size: Size::new(1920.0, 1080.0),
+        parent_size: Size::new(style.font_size as _, style.font_size as _),
         parent_font_size: style.font_size as _,
     };
 
-    // TODO:: apply styles
-    if let Some(size) = props.get::<FontSize>() {
-        style.font_size = size.0.resolve(&cx) as _;
+    if let Some(v) = props.get::<Font>() {
+        style.font_stack = v.0.clone();
+    }
+    if let Some(v) = props.get::<FontSize>() {
+        style.font_size = v.0.resolve(&cx) as _;
+    }
+    if let Some(v) = props.get::<FontVariations>() {
+        style.font_variations = v.0.clone();
+    }
+    if let Some(v) = props.get::<FontFeatures>() {
+        style.font_features = v.0.clone();
+    }
+    if let Some(v) = props.get::<FontStyle1>() {
+        style.font_style = v.0.clone();
+    }
+    if let Some(v) = props.get::<FontWeight1>() {
+        style.font_weight = v.0.clone();
+    }
+    if let Some(v) = props.get::<Locale>() {
+        style.locale = Some(v.0);
+    }
+
+    if let Some(v) = props.get::<UnderlineOffset>() {
+        style.underline_offset = Some(v.0.resolve(&cx) as _);
+    }
+    if let Some(v) = props.get::<UnderlineSize>() {
+        style.underline_size = Some(v.0.resolve(&cx) as _);
+    }
+
+    if let Some(v) = props.get::<StrikethroughOffset>() {
+        style.strikethrough_offset = Some(v.0.resolve(&cx) as _);
+    }
+    if let Some(v) = props.get::<StrikethroughSize>() {
+        style.strikethrough_size = Some(v.0.resolve(&cx) as _);
+    }
+
+    if let Some(v) = props.get::<LineHeight>() {
+        style.line_height = parley::LineHeight::Absolute(v.0.resolve(&cx) as _);
+    }
+    if let Some(v) = props.get::<WordBreak>() {
+        style.word_break = v.0;
+    }
+    if let Some(v) = props.get::<WordSpacing>() {
+        style.word_spacing = v.0.resolve(&cx) as _;
+    }
+    if let Some(v) = props.get::<LetterSpacing>() {
+        style.letter_spacing = v.0.resolve(&cx) as _;
     }
 
     ui.set_props(id, (ResolvedTextStyle(style.clone()),));
