@@ -2,8 +2,8 @@
 Comet is a Rust GUI library.
 
 ## Core concepts
-1. A `Node` is one of text or div and is a single available building gui block in Comet. Without introducing unnecessary `View` or `Widget` like traits.
-2. A `Node` is composed with multiple props. By using archetypal ECS data structure, 
+1. A `Node` is one of text or div and is a single available building block in Comet. Without introducing unnecessary `View` or `Widget` like traits.
+2. A `Node` is composition of multiple props. By using archetypal ECS data structure, 
    1. It's horizontally scalable.
    2. It can be grouped in memory.
    3. Props can be queried efficiently.
