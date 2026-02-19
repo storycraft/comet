@@ -216,7 +216,7 @@ impl CometRenderer {
                     text_index += length;
                 }
 
-                InlineIns::PushInlineBox(span) => {
+                InlineIns::PushInline(span) => {
                     let Some(cluster) = Cluster::from_byte_index(&node.layout, text_index) else {
                         continue;
                     };
@@ -227,7 +227,7 @@ impl CometRenderer {
                     });
                 }
 
-                InlineIns::PopInlineBox => {
+                InlineIns::PopInline => {
                     let Some(inline_state) = self.inline_states.pop() else {
                         continue;
                     };

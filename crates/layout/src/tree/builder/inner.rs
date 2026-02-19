@@ -71,10 +71,10 @@ impl Builder<'_> {
                     if display_inner == DisplayInner::Flow {
                         self.cx
                             .inline
-                            .add_ins(self.tree, InlineIns::PushInlineBox(id));
+                            .add_ins(self.tree, InlineIns::PushInline(id));
                         self.cx.inline.add_span(id);
                         self.build_inner(id, display_inner);
-                        self.cx.inline.add_ins(self.tree, InlineIns::PopInlineBox);
+                        self.cx.inline.add_ins(self.tree, InlineIns::PopInline);
                     } else {
                         self.build_inner(id, display_inner);
                     }

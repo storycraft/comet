@@ -130,10 +130,10 @@ impl InlineLayoutNode {
 pub enum InlineIns {
     /// A text with length
     Text(usize),
-    /// Push new inline box
-    PushInlineBox(NodeKey),
-    /// Pop inline box
-    PopInlineBox,
+    /// Push new inline layout
+    PushInline(NodeKey),
+    /// Pop inline layout
+    PopInline,
     /// A new Node
     Node(LayoutNodeKey),
 }

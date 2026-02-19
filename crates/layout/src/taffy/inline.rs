@@ -63,11 +63,11 @@ impl<'a> InlineLayout<'a> {
                     self.text_len += length;
                 }
 
-                InlineIns::PushInlineBox(node) => {
+                InlineIns::PushInline(node) => {
                     builder.push_style_span(resolve_text_style(self.ui, node, self.root_size));
                 }
 
-                InlineIns::PopInlineBox => {
+                InlineIns::PopInline => {
                     builder.pop_style_span();
                 }
 
