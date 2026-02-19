@@ -2,7 +2,7 @@ use crate::{
     layout_box::ContainerLayout,
     style::{StyleRect, StyleUnit},
 };
-use comet_div::{define_style_props, style::PropLevel, style_prop};
+use comet_div::{define_style_props, style::PropHint, style_prop};
 use kurbo::{Cap, Dashes, Join};
 use taffy::{
     BoxSizing, Dimension, LengthPercentage, LengthPercentageAuto, Overflow, Point, Rect, Size,
@@ -16,7 +16,7 @@ pub enum DisplayOuter {
     /// Element is part of inline content.
     Inline,
 }
-style_prop!(DisplayOuter = PropLevel::Layout);
+style_prop!(DisplayOuter = PropHint::Layout);
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub enum DisplayInner {
@@ -30,35 +30,35 @@ pub enum DisplayInner {
     /// Display a content inside. Children will not be laid out.
     Content,
 }
-style_prop!(DisplayInner = PropLevel::Layout);
+style_prop!(DisplayInner = PropHint::Layout);
 
 // TODO:: change names
 define_style_props!(
     // Position
-    pub Position1(PropLevel::FullLayout): taffy::Position = taffy::Position::Relative,
-    pub Inset(PropLevel::FullLayout): Rect<LengthPercentageAuto> = Rect::auto(),
+    pub Position1(PropHint::FullLayout): taffy::Position = taffy::Position::Relative,
+    pub Inset(PropHint::FullLayout): Rect<LengthPercentageAuto> = Rect::auto(),
 
     // Size and modes
-    pub Size1(PropLevel::FullLayout): Size<Dimension> = Size::auto(),
-    pub MinSize(PropLevel::FullLayout): Size<Dimension> = Size::auto(),
-    pub MaxSize(PropLevel::FullLayout): Size<Dimension> = Size::auto(),
-    pub AspectRatio(PropLevel::FullLayout): f32,
-    pub Overflow1(PropLevel::FullLayout): Point<Overflow> = Point { x: Overflow::Visible, y: Overflow::Visible },
-    pub BoxSizing1(PropLevel::FullLayout): BoxSizing = BoxSizing::BorderBox,
+    pub Size1(PropHint::FullLayout): Size<Dimension> = Size::auto(),
+    pub MinSize(PropHint::FullLayout): Size<Dimension> = Size::auto(),
+    pub MaxSize(PropHint::FullLayout): Size<Dimension> = Size::auto(),
+    pub AspectRatio(PropHint::FullLayout): f32,
+    pub Overflow1(PropHint::FullLayout): Point<Overflow> = Point { x: Overflow::Visible, y: Overflow::Visible },
+    pub BoxSizing1(PropHint::FullLayout): BoxSizing = BoxSizing::BorderBox,
 
     // Margin, padding
-    pub Margin(PropLevel::FullLayout): Rect<LengthPercentageAuto> = Rect::zero(),
-    pub Padding(PropLevel::FullLayout): Rect<LengthPercentage> = Rect::zero(),
+    pub Margin(PropHint::FullLayout): Rect<LengthPercentageAuto> = Rect::zero(),
+    pub Padding(PropHint::FullLayout): Rect<LengthPercentage> = Rect::zero(),
 
     // border styles.
-    pub BorderWidth(PropLevel::FullLayout): LengthPercentage = LengthPercentage::length(0.0),
-    pub BorderRadius(PropLevel::FullLayout): StyleRect,
-    pub BorderJoin(PropLevel::FullLayout): Join = Join::Bevel,
-    pub BorderMiterLimit(PropLevel::FullLayout): StyleUnit,
-    pub BorderStartCap(PropLevel::FullLayout): Cap = Cap::Butt,
-    pub BorderEndCap(PropLevel::FullLayout): Cap = Cap::Butt,
-    pub BorderDashPattern(PropLevel::FullLayout): Dashes,
-    pub BorderDashOffset(PropLevel::FullLayout): StyleUnit,
+    pub BorderWidth(PropHint::FullLayout): LengthPercentage = LengthPercentage::length(0.0),
+    pub BorderRadius(PropHint::FullLayout): StyleRect,
+    pub BorderJoin(PropHint::FullLayout): Join = Join::Bevel,
+    pub BorderMiterLimit(PropHint::FullLayout): StyleUnit,
+    pub BorderStartCap(PropHint::FullLayout): Cap = Cap::Butt,
+    pub BorderEndCap(PropHint::FullLayout): Cap = Cap::Butt,
+    pub BorderDashPattern(PropHint::FullLayout): Dashes,
+    pub BorderDashOffset(PropHint::FullLayout): StyleUnit,
 );
 
 unsafe impl Send for Inset {}

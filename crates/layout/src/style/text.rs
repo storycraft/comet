@@ -1,4 +1,4 @@
-use comet_div::{define_style_props, style::PropLevel};
+use comet_div::{define_style_props, style::PropHint};
 use parley::style::{
     FontFamily, FontFeature, FontSettings, FontStack, FontVariation, GenericFamily,
     WordBreakStrength,
@@ -12,29 +12,29 @@ use crate::style::StyleUnit;
 // TODO:: change names
 define_style_props!(
     // Font settings
-    pub Font(PropLevel::FullLayout): FontStack<'static> = FontStack::Single(FontFamily::Generic(GenericFamily::SansSerif)),
-    pub FontSize(PropLevel::FullLayout): StyleUnit = StyleUnit::Em(1.0),
-    pub FontVariations(PropLevel::FullLayout): FontSettings<'static, FontVariation> = FontSettings::List(Cow::Borrowed(&[])),
-    pub FontFeatures(PropLevel::FullLayout): FontSettings<'static, FontFeature> = FontSettings::List(Cow::Borrowed(&[])),
-    pub FontStyle1(PropLevel::FullLayout): FontStyle = FontStyle::Normal,
-    pub FontWeight1(PropLevel::FullLayout): FontWeight = FontWeight::NORMAL,
+    pub Font(PropHint::FullLayout): FontStack<'static> = FontStack::Single(FontFamily::Generic(GenericFamily::SansSerif)),
+    pub FontSize(PropHint::FullLayout): StyleUnit = StyleUnit::Em(1.0),
+    pub FontVariations(PropHint::FullLayout): FontSettings<'static, FontVariation> = FontSettings::List(Cow::Borrowed(&[])),
+    pub FontFeatures(PropHint::FullLayout): FontSettings<'static, FontFeature> = FontSettings::List(Cow::Borrowed(&[])),
+    pub FontStyle1(PropHint::FullLayout): FontStyle = FontStyle::Normal,
+    pub FontWeight1(PropHint::FullLayout): FontWeight = FontWeight::NORMAL,
 
     // Locale
-    pub Locale(PropLevel::FullLayout): &'static str = "en",
+    pub Locale(PropHint::FullLayout): &'static str = "en",
 
     // Underline
-    pub UnderlineOffset(PropLevel::FullLayout): StyleUnit = StyleUnit::ZERO,
-    pub UnderlineSize(PropLevel::FullLayout): StyleUnit = StyleUnit::ZERO,
+    pub UnderlineOffset(PropHint::FullLayout): StyleUnit = StyleUnit::ZERO,
+    pub UnderlineSize(PropHint::FullLayout): StyleUnit = StyleUnit::ZERO,
 
     // Strikethrough
-    pub StrikethroughOffset(PropLevel::FullLayout): StyleUnit = StyleUnit::ZERO,
-    pub StrikethroughSize(PropLevel::FullLayout): StyleUnit = StyleUnit::ZERO,
+    pub StrikethroughOffset(PropHint::FullLayout): StyleUnit = StyleUnit::ZERO,
+    pub StrikethroughSize(PropHint::FullLayout): StyleUnit = StyleUnit::ZERO,
 
     // Line settings
-    pub LineHeight(PropLevel::FullLayout): StyleUnit = StyleUnit::ZERO,
-    pub WordBreak(PropLevel::FullLayout): WordBreakStrength = WordBreakStrength::Normal,
+    pub LineHeight(PropHint::FullLayout): StyleUnit = StyleUnit::ZERO,
+    pub WordBreak(PropHint::FullLayout): WordBreakStrength = WordBreakStrength::Normal,
 
     // Text spacing
-    pub WordSpacing(PropLevel::FullLayout): StyleUnit = StyleUnit::ZERO,
-    pub LetterSpacing(PropLevel::FullLayout): StyleUnit = StyleUnit::ZERO,
+    pub WordSpacing(PropHint::FullLayout): StyleUnit = StyleUnit::ZERO,
+    pub LetterSpacing(PropHint::FullLayout): StyleUnit = StyleUnit::ZERO,
 );
