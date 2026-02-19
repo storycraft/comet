@@ -6,6 +6,7 @@ pub trait StyleProp: Sized + Send + Sync + 'static {
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PropLevel {
+    None,
     /// Redraw is required
     Paint,
     /// Node's layout is invalidated
@@ -20,6 +21,10 @@ macro_rules! style_prop {
         impl $crate::style::StyleProp for $ty {
             const LEVEL: $crate::style::PropLevel = $level;
         }
+    };
+
+    ($ty:ty) => {
+        $crate::style::style_prop!($ty = $crate::style::PropLevel::None);
     };
 }
 pub use style_prop;
