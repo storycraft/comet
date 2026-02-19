@@ -13,7 +13,6 @@ Comet is a Rust GUI library.
 ## Example
 Render of `tree.rs` in `comet/examples`
 
-
 ![render](./assets/render.png)
 
 ## License
