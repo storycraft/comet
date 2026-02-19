@@ -1,8 +1,8 @@
 pub(crate) mod children;
 
 use comet_div::ui::Ui;
+use kurbo::Size;
 use parley::FontContext;
-use taffy::AvailableSpace;
 
 use crate::{
     cx::children::ChildrenStack,
@@ -38,6 +38,7 @@ impl LayoutContext {
             ui,
             tree,
             root,
+            Size::new(size.0 as _, size.1 as _),
             taffy::Size {
                 width: taffy::AvailableSpace::Definite(size.0),
                 height: taffy::AvailableSpace::Definite(size.1),

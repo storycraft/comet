@@ -1,4 +1,5 @@
 use comet_div::ui::Ui;
+use kurbo::Size;
 use parley::{FontContext, InlineBox};
 use slotmap::Key;
 
@@ -16,6 +17,7 @@ pub struct InlineLayout<'a> {
     ui: &'a mut Ui,
     tree: &'a mut LayoutTree,
     text_len: usize,
+    root_size: Size,
 }
 
 impl<'a> InlineLayout<'a> {
@@ -24,6 +26,7 @@ impl<'a> InlineLayout<'a> {
         cx: &'a mut LayoutContext,
         ui: &'a mut Ui,
         tree: &'a mut LayoutTree,
+        root_size: Size,
     ) -> Self {
         Self {
             font_cx,
@@ -31,6 +34,7 @@ impl<'a> InlineLayout<'a> {
             ui,
             tree,
             text_len: 0,
+            root_size,
         }
     }
 
@@ -60,7 +64,7 @@ impl<'a> InlineLayout<'a> {
                 }
 
                 InlineIns::PushInlineBox(node) => {
-                    builder.push_style_span(resolve_text_style(self.ui, node));
+                    builder.push_style_span(resolve_text_style(self.ui, node, self.root_size));
                 }
 
                 InlineIns::PopInlineBox => {
@@ -105,6 +109,7 @@ impl<'a> InlineLayout<'a> {
                 self.ui,
                 self.tree,
                 *inline_node_key,
+                self.root_size,
                 taffy::Size::min_content(),
             );
         }

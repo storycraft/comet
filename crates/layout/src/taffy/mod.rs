@@ -10,6 +10,7 @@ use crate::{
     tree::{LayoutNodeKey, LayoutNodeTy, LayoutTree},
 };
 use comet_div::ui::Ui;
+use kurbo::Size;
 use parley::FontContext;
 use slotmap::{Key, KeyData};
 use taffy::{
@@ -22,6 +23,7 @@ pub struct TaffyLayout<'a> {
     cx: &'a mut LayoutContext,
     ui: &'a mut Ui,
     tree: &'a mut LayoutTree,
+    root_size: Size,
 }
 
 impl<'a> TaffyLayout<'a> {
@@ -31,6 +33,7 @@ impl<'a> TaffyLayout<'a> {
         ui: &'a mut Ui,
         tree: &'a mut LayoutTree,
         root: LayoutNodeKey,
+        root_size: Size,
         available_space: ::taffy::Size<AvailableSpace>,
     ) {
         Self {
@@ -38,6 +41,7 @@ impl<'a> TaffyLayout<'a> {
             cx,
             ui,
             tree,
+            root_size
         }
         .with_child(root, |this| {
             ::taffy::compute::compute_root_layout(this, to_taffy_key(root), available_space)
@@ -69,7 +73,7 @@ impl<'a> TaffyLayout<'a> {
                 |_, _| 0.0,
                 |_, available_space| {
                     if need_reshape {
-                        InlineLayout::new(self.font_cx, self.cx, self.ui, self.tree)
+                        InlineLayout::new(self.font_cx, self.cx, self.ui, self.tree, self.root_size)
                             .compute_layout(inline_node_key);
                     }
 

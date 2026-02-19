@@ -7,7 +7,7 @@ use parley::{
     LineHeight, OverflowWrap, TextStyle, TextWrapMode, WordBreakStrength,
 };
 
-pub fn default_text_style<'a, B: Brush>(brush: B) -> TextStyle<'a, B> {
+pub const fn default_text_style<'a, B: Brush>(brush: B) -> TextStyle<'a, B> {
     TextStyle {
         font_stack: FontStack::List(Cow::Borrowed(&[
             FontFamily::Generic(GenericFamily::SansSerif),

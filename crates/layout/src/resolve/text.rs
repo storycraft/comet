@@ -13,13 +13,13 @@ use crate::{
 struct ResolvedTextStyle(TextStyle<'static, ()>);
 style_prop!(ResolvedTextStyle);
 
-pub fn resolve_text_style(ui: &mut Ui, id: NodeKey) -> TextStyle<'static, ()> {
+pub fn resolve_text_style(ui: &mut Ui, id: NodeKey, root_size: Size) -> TextStyle<'static, ()> {
     if let Some(resolved) = ui.prop::<ResolvedTextStyle>(id) {
         return resolved.0.clone();
     }
 
     let mut style = if let Some(parent_id) = ui.parent(id) {
-        resolve_text_style(ui, parent_id)
+        resolve_text_style(ui, parent_id, root_size)
     } else {
         default_text_style(())
     };
@@ -27,7 +27,7 @@ pub fn resolve_text_style(ui: &mut Ui, id: NodeKey) -> TextStyle<'static, ()> {
 
     // TODO:: proper style cx
     let cx = LayoutStyleCx {
-        root_size: Size::new(1920.0, 1080.0),
+        root_size,
         root_font_size: 16.0,
         parent_size: Size::new(1920.0, 1080.0),
         parent_font_size: style.font_size as _,
