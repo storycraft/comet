@@ -27,7 +27,7 @@ fn main() {
         (
             DisplayOuter::Inline,
             Fill(Paint::Solid(AlphaColor::from_rgb8(255, 0, 0))),
-            FontSize(StyleUnit::Em(1.2))
+            FontSize(StyleUnit::Em(1.2)),
         ),
     );
     let div1 = ui.create(
@@ -36,7 +36,7 @@ fn main() {
             DisplayOuter::Inline,
             DisplayInner::FlowRoot,
             Fill(Paint::Solid(AlphaColor::from_rgb8(255, 255, 0))),
-             FontSize(StyleUnit::Px(14.0))
+            FontSize(StyleUnit::Px(14.0)),
         ),
     );
 
@@ -76,10 +76,7 @@ fn main() {
         &mut ui,
         &mut layout_tree,
         layout_root,
-        taffy::Size {
-            width: taffy::AvailableSpace::Definite(256.0),
-            height: taffy::AvailableSpace::Definite(256.0),
-        },
+        (256.0, 256.0),
     );
 
     print_layout_tree(&ui, &layout_tree, layout_root, 0);

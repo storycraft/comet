@@ -5,7 +5,10 @@ use comet_div::{
 use kurbo::Size;
 use parley::TextStyle;
 
-use crate::{parley::default_text_style, style::{FontSize, LayoutStyleCx}};
+use crate::{
+    parley::default_text_style,
+    style::{FontSize, LayoutStyleCx},
+};
 
 struct ResolvedTextStyle(TextStyle<'static, ()>);
 style_prop!(ResolvedTextStyle);
@@ -22,15 +25,17 @@ pub fn resolve_text_style(ui: &mut Ui, id: NodeKey) -> TextStyle<'static, ()> {
     };
     let props = ui.props(id).unwrap();
 
+    // TODO:: proper style cx
+    let cx = LayoutStyleCx {
+        root_size: Size::new(1920.0, 1080.0),
+        root_font_size: 16.0,
+        parent_size: Size::new(1920.0, 1080.0),
+        parent_font_size: style.font_size as _,
+    };
+
     // TODO:: apply styles
     if let Some(size) = props.get::<FontSize>() {
-        // TODO:: proper style cx
-        style.font_size = size.0.resolve(&LayoutStyleCx {
-            root_size: Size::new(1920.0, 1080.0),
-            root_font_size: 16.0,
-            parent_size: Size::new(1920.0, 1080.0),
-            parent_font_size: style.font_size as _,
-        }) as _;
+        style.font_size = size.0.resolve(&cx) as _;
     }
 
     ui.set_props(id, (ResolvedTextStyle(style.clone()),));

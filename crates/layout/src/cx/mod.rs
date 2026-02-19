@@ -30,9 +30,19 @@ impl LayoutContext {
         ui: &'a mut Ui,
         tree: &'a mut LayoutTree,
         root: LayoutNodeKey,
-        available_space: ::taffy::Size<AvailableSpace>,
+        size: (f32, f32),
     ) {
-        TaffyLayout::layout(font_cx, self, ui, tree, root, available_space);
+        TaffyLayout::layout(
+            font_cx,
+            self,
+            ui,
+            tree,
+            root,
+            taffy::Size {
+                width: taffy::AvailableSpace::Definite(size.0),
+                height: taffy::AvailableSpace::Definite(size.1),
+            },
+        );
     }
 }
 
