@@ -28,6 +28,10 @@ impl UiLayoutBuilder {
         }
     }
 
+    pub fn get(&self, node: NodeKey) -> Option<LayoutNodeKey> {
+        self.mappings.get(&node.id()).cloned()
+    }
+
     /// Invalidate resolved layout of [`NodeKey`].
     /// Returns affected [`LayoutNodeKey`].
     pub fn invalidate_layout(
