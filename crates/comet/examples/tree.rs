@@ -19,9 +19,9 @@ use taffy::{LengthPercentage, Rect};
 fn main() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Div, ());
-    let text0 = ui.create(Node::Text("sa\nmple".to_string()), ());
+    let text0 = ui.create(Node::Text("sample".to_string()), ());
     let text1 = ui.create(Node::Text("text".to_string()), ());
-    let inner = ui.create(Node::Text("Inline\nbox\n🎉".to_string()), ());
+    let inner = ui.create(Node::Text("Inline\nbox\nwith emoji🎉".to_string()), ());
     let div = ui.create(
         Node::Div,
         (
@@ -53,8 +53,14 @@ fn main() {
         ),
     );
 
-    let inner2 = ui.create(Node::Text("end".to_string()), ());
-    let text2 = ui.create(Node::Text("1".to_string()), ());
+    let inner2 = ui.create(
+        Node::Text("Block element occupying entire row".to_string()),
+        (),
+    );
+    let text2 = ui.create(
+        Node::Text("Hello comet world!".to_string()),
+        (Fill(Paint::Solid(AlphaColor::from_rgb8(200, 200, 200))),),
+    );
     ui.append(div, text0);
     ui.append(div, div1);
     ui.append(div, text1);

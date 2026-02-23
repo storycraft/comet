@@ -45,7 +45,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         ),
     );
 
-    let inner2 = ui.create(Node::Text("Block element occupying entire row".to_string()), ());
+    let inner2 = ui.create(
+        Node::Text("Block element occupying entire row".to_string()),
+        (),
+    );
     let text2 = ui.create(
         Node::Text("Hello comet world!".to_string()),
         (Fill(Paint::Solid(AlphaColor::from_rgb8(200, 200, 200))),),
