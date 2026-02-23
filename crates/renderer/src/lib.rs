@@ -1,5 +1,5 @@
-pub mod style;
 pub mod prelude;
+pub mod style;
 
 use anyrender::{Paint, PaintScene};
 use color::AlphaColor;

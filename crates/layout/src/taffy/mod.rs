@@ -41,7 +41,7 @@ impl<'a> TaffyLayout<'a> {
             cx,
             ui,
             tree,
-            root_size
+            root_size,
         }
         .with_child(root, |this| {
             ::taffy::compute::compute_root_layout(this, to_taffy_key(root), available_space)
@@ -73,8 +73,14 @@ impl<'a> TaffyLayout<'a> {
                 |_, _| 0.0,
                 |_, available_space| {
                     if need_reshape {
-                        InlineLayout::new(self.font_cx, self.cx, self.ui, self.tree, self.root_size)
-                            .compute_layout(inline_node_key);
+                        InlineLayout::new(
+                            self.font_cx,
+                            self.cx,
+                            self.ui,
+                            self.tree,
+                            self.root_size,
+                        )
+                        .compute_layout(inline_node_key);
                     }
 
                     let available_size = available_space.width.into_option();

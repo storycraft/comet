@@ -10,7 +10,11 @@ use crate::{parley::default_text_style, style::*};
 struct ResolvedTextStyle(TextStyle<'static, Option<NodeKey>>);
 style_prop!(ResolvedTextStyle);
 
-pub fn resolve_text_style(ui: &mut Ui, id: NodeKey, root_size: Size) -> TextStyle<'static, Option<NodeKey>> {
+pub fn resolve_text_style(
+    ui: &mut Ui,
+    id: NodeKey,
+    root_size: Size,
+) -> TextStyle<'static, Option<NodeKey>> {
     if let Some(resolved) = ui.prop::<ResolvedTextStyle>(id) {
         return resolved.0.clone();
     }

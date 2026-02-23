@@ -69,9 +69,7 @@ impl Builder<'_> {
             match (node.as_deref(), container, display_outer) {
                 (Some(Node::Text(_)), _, _) | (_, false, DisplayOuter::Inline) => {
                     if display_inner == DisplayInner::Flow {
-                        self.cx
-                            .inline
-                            .add_ins(self.tree, InlineIns::PushInline(id));
+                        self.cx.inline.add_ins(self.tree, InlineIns::PushInline(id));
                         self.cx.inline.add_span(id);
                         self.build_inner(id, display_inner);
                         self.cx.inline.add_ins(self.tree, InlineIns::PopInline);
