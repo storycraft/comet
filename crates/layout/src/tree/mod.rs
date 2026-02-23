@@ -1,4 +1,5 @@
 pub mod builder;
+pub mod hit;
 
 use comet_div::ui::NodeKey;
 use slotmap::{SlotMap, new_key_type};

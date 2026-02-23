@@ -87,6 +87,11 @@ impl BoxLayout {
             margin: to_kurbo_rect(layout.margin),
         }
     }
+
+    /// Perform hit testing
+    pub fn hit(&self, pos: (f64, f64)) -> bool {
+        Rect::from_origin_size(self.location, self.size).contains(pos)
+    }
 }
 
 impl Default for BoxLayout {
