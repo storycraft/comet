@@ -7,14 +7,10 @@ use parley::TextStyle;
 
 use crate::{parley::default_text_style, style::*};
 
-struct ResolvedTextStyle(TextStyle<'static, Option<NodeKey>>);
+struct ResolvedTextStyle(TextStyle<'static, ()>);
 style_prop!(ResolvedTextStyle);
 
-pub fn resolve_text_style(
-    ui: &mut Ui,
-    id: NodeKey,
-    root_size: Size,
-) -> TextStyle<'static, Option<NodeKey>> {
+pub fn resolve_text_style(ui: &mut Ui, id: NodeKey, root_size: Size) -> TextStyle<'static, ()> {
     if let Some(resolved) = ui.prop::<ResolvedTextStyle>(id) {
         return resolved.0.clone();
     }
@@ -22,9 +18,8 @@ pub fn resolve_text_style(
     let mut style = if let Some(parent_id) = ui.parent(id) {
         resolve_text_style(ui, parent_id, root_size)
     } else {
-        default_text_style(None)
+        default_text_style(())
     };
-    style.brush = Some(id);
     let props = ui.props(id).unwrap();
 
     // TODO:: proper style cx
@@ -48,10 +43,10 @@ pub fn resolve_text_style(
         style.font_features = v.0.clone();
     }
     if let Some(v) = props.get::<FontStyle1>() {
-        style.font_style = v.0.clone();
+        style.font_style = v.0;
     }
     if let Some(v) = props.get::<FontWeight1>() {
-        style.font_weight = v.0.clone();
+        style.font_weight = v.0;
     }
     if let Some(v) = props.get::<Locale>() {
         style.locale = Some(v.0);

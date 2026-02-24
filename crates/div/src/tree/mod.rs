@@ -26,7 +26,7 @@ impl ArchetypalTree {
     }
 
     pub fn components(&'_ self, key: Entity) -> Option<EntityRef<'_>> {
-        Some(self.world.entity(key).ok()?)
+        self.world.entity(key).ok()
     }
 
     pub fn add_components(&mut self, key: Entity, components: impl DynamicBundle) {

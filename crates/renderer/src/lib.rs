@@ -97,8 +97,8 @@ impl CometRenderer {
         inline_state: &InlineState,
         ui: &Ui,
         to: ClusterPath,
-        end_inline: InlineLayoutNodeKey,
-        layout: &parley::Layout<Option<NodeKey>>,
+        _end_inline: InlineLayoutNodeKey,
+        layout: &parley::Layout<()>,
         scene: &mut impl PaintScene,
     ) {
         let Some(props) = ui.props(inline_state.span) else {
