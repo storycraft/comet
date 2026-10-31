@@ -44,7 +44,7 @@ fn print_tree(ui: &Ui, key: NodeKey, depth: usize) {
                 .replace('<', "&lt;")
                 .replace('>', "&gt;");
 
-            println!("{indent}<text>{escaped}</text>");
+            println!("{indent}{escaped}");
         }
     }
 }
