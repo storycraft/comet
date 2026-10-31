@@ -77,13 +77,20 @@ fn deleting_deep_subtree_does_not_recurse() {
     assert!(ui.node(leaf).is_none());
 }
 
-define_style_props! {
-    #[derive(Debug, PartialEq)]
-    pub Width: u32 = 10,
+#[derive(Debug, PartialEq)]
+pub struct Width(pub u32);
+
+impl Default for Width {
+    fn default() -> Self {
+        Self(10)
+    }
 }
 
+impl StyleProp for Width {}
+
 struct Color(u32);
-style_prop!(Color);
+
+impl StyleProp for Color {}
 
 fn check(ui: &Ui, parent: NodeKey, children: &[NodeKey]) {
     assert_eq!(ui.first_child(parent), children.first().copied());

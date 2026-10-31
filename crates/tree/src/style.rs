@@ -17,47 +17,6 @@ pub enum InvalidateHint {
     FullLayout,
 }
 
-#[macro_export]
-macro_rules! style_prop {
-    ($ty:ty) => {
-        impl $crate::style::StyleProp for $ty {}
-    };
-}
-pub use style_prop;
-
-#[macro_export]
-macro_rules! define_style_props {
-    (
-        $(
-            $(#[$attr:meta])*
-            $vis:vis $name:ident : $ty:ty $(= $expr:expr)?
-        ),* $(,)?
-    ) => {$(
-        $(#[$attr])*
-        $vis struct $name(pub $ty);
-        $(impl ::core::default::Default for $name {
-            fn default() -> Self {
-                Self($expr)
-            }
-        })?
-
-        impl ::core::clone::Clone for $name {
-            fn clone(&self) -> Self {
-                Self(::core::clone::Clone::clone(&self.0))
-            }
-        }
-
-        impl ::core::convert::From<$ty> for $name {
-            fn from(v: $ty) -> Self {
-                Self(v)
-            }
-        }
-
-        $crate::style::style_prop!($name);
-    )*};
-}
-pub use define_style_props;
-
 pub trait StyleProps: DynamicBundle {}
 
 macro_rules! impl_tuples {

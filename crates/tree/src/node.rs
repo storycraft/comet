@@ -2,7 +2,7 @@ use core::num::NonZeroU64;
 
 use hecs::Entity;
 
-use crate::style_prop;
+use crate::style::StyleProp;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Node {
@@ -30,4 +30,5 @@ impl NodeKey {
 #[derive(Debug, Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Text(pub String);
-style_prop!(Text);
+
+impl StyleProp for Text {}
