@@ -1,13 +1,12 @@
 pub mod builder;
 
-use core::ops::Range;
-
 use comet_tree::node::NodeKey;
 use slotmap::new_key_type;
 
 use crate::slot_tree::SlotTree;
 
-/// Intermediate layout items. Anonymous inline runs have no associated node.
+/// An object tree of block, inline, and text items. Anonymous items have no
+/// source node; text is read from the associated UI node rather than copied here.
 #[derive(Default)]
 pub struct LayoutTree {
     pub items: SlotTree<LayoutItemKey, LayoutItem>,
@@ -33,23 +32,12 @@ impl LayoutTree {
 
         let key = self.add_item(item);
         self.items.append(parent, key);
+
         Some(key)
     }
 
-    /// Delete an item and its owned descendants. Remove its inline-box reference
-    /// from its parent, when present. A stale key is a no-op.
+    /// Delete an item and its owned descendants. A stale key is a no-op.
     pub fn delete_item(&mut self, key: LayoutItemKey) -> Option<LayoutItem> {
-        if let Some(parent) = self.items.parent(key)
-            && let Some(LayoutItem {
-                ty: LayoutItemTy::Inline(inline),
-                ..
-            }) = self.items.get_mut(parent)
-        {
-            inline
-                .instructions
-                .retain(|ins| !matches!(ins, InlineIns::InlineBlock(child) if *child == key));
-        }
-
         self.items.delete_node(key)
     }
 
@@ -58,34 +46,23 @@ impl LayoutTree {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LayoutItem {
+    /// How this item's children are laid out, or `Text` for a text leaf.
     pub ty: LayoutItemTy,
     pub node: Option<NodeKey>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutItemTy {
+    /// Children participate in block flow.
     Block,
-    Inline(InlineLayoutItem),
-}
+    /// Children participate in inline flow.
+    Inline,
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct InlineLayoutItem {
-    /// Concatenated text, preserved verbatim without whitespace normalization.
-    pub text: String,
-    pub instructions: Vec<InlineIns>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InlineIns {
-    /// A UTF-8 byte range in the enclosing item's text.
-    Text(Range<usize>),
-    PushInline(NodeKey),
-    PopInline,
-    /// An atomic inline box with its own layout context. The referenced block
-    /// item is a child of this inline item, so subtree deletion owns it too.
-    InlineBlock(LayoutItemKey),
+    /// Anonymous inline-flow text, without an element box or its own styles.
+    /// The source node identifies the text content; the builder reads no properties.
+    Text,
 }
 
 new_key_type! {

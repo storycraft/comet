@@ -1,6 +1,6 @@
 use comet_layout2::{
     style::{DisplayInner, DisplayOuter},
-    tree::{InlineIns, LayoutItemKey, LayoutItemTy, LayoutTree, builder::LayoutTreeBuilder},
+    tree::{LayoutItemKey, LayoutItemTy, LayoutTree, builder::LayoutTreeBuilder},
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
@@ -10,9 +10,9 @@ use comet_tree::{
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut ui = Ui::new();
 
-    // A text element is block-level unless explicitly made inline.
+    // Text is always inline flow; a heading needs an explicit block element.
     let root = ui.create(Node::Box, ());
-    let heading = ui.create(Node::Text, (Text("Welcome to Comet".into()),));
+    let heading = block_text(&mut ui, "Welcome to Comet");
     let paragraph = ui.create(Node::Box, ());
     ui.append(root, heading);
     ui.append(root, paragraph);
@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The block inside this inline span splits the paragraph's inline run.
     let span = ui.create(Node::Box, (DisplayOuter::Inline,));
     let greeting = inline_text(&mut ui, "Hello, 세계! ");
-    let interruption = ui.create(Node::Text, (Text("A block inside an inline span.".into()),));
+    let interruption = block_text(&mut ui, "A block inside an inline span.");
     let continuation = inline_text(&mut ui, "The inline span continues. ");
     ui.append(paragraph, span);
     for child in [greeting, interruption, continuation] {
@@ -41,26 +41,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_new(&ui, root, &mut tree)
         .ok_or("could not build sample UI")?;
 
-    println!("Initial layout tree (indentation shows ownership; text ranges are UTF-8 bytes):");
-    print_tree(&tree, layout_root);
+    println!("Initial layout object tree:");
+    print_tree(&ui, &tree, layout_root);
 
-    // Update at the existing root. Compatible layout keys and buffers are retained.
+    // Text stays in the UI; updating preserves compatible layout object keys.
     ui.set_props(greeting, (Text("Updated greeting! ".into()),));
     let layout_root = builder
         .build(&ui, root, &mut tree, layout_root)
         .ok_or("could not update sample UI")?;
 
     println!("\nAfter changing the greeting:");
-    print_tree(&tree, layout_root);
+    print_tree(&ui, &tree, layout_root);
 
     Ok(())
 }
 
 fn inline_text(ui: &mut Ui, text: &str) -> NodeKey {
-    ui.create(Node::Text, (Text(text.into()), DisplayOuter::Inline))
+    ui.create(Node::Text, (Text(text.into()),))
 }
 
-fn print_tree(tree: &LayoutTree, root: LayoutItemKey) {
+fn block_text(ui: &mut Ui, text: &str) -> NodeKey {
+    let block = ui.create(Node::Box, ());
+    let text = inline_text(ui, text);
+
+    ui.append(block, text);
+
+    block
+}
+
+fn print_tree(ui: &Ui, tree: &LayoutTree, root: LayoutItemKey) {
     let mut pending = vec![(root, 0)];
 
     while let Some((key, depth)) = pending.pop() {
@@ -74,24 +83,15 @@ fn print_tree(tree: &LayoutTree, root: LayoutItemKey) {
 
         match &item.ty {
             LayoutItemTy::Block => println!("{indent}{key:?} Block ({source})"),
-            LayoutItemTy::Inline(inline) => {
-                println!("{indent}{key:?} Inline ({source}) text={:?}", inline.text);
-
-                for instruction in &inline.instructions {
-                    match instruction {
-                        InlineIns::Text(range) => {
-                            println!(
-                                "{indent}  | Text {range:?} {:?}",
-                                inline.text.get(range.clone())
-                            );
-                        }
-                        InlineIns::PushInline(node) => println!("{indent}  | PushInline {node:?}"),
-                        InlineIns::PopInline => println!("{indent}  | PopInline"),
-                        InlineIns::InlineBlock(child) => {
-                            println!("{indent}  | InlineBlock -> {child:?}")
-                        }
-                    }
-                }
+            LayoutItemTy::Inline => println!("{indent}{key:?} Inline ({source})"),
+            LayoutItemTy::Text => {
+                let text = item.node.and_then(|node| ui.prop::<Text>(node));
+                println!(
+                    "{indent}{key:?} Text ({source}) {:?}",
+                    text.as_deref()
+                        .map(|text| text.0.as_str())
+                        .unwrap_or_default()
+                );
             }
         }
 
