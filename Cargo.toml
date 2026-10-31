@@ -9,6 +9,7 @@ authors = ["storycraft <storycraft@pancake.sh>"]
 license = "Apache-2.0"
 
 [workspace.dependencies]
+comet-tree = { path = "./crates/tree" }
 comet-div = { path = "./crates/div" }
 comet-layout = { path = "./crates/layout" }
 comet-renderer = { path = "./crates/renderer" }

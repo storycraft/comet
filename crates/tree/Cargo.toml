@@ -1,0 +1,9 @@
+[package]
+name = "comet-tree"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+hecs = "0.11.0"
