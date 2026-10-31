@@ -9,7 +9,7 @@ use crate::{
 };
 
 /// Builds layout items whose types describe their children's flow, retaining
-/// compatible items during updates. Inline-block wrappers are anonymous; their
+/// compatible items during updates. Inline-block wrappers are anonymous blocks; their
 /// bodies carry the source node and select their own children's flow.
 /// Text nodes are inline-flow leaves; their properties and children are ignored.
 /// A text leaf directly in block flow gets an anonymous inline container.
@@ -83,7 +83,7 @@ impl LayoutTreeBuilder {
                     .items
                     .parent(key)
                     .and_then(|key| tree.items.get(key))
-                    .is_some_and(|item| item.ty == LayoutItemTy::Inline && item.node.is_none())
+                    .is_some_and(|item| item.ty == LayoutItemTy::Block && item.node.is_none())
         }) && outer == DisplayOuter::Inline && inner != DisplayInner::Flow;
 
         let split = !body
@@ -92,7 +92,7 @@ impl LayoutTreeBuilder {
             && self.contains_block(ui, root);
 
         let desired = if !body && outer == DisplayOuter::Inline && inner != DisplayInner::Flow {
-            item(None, LayoutItemTy::Inline)
+            item(None, LayoutItemTy::Block)
         } else if split {
             item(None, LayoutItemTy::Block)
         } else {
@@ -191,9 +191,15 @@ impl LayoutTreeBuilder {
                         DisplayOuter::Inline => {
                             self.resume_spans(tree)?;
                             let source = (inner == DisplayInner::Flow).then_some(node);
+                            let ty = if source.is_some() {
+                                LayoutItemTy::Inline
+                            } else {
+                                LayoutItemTy::Block
+                            };
+
                             let key = self.child_with_body(
                                 tree,
-                                item(source, LayoutItemTy::Inline),
+                                item(source, ty),
                                 source.is_none().then_some(node),
                             )?;
                             self.push_frame(tree, key);

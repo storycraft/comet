@@ -215,7 +215,7 @@ fn split_inline_root_has_one_anonymous_block_container() {
 }
 
 #[test]
-fn inline_block_has_an_anonymous_inline_wrapper_and_its_own_flow() {
+fn inline_block_has_an_anonymous_block_wrapper_and_its_own_flow() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let atomic = ui.create(Node::Box, (DisplayOuter::Inline, DisplayInner::FlowRoot));
@@ -233,7 +233,7 @@ fn inline_block_has_an_anonymous_inline_wrapper_and_its_own_flow() {
 
     let top = children(&tree, key);
     assert_eq!(top.len(), 1);
-    check(&tree, top[0], LayoutItemTy::Inline, None);
+    check(&tree, top[0], LayoutItemTy::Block, None);
 
     let body = children(&tree, top[0]);
     assert_eq!(body.len(), 1);
@@ -265,7 +265,7 @@ fn content_does_not_build_ui_children_and_empty_boxes_need_no_wrappers() {
             assert!(children(&tree, key).is_empty());
         } else {
             assert_eq!(tree.items.len(), 2);
-            check(&tree, key, LayoutItemTy::Inline, None);
+            check(&tree, key, LayoutItemTy::Block, None);
 
             let body = children(&tree, key)[0];
             check(&tree, body, LayoutItemTy::Block, Some(root));

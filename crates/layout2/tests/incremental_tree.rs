@@ -243,6 +243,11 @@ fn updating_an_inline_block_body_does_not_add_another_wrapper() {
     let body = tree.items.first_child(key).unwrap();
     let original = keys(&tree, key);
 
+    assert_eq!(tree.items[key].ty, LayoutItemTy::Block);
+    assert_eq!(tree.items[key].node, None);
+    assert_eq!(tree.items[body].ty, LayoutItemTy::Inline);
+    assert_eq!(tree.items[body].node, Some(root));
+
     assert_eq!(builder.build(&ui, root, &mut tree, body), Some(body));
     assert_eq!(keys(&tree, key), original);
 
@@ -343,6 +348,11 @@ fn anonymous_inline_block_wrappers_follow_their_bodies_during_moves_and_deletion
     let wrappers: Vec<_> = tree.items.children(key).collect();
     let a_keys = keys(&tree, wrappers[0]);
     let b_keys = keys(&tree, wrappers[1]);
+
+    for wrapper in &wrappers {
+        assert_eq!(tree.items[*wrapper].ty, LayoutItemTy::Block);
+        assert_eq!(tree.items[*wrapper].node, None);
+    }
 
     ui.prepend(root, b);
 

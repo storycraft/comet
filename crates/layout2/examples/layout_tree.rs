@@ -46,6 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Text stays in the UI; updating preserves compatible layout object keys.
     ui.set_props(greeting, (Text("Updated greeting! ".into()),));
+    ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
     let layout_root = builder
         .build(&ui, root, &mut tree, layout_root)
         .ok_or("could not update sample UI")?;
