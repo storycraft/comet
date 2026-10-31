@@ -12,7 +12,7 @@ use crate::{
 /// compatible items during updates. Inline-block wrappers are anonymous blocks; their
 /// bodies carry the source node and select their own children's flow.
 /// Text nodes are inline-flow leaves; their properties and children are ignored.
-/// A text leaf directly in block flow gets an anonymous inline container.
+/// Consecutive inline content in block flow shares an anonymous inline container.
 /// Text stays in the UI. Inline ancestry stays in the tree, including cloned
 /// inline fragments around blocks. No instruction streams or text caches exist.
 /// This represents layout objects, not laid-out fragments; see Chromium's
@@ -128,7 +128,7 @@ impl LayoutTreeBuilder {
         };
 
         self.push_frame(tree, key);
-        self.push_flow();
+        self.push_flow(tree);
 
         if split {
             self.pending.push(Task::Visit(root));
@@ -180,11 +180,12 @@ impl LayoutTreeBuilder {
                             while self.frames.len() > base + 1 {
                                 self.finish_frame(tree)?;
                             }
+                            self.flows.last_mut()?.inline_run = false;
 
                             let ty = self.content_type(ui, node);
                             let key = self.child(tree, item(Some(node), ty))?;
                             self.push_frame(tree, key);
-                            self.push_flow();
+                            self.push_flow(tree);
                             self.pending.push(Task::EndFlow);
                         }
 
@@ -243,7 +244,7 @@ impl LayoutTreeBuilder {
         let ty = self.content_type(ui, node);
         let key = self.child(tree, item(Some(node), ty))?;
         self.push_frame(tree, key);
-        self.push_flow();
+        self.push_flow(tree);
         self.pending.push(Task::EndFlow);
 
         Some(())
@@ -351,7 +352,18 @@ impl LayoutTreeBuilder {
 
     fn resume_spans(&mut self, tree: &mut LayoutTree) -> Option<()> {
         let flow = *self.flows.last()?;
-        let mut index = flow.span_start + self.frames.len().checked_sub(flow.frame + 1)?;
+
+        if self.frames.len() == flow.frame + 1
+            && tree.items[self.frames[flow.frame].key].ty == LayoutItemTy::Block
+        {
+            let key = self.child(tree, item(None, LayoutItemTy::Inline))?;
+            self.push_frame(tree, key);
+            self.flows.last_mut()?.inline_run = true;
+        }
+
+        let flow = *self.flows.last()?;
+        let base = flow.frame + 1 + usize::from(flow.inline_run);
+        let mut index = flow.span_start + self.frames.len().checked_sub(base)?;
 
         while let Some(&node) = self.spans.get(index) {
             let key = self.child(tree, item(Some(node), LayoutItemTy::Inline))?;
@@ -398,6 +410,69 @@ impl LayoutTreeBuilder {
             candidate = tree.items.next_sibling(key);
         }
 
+        // A new inline run can adopt items from the previous direct child list.
+        if let Some(flow) = self.flows.last().copied() {
+            if flow.inline_run && self.frames.len() == flow.frame + 2 {
+                let parent = &mut self.frames[flow.frame];
+                let mut candidate = parent.next;
+
+                while let Some(key) = candidate {
+                    let next = tree.items.next_sibling(key);
+                    if tree.items.get(key) == Some(&item(None, LayoutItemTy::Inline)) {
+                        let mut content = tree.items.first_child(key);
+
+                        while let Some(child) = content {
+                            content = tree.items.next_sibling(child);
+                            let matching_body = body.is_none_or(|node| {
+                                tree.items.first_child(child)
+                                    .and_then(|key| tree.items.get(key))
+                                    .is_some_and(|item| item.node == Some(node))
+                            });
+
+                            if matching_body && tree.items.get(child).is_some_and(|old| compatible(*old, desired)) {
+                                tree.items[child] = desired;
+                                let frame = self.frames.last()?;
+
+                                if let Some(next) = frame.next {
+                                    tree.items.before(next, child);
+                                } else {
+                                    tree.items.append(frame.key, child);
+                                }
+
+                                return Some(child);
+                            }
+                        }
+                    }
+
+                    let matching_body = body.is_none_or(|node| {
+                        tree.items.first_child(key)
+                            .and_then(|child| tree.items.get(child))
+                            .is_some_and(|item| item.node == Some(node))
+                    });
+
+                    if matching_body && tree.items.get(key).is_some_and(|old| compatible(*old, desired)) {
+                        if parent.next == Some(key) {
+                            parent.next = next;
+                        }
+
+                        tree.items[key] = desired;
+                        let frame = self.frames.last()?;
+
+                        if let Some(next) = frame.next {
+                            tree.items.before(next, key);
+                        } else {
+                            tree.items.append(frame.key, key);
+                        }
+
+                        return Some(key);
+                    }
+
+                    candidate = next;
+                }
+            }
+        }
+
+        let frame = self.frames.last_mut()?;
         let key = tree.add_item(desired);
         if let Some(next) = frame.next {
             tree.items.before(next, key);
@@ -416,16 +491,63 @@ impl LayoutTreeBuilder {
     }
 
     fn finish_frame(&mut self, tree: &mut LayoutTree) -> Option<()> {
-        delete_remaining(tree, self.frames.pop()?.next);
+        let frame = self.frames.pop()?;
+
+        if self.flows.last().is_some_and(|flow| {
+            flow.inline_run && self.frames.len() == flow.frame + 1
+        }) {
+            // Keep the unconsumed tail available when a block splits an old run.
+            let parent = self.frames.last_mut()?;
+            let mut next = frame.next;
+            let first = next;
+
+            while let Some(key) = next {
+                next = tree.items.next_sibling(key);
+
+                if let Some(before) = parent.next {
+                    tree.items.before(before, key);
+                } else {
+                    tree.items.append(parent.key, key);
+                }
+            }
+
+            if first.is_some() {
+                parent.next = first;
+            }
+        } else {
+            delete_remaining(tree, frame.next);
+        }
 
         Some(())
     }
 
-    fn push_flow(&mut self) {
+    fn push_flow(&mut self, tree: &mut LayoutTree) {
         if let Some(frame) = self.frames.len().checked_sub(1) {
+            let key = self.frames[frame].key;
+
+            // When block flow becomes inline flow, unwrap its old inline runs.
+            if tree.items[key].ty == LayoutItemTy::Inline {
+                let mut next = tree.items.first_child(key);
+
+                while let Some(child) = next {
+                    next = tree.items.next_sibling(child);
+
+                    if tree.items[child] == item(None, LayoutItemTy::Inline) {
+                        while let Some(content) = tree.items.first_child(child) {
+                            tree.items.before(child, content);
+                        }
+
+                        tree.delete_item(child);
+                    }
+                }
+
+                self.frames[frame].next = tree.items.first_child(key);
+            }
+
             self.flows.push(Flow {
                 frame,
                 span_start: self.spans.len(),
+                inline_run: false,
             });
         }
     }
@@ -505,6 +627,7 @@ struct Frame {
 struct Flow {
     frame: usize,
     span_start: usize,
+    inline_run: bool,
 }
 
 fn item(node: Option<NodeKey>, ty: LayoutItemTy) -> LayoutItem {

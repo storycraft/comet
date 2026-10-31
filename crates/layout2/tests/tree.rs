@@ -171,6 +171,8 @@ fn blocks_split_nested_inline_objects_and_keep_empty_edge_fragments() {
     check(&tree, top[2], LayoutItemTy::Block, Some(b));
 
     for fragment in [top[0], top[3]] {
+        check(&tree, fragment, LayoutItemTy::Inline, None);
+        let fragment = children(&tree, fragment)[0];
         check(&tree, fragment, LayoutItemTy::Inline, Some(outer));
 
         let nested = children(&tree, fragment);
@@ -179,7 +181,7 @@ fn blocks_split_nested_inline_objects_and_keep_empty_edge_fragments() {
         assert!(children(&tree, nested[0]).is_empty());
     }
 
-    assert_eq!(tree.items.len(), 7);
+    assert_eq!(tree.items.len(), 9);
 }
 
 #[test]
@@ -206,6 +208,8 @@ fn split_inline_root_has_one_anonymous_block_container() {
     check(&tree, top[1], LayoutItemTy::Block, Some(block));
 
     for (fragment, source) in [(top[0], a), (top[2], b)] {
+        check(&tree, fragment, LayoutItemTy::Inline, None);
+        let fragment = children(&tree, fragment)[0];
         check(&tree, fragment, LayoutItemTy::Inline, Some(root));
 
         let text_element = children(&tree, fragment)[0];
@@ -241,9 +245,11 @@ fn inline_block_has_an_anonymous_block_wrapper_and_its_own_flow() {
 
     let fragments = children(&tree, body[0]);
     assert_eq!(fragments.len(), 3);
-    check(&tree, fragments[0], LayoutItemTy::Inline, Some(span));
+    check(&tree, fragments[0], LayoutItemTy::Inline, None);
+    check(&tree, children(&tree, fragments[0])[0], LayoutItemTy::Inline, Some(span));
     check(&tree, fragments[1], LayoutItemTy::Block, Some(block));
-    check(&tree, fragments[2], LayoutItemTy::Inline, Some(span));
+    check(&tree, fragments[2], LayoutItemTy::Inline, None);
+    check(&tree, children(&tree, fragments[2])[0], LayoutItemTy::Inline, Some(span));
 }
 
 #[test]
