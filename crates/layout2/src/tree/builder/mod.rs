@@ -234,10 +234,9 @@ impl LayoutTreeBuilder {
             if let Some(text) = ui.prop::<Text>(node) {
                 content.text.push_str(&text.0);
             }
-            content.instructions.push(InlineIns::Text {
-                node,
-                range: start..content.text.len(),
-            });
+            content
+                .instructions
+                .push(InlineIns::Text(start..content.text.len()));
         }
 
         if inner != DisplayInner::Content {

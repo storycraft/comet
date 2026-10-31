@@ -79,17 +79,11 @@ fn merges_adjacent_and_nested_inline_elements_with_utf8_source_ranges() {
         content(&tree, run).instructions,
         vec![
             InlineIns::PushInline(a),
-            InlineIns::Text {
-                node: a,
-                range: 0..3
-            },
+            InlineIns::Text(0..3),
             InlineIns::PopInline,
             InlineIns::PushInline(span),
             InlineIns::PushInline(b),
-            InlineIns::Text {
-                node: b,
-                range: 3..8
-            },
+            InlineIns::Text(3..8),
             InlineIns::PopInline,
             InlineIns::PopInline,
         ]
@@ -150,10 +144,7 @@ fn inline_root_splits_around_a_block_with_an_anonymous_container() {
         vec![
             InlineIns::PushInline(root),
             InlineIns::PushInline(a),
-            InlineIns::Text {
-                node: a,
-                range: 0..1
-            },
+            InlineIns::Text(0..1),
             InlineIns::PopInline,
             InlineIns::PopInline,
         ]
@@ -163,10 +154,7 @@ fn inline_root_splits_around_a_block_with_an_anonymous_container() {
         vec![
             InlineIns::PushInline(root),
             InlineIns::PushInline(b),
-            InlineIns::Text {
-                node: b,
-                range: 0..1
-            },
+            InlineIns::Text(0..1),
             InlineIns::PopInline,
             InlineIns::PopInline,
         ]
@@ -212,10 +200,7 @@ fn nested_inline_spans_reopen_after_blocks_and_close_before_following_siblings()
             InlineIns::PushInline(outer),
             InlineIns::PushInline(inner),
             InlineIns::PushInline(a),
-            InlineIns::Text {
-                node: a,
-                range: 0..3
-            },
+            InlineIns::Text(0..3),
             InlineIns::PopInline,
             InlineIns::PopInline,
             InlineIns::PopInline,
@@ -227,24 +212,15 @@ fn nested_inline_spans_reopen_after_blocks_and_close_before_following_siblings()
             InlineIns::PushInline(outer),
             InlineIns::PushInline(inner),
             InlineIns::PushInline(b),
-            InlineIns::Text {
-                node: b,
-                range: 0..4
-            },
+            InlineIns::Text(0..4),
             InlineIns::PopInline,
             InlineIns::PopInline,
             InlineIns::PushInline(c),
-            InlineIns::Text {
-                node: c,
-                range: 4..5
-            },
+            InlineIns::Text(4..5),
             InlineIns::PopInline,
             InlineIns::PopInline,
             InlineIns::PushInline(d),
-            InlineIns::Text {
-                node: d,
-                range: 5..6
-            },
+            InlineIns::Text(5..6),
             InlineIns::PopInline,
         ]
     );
@@ -356,10 +332,7 @@ fn text_nodes_honor_display_and_missing_text_is_empty() {
     assert_eq!(content(&tree, child).text, "block text");
     assert_eq!(
         content(&tree, child).instructions,
-        vec![InlineIns::Text {
-            node: root,
-            range: 0..10
-        },]
+        vec![InlineIns::Text(0..10),]
     );
 
     let empty_key = builder.build_new(&ui, empty, &mut tree).unwrap();
@@ -368,10 +341,7 @@ fn text_nodes_honor_display_and_missing_text_is_empty() {
         content(&tree, empty_key).instructions,
         vec![
             InlineIns::PushInline(empty),
-            InlineIns::Text {
-                node: empty,
-                range: 0..0
-            },
+            InlineIns::Text(0..0),
             InlineIns::PopInline,
         ]
     );
@@ -518,17 +488,11 @@ fn inline_flow_root_is_atomic_and_keeps_block_splitting_inside_its_own_context()
         vec![
             InlineIns::PushInline(span),
             InlineIns::PushInline(before),
-            InlineIns::Text {
-                node: before,
-                range: 0..1
-            },
+            InlineIns::Text(0..1),
             InlineIns::PopInline,
             InlineIns::InlineBlock(atomic_key),
             InlineIns::PushInline(after),
-            InlineIns::Text {
-                node: after,
-                range: 1..2
-            },
+            InlineIns::Text(1..2),
             InlineIns::PopInline,
             InlineIns::PopInline,
         ]

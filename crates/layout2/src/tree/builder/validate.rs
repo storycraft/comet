@@ -38,11 +38,8 @@ pub(super) fn valid(
                 };
                 depth = remaining;
             }
-            InlineIns::Text { node, range } => {
-                if ui.node(*node).is_none()
-                    || range.start != offset
-                    || inline.text.get(range.clone()).is_none()
-                {
+            InlineIns::Text(range) => {
+                if range.start != offset || inline.text.get(range.clone()).is_none() {
                     return false;
                 }
                 offset = range.end;

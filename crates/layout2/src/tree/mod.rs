@@ -79,11 +79,8 @@ pub struct InlineLayoutItem {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InlineIns {
-    /// A UTF-8 byte range in the enclosing item's text and its source node.
-    Text {
-        node: NodeKey,
-        range: Range<usize>,
-    },
+    /// A UTF-8 byte range in the enclosing item's text.
+    Text(Range<usize>),
     PushInline(NodeKey),
     PopInline,
     /// An atomic inline box with its own layout context. The referenced block

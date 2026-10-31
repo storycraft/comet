@@ -79,9 +79,9 @@ fn print_tree(tree: &LayoutTree, root: LayoutItemKey) {
 
                 for instruction in &inline.instructions {
                     match instruction {
-                        InlineIns::Text { node, range } => {
+                        InlineIns::Text(range) => {
                             println!(
-                                "{indent}  | Text {node:?} {range:?} {:?}",
+                                "{indent}  | Text {range:?} {:?}",
                                 inline.text.get(range.clone())
                             );
                         }

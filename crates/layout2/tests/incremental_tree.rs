@@ -204,12 +204,7 @@ fn malformed_inline_branches_are_discarded_without_following_foreign_references(
         };
         match corruption {
             0 => inline.instructions = vec![InlineIns::PopInline],
-            1 => {
-                inline.instructions = vec![InlineIns::Text {
-                    node: label,
-                    range: 0..1,
-                }]
-            }
+            1 => inline.instructions = vec![InlineIns::Text(0..1)],
             2 => inline.instructions.push(InlineIns::InlineBlock(stale)),
             3 => inline.instructions.push(InlineIns::InlineBlock(foreign)),
             _ => inline.instructions.push(InlineIns::PushInline(label)),
