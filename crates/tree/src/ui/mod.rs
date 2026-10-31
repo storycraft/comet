@@ -21,9 +21,6 @@ pub struct Ui {
     builder: EntityBuilder,
 }
 
-/// Alternate spelling of [`Ui`].
-pub type UI = Ui;
-
 impl Ui {
     pub fn new() -> Self {
         Self::default()
