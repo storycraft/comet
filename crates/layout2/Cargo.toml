@@ -6,7 +6,7 @@ authors = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
-comet-div = { workspace = true }
+comet-tree = { workspace = true }
 
 parley_engine = { version = "0.12.0", features = ["complex-scripts"] }
 rustc-hash = "2.1.3"

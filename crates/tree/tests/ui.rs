@@ -113,7 +113,7 @@ fn check(ui: &Ui, parent: NodeKey, children: &[NodeKey]) {
 
 #[test]
 fn insertion_and_same_parent_reordering() {
-    let mut ui = UI::new();
+    let mut ui = Ui::new();
     let p = ui.create(Node::Box, ());
     let a = ui.create(Node::Text, ());
     let b = ui.create(Node::Box, ());
