@@ -230,20 +230,20 @@ impl LayoutTreeBuilder {
                 break;
             }
 
-            if !wrap && tree.items.get(key) == Some(&anonymous) {
-                if let Some(leaf) = tree.items.first_child(key) {
-                    if tree.items.get(leaf) == Some(&desired) {
-                        tree.items.before(key, leaf);
+            if !wrap
+                && tree.items.get(key) == Some(&anonymous)
+                && let Some(leaf) = tree.items.first_child(key)
+                && tree.items.get(leaf) == Some(&desired)
+            {
+                tree.items.before(key, leaf);
 
-                        if frame.next == Some(key) {
-                            frame.next = Some(leaf);
-                        }
-
-                        tree.delete_item(key);
-
-                        break;
-                    }
+                if frame.next == Some(key) {
+                    frame.next = Some(leaf);
                 }
+
+                tree.delete_item(key);
+
+                break;
             }
 
             candidate = tree.items.next_sibling(key);
@@ -328,46 +328,47 @@ impl LayoutTreeBuilder {
         }
 
         // A new inline run can adopt items from the previous direct child list.
-        if let Some(flow) = self.flows.last().copied() {
-            if flow.inline_run && self.frames.len() == flow.frame + 2 {
-                let parent = &mut self.frames[flow.frame];
-                let mut candidate = parent.next;
+        if let Some(flow) = self.flows.last().copied()
+            && flow.inline_run
+            && self.frames.len() == flow.frame + 2
+        {
+            let parent = &mut self.frames[flow.frame];
+            let mut candidate = parent.next;
 
-                while let Some(key) = candidate {
-                    let next = tree.items.next_sibling(key);
-                    if tree.items.get(key)
-                        == Some(&item(LayoutItemTy::AnonymousBlock, ChildLayoutMode::Inline))
-                    {
-                        let mut content = tree.items.first_child(key);
+            while let Some(key) = candidate {
+                let next = tree.items.next_sibling(key);
+                if tree.items.get(key)
+                    == Some(&item(LayoutItemTy::AnonymousBlock, ChildLayoutMode::Inline))
+                {
+                    let mut content = tree.items.first_child(key);
 
-                        while let Some(child) = content {
-                            content = tree.items.next_sibling(child);
-                            if matches_item(tree, child, desired, text) {
-                                tree.items[child] = desired;
-                                let frame = self.frames.last()?;
+                    while let Some(child) = content {
+                        content = tree.items.next_sibling(child);
+                        if matches_item(tree, child, desired, text) {
+                            tree.items[child] = desired;
+                            let frame = self.frames.last()?;
 
-                                frame.insert(tree, child);
+                            frame.insert(tree, child);
 
-                                return Some(child);
-                            }
+                            return Some(child);
                         }
                     }
-
-                    if matches_item(tree, key, desired, text) {
-                        if parent.next == Some(key) {
-                            parent.next = next;
-                        }
-
-                        tree.items[key] = desired;
-                        let frame = self.frames.last()?;
-
-                        frame.insert(tree, key);
-
-                        return Some(key);
-                    }
-
-                    candidate = next;
                 }
+
+                if matches_item(tree, key, desired, text) {
+                    if parent.next == Some(key) {
+                        parent.next = next;
+                    }
+
+                    tree.items[key] = desired;
+                    let frame = self.frames.last()?;
+
+                    frame.insert(tree, key);
+
+                    return Some(key);
+                }
+
+                candidate = next;
             }
         }
 
