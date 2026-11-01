@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.append(root, heading);
     ui.append(root, paragraph);
 
-    // The block inside this inline span splits the paragraph's inline run.
+    // The block splits this span into fragments linked by prev/next continuations.
     let span = ui.create(Node::Box, (DisplayOuter::Inline,));
     let greeting = inline_text(&mut ui, "Hello, 세계! ");
     let interruption = block_text(&mut ui, "A block inside an inline span.");
@@ -41,17 +41,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_new(&ui, root, &mut tree)
         .ok_or("could not build sample UI")?;
 
-    println!("Initial layout object tree:");
+    println!("Initial layout tree with a split inline span:");
     print_tree(&ui, &tree, layout_root);
 
     // Text stays in the UI; updating preserves compatible layout object keys.
     ui.set_props(greeting, (Text("Updated greeting! ".into()),));
-    ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
     let layout_root = builder
         .build(&ui, root, &mut tree, layout_root)
         .ok_or("could not update sample UI")?;
 
     println!("\nAfter changing the greeting:");
+    print_tree(&ui, &tree, layout_root);
+
+    // An atomic inline no longer interrupts the span: its parts merge and unlink.
+    ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
+    let layout_root = builder
+        .build(&ui, root, &mut tree, layout_root)
+        .ok_or("could not merge the inline span")?;
+
+    println!("\nAfter changing the interruption to inline-block (merged span):");
+    print_tree(&ui, &tree, layout_root);
+
+    // Restoring the block splits the span and rebuilds its continuation chain.
+    ui.set_props(interruption, (DisplayOuter::Block, DisplayInner::Flow));
+    let layout_root = builder
+        .build(&ui, root, &mut tree, layout_root)
+        .ok_or("could not split the inline span again")?;
+
+    println!("\nAfter restoring the block (split span):");
     print_tree(&ui, &tree, layout_root);
 
     Ok(())
@@ -82,6 +99,20 @@ fn print_tree(ui: &Ui, tree: &LayoutTree, root: LayoutItemKey) {
             "{indent}{key:?} {:?} children={:?}",
             item.ty, item.child_layout
         );
+
+        if let LayoutItemTy::Inline(_) = item.ty {
+            let part = match (item.continuation.prev, item.continuation.next) {
+                (None, None) => "unsplit",
+                (None, Some(_)) => "first",
+                (Some(_), Some(_)) => "middle",
+                (Some(_), None) => "last",
+            };
+
+            println!(
+                "{indent}  part={part} prev={:?} next={:?}",
+                item.continuation.prev, item.continuation.next
+            );
+        }
 
         if let LayoutItemTy::Text(node) = item.ty {
             let text = ui.prop::<Text>(node);

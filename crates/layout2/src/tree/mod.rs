@@ -32,8 +32,36 @@ impl LayoutTree {
         Some(key)
     }
 
+    /// Delete a subtree and reconnect continuation chains that cross its boundary.
     pub fn delete_item(&mut self, key: LayoutItemKey) -> Option<LayoutItem> {
-        self.items.delete_node(key)
+        let item = *self.items.get(key)?;
+        self.unlink_continuation(key);
+        let mut pending = Vec::new();
+        pending.extend(self.items.children(key));
+
+        while let Some(key) = pending.pop() {
+            pending.extend(self.items.children(key));
+            self.unlink_continuation(key);
+        }
+
+        self.items.delete_node(key);
+
+        Some(item)
+    }
+
+    pub(crate) fn unlink_continuation(&mut self, key: LayoutItemKey) {
+        let Some(item) = self.items.get_mut(key) else {
+            return;
+        };
+        let Continuation { prev, next } = std::mem::take(&mut item.continuation);
+
+        if let Some(item) = prev.and_then(|key| self.items.get_mut(key)) {
+            item.continuation.next = next;
+        }
+
+        if let Some(item) = next.and_then(|key| self.items.get_mut(key)) {
+            item.continuation.prev = prev;
+        }
     }
 
     pub fn clear(&mut self) {
@@ -45,6 +73,15 @@ impl LayoutTree {
 pub struct LayoutItem {
     pub ty: LayoutItemTy,
     pub child_layout: ChildLayoutMode,
+    pub continuation: Continuation,
+}
+
+/// Links fragments of one source element in layout order, across anonymous runs.
+/// An unsplit item has neither link; the first/last fragment has no prev/next.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Continuation {
+    pub next: Option<LayoutItemKey>,
+    pub prev: Option<LayoutItemKey>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

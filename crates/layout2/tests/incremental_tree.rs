@@ -14,6 +14,7 @@ fn block(node: Option<NodeKey>) -> LayoutItem {
     LayoutItem {
         child_layout: Mode::Block,
         ty: node.map_or(Ty::AnonymousBlock, Ty::Block),
+        continuation: Default::default(),
     }
 }
 
@@ -34,7 +35,9 @@ fn snapshot(tree: &LayoutTree, root: LayoutItemKey) -> Vec<(usize, LayoutItem)> 
     let mut result = Vec::new();
 
     while let Some((key, depth)) = pending.pop() {
-        result.push((depth, tree.items[key]));
+        let mut item = tree.items[key];
+        item.continuation = Default::default();
+        result.push((depth, item));
         pending.extend(tree.items.children(key).rev().map(|key| (key, depth + 1)));
     }
 
@@ -48,6 +51,29 @@ fn assert_fresh(ui: &Ui, source: NodeKey, tree: &LayoutTree, root: LayoutItemKey
         .unwrap();
 
     assert_eq!(snapshot(tree, root), snapshot(&fresh, key));
+
+    // Keys belong to their respective arenas; compare fragment positions instead.
+    let links = |tree: &LayoutTree, root| {
+        let keys = keys(tree, root);
+        let positions: std::collections::HashMap<_, _> = keys
+            .iter()
+            .enumerate()
+            .map(|(index, &key)| (key, index))
+            .collect();
+
+        keys.iter()
+            .map(|&key| {
+                let continuation = tree.items[key].continuation;
+
+                (
+                    continuation.prev.map(|key| positions[&key]),
+                    continuation.next.map(|key| positions[&key]),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(links(tree, root), links(&fresh, key));
 }
 
 #[test]
@@ -61,6 +87,7 @@ fn public_item_api_deletes_owned_subtrees_and_ignores_stale_keys() {
             LayoutItem {
                 ty: Ty::AnonymousBlock,
                 child_layout: Mode::Inline,
+                continuation: Default::default(),
             },
         )
         .unwrap();

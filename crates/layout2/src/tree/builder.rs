@@ -20,6 +20,7 @@ pub struct LayoutTreeBuilder {
     scan: Vec<NodeKey>,
     // Lazy indexes can retain moved items; never reuse an item twice per update.
     claimed: FxHashSet<LayoutItemKey>,
+    continuations: FxHashMap<NodeKey, LayoutItemKey>,
 }
 
 impl LayoutTreeBuilder {
@@ -330,7 +331,7 @@ impl LayoutTreeBuilder {
         let frame = self.frames.last_mut()?;
 
         if let Some(key) = frame.find(tree, desired, text, &self.claimed) {
-            tree.items[key] = desired;
+            replace_item(tree, key, desired);
 
             if frame.next == Some(key) {
                 frame.next = tree.items.next_sibling(key);
@@ -355,7 +356,7 @@ impl LayoutTreeBuilder {
                     parent.next = tree.items.next_sibling(key);
                 }
 
-                tree.items[key] = desired;
+                replace_item(tree, key, desired);
                 self.frames.last()?.insert(tree, key);
                 self.claimed.insert(key);
 
@@ -371,7 +372,14 @@ impl LayoutTreeBuilder {
         Some(key)
     }
 
-    fn push_frame(&mut self, tree: &LayoutTree, key: LayoutItemKey) {
+    fn push_frame(&mut self, tree: &mut LayoutTree, key: LayoutItemKey) {
+        if let LayoutItemTy::Inline(node) = tree.items[key].ty
+            && let Some(prev) = self.continuations.insert(node, key)
+        {
+            tree.items[prev].continuation.next = Some(key);
+            tree.items[key].continuation.prev = Some(prev);
+        }
+
         self.frames.push(Frame {
             key,
             next: tree.items.first_child(key),
@@ -508,6 +516,7 @@ impl LayoutTreeBuilder {
         self.spans.clear();
         self.scan.clear();
         self.claimed.clear();
+        self.continuations.clear();
     }
 }
 
@@ -627,7 +636,16 @@ struct Flow {
 }
 
 fn item(ty: LayoutItemTy, child_layout: ChildLayoutMode) -> LayoutItem {
-    LayoutItem { ty, child_layout }
+    LayoutItem {
+        ty,
+        child_layout,
+        continuation: Default::default(),
+    }
+}
+
+fn replace_item(tree: &mut LayoutTree, key: LayoutItemKey, desired: LayoutItem) {
+    tree.unlink_continuation(key);
+    tree.items[key] = desired;
 }
 
 fn matches_item(
@@ -651,7 +669,7 @@ fn update_item(
     desired: LayoutItem,
 ) -> LayoutItemKey {
     if let Some(key) = target.filter(|&key| matches_item(tree, key, desired, None)) {
-        tree.items[key] = desired;
+        replace_item(tree, key, desired);
 
         return key;
     }
