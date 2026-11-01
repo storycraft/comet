@@ -47,7 +47,7 @@ pub struct LayoutItem {
     pub child_layout: ChildLayoutMode,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LayoutItemTy {
     Block(NodeKey),
     Inline(NodeKey),

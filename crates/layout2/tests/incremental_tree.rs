@@ -631,3 +631,152 @@ fn content_mode_prunes_children_and_restores_flow() {
         }
     }
 }
+
+#[test]
+fn wide_reorders_and_replacements_preserve_surviving_keys() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let nodes: Vec<_> = (0..256)
+        .map(|_| {
+            let node = ui.create(Node::Box, ());
+            ui.append(root, node);
+
+            node
+        })
+        .collect();
+    let mut tree = LayoutTree::new();
+    let mut builder = LayoutTreeBuilder::new();
+    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let original: Vec<_> = tree.items.children(key).collect();
+
+    for &node in &nodes {
+        ui.prepend(root, node);
+    }
+
+    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(
+        tree.items.children(key).collect::<Vec<_>>(),
+        original.iter().rev().copied().collect::<Vec<_>>()
+    );
+
+    for (index, &node) in nodes.iter().enumerate() {
+        if index % 2 == 0 {
+            let replacement = ui.create(Node::Box, ());
+            ui.before(node, replacement);
+            ui.delete(node);
+        }
+    }
+
+    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+
+    for (index, &old) in original.iter().enumerate() {
+        assert_eq!(tree.items.get(old).is_some(), index % 2 != 0);
+    }
+
+    assert_fresh(&ui, root, &tree, key);
+    assert_eq!(tree.items.len(), nodes.len() + 1);
+}
+
+#[test]
+fn many_run_splits_merges_and_reorders_preserve_text_keys() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let mut texts = Vec::new();
+
+    for _ in 0..128 {
+        let text = ui.create(Node::Text, ());
+        ui.append(root, text);
+        texts.push(text);
+    }
+
+    // Keep block flow throughout so updates also exercise promotion from old runs.
+    let end = ui.create(Node::Box, ());
+    ui.append(root, end);
+
+    let mut tree = LayoutTree::new();
+    let mut builder = LayoutTreeBuilder::new();
+    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let run = tree.items.first_child(key).unwrap();
+    let leaves: Vec<_> = tree.items.children(run).collect();
+
+    for _ in 0..3 {
+        let mut blocks = Vec::new();
+
+        for &text in &texts {
+            let block = ui.create(Node::Box, ());
+            ui.after(text, block);
+            blocks.push(block);
+        }
+
+        for phase in 0..3 {
+            if phase == 1 {
+                for &text in &texts {
+                    ui.prepend(root, text);
+                }
+            } else if phase == 2 {
+                for &block in &blocks {
+                    ui.delete(block);
+                }
+            }
+
+            assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+            assert_fresh(&ui, root, &tree, key);
+            assert_eq!(tree.items.len(), keys(&tree, key).len());
+
+            for (&leaf, &text) in leaves.iter().zip(&texts) {
+                assert_eq!(tree.items[leaf].ty, Ty::Text(text));
+            }
+        }
+    }
+}
+
+#[test]
+fn nested_fragment_reconciliation_matches_fresh_trees() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let mut spans = Vec::new();
+    let mut nodes = Vec::new();
+
+    for _ in 0..12 {
+        let outer = ui.create(Node::Box, (DisplayOuter::Inline,));
+        let inner = ui.create(Node::Box, (DisplayOuter::Inline,));
+        ui.append(root, outer);
+        ui.append(outer, inner);
+        spans.push(outer);
+
+        for _ in 0..8 {
+            let node = ui.create(Node::Box, (DisplayOuter::Inline,));
+            let text = ui.create(Node::Text, ());
+            ui.append(node, text);
+            ui.append(inner, node);
+            nodes.push((inner, node));
+        }
+    }
+
+    let mut tree = LayoutTree::new();
+    let mut builder = LayoutTreeBuilder::new();
+    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let mut seed = 17_u32;
+
+    for step in 0..512 {
+        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+        let (parent, node) = nodes[(seed as usize >> 8) % nodes.len()];
+        let outer = if step % 3 == 0 {
+            DisplayOuter::Block
+        } else {
+            DisplayOuter::Inline
+        };
+        let inner = match step % 5 {
+            0 => DisplayInner::FlowRoot,
+            1 => DisplayInner::Content,
+            _ => DisplayInner::Flow,
+        };
+        ui.set_props(node, (outer, inner));
+        ui.prepend(parent, node);
+        ui.prepend(root, spans[(seed as usize >> 16) % spans.len()]);
+
+        assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+        assert_fresh(&ui, root, &tree, key);
+        assert_eq!(tree.items.len(), keys(&tree, key).len());
+    }
+}
