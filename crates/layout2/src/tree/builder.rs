@@ -5,18 +5,9 @@ use comet_tree::{
 
 use crate::{
     style::{DisplayInner, DisplayOuter},
-    tree::{LayoutItem, LayoutItemKey, LayoutItemTy, LayoutTree},
+    tree::{ChildLayoutMode, LayoutItem, LayoutItemKey, LayoutItemTy, LayoutTree},
 };
 
-/// Builds layout items whose types describe their children's flow, retaining
-/// compatible items during updates. Inline-block wrappers are anonymous blocks; their
-/// bodies carry the source node and select their own children's flow.
-/// Text nodes are inline-flow leaves; their properties and children are ignored.
-/// Consecutive inline content in block flow shares an anonymous inline container.
-/// Text stays in the UI. Inline ancestry stays in the tree, including cloned
-/// inline fragments around blocks. No instruction streams or text caches exist.
-/// This represents layout objects, not laid-out fragments; see Chromium's
-/// [LayoutNG overview](https://developer.chrome.com/docs/chromium/layoutng).
 #[derive(Default)]
 pub struct LayoutTreeBuilder {
     pending: Vec<Task>,
@@ -31,9 +22,6 @@ impl LayoutTreeBuilder {
         Self::default()
     }
 
-    /// Update a complete flow boundary, leaving unrelated items untouched.
-    /// Use the returned key: incompatible roots are replaced in their old position.
-    /// A deleted source deletes the target. Inline-block bodies are supported too.
     pub fn build(
         &mut self,
         ui: &Ui,
@@ -75,72 +63,23 @@ impl LayoutTreeBuilder {
         }
 
         let (outer, inner) = display(ui, root);
-        let body = target.is_some_and(|key| {
-            tree.items
-                .get(key)
-                .is_some_and(|item| item.ty != LayoutItemTy::Text && item.node == Some(root))
-                && tree
-                    .items
-                    .parent(key)
-                    .and_then(|key| tree.items.get(key))
-                    .is_some_and(|item| item.ty == LayoutItemTy::Block && item.node.is_none())
-        }) && outer == DisplayOuter::Inline && inner != DisplayInner::Flow;
-
-        let split = !body
-            && outer == DisplayOuter::Inline
+        let split = outer == DisplayOuter::Inline
             && inner == DisplayInner::Flow
             && self.contains_block(ui, root);
 
-        let desired = if !body && outer == DisplayOuter::Inline && inner != DisplayInner::Flow {
-            item(None, LayoutItemTy::Block)
-        } else if split {
-            item(None, LayoutItemTy::Block)
+        let desired = if split {
+            item(LayoutItemTy::AnonymousBlock, ChildLayoutMode::Block)
         } else {
-            item(
-                Some(root),
-                if body || outer == DisplayOuter::Block {
-                    self.content_type(ui, root)
-                } else {
-                    outer_type(outer)
-                },
-            )
+            self.source_item(ui, root)
         };
 
-        let key = match target {
-            Some(key) if tree.items.get(key).is_some_and(|old| compatible(*old, desired)) => {
-                tree.items[key] = desired;
-
-                key
-            }
-            _ => {
-                let key = tree.add_item(desired);
-
-                if let Some(old) = target {
-                    if tree.items.get(old).is_some() {
-                        tree.items.before(old, key);
-                    }
-
-                    tree.delete_item(old);
-                }
-
-                key
-            }
-        };
+        let key = update_item(tree, target, desired);
 
         self.push_frame(tree, key);
         self.push_flow(tree);
 
         if split {
             self.pending.push(Task::Visit(root));
-        } else if !body && outer == DisplayOuter::Inline && inner != DisplayInner::Flow {
-            if self.start_body(ui, tree, root).is_none() {
-                self.clear();
-                tree.delete_item(key);
-
-                return None;
-            }
-
-            self.pending.push(Task::Content(root));
         } else {
             self.pending.push(Task::Content(root));
         }
@@ -172,54 +111,35 @@ impl LayoutTreeBuilder {
 
                     let (outer, inner) = display(ui, node);
 
-                    match outer {
-                        DisplayOuter::Block => {
-                            // Finish the leading fragments, but keep their source
-                            // ancestry so it can resume after this block group.
-                            let base = self.flows.last()?.frame;
-                            while self.frames.len() > base + 1 {
-                                self.finish_frame(tree)?;
-                            }
-                            self.flows.last_mut()?.inline_run = false;
+                    if outer == DisplayOuter::Block {
+                        let base = self.flows.last()?.frame;
 
-                            let ty = self.content_type(ui, node);
-                            let key = self.child(tree, item(Some(node), ty))?;
-                            self.push_frame(tree, key);
-                            self.push_flow(tree);
-                            self.pending.push(Task::EndFlow);
+                        while self.frames.len() > base + 1 {
+                            self.finish_frame(tree)?;
                         }
 
-                        DisplayOuter::Inline => {
-                            self.resume_spans(tree)?;
-                            let source = (inner == DisplayInner::Flow).then_some(node);
-                            let ty = if source.is_some() {
-                                LayoutItemTy::Inline
-                            } else {
-                                LayoutItemTy::Block
-                            };
+                        self.flows.last_mut()?.inline_run = false;
+                    } else {
+                        self.resume_spans(tree)?;
+                    }
 
-                            let key = self.child_with_body(
-                                tree,
-                                item(source, ty),
-                                source.is_none().then_some(node),
-                            )?;
-                            self.push_frame(tree, key);
+                    let desired = self.source_item(ui, node);
+                    let key = self.child(tree, desired)?;
+                    self.push_frame(tree, key);
 
-                            if inner == DisplayInner::Flow {
-                                self.spans.push(node);
-                                self.pending.push(Task::EndInline);
-                            } else {
-                                self.pending.push(Task::EndFrame);
-                                self.start_body(ui, tree, node)?;
-                            }
-                        }
+                    if outer == DisplayOuter::Inline && inner == DisplayInner::Flow {
+                        self.spans.push(node);
+                        self.pending.push(Task::EndInline);
+                    } else {
+                        self.push_flow(tree);
+                        self.pending.push(Task::EndFlow);
                     }
 
                     self.pending.push(Task::Content(node));
                 }
 
                 Task::Content(node) => {
-                    if display(ui, node).1 != DisplayInner::Content {
+                    if tree.items[self.frames.last()?.key].child_layout != ChildLayoutMode::None {
                         self.pending
                             .extend(ui.children(node).rev().map(Task::Visit));
                     }
@@ -233,21 +153,28 @@ impl LayoutTreeBuilder {
                 }
 
                 Task::EndFlow => self.finish_flow(tree)?,
-                Task::EndFrame => self.finish_frame(tree)?,
             }
         }
 
         Some(())
     }
 
-    fn start_body(&mut self, ui: &Ui, tree: &mut LayoutTree, node: NodeKey) -> Option<()> {
-        let ty = self.content_type(ui, node);
-        let key = self.child(tree, item(Some(node), ty))?;
-        self.push_frame(tree, key);
-        self.push_flow(tree);
-        self.pending.push(Task::EndFlow);
+    fn source_item(&mut self, ui: &Ui, node: NodeKey) -> LayoutItem {
+        let (outer, inner) = display(ui, node);
 
-        Some(())
+        let ty = match (outer, inner) {
+            (DisplayOuter::Block, _) => LayoutItemTy::Block(node),
+            (DisplayOuter::Inline, DisplayInner::Flow) => LayoutItemTy::Inline(node),
+            (DisplayOuter::Inline, _) => LayoutItemTy::AtomicInline(node),
+        };
+
+        let child_layout = if matches!(ty, LayoutItemTy::Inline(_)) {
+            ChildLayoutMode::Inline
+        } else {
+            self.content_mode(ui, node)
+        };
+
+        item(ty, child_layout)
     }
 
     fn update_text(
@@ -258,7 +185,10 @@ impl LayoutTreeBuilder {
     ) -> Option<LayoutItemKey> {
         if let Some(parent) = target.and_then(|key| tree.items.parent(key)) {
             // Start at the target and prune only up to its original next sibling.
-            self.frames.push(Frame { key: parent, next: target });
+            self.frames.push(Frame {
+                key: parent,
+                next: target,
+            });
             let next = target.and_then(|key| tree.items.next_sibling(key));
             let key = self.text_child(tree, node)?;
             let mut obsolete = self.frames.pop()?.next;
@@ -272,20 +202,8 @@ impl LayoutTreeBuilder {
             return Some(key);
         }
 
-        let desired = item(Some(node), LayoutItemTy::Text);
-        let key = match target {
-            Some(key) if tree.items.get(key) == Some(&desired) => key,
-            _ => {
-                let key = tree.add_item(desired);
-
-                if let Some(old) = target {
-                    tree.items.before(old, key);
-                    tree.delete_item(old);
-                }
-
-                key
-            }
-        };
+        let desired = item(LayoutItemTy::Text(node), ChildLayoutMode::None);
+        let key = update_item(tree, target, desired);
         delete_remaining(tree, tree.items.first_child(key));
 
         Some(key)
@@ -293,9 +211,9 @@ impl LayoutTreeBuilder {
 
     fn text_child(&mut self, tree: &mut LayoutTree, node: NodeKey) -> Option<LayoutItemKey> {
         let frame = self.frames.last_mut()?;
-        let wrap = tree.items.get(frame.key)?.ty == LayoutItemTy::Block;
-        let desired = item(Some(node), LayoutItemTy::Text);
-        let anonymous = item(None, LayoutItemTy::Inline);
+        let wrap = tree.items.get(frame.key)?.child_layout == ChildLayoutMode::Block;
+        let desired = item(LayoutItemTy::Text(node), ChildLayoutMode::None);
+        let anonymous = item(LayoutItemTy::AnonymousBlock, ChildLayoutMode::Inline);
         let mut candidate = frame.next;
 
         // Move the existing leaf when the parent's flow changes.
@@ -332,7 +250,7 @@ impl LayoutTreeBuilder {
         }
 
         let wrapper = if wrap {
-            let key = self.child_with_body(tree, anonymous, Some(node))?;
+            let key = self.child_with_text(tree, anonymous, Some(node))?;
             self.push_frame(tree, key);
 
             Some(key)
@@ -354,9 +272,12 @@ impl LayoutTreeBuilder {
         let flow = *self.flows.last()?;
 
         if self.frames.len() == flow.frame + 1
-            && tree.items[self.frames[flow.frame].key].ty == LayoutItemTy::Block
+            && tree.items[self.frames[flow.frame].key].child_layout == ChildLayoutMode::Block
         {
-            let key = self.child(tree, item(None, LayoutItemTy::Inline))?;
+            let key = self.child(
+                tree,
+                item(LayoutItemTy::AnonymousBlock, ChildLayoutMode::Inline),
+            )?;
             self.push_frame(tree, key);
             self.flows.last_mut()?.inline_run = true;
         }
@@ -366,7 +287,10 @@ impl LayoutTreeBuilder {
         let mut index = flow.span_start + self.frames.len().checked_sub(base)?;
 
         while let Some(&node) = self.spans.get(index) {
-            let key = self.child(tree, item(Some(node), LayoutItemTy::Inline))?;
+            let key = self.child(
+                tree,
+                item(LayoutItemTy::Inline(node), ChildLayoutMode::Inline),
+            )?;
             self.push_frame(tree, key);
             index += 1;
         }
@@ -375,27 +299,20 @@ impl LayoutTreeBuilder {
     }
 
     fn child(&mut self, tree: &mut LayoutTree, desired: LayoutItem) -> Option<LayoutItemKey> {
-        self.child_with_body(tree, desired, None)
+        self.child_with_text(tree, desired, None)
     }
 
-    fn child_with_body(
+    fn child_with_text(
         &mut self,
         tree: &mut LayoutTree,
         desired: LayoutItem,
-        body: Option<NodeKey>,
+        text: Option<NodeKey>,
     ) -> Option<LayoutItemKey> {
         let frame = self.frames.last_mut()?;
         let mut candidate = frame.next;
 
         while let Some(key) = candidate {
-            let matching_body = body.is_none_or(|node| {
-                tree.items
-                    .first_child(key)
-                    .and_then(|child| tree.items.get(child))
-                    .is_some_and(|item| item.node == Some(node))
-            });
-
-            if matching_body && tree.items.get(key).is_some_and(|old| compatible(*old, desired)) {
+            if matches_item(tree, key, desired, text) {
                 tree.items[key] = desired;
 
                 if frame.next == Some(key) {
@@ -418,39 +335,25 @@ impl LayoutTreeBuilder {
 
                 while let Some(key) = candidate {
                     let next = tree.items.next_sibling(key);
-                    if tree.items.get(key) == Some(&item(None, LayoutItemTy::Inline)) {
+                    if tree.items.get(key)
+                        == Some(&item(LayoutItemTy::AnonymousBlock, ChildLayoutMode::Inline))
+                    {
                         let mut content = tree.items.first_child(key);
 
                         while let Some(child) = content {
                             content = tree.items.next_sibling(child);
-                            let matching_body = body.is_none_or(|node| {
-                                tree.items.first_child(child)
-                                    .and_then(|key| tree.items.get(key))
-                                    .is_some_and(|item| item.node == Some(node))
-                            });
-
-                            if matching_body && tree.items.get(child).is_some_and(|old| compatible(*old, desired)) {
+                            if matches_item(tree, child, desired, text) {
                                 tree.items[child] = desired;
                                 let frame = self.frames.last()?;
 
-                                if let Some(next) = frame.next {
-                                    tree.items.before(next, child);
-                                } else {
-                                    tree.items.append(frame.key, child);
-                                }
+                                frame.insert(tree, child);
 
                                 return Some(child);
                             }
                         }
                     }
 
-                    let matching_body = body.is_none_or(|node| {
-                        tree.items.first_child(key)
-                            .and_then(|child| tree.items.get(child))
-                            .is_some_and(|item| item.node == Some(node))
-                    });
-
-                    if matching_body && tree.items.get(key).is_some_and(|old| compatible(*old, desired)) {
+                    if matches_item(tree, key, desired, text) {
                         if parent.next == Some(key) {
                             parent.next = next;
                         }
@@ -458,11 +361,7 @@ impl LayoutTreeBuilder {
                         tree.items[key] = desired;
                         let frame = self.frames.last()?;
 
-                        if let Some(next) = frame.next {
-                            tree.items.before(next, key);
-                        } else {
-                            tree.items.append(frame.key, key);
-                        }
+                        frame.insert(tree, key);
 
                         return Some(key);
                     }
@@ -474,11 +373,7 @@ impl LayoutTreeBuilder {
 
         let frame = self.frames.last_mut()?;
         let key = tree.add_item(desired);
-        if let Some(next) = frame.next {
-            tree.items.before(next, key);
-        } else {
-            tree.items.append(frame.key, key);
-        }
+        frame.insert(tree, key);
 
         Some(key)
     }
@@ -493,9 +388,11 @@ impl LayoutTreeBuilder {
     fn finish_frame(&mut self, tree: &mut LayoutTree) -> Option<()> {
         let frame = self.frames.pop()?;
 
-        if self.flows.last().is_some_and(|flow| {
-            flow.inline_run && self.frames.len() == flow.frame + 1
-        }) {
+        if self
+            .flows
+            .last()
+            .is_some_and(|flow| flow.inline_run && self.frames.len() == flow.frame + 1)
+        {
             // Keep the unconsumed tail available when a block splits an old run.
             let parent = self.frames.last_mut()?;
             let mut next = frame.next;
@@ -504,11 +401,7 @@ impl LayoutTreeBuilder {
             while let Some(key) = next {
                 next = tree.items.next_sibling(key);
 
-                if let Some(before) = parent.next {
-                    tree.items.before(before, key);
-                } else {
-                    tree.items.append(parent.key, key);
-                }
+                parent.insert(tree, key);
             }
 
             if first.is_some() {
@@ -526,13 +419,15 @@ impl LayoutTreeBuilder {
             let key = self.frames[frame].key;
 
             // When block flow becomes inline flow, unwrap its old inline runs.
-            if tree.items[key].ty == LayoutItemTy::Inline {
+            if tree.items[key].child_layout == ChildLayoutMode::Inline {
                 let mut next = tree.items.first_child(key);
 
                 while let Some(child) = next {
                     next = tree.items.next_sibling(child);
 
-                    if tree.items[child] == item(None, LayoutItemTy::Inline) {
+                    if tree.items[child]
+                        == item(LayoutItemTy::AnonymousBlock, ChildLayoutMode::Inline)
+                    {
                         while let Some(content) = tree.items.first_child(child) {
                             tree.items.before(child, content);
                         }
@@ -588,16 +483,13 @@ impl LayoutTreeBuilder {
         false
     }
 
-    fn content_type(&mut self, ui: &Ui, node: NodeKey) -> LayoutItemTy {
-        let has_children = display(ui, node).1 != DisplayInner::Content
-            && ui.children(node).next().is_some();
-
-        if has_children && self.contains_block(ui, node) {
-            LayoutItemTy::Block
-        } else if has_children {
-            LayoutItemTy::Inline
+    fn content_mode(&mut self, ui: &Ui, node: NodeKey) -> ChildLayoutMode {
+        if display(ui, node).1 == DisplayInner::Content {
+            ChildLayoutMode::None
+        } else if ui.children(node).next().is_none() || self.contains_block(ui, node) {
+            ChildLayoutMode::Block
         } else {
-            LayoutItemTy::Block
+            ChildLayoutMode::Inline
         }
     }
 
@@ -615,12 +507,20 @@ enum Task {
     Content(NodeKey),
     EndInline,
     EndFlow,
-    EndFrame,
 }
 
 struct Frame {
     key: LayoutItemKey,
     next: Option<LayoutItemKey>,
+}
+impl Frame {
+    fn insert(&self, tree: &mut LayoutTree, key: LayoutItemKey) {
+        if let Some(next) = self.next {
+            tree.items.before(next, key);
+        } else {
+            tree.items.append(self.key, key);
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -630,23 +530,44 @@ struct Flow {
     inline_run: bool,
 }
 
-fn item(node: Option<NodeKey>, ty: LayoutItemTy) -> LayoutItem {
-    LayoutItem { node, ty }
+fn item(ty: LayoutItemTy, child_layout: ChildLayoutMode) -> LayoutItem {
+    LayoutItem { ty, child_layout }
 }
 
-fn compatible(old: LayoutItem, desired: LayoutItem) -> bool {
-    old == desired
-        || (old.node.is_some()
-            && old.node == desired.node
-            && old.ty != LayoutItemTy::Text
-            && desired.ty != LayoutItemTy::Text)
+fn matches_item(
+    tree: &LayoutTree,
+    key: LayoutItemKey,
+    desired: LayoutItem,
+    text: Option<NodeKey>,
+) -> bool {
+    tree.items.get(key).is_some_and(|old| old.ty == desired.ty)
+        && text.is_none_or(|node| {
+            tree.items
+                .first_child(key)
+                .and_then(|child| tree.items.get(child))
+                .is_some_and(|item| item.ty == LayoutItemTy::Text(node))
+        })
 }
 
-fn outer_type(outer: DisplayOuter) -> LayoutItemTy {
-    match outer {
-        DisplayOuter::Block => LayoutItemTy::Block,
-        DisplayOuter::Inline => LayoutItemTy::Inline,
+fn update_item(
+    tree: &mut LayoutTree,
+    target: Option<LayoutItemKey>,
+    desired: LayoutItem,
+) -> LayoutItemKey {
+    if let Some(key) = target.filter(|&key| matches_item(tree, key, desired, None)) {
+        tree.items[key] = desired;
+
+        return key;
     }
+
+    let key = tree.add_item(desired);
+
+    if let Some(old) = target {
+        tree.items.before(old, key);
+        tree.delete_item(old);
+    }
+
+    key
 }
 
 fn display(ui: &Ui, node: NodeKey) -> (DisplayOuter, DisplayInner) {

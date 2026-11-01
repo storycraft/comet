@@ -78,22 +78,20 @@ fn print_tree(ui: &Ui, tree: &LayoutTree, root: LayoutItemKey) {
             continue;
         };
         let indent = "  ".repeat(depth);
-        let source = item
-            .node
-            .map_or_else(|| "anonymous".into(), |node| format!("source={node:?}"));
+        println!(
+            "{indent}{key:?} {:?} children={:?}",
+            item.ty, item.child_layout
+        );
 
-        match &item.ty {
-            LayoutItemTy::Block => println!("{indent}{key:?} Block ({source})"),
-            LayoutItemTy::Inline => println!("{indent}{key:?} Inline ({source})"),
-            LayoutItemTy::Text => {
-                let text = item.node.and_then(|node| ui.prop::<Text>(node));
-                println!(
-                    "{indent}{key:?} Text ({source}) {:?}",
-                    text.as_deref()
-                        .map(|text| text.0.as_str())
-                        .unwrap_or_default()
-                );
-            }
+        if let LayoutItemTy::Text(node) = item.ty {
+            let text = ui.prop::<Text>(node);
+
+            println!(
+                "{indent}  {:?}",
+                text.as_deref()
+                    .map(|text| text.0.as_str())
+                    .unwrap_or_default()
+            );
         }
 
         pending.extend(
