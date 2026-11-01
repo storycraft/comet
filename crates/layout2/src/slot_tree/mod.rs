@@ -181,8 +181,19 @@ impl<K: Key, V> SlotTree<K, V> {
     }
 
     fn can_attach(&self, id: K, mut parent: Option<K>) -> bool {
-        if !self.arena.contains_key(id) {
+        let Some(node) = self.arena.get(id) else {
             return false;
+        };
+
+        if let Some(key) = parent
+            && (key == id || !self.arena.contains_key(key))
+        {
+            return false;
+        }
+
+        // A leaf cannot contain its destination; sibling moves cannot form cycles.
+        if node.first_child.is_none() || node.parent == parent {
+            return true;
         }
 
         while let Some(key) = parent {
