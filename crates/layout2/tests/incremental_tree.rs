@@ -47,7 +47,7 @@ fn snapshot(tree: &LayoutTree, root: LayoutItemKey) -> Vec<(usize, LayoutItem)> 
 fn assert_fresh(ui: &Ui, source: NodeKey, tree: &LayoutTree, root: LayoutItemKey) {
     let mut fresh = LayoutTree::new();
     let key = LayoutTreeBuilder::new()
-        .build_new(ui, source, &mut fresh)
+        .build(ui, source, &mut fresh, None)
         .unwrap();
 
     assert_eq!(snapshot(tree, root), snapshot(&fresh, key));
@@ -123,13 +123,13 @@ fn no_op_and_text_edits_keep_every_object_key() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
     let original = keys(&tree, key);
 
     for value in ["hello", "short", "a much longer string"] {
         ui.set_props(text, (Text(value.into()),));
 
-        assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+        assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
         assert_eq!(keys(&tree, key), original);
 
         assert_fresh(&ui, root, &tree, key);
@@ -146,7 +146,7 @@ fn text_property_edits_preserve_leaf_keys_and_repair_invalid_children() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
     let leaf = tree.items.first_child(key).unwrap();
     assert_eq!(tree.items[leaf].ty, Ty::Text(text));
     assert_eq!(tree.items[leaf].child_layout, Mode::None);
@@ -159,7 +159,7 @@ fn text_property_edits_preserve_leaf_keys_and_repair_invalid_children() {
         ui.set_props(text, (DisplayOuter::Block, inner, Text("after".into())));
         let invalid = tree.append_item(leaf, block(None)).unwrap();
 
-        assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+        assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
         assert_eq!(tree.items.first_child(key), Some(leaf));
         assert_eq!(tree.items[leaf].ty, Ty::Text(text));
         assert_eq!(tree.items[leaf].child_layout, Mode::None);
@@ -167,7 +167,7 @@ fn text_property_edits_preserve_leaf_keys_and_repair_invalid_children() {
         assert_eq!(tree.items.len(), 2);
         assert_fresh(&ui, root, &tree, key);
 
-        assert_eq!(builder.build(&ui, text, &mut tree, leaf), Some(leaf));
+        assert_eq!(builder.build(&ui, text, &mut tree, Some(leaf)), Some(leaf));
         assert_eq!(tree.items.parent(leaf), Some(key));
         assert_fresh(&ui, root, &tree, key);
     }
@@ -185,13 +185,13 @@ fn removing_text_preserves_surviving_inline_and_atomic_objects() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
     let old: Vec<_> = tree.items.children(key).collect();
     let atomic_keys = keys(&tree, old[1]);
 
     ui.delete(text);
 
-    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
     assert!(tree.items.get(old[0]).is_none());
     assert_eq!(keys(&tree, old[1]), atomic_keys);
 
@@ -212,7 +212,7 @@ fn scoped_updates_reorder_and_prune_without_touching_other_subtrees() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
     let original: Vec<_> = tree.items.children(key).collect();
 
     let outside = tree.add_item(block(None));
@@ -221,7 +221,7 @@ fn scoped_updates_reorder_and_prune_without_touching_other_subtrees() {
     ui.prepend(root, c);
     ui.delete(b);
 
-    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
     assert_eq!(
         tree.items.children(key).collect::<Vec<_>>(),
         [original[2], original[0]]
@@ -242,10 +242,10 @@ fn stale_roots_wrong_types_and_nonleaf_text_are_recovered() {
     tree.delete_item(stale);
 
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build(&ui, source, &mut tree, stale).unwrap();
+    let key = builder.build(&ui, source, &mut tree, Some(stale)).unwrap();
 
     let invalid_child = tree.append_item(key, block(None)).unwrap();
-    builder.build(&ui, source, &mut tree, key).unwrap();
+    builder.build(&ui, source, &mut tree, Some(key)).unwrap();
     assert!(tree.items.get(invalid_child).is_none());
 
     assert_fresh(&ui, source, &tree, key);
@@ -255,7 +255,7 @@ fn stale_roots_wrong_types_and_nonleaf_text_are_recovered() {
     let sibling = tree.append_item(parent, block(None)).unwrap();
     tree.items[key].ty = Ty::Inline(source);
 
-    let replacement = builder.build(&ui, source, &mut tree, key).unwrap();
+    let replacement = builder.build(&ui, source, &mut tree, Some(key)).unwrap();
     assert_ne!(replacement, key);
     assert_eq!(
         tree.items.children(parent).collect::<Vec<_>>(),
@@ -269,7 +269,10 @@ fn stale_roots_wrong_types_and_nonleaf_text_are_recovered() {
 
     ui.delete(source);
 
-    assert_eq!(builder.build(&ui, source, &mut tree, replacement), None);
+    assert_eq!(
+        builder.build(&ui, source, &mut tree, Some(replacement)),
+        None
+    );
     assert!(tree.items.get(replacement).is_none());
 }
 
@@ -283,7 +286,7 @@ fn updating_an_atomic_inline_preserves_its_direct_contents() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
     let original = keys(&tree, key);
 
     assert_eq!(tree.items[key].ty, Ty::AtomicInline(root));
@@ -291,7 +294,7 @@ fn updating_an_atomic_inline_preserves_its_direct_contents() {
     let leaf = tree.items.first_child(key).unwrap();
     assert_eq!(tree.items[leaf].ty, Ty::Text(child));
 
-    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
     assert_eq!(keys(&tree, key), original);
 
     assert_fresh(&ui, root, &tree, key);
@@ -311,21 +314,21 @@ fn text_wrappers_survive_updates_and_moves_and_are_pruned_on_deletion() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
     let top: Vec<_> = tree.items.children(key).collect();
     let original = keys(&tree, key);
     let a_leaf = tree.items.first_child(top[0]).unwrap();
     let b_leaf = tree.items.first_child(top[2]).unwrap();
 
-    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
     assert_eq!(keys(&tree, key), original);
-    assert_eq!(builder.build(&ui, a, &mut tree, top[0]), Some(top[0]));
-    assert_eq!(builder.build(&ui, a, &mut tree, a_leaf), Some(a_leaf));
+    assert_eq!(builder.build(&ui, a, &mut tree, Some(top[0])), Some(top[0]));
+    assert_eq!(builder.build(&ui, a, &mut tree, Some(a_leaf)), Some(a_leaf));
     assert_eq!(keys(&tree, key), original);
 
     ui.prepend(root, b);
 
-    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
     assert_eq!(
         tree.items.children(key).collect::<Vec<_>>(),
         [top[0], top[1]]
@@ -339,7 +342,7 @@ fn text_wrappers_survive_updates_and_moves_and_are_pruned_on_deletion() {
 
     ui.delete(a);
 
-    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
     assert!(tree.items.get(a_leaf).is_none());
     assert_eq!(
         tree.items.children(key).collect::<Vec<_>>(),
@@ -360,13 +363,13 @@ fn changing_child_flow_preserves_the_source_container_and_surviving_children() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
     let inline_key = tree.items.first_child(key).unwrap();
     assert_eq!(tree.items[key].child_layout, Mode::Inline);
 
     ui.append(root, block);
 
-    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
     assert_eq!(tree.items[key].child_layout, Mode::Block);
     let wrapper = tree.items.first_child(key).unwrap();
     assert_eq!(tree.items[wrapper].child_layout, Mode::Inline);
@@ -376,7 +379,7 @@ fn changing_child_flow_preserves_the_source_container_and_surviving_children() {
 
     ui.delete(block);
 
-    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
     assert_eq!(tree.items[key].child_layout, Mode::Inline);
     assert_eq!(tree.items.first_child(key), Some(inline_key));
     assert!(tree.items.get(wrapper).is_none());
@@ -399,7 +402,7 @@ fn atomic_inline_boxes_keep_identity_during_moves_and_deletion() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
     let atomics: Vec<_> = tree.items.children(key).collect();
     let a_keys = keys(&tree, atomics[0]);
     let b_keys = keys(&tree, atomics[1]);
@@ -411,7 +414,7 @@ fn atomic_inline_boxes_keep_identity_during_moves_and_deletion() {
 
     ui.prepend(root, b);
 
-    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
     assert_eq!(
         tree.items.children(key).collect::<Vec<_>>(),
         [atomics[1], atomics[0]]
@@ -423,12 +426,12 @@ fn atomic_inline_boxes_keep_identity_during_moves_and_deletion() {
     let atomic = atomics[1];
 
     assert_eq!(tree.items[atomic].child_layout, Mode::Inline);
-    assert_eq!(builder.build(&ui, b, &mut tree, atomic), Some(atomic));
+    assert_eq!(builder.build(&ui, b, &mut tree, Some(atomic)), Some(atomic));
     assert_eq!(keys(&tree, atomics[1]), b_keys);
 
     ui.delete(a);
 
-    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
     assert!(a_keys.iter().all(|key| tree.items.get(*key).is_none()));
     assert_eq!(keys(&tree, atomics[1]), b_keys);
     assert_fresh(&ui, root, &tree, key);
@@ -456,7 +459,7 @@ fn resumed_span_inline_block_and_text_share_one_inline_run() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
     let expected = [
         (0, Mode::Block, Ty::Block(root)),
         (1, Mode::Inline, Ty::AnonymousBlock),
@@ -479,7 +482,7 @@ fn resumed_span_inline_block_and_text_share_one_inline_run() {
 
     ui.set_props(after, (Text("updated".into()),));
 
-    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
     assert_eq!(keys(&tree, key), original);
     assert_fresh(&ui, root, &tree, key);
 }
@@ -498,14 +501,14 @@ fn inserting_a_block_splits_an_inline_run_without_replacing_text_leaves() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
     let run = tree.items.first_child(key).unwrap();
     let leaves: Vec<_> = tree.items.children(run).collect();
     assert_eq!(leaves.len(), 2);
 
     ui.append(root, b);
 
-    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
     let top: Vec<_> = tree.items.children(key).collect();
     assert_eq!(top.len(), 3);
     assert_eq!(tree.items.first_child(top[0]), Some(leaves[0]));
@@ -514,7 +517,7 @@ fn inserting_a_block_splits_an_inline_run_without_replacing_text_leaves() {
 
     ui.delete(boundary);
 
-    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
     assert_eq!(tree.items[key].child_layout, Mode::Inline);
     assert_eq!(tree.items.children(key).collect::<Vec<_>>(), leaves);
     assert_fresh(&ui, root, &tree, key);
@@ -537,7 +540,7 @@ fn repeated_display_edits_and_moves_match_fresh_object_trees() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
     let mut seed = 7_u32;
 
     for step in 0..100 {
@@ -563,7 +566,7 @@ fn repeated_display_edits_and_moves_match_fresh_object_trees() {
             ui.append(root, node);
         }
 
-        assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+        assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
 
         assert_fresh(&ui, root, &tree, key);
         assert_eq!(tree.items.len(), keys(&tree, key).len());
@@ -582,7 +585,7 @@ fn semantic_role_changes_replace_items_even_when_child_mode_stays_inline() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let root_key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let root_key = builder.build(&ui, root, &mut tree, None).unwrap();
     let mut previous = tree.items.first_child(root_key).unwrap();
 
     assert_eq!(tree.items[previous].ty, Ty::Block(source));
@@ -604,7 +607,7 @@ fn semantic_role_changes_replace_items_even_when_child_mode_stays_inline() {
         ui.set_props(source, (outer, inner));
 
         assert_eq!(
-            builder.build(&ui, root, &mut tree, root_key),
+            builder.build(&ui, root, &mut tree, Some(root_key)),
             Some(root_key)
         );
 
@@ -636,7 +639,7 @@ fn content_mode_prunes_children_and_restores_flow() {
 
         let mut tree = LayoutTree::new();
         let mut builder = LayoutTreeBuilder::new();
-        let key = builder.build_new(&ui, root, &mut tree).unwrap();
+        let key = builder.build(&ui, root, &mut tree, None).unwrap();
         let child = tree.items.first_child(key).unwrap();
         let role = tree.items[child].ty;
 
@@ -649,7 +652,10 @@ fn content_mode_prunes_children_and_restores_flow() {
             let previous = keys(&tree, child);
             ui.set_props(source, (outer, inner));
 
-            assert_eq!(builder.build(&ui, source, &mut tree, child), Some(child));
+            assert_eq!(
+                builder.build(&ui, source, &mut tree, Some(child)),
+                Some(child)
+            );
             assert_eq!(tree.items[child].ty, role);
             assert_eq!(tree.items[child].child_layout, mode);
             assert_fresh(&ui, root, &tree, key);
@@ -682,14 +688,14 @@ fn wide_reorders_and_replacements_preserve_surviving_keys() {
         .collect();
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
     let original: Vec<_> = tree.items.children(key).collect();
 
     for &node in &nodes {
         ui.prepend(root, node);
     }
 
-    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
     assert_eq!(
         tree.items.children(key).collect::<Vec<_>>(),
         original.iter().rev().copied().collect::<Vec<_>>()
@@ -703,7 +709,7 @@ fn wide_reorders_and_replacements_preserve_surviving_keys() {
         }
     }
 
-    assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
 
     for (index, &old) in original.iter().enumerate() {
         assert_eq!(tree.items.get(old).is_some(), index % 2 != 0);
@@ -731,7 +737,7 @@ fn many_run_splits_merges_and_reorders_preserve_text_keys() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
     let run = tree.items.first_child(key).unwrap();
     let leaves: Vec<_> = tree.items.children(run).collect();
 
@@ -755,7 +761,7 @@ fn many_run_splits_merges_and_reorders_preserve_text_keys() {
                 }
             }
 
-            assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+            assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
             assert_fresh(&ui, root, &tree, key);
             assert_eq!(tree.items.len(), keys(&tree, key).len());
 
@@ -791,7 +797,7 @@ fn nested_fragment_reconciliation_matches_fresh_trees() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
     let mut seed = 17_u32;
 
     for step in 0..512 {
@@ -811,7 +817,7 @@ fn nested_fragment_reconciliation_matches_fresh_trees() {
         ui.prepend(parent, node);
         ui.prepend(root, spans[(seed as usize >> 16) % spans.len()]);
 
-        assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+        assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
         assert_fresh(&ui, root, &tree, key);
         assert_eq!(tree.items.len(), keys(&tree, key).len());
     }

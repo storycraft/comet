@@ -28,26 +28,8 @@ impl LayoutTreeBuilder {
         Self::default()
     }
 
+    /// Build a new subtree with `None`, or reconcile an existing one with `Some(key)`.
     pub fn build(
-        &mut self,
-        ui: &Ui,
-        root: NodeKey,
-        tree: &mut LayoutTree,
-        target: LayoutItemKey,
-    ) -> Option<LayoutItemKey> {
-        self.update(ui, root, tree, Some(target))
-    }
-
-    pub fn build_new(
-        &mut self,
-        ui: &Ui,
-        root: NodeKey,
-        tree: &mut LayoutTree,
-    ) -> Option<LayoutItemKey> {
-        self.update(ui, root, tree, None)
-    }
-
-    fn update(
         &mut self,
         ui: &Ui,
         root: NodeKey,

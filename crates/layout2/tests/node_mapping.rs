@@ -20,7 +20,7 @@ fn scoped_updates_remove_obsolete_mappings_and_preserve_other_subtrees() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let root_key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let root_key = builder.build(&ui, root, &mut tree, None).unwrap();
     let content_key = tree.item_for_node(content).unwrap();
     let text_key = tree.item_for_node(text).unwrap();
     let sibling_key = tree.item_for_node(sibling).unwrap();
@@ -29,7 +29,7 @@ fn scoped_updates_remove_obsolete_mappings_and_preserve_other_subtrees() {
 
     ui.set_props(content, (DisplayInner::Content,));
     assert_eq!(
-        builder.build(&ui, content, &mut tree, content_key),
+        builder.build(&ui, content, &mut tree, Some(content_key)),
         Some(content_key)
     );
     assert_eq!(tree.item_for_node(content), Some(content_key));
@@ -37,12 +37,17 @@ fn scoped_updates_remove_obsolete_mappings_and_preserve_other_subtrees() {
     assert_eq!(tree.item_for_node(sibling), Some(sibling_key));
 
     ui.set_props(content, (DisplayInner::Flow,));
-    builder.build(&ui, content, &mut tree, content_key).unwrap();
+    builder
+        .build(&ui, content, &mut tree, Some(content_key))
+        .unwrap();
     assert_ne!(tree.item_for_node(text).unwrap(), text_key);
     assert_eq!(tree.item_for_node(sibling), Some(sibling_key));
 
     ui.delete(content);
-    assert_eq!(builder.build(&ui, content, &mut tree, content_key), None);
+    assert_eq!(
+        builder.build(&ui, content, &mut tree, Some(content_key)),
+        None
+    );
     assert_eq!(tree.item_for_node(content), None);
     assert_eq!(tree.item_for_node(text), None);
     assert_eq!(tree.item_for_node(sibling), Some(sibling_key));
@@ -53,7 +58,7 @@ fn scoped_updates_remove_obsolete_mappings_and_preserve_other_subtrees() {
         assert_eq!(tree.item_for_node(node), None);
     }
 
-    let key = builder.build_new(&ui, sibling, &mut tree).unwrap();
+    let key = builder.build(&ui, sibling, &mut tree, None).unwrap();
     assert_eq!(tree.item_for_node(sibling), Some(key));
     assert_eq!(tree.items[key].ty, LayoutItemTy::Text(sibling));
 }

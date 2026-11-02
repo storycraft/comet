@@ -13,7 +13,7 @@ use comet_tree::{
 fn build(ui: &Ui, root: NodeKey) -> (LayoutTree, LayoutItemKey) {
     let mut tree = LayoutTree::new();
     let key = LayoutTreeBuilder::new()
-        .build_new(ui, root, &mut tree)
+        .build(ui, root, &mut tree, None)
         .unwrap();
 
     (tree, key)
@@ -107,7 +107,7 @@ fn text_ignores_display_properties_and_ui_children() {
 
             let mut tree = LayoutTree::new();
             let mut builder = LayoutTreeBuilder::new();
-            let key = builder.build_new(&ui, root, &mut tree).unwrap();
+            let key = builder.build(&ui, root, &mut tree, None).unwrap();
 
             check(&tree, key, Mode::Inline, Ty::Block(root));
             let leaf = children(&tree, key)[0];
@@ -116,7 +116,7 @@ fn text_ignores_display_properties_and_ui_children() {
             assert_eq!(tree.items.len(), 2);
 
             tree.clear();
-            let key = builder.build_new(&ui, text, &mut tree).unwrap();
+            let key = builder.build(&ui, text, &mut tree, None).unwrap();
 
             check(&tree, key, Mode::None, Ty::Text(text));
             assert!(children(&tree, key).is_empty());
@@ -318,7 +318,7 @@ fn atomic_inline_child_mode_changes_without_changing_its_outer_role() {
 
         let mut tree = LayoutTree::new();
         let mut builder = LayoutTreeBuilder::new();
-        let key = builder.build_new(&ui, root, &mut tree).unwrap();
+        let key = builder.build(&ui, root, &mut tree, None).unwrap();
         let atomic_key = children(&tree, key)[0];
 
         check(&tree, key, Mode::Inline, Ty::Block(root));
@@ -326,7 +326,7 @@ fn atomic_inline_child_mode_changes_without_changing_its_outer_role() {
 
         ui.append(atomic, block);
 
-        assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+        assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
         assert_eq!(children(&tree, key), [atomic_key]);
         check(&tree, key, Mode::Inline, Ty::Block(root));
         check(&tree, atomic_key, Mode::Block, Ty::AtomicInline(atomic));

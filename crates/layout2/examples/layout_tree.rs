@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
     let layout_root = builder
-        .build_new(&ui, root, &mut tree)
+        .build(&ui, root, &mut tree, None)
         .ok_or("could not build sample UI")?;
 
     println!("Initial layout tree with a split inline span:");
@@ -47,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Text stays in the UI; updating preserves compatible layout object keys.
     ui.set_props(greeting, (Text("Updated greeting! ".into()),));
     let layout_root = builder
-        .build(&ui, root, &mut tree, layout_root)
+        .build(&ui, root, &mut tree, Some(layout_root))
         .ok_or("could not update sample UI")?;
 
     println!("\nAfter changing the greeting:");
@@ -56,7 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // An atomic inline no longer interrupts the span: its parts merge and unlink.
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
     let layout_root = builder
-        .build(&ui, root, &mut tree, layout_root)
+        .build(&ui, root, &mut tree, Some(layout_root))
         .ok_or("could not merge the inline span")?;
 
     println!("\nAfter changing the interruption to inline-block (merged span):");
@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Restoring the block splits the span and rebuilds its continuation chain.
     ui.set_props(interruption, (DisplayOuter::Block, DisplayInner::Flow));
     let layout_root = builder
-        .build(&ui, root, &mut tree, layout_root)
+        .build(&ui, root, &mut tree, Some(layout_root))
         .ok_or("could not split the inline span again")?;
 
     println!("\nAfter restoring the block (split span):");

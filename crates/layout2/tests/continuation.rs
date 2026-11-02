@@ -61,7 +61,7 @@ fn nested_inline_fragments_link_across_runs_in_both_directions() {
 
         let mut tree = LayoutTree::new();
         let mut builder = LayoutTreeBuilder::new();
-        let key = builder.build_new(&ui, root, &mut tree).unwrap();
+        let key = builder.build(&ui, root, &mut tree, None).unwrap();
         let outer_parts = fragments(&tree, key, outer);
         let inner_parts = fragments(&tree, key, inner);
         assert_eq!(outer_parts.len(), 3);
@@ -72,7 +72,7 @@ fn nested_inline_fragments_link_across_runs_in_both_directions() {
         assert_chain(&tree, &inner_parts);
 
         for _ in 0..3 {
-            assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
+            assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
             assert_eq!(fragments(&tree, key, outer), outer_parts);
             assert_eq!(fragments(&tree, key, inner), inner_parts);
             assert_eq!(tree.item_for_node(outer), Some(outer_parts[0]));
@@ -104,20 +104,20 @@ fn splitting_merging_and_role_changes_reset_continuations() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let key = builder.build_new(&ui, root, &mut tree).unwrap();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
     assert_chain(&tree, &fragments(&tree, key, span));
 
     for _ in 0..3 {
         let block = ui.create(Node::Box, ());
         ui.before(text, block);
-        builder.build(&ui, root, &mut tree, key).unwrap();
+        builder.build(&ui, root, &mut tree, Some(key)).unwrap();
         let split = fragments(&tree, key, span);
         assert_eq!(split.len(), 2);
         assert_eq!(tree.item_for_node(span), Some(split[0]));
         assert_chain(&tree, &split);
 
         ui.delete(block);
-        builder.build(&ui, root, &mut tree, key).unwrap();
+        builder.build(&ui, root, &mut tree, Some(key)).unwrap();
         let merged = fragments(&tree, key, span);
         assert_eq!(merged.len(), 1);
         assert_eq!(tree.item_for_node(span), Some(merged[0]));
@@ -133,10 +133,10 @@ fn splitting_merging_and_role_changes_reset_continuations() {
 
     let block = ui.create(Node::Box, ());
     ui.before(text, block);
-    builder.build(&ui, root, &mut tree, key).unwrap();
+    builder.build(&ui, root, &mut tree, Some(key)).unwrap();
     let split = fragments(&tree, key, span);
     ui.set_props(span, (DisplayInner::FlowRoot,));
-    builder.build(&ui, root, &mut tree, key).unwrap();
+    builder.build(&ui, root, &mut tree, Some(key)).unwrap();
 
     assert!(split.iter().all(|&key| tree.items.get(key).is_none()));
     let atomic = tree.items.first_child(key).unwrap();
@@ -161,7 +161,7 @@ fn deleting_a_fragment_subtree_reconnects_surviving_parts() {
 
     let mut tree = LayoutTree::new();
     let key = LayoutTreeBuilder::new()
-        .build_new(&ui, root, &mut tree)
+        .build(&ui, root, &mut tree, None)
         .unwrap();
     let outer_parts = fragments(&tree, key, outer);
     let inner_parts = fragments(&tree, key, inner);
@@ -196,9 +196,9 @@ fn builder_reuse_keeps_independent_builds_separate() {
 
     let mut tree = LayoutTree::new();
     let mut builder = LayoutTreeBuilder::new();
-    let first = builder.build_new(&ui, span, &mut tree).unwrap();
+    let first = builder.build(&ui, span, &mut tree, None).unwrap();
     let first_parts = fragments(&tree, first, span);
-    let second = builder.build_new(&ui, span, &mut tree).unwrap();
+    let second = builder.build(&ui, span, &mut tree, None).unwrap();
     let second_parts = fragments(&tree, second, span);
     assert_eq!(first_parts.len(), 2);
     assert_eq!(second_parts.len(), 2);
