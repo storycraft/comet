@@ -25,8 +25,8 @@ impl StyleUnit {
     pub const fn resolve(self, cx: &LayoutConstraint) -> f64 {
         match self {
             StyleUnit::Px(v) => v,
-            StyleUnit::Pw(v) => cx.percentage_resolution_size.width * v,
-            StyleUnit::Ph(v) => cx.percentage_resolution_size.height * v,
+            StyleUnit::Pw(v) => cx.parent_size.width * v,
+            StyleUnit::Ph(v) => cx.parent_size.height * v,
             StyleUnit::Em(v) => v * cx.font_size,
             StyleUnit::Rem(v) => v * cx.root_font_size,
             StyleUnit::Vw(v) => v * cx.root_size.width,

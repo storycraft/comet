@@ -9,7 +9,7 @@ pub struct LayoutConstraint {
     pub root_font_size: f64,
 
     pub available_size: Size<f64>,
-    pub percentage_resolution_size: Size<f64>,
+    pub parent_size: Size<f64>,
     pub font_size: f64,
 }
 
@@ -19,7 +19,7 @@ impl LayoutConstraint {
             root_size,
             root_font_size: font_size,
             available_size: root_size,
-            percentage_resolution_size: root_size,
+            parent_size: root_size,
             font_size,
         }
     }
@@ -34,7 +34,7 @@ impl LayoutConstraint {
             root_size: self.root_size,
             root_font_size: self.root_font_size,
             available_size,
-            percentage_resolution_size,
+            parent_size: percentage_resolution_size,
             font_size,
         }
     }
