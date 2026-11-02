@@ -75,9 +75,4 @@ impl<T> Rect<T> {
             right_bottom,
         }
     }
-
-    #[inline]
-    pub const fn new_rect(top: T, right: T, bottom: T, left: T) -> Self {
-        Self::new(Point::new(left, top), Point::new(right, bottom))
-    }
 }
