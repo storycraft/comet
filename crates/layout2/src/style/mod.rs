@@ -7,7 +7,7 @@ use kurbo;
 use parley;
 use taffy;
 
-use crate::style::geometry::{AutoValue, Rect, StyleUnit};
+use crate::style::geometry::{AutoValue, Point, Rect, StyleUnit};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DisplayOuter {
@@ -43,10 +43,7 @@ define_style_props!(
     pub MinSize: geometry::Size<AutoValue<StyleUnit>>;
     pub MaxSize: geometry::Size<AutoValue<StyleUnit>>;
     pub AspectRatio: f32;
-    pub Overflow: taffy::Point<taffy::Overflow> = taffy::Point {
-        x: taffy::Overflow::Visible,
-        y: taffy::Overflow::Visible,
-    };
+    pub Overflow: Point<taffy::Overflow>;
     pub BoxSizing: taffy::BoxSizing = taffy::BoxSizing::BorderBox;
 
     // Margin; padding
