@@ -20,7 +20,7 @@ pub struct LayoutTreeBuilder {
     scan: Vec<NodeKey>,
     // Lazy indexes can retain moved items; never reuse an item twice per update.
     claimed: FxHashSet<LayoutItemKey>,
-    continuations: FxHashMap<NodeKey, LayoutItemKey>,
+    last_items: FxHashMap<NodeKey, LayoutItemKey>,
 }
 
 impl LayoutTreeBuilder {
@@ -80,6 +80,7 @@ impl LayoutTreeBuilder {
         };
 
         let key = update_item(tree, target, desired);
+        self.record_item(tree, key);
 
         self.push_frame(tree, key);
         self.push_flow(tree);
@@ -212,6 +213,7 @@ impl LayoutTreeBuilder {
 
         let desired = item(LayoutItemTy::Text(node), ChildLayoutMode::None);
         let key = update_item(tree, target, desired);
+        self.record_item(tree, key);
         delete_remaining(tree, tree.items.first_child(key));
 
         Some(key)
@@ -340,6 +342,7 @@ impl LayoutTreeBuilder {
             }
 
             self.claimed.insert(key);
+            self.record_item(tree, key);
 
             return Some(key);
         }
@@ -359,6 +362,7 @@ impl LayoutTreeBuilder {
                 replace_item(tree, key, desired);
                 self.frames.last()?.insert(tree, key);
                 self.claimed.insert(key);
+                self.record_item(tree, key);
 
                 return Some(key);
             }
@@ -368,18 +372,27 @@ impl LayoutTreeBuilder {
         let key = tree.add_item(desired);
         frame.insert(tree, key);
         self.claimed.insert(key);
+        self.record_item(tree, key);
 
         Some(key)
     }
 
-    fn push_frame(&mut self, tree: &mut LayoutTree, key: LayoutItemKey) {
-        if let LayoutItemTy::Inline(node) = tree.items[key].ty
-            && let Some(prev) = self.continuations.insert(node, key)
-        {
-            tree.items[prev].continuation.next = Some(key);
-            tree.items[key].continuation.prev = Some(prev);
-        }
+    fn record_item(&mut self, tree: &mut LayoutTree, key: LayoutItemKey) {
+        let ty = tree.items[key].ty;
 
+        if let Some(node) = ty.node() {
+            if let Some(prev) = self.last_items.insert(node, key) {
+                if matches!(ty, LayoutItemTy::Inline(_)) {
+                    tree.items[prev].continuation.next = Some(key);
+                    tree.items[key].continuation.prev = Some(prev);
+                }
+            } else {
+                tree.map_first_item(node, key);
+            }
+        }
+    }
+
+    fn push_frame(&mut self, tree: &LayoutTree, key: LayoutItemKey) {
         self.frames.push(Frame {
             key,
             next: tree.items.first_child(key),
@@ -516,7 +529,7 @@ impl LayoutTreeBuilder {
         self.spans.clear();
         self.scan.clear();
         self.claimed.clear();
-        self.continuations.clear();
+        self.last_items.clear();
     }
 }
 

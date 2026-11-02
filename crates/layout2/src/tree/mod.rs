@@ -1,13 +1,17 @@
 pub mod builder;
 
 use comet_tree::node::NodeKey;
+use rustc_hash::FxHashMap;
 use slotmap::new_key_type;
 
 use crate::slot_tree::SlotTree;
 
 #[derive(Default)]
 pub struct LayoutTree {
+    /// Raw tree storage. Use the LayoutTree mutation methods and builder to keep
+    /// source mappings and continuation links synchronized.
     pub items: SlotTree<LayoutItemKey, LayoutItem>,
+    node_items: FxHashMap<NodeKey, LayoutItemKey>,
 }
 
 impl LayoutTree {
@@ -16,7 +20,38 @@ impl LayoutTree {
     }
 
     pub fn add_item(&mut self, item: LayoutItem) -> LayoutItemKey {
-        self.items.insert(item)
+        let key = self.items.insert(item);
+
+        if let Some(node) = item.ty.node() {
+            self.node_items.entry(node).or_insert(key);
+        }
+
+        key
+    }
+
+    /// Find a source node's first fragment; follow `continuation.next` for the rest.
+    /// Anonymous items have no source mapping. If a UI is built into independent
+    /// roots more than once, the most recently built representation owns the lookup.
+    pub fn item_for_node(&self, node: NodeKey) -> Option<LayoutItemKey> {
+        self.node_items.get(&node).copied()
+    }
+
+    pub(crate) fn map_first_item(&mut self, node: NodeKey, key: LayoutItemKey) {
+        self.node_items.insert(node, key);
+    }
+
+    fn unmap_item(&mut self, key: LayoutItemKey) {
+        let item = &self.items[key];
+
+        if let Some(node) = item.ty.node()
+            && self.node_items.get(&node) == Some(&key)
+        {
+            if let Some(next) = item.continuation.next {
+                self.node_items.insert(node, next);
+            } else {
+                self.node_items.remove(&node);
+            }
+        }
     }
 
     pub fn append_item(
@@ -35,12 +70,14 @@ impl LayoutTree {
     /// Delete a subtree and reconnect continuation chains that cross its boundary.
     pub fn delete_item(&mut self, key: LayoutItemKey) -> Option<LayoutItem> {
         let item = *self.items.get(key)?;
+        self.unmap_item(key);
         self.unlink_continuation(key);
         let mut pending = Vec::new();
         pending.extend(self.items.children(key));
 
         while let Some(key) = pending.pop() {
             pending.extend(self.items.children(key));
+            self.unmap_item(key);
             self.unlink_continuation(key);
         }
 
@@ -66,6 +103,7 @@ impl LayoutTree {
 
     pub fn clear(&mut self) {
         self.items.clear();
+        self.node_items.clear();
     }
 }
 

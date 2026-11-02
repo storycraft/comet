@@ -60,6 +60,15 @@ fn assert_fresh(ui: &Ui, source: NodeKey, tree: &LayoutTree, root: LayoutItemKey
             .enumerate()
             .map(|(index, &key)| (key, index))
             .collect();
+        let mut seen = std::collections::HashSet::new();
+
+        for &key in &keys {
+            if let Some(node) = tree.items[key].ty.node()
+                && seen.insert(node)
+            {
+                assert_eq!(tree.item_for_node(node), Some(key));
+            }
+        }
 
         keys.iter()
             .map(|&key| {

@@ -66,6 +66,8 @@ fn nested_inline_fragments_link_across_runs_in_both_directions() {
         let inner_parts = fragments(&tree, key, inner);
         assert_eq!(outer_parts.len(), 3);
         assert_eq!(inner_parts.len(), 3);
+        assert_eq!(tree.item_for_node(outer), Some(outer_parts[0]));
+        assert_eq!(tree.item_for_node(inner), Some(inner_parts[0]));
         assert_chain(&tree, &outer_parts);
         assert_chain(&tree, &inner_parts);
 
@@ -73,6 +75,8 @@ fn nested_inline_fragments_link_across_runs_in_both_directions() {
             assert_eq!(builder.build(&ui, root, &mut tree, key), Some(key));
             assert_eq!(fragments(&tree, key, outer), outer_parts);
             assert_eq!(fragments(&tree, key, inner), inner_parts);
+            assert_eq!(tree.item_for_node(outer), Some(outer_parts[0]));
+            assert_eq!(tree.item_for_node(inner), Some(inner_parts[0]));
             assert_chain(&tree, &outer_parts);
             assert_chain(&tree, &inner_parts);
         }
@@ -109,12 +113,14 @@ fn splitting_merging_and_role_changes_reset_continuations() {
         builder.build(&ui, root, &mut tree, key).unwrap();
         let split = fragments(&tree, key, span);
         assert_eq!(split.len(), 2);
+        assert_eq!(tree.item_for_node(span), Some(split[0]));
         assert_chain(&tree, &split);
 
         ui.delete(block);
         builder.build(&ui, root, &mut tree, key).unwrap();
         let merged = fragments(&tree, key, span);
         assert_eq!(merged.len(), 1);
+        assert_eq!(tree.item_for_node(span), Some(merged[0]));
         assert_chain(&tree, &merged);
         assert!(
             split
@@ -135,6 +141,7 @@ fn splitting_merging_and_role_changes_reset_continuations() {
     assert!(split.iter().all(|&key| tree.items.get(key).is_none()));
     let atomic = tree.items.first_child(key).unwrap();
     assert_eq!(tree.items[atomic].ty, LayoutItemTy::AtomicInline(span));
+    assert_eq!(tree.item_for_node(span), Some(atomic));
     assert_eq!(tree.items[atomic].continuation, Continuation::default());
 }
 
@@ -165,11 +172,19 @@ fn deleting_a_fragment_subtree_reconnects_surviving_parts() {
     assert!(tree.items.get(inner_parts[1]).is_none());
     assert_chain(&tree, &[outer_parts[0], outer_parts[2]]);
     assert_chain(&tree, &[inner_parts[0], inner_parts[2]]);
+    assert_eq!(tree.item_for_node(outer), Some(outer_parts[0]));
+    assert_eq!(tree.item_for_node(inner), Some(inner_parts[0]));
 
     tree.delete_item(outer_parts[0]).unwrap();
     assert_chain(&tree, &[outer_parts[2]]);
     assert_chain(&tree, &[inner_parts[2]]);
+    assert_eq!(tree.item_for_node(outer), Some(outer_parts[2]));
+    assert_eq!(tree.item_for_node(inner), Some(inner_parts[2]));
     assert_eq!(tree.delete_item(outer_parts[0]), None);
+
+    tree.delete_item(outer_parts[2]).unwrap();
+    assert_eq!(tree.item_for_node(outer), None);
+    assert_eq!(tree.item_for_node(inner), None);
 }
 
 #[test]
@@ -189,4 +204,8 @@ fn builder_reuse_keeps_independent_builds_separate() {
     assert_eq!(second_parts.len(), 2);
     assert_chain(&tree, &first_parts);
     assert_chain(&tree, &second_parts);
+    assert_eq!(tree.item_for_node(span), Some(second_parts[0]));
+
+    tree.delete_item(first).unwrap();
+    assert_eq!(tree.item_for_node(span), Some(second_parts[0]));
 }
