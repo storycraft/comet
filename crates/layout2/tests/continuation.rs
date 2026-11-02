@@ -1,5 +1,5 @@
 use comet_layout2::{
-    style::{DisplayInner, DisplayOuter},
+    style::bx::{DisplayInner, DisplayOuter},
     tree::{Continuation, LayoutItemKey, LayoutItemTy, LayoutTree, builder::LayoutTreeBuilder},
 };
 use comet_tree::{

@@ -7,7 +7,7 @@ use comet_tree::{
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    style::{DisplayInner, DisplayOuter},
+    style::bx::{DisplayInner, DisplayOuter},
     tree::{ChildLayoutMode, LayoutItem, LayoutItemKey, LayoutItemTy, LayoutTree},
 };
 
