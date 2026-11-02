@@ -14,6 +14,7 @@ use self::iterator::Cursor;
 /// Invalid keys, self-insertion, and moves that would create cycles are no-ops.
 /// Insertion operations return the previous parent; `None` can mean either a
 /// parentless node was moved or the operation was rejected.
+#[derive(Debug)]
 pub struct SlotTree<K: Key, V> {
     arena: SlotMap<K, Node<K, V>>,
 }
@@ -250,6 +251,7 @@ impl<K: Key, V> IndexMut<K> for SlotTree<K, V> {
     }
 }
 
+#[derive(Debug)]
 struct Node<K: Key, V> {
     parent: Option<K>,
 
