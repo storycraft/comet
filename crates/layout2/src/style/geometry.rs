@@ -1,3 +1,5 @@
+use crate::style::LayoutConstraint;
+
 /// Relative, Absolute size unit
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum StyleUnit {
@@ -19,6 +21,18 @@ pub enum StyleUnit {
 
 impl StyleUnit {
     pub const ZERO: StyleUnit = StyleUnit::Px(0.0);
+
+    pub const fn resolve(self, cx: &LayoutConstraint) -> f64 {
+        match self {
+            StyleUnit::Px(v) => v,
+            StyleUnit::Pw(v) => cx.percentage_resolution_size.width * v,
+            StyleUnit::Ph(v) => cx.percentage_resolution_size.height * v,
+            StyleUnit::Em(v) => v * cx.font_size,
+            StyleUnit::Rem(v) => v * cx.root_font_size,
+            StyleUnit::Vw(v) => v * cx.root_size.width,
+            StyleUnit::Vh(v) => v * cx.root_size.height,
+        }
+    }
 }
 
 impl Default for StyleUnit {
@@ -33,6 +47,15 @@ pub enum AutoValue<T> {
     Value(T),
 }
 
+impl<T> AutoValue<T> {
+    pub fn resolve(self, auto_value: T) -> T {
+        match self {
+            AutoValue::Auto => auto_value,
+            AutoValue::Value(v) => v,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::Display)]
 #[display("Size({width}, {height})")]
 pub struct Size<T> {
@@ -44,6 +67,13 @@ impl<T> Size<T> {
     #[inline]
     pub const fn new(width: T, height: T) -> Self {
         Self { width, height }
+    }
+}
+
+impl Size<StyleUnit> {
+    #[inline]
+    pub const fn resolve(self, cx: &LayoutConstraint) -> Size<f64> {
+        Size::new(self.width.resolve(cx), self.height.resolve(cx))
     }
 }
 
@@ -61,6 +91,13 @@ impl<T> Point<T> {
     }
 }
 
+impl Point<StyleUnit> {
+    #[inline]
+    pub const fn resolve(self, cx: &LayoutConstraint) -> Point<f64> {
+        Point::new(self.x.resolve(cx), self.y.resolve(cx))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect<T> {
     pub left_top: Point<T>,
@@ -74,5 +111,12 @@ impl<T> Rect<T> {
             left_top,
             right_bottom,
         }
+    }
+}
+
+impl Rect<StyleUnit> {
+    #[inline]
+    pub const fn resolve(self, cx: &LayoutConstraint) -> Rect<f64> {
+        Rect::new(self.left_top.resolve(cx), self.right_bottom.resolve(cx))
     }
 }
