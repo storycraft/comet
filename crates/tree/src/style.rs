@@ -1,21 +1,6 @@
 use hecs::DynamicBundle;
 
-pub trait StyleProp: Sized + Send + Sync + 'static {
-    // TODO: /// Invalidation hint when value is changed
-    // fn invalidate(old: Option<&Self>, new: Option<&Self>) -> InvalidateHint;
-}
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub enum InvalidateHint {
-    /// No work is required
-    None,
-    /// Redraw is required
-    Paint,
-    /// Node's layout is invalidated
-    Layout,
-    /// Need to rebuild layout tree from the nearest block ancestor
-    FullLayout,
-}
+pub trait StyleProp: Sized + Send + Sync + 'static {}
 
 pub trait StyleProps: DynamicBundle {}
 
