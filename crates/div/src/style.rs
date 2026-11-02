@@ -38,6 +38,7 @@ macro_rules! define_style_props {
         ),* $(,)?
     ) => {$(
         $(#[$attr])*
+        #[repr(transparent)]
         $vis struct $name(pub $ty);
         $(impl ::core::default::Default for $name {
             fn default() -> Self {

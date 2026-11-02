@@ -7,8 +7,8 @@ macro_rules! define_style_props {
     (
         $(
             $(#[$attr:meta])*
-            $vis:vis $name:ident : $ty:ty $(= $expr:expr)?
-        ),* $(,)?
+            $vis:vis $name:ident : $ty:ty $(= $expr:expr)? ;
+        )*
     ) => {$(
         $(#[$attr])*
         #[repr(transparent)]
@@ -26,7 +26,7 @@ macro_rules! define_style_props {
             }
         }
 
-        impl $crate::style::StyleProp for $ty {}
+        impl $crate::style::StyleProp for $name {}
     )*};
 }
 pub use define_style_props;
