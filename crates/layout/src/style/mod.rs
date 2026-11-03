@@ -1,5 +1,8 @@
 pub mod bx;
 pub mod geometry;
+pub mod kurbo;
+pub mod parley;
+pub mod taffy;
 
 use crate::style::geometry::Size;
 
