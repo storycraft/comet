@@ -208,7 +208,7 @@ fn paints_atomic_inline_subtree_border_and_text_override_without_double_offsets(
                 AutoValue::Value(StyleUnit::Px(50.0)),
                 AutoValue::Value(StyleUnit::Px(40.0)),
             )),
-            bx::BorderWidth(StyleUnit::Px(2.0)),
+            bx::Border(LayoutRect::new_axis(StyleUnit::Px(2.0), StyleUnit::Px(2.0))),
             BorderFill(Paint::Solid(Color::BLACK)),
             Fill(Paint::Solid(Color::WHITE)),
             TextColor(Paint::Solid(red)),
