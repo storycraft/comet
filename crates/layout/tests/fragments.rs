@@ -98,7 +98,7 @@ fn inline_block_baseline_traverses_blocks_and_falls_back_for_hidden_or_empty_con
         (
             bx::DisplayOuter::Inline,
             bx::DisplayInner::FlowRoot,
-            bx::BorderWidth(StyleUnit::Px(2.0)),
+            bx::Border(Rect::new_axis(StyleUnit::Px(2.0), StyleUnit::Px(2.0))),
             bx::Padding(Rect::new_axis(StyleUnit::Px(5.0), StyleUnit::Px(5.0))),
         ),
     );

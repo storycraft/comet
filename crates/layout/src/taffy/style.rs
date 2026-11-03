@@ -36,13 +36,7 @@ pub fn resolve(ui: &Ui, node: Option<NodeKey>, cx: &LayoutConstraint) -> taffy::
     style.aspect_ratio = ui.prop::<bx::AspectRatio>(node).map(|v| v.0);
     style.margin = conv::to_rect(value!(Margin), |v| conv::length_auto(v, cx));
     style.padding = conv::to_rect(value!(Padding), |v| conv::length(v, cx));
-    let border = conv::length(value!(BorderWidth), cx);
-    style.border = taffy::Rect {
-        left: border,
-        top: border,
-        right: border,
-        bottom: border,
-    };
+    style.border = conv::to_rect(value!(Border), |v| conv::length(v, cx));
 
     style
 }

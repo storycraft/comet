@@ -48,7 +48,7 @@ define_style_props!(
     pub Padding: Rect<StyleUnit> = Rect::default();
 
     // border styles.
-    pub BorderWidth: StyleUnit = StyleUnit::ZERO;
+    pub Border: Rect<StyleUnit> = Rect::default();
     pub BorderRadius: Rect<StyleUnit> = Rect::default();
     pub BorderJoin: kurbo::Join = kurbo::Join::Bevel;
     pub BorderMiterLimit: StyleUnit = StyleUnit::ZERO;
