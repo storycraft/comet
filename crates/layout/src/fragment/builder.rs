@@ -303,12 +303,14 @@ fn emit_box(
     );
     f.layout.padding = conv::from_rect(bx.padding, f64::from);
     f.layout.border = conv::from_rect(bx.border, f64::from);
+
     if matches!(
         engine.tree.items[key].ty,
         crate::tree::LayoutItemTy::AtomicInline(_)
     ) {
         f.layout.baseline = Some(engine.inline_baseline(key) as f64);
     }
+
     out.push((parent, f));
 
     if engine.tree.items[key].child_layout == ChildLayoutMode::Block {
@@ -401,13 +403,15 @@ fn emit_box(
                         continue;
                     }
 
+                    let margin = engine.nodes[&child].layout.margin;
+
                     emit_box(
                         engine,
                         child,
                         Some(parent),
                         Some(Point::new(
-                            (bx.x - metrics.inline_min_coord) as f64,
-                            (bx.y - metrics.block_min_coord) as f64,
+                            (bx.x + margin.left - metrics.inline_min_coord) as f64,
+                            (bx.y + margin.top - metrics.block_min_coord) as f64,
                         )),
                         out,
                     );

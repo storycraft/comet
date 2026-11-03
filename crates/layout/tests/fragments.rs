@@ -35,17 +35,21 @@ fn inline_block_uses_its_font_size_and_last_line_baseline() {
         ),
     );
     let text = ui.create(Node::Text, (Text("inline block wraps over lines".into()),));
+
     ui.append(root_node, before);
     ui.append(root_node, atomic);
     ui.append(atomic, text);
+
     let mut layout = LayoutTree::new();
     let root = LayoutTreeBuilder::new()
         .build(&ui, root_node, &mut layout, None)
         .unwrap();
     let mut builder = FragmentBuilder::new();
     let mut tree = FragmentTree::new();
+
     for font_size in [20.0, 30.0] {
         ui.set_props(root_node, (bx::FontSize(StyleUnit::Px(font_size)),));
+
         let result = builder
             .build(&constraint(500.0), &ui, &layout, root, &mut tree)
             .unwrap();
@@ -55,7 +59,9 @@ fn inline_block_uses_its_font_size_and_last_line_baseline() {
             .unwrap();
         let atomic_fragment = &tree.items[atomic_key];
         let shaped = &tree.inline_layouts[&atomic_fragment.source];
+
         assert!(shaped.len() > 1);
+
         for line in shaped.lines() {
             for item in line.items() {
                 if let parley::PositionedLayoutItem::GlyphRun(run) = item {
@@ -63,10 +69,12 @@ fn inline_block_uses_its_font_size_and_last_line_baseline() {
                 }
             }
         }
+
         let parent = tree.items.parent(atomic_key).unwrap();
         let last_line = tree.items.children(atomic_key).last().unwrap();
         let last_line = &tree.items[last_line];
         let baseline = last_line.layout.location.y + last_line.layout.baseline.unwrap();
+
         assert!(
             (atomic_fragment.layout.location.y + baseline
                 - tree.items[parent].layout.baseline.unwrap())
@@ -122,6 +130,7 @@ fn inline_block_baseline_traverses_blocks_and_falls_back_for_hidden_or_empty_con
     ui.append(atomic, block);
     ui.append(block, text);
     ui.append(atomic, empty);
+
     let mut layout = LayoutTree::new();
     let mut layout_builder = LayoutTreeBuilder::new();
     let root = layout_builder
@@ -129,6 +138,7 @@ fn inline_block_baseline_traverses_blocks_and_falls_back_for_hidden_or_empty_con
         .unwrap();
     let mut builder = FragmentBuilder::new();
     let mut tree = FragmentTree::new();
+
     for mode in 0..3 {
         if mode == 1 {
             ui.set_props(
@@ -149,6 +159,7 @@ fn inline_block_baseline_traverses_blocks_and_falls_back_for_hidden_or_empty_con
             ui.delete(block);
             layout_builder.build(&ui, root_node, &mut layout, Some(root));
         }
+
         let result = builder
             .build(&constraint(500.0), &ui, &layout, root, &mut tree)
             .unwrap();
@@ -166,13 +177,117 @@ fn inline_block_baseline_traverses_blocks_and_falls_back_for_hidden_or_empty_con
         } else {
             fragment.layout.size.height
         };
+
         assert!((fragment.layout.baseline.unwrap() - expected).abs() < 0.01);
+
         let parent = tree.items.parent(atomic_key).unwrap();
+
         assert!(
             (fragment.layout.location.y + expected - tree.items[parent].layout.baseline.unwrap())
                 .abs()
                 < 0.01
         );
+    }
+}
+
+#[test]
+fn inline_block_margins_preserve_text_and_fallback_baselines() {
+    let mut ui = Ui::new();
+    let root_node = ui.create(Node::Box, ());
+    let before = ui.create(Node::Text, (Text("before".into()),));
+    let atomic = ui.create(
+        Node::Box,
+        (
+            bx::DisplayOuter::Inline,
+            bx::DisplayInner::FlowRoot,
+            bx::Margin(Rect::new_axis(
+                AutoValue::Value(StyleUnit::Px(7.0)),
+                AutoValue::Value(StyleUnit::Px(11.0)),
+            )),
+            bx::Padding(Rect::new_axis(StyleUnit::Px(3.0), StyleUnit::Px(5.0))),
+        ),
+    );
+    let text = ui.create(Node::Text, (Text("badge".into()),));
+    let after = ui.create(Node::Text, (Text("after".into()),));
+
+    ui.append(root_node, before);
+    ui.append(root_node, atomic);
+    ui.append(atomic, text);
+    ui.append(root_node, after);
+
+    let mut layout = LayoutTree::new();
+    let mut layout_builder = LayoutTreeBuilder::new();
+    let root = layout_builder
+        .build(&ui, root_node, &mut layout, None)
+        .unwrap();
+    let mut builder = FragmentBuilder::new();
+    let mut tree = FragmentTree::new();
+
+    for mode in 0..3 {
+        if mode == 1 {
+            ui.set_props(
+                atomic,
+                (bx::Overflow(Point::new(
+                    taffy::Overflow::Hidden,
+                    taffy::Overflow::Hidden,
+                )),),
+            );
+        } else if mode == 2 {
+            ui.set_props(
+                atomic,
+                (bx::Overflow(Point::new(
+                    taffy::Overflow::Visible,
+                    taffy::Overflow::Visible,
+                )),),
+            );
+            ui.delete(text);
+            layout_builder.build(&ui, root_node, &mut layout, Some(root));
+        }
+
+        let result = builder
+            .build(&constraint(500.0), &ui, &layout, root, &mut tree)
+            .unwrap();
+        let all = keys(&tree, result);
+        let find = |node| {
+            all.iter()
+                .copied()
+                .find(|&key| tree.items[key].node == Some(node))
+                .unwrap()
+        };
+        let atomic_key = find(atomic);
+        let bx = &tree.items[atomic_key].layout;
+        let before = &tree.items[find(before)].layout;
+        let after = &tree.items[find(after)].layout;
+        let line = &tree.items[tree.items.parent(atomic_key).unwrap()].layout;
+
+        assert!((bx.location.x - before.location.x - before.size.width - 11.0).abs() < 0.01);
+        assert!((after.location.x - bx.location.x - bx.size.width - 11.0).abs() < 0.01);
+        assert!((bx.location.y + bx.baseline.unwrap() - line.baseline.unwrap()).abs() < 0.01);
+        assert!(bx.location.y >= 7.0 - 0.01);
+        assert!(line.size.height >= bx.location.y + bx.size.height + 7.0 - 0.01);
+
+        if mode == 0 {
+            let inner_line = &tree.items[tree.items.children(atomic_key).last().unwrap()].layout;
+
+            assert!(
+                (bx.baseline.unwrap() - inner_line.location.y - inner_line.baseline.unwrap()).abs()
+                    < 0.01
+            );
+        } else {
+            assert!((bx.baseline.unwrap() - bx.size.height - 7.0).abs() < 0.01);
+        }
+
+        let mut fresh = FragmentTree::new();
+        let fresh_root = FragmentBuilder::new()
+            .build(&constraint(500.0), &ui, &layout, root, &mut fresh)
+            .unwrap();
+        let expected = keys(&fresh, fresh_root);
+
+        assert_eq!(all.len(), expected.len());
+
+        for (actual, expected) in all.into_iter().zip(expected) {
+            assert_eq!(tree.items[actual].layout, fresh.items[expected].layout);
+        }
     }
 }
 
