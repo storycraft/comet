@@ -58,9 +58,7 @@ define_style_props!(
     pub BorderDashOffset: StyleUnit = StyleUnit::ZERO;
 
     // Font settings
-    pub Font: parley::FontFamily<'static> = parley::FontFamily::Single(
-        parley::FontFamilyName::Generic(parley::GenericFamily::SansSerif)
-    );
+    pub Font: parley::FontFamily<'static>;
     pub FontSize: StyleUnit;
     pub FontVariations: parley::FontVariations<'static>;
     pub FontFeatures: parley::FontFeatures<'static>;
