@@ -82,11 +82,11 @@ fn print_tree(tree: &FragmentTree, root: FragmentKey) {
             "{indent}{key:?} {:?} node={:?} at=({:.1}, {:.1}) size=({:.1}, {:.1}) baseline={:?}",
             fragment.item,
             fragment.node,
-            fragment.location.x,
-            fragment.location.y,
-            fragment.size.width,
-            fragment.size.height,
-            fragment.baseline
+            fragment.layout.location.x,
+            fragment.layout.location.y,
+            fragment.layout.size.width,
+            fragment.layout.size.height,
+            fragment.layout.baseline
         );
 
         if fragment.link.prev.is_some() || fragment.link.next.is_some() {

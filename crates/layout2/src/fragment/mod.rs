@@ -42,11 +42,17 @@ pub struct Fragment {
     pub source: LayoutItemKey,
     pub node: Option<NodeKey>,
     pub item: FragmentItem,
+    pub layout: FragmentBox,
+    pub link: FragmentLink,
+}
+
+/// Computed geometry of a fragment.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct FragmentBox {
     /// Coordinates relative to the parent fragment.
     pub location: Point<f64>,
     pub size: Size<f64>,
     pub padding: Rect<f64>,
     pub border: Rect<f64>,
     pub baseline: Option<f64>,
-    pub link: FragmentLink,
 }

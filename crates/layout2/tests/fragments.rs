@@ -84,10 +84,10 @@ fn percentages_use_actual_parent_and_box_properties_do_not_inherit() {
         .build(&constraint(500.0), &ui, &layout, root, &mut tree)
         .unwrap();
     let child = tree.items.children(root).next().unwrap();
-    assert_eq!(tree.items[root].size.width, 200.0);
-    assert_eq!(tree.items[child].size.width, 90.0);
-    assert_eq!(tree.items[child].padding, Rect::default());
-    assert_eq!(tree.items[child].location, Point::new(10.0, 10.0));
+    assert_eq!(tree.items[root].layout.size.width, 200.0);
+    assert_eq!(tree.items[child].layout.size.width, 90.0);
+    assert_eq!(tree.items[child].layout.padding, Rect::default());
+    assert_eq!(tree.items[child].layout.location, Point::new(10.0, 10.0));
 }
 
 #[test]
@@ -194,8 +194,8 @@ fn atomic_inline_is_positioned_by_parley_and_keeps_its_subtree() {
         .into_iter()
         .find(|&key| tree.items[key].node == Some(atomic))
         .unwrap();
-    assert_eq!(tree.items[atomic_key].size, Size::new(40.0, 30.0));
-    assert!(tree.items[atomic_key].location.x > 0.0);
+    assert_eq!(tree.items[atomic_key].layout.size, Size::new(40.0, 30.0));
+    assert!(tree.items[atomic_key].layout.location.x > 0.0);
     assert_eq!(tree.items.children(atomic_key).count(), 1);
 }
 
@@ -240,10 +240,7 @@ fn incremental_edits_match_fresh_layout_and_deleted_roots_are_pruned() {
         for (a, b) in actual.into_iter().zip(expected) {
             let a = &tree.items[a];
             let b = &fresh.items[b];
-            assert_eq!(
-                (&a.item, a.node, a.location, a.size, a.baseline),
-                (&b.item, b.node, b.location, b.size, b.baseline)
-            );
+            assert_eq!((&a.item, a.node, a.layout), (&b.item, b.node, b.layout));
         }
     }
 
@@ -294,8 +291,8 @@ fn absolute_child_uses_taffy_containing_block() {
         .build(&constraint(500.0), &ui, &layout, root, &mut tree)
         .unwrap();
     let child = tree.items.children(root).next().unwrap();
-    assert_eq!(tree.items[child].location, Point::new(15.0, 20.0));
-    assert_eq!(tree.items[child].size, Size::new(30.0, 40.0));
+    assert_eq!(tree.items[child].layout.location, Point::new(15.0, 20.0));
+    assert_eq!(tree.items[child].layout.size, Size::new(30.0, 40.0));
 }
 
 #[test]
@@ -374,5 +371,5 @@ fn one_percentage_unit_uses_each_taffy_axis() {
         .unwrap();
     let child = tree.items.children(root).next().unwrap();
 
-    assert_eq!(tree.items[child].size, Size::new(100.0, 50.0));
+    assert_eq!(tree.items[child].layout.size, Size::new(100.0, 50.0));
 }

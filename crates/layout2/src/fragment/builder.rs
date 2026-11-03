@@ -5,11 +5,11 @@ use comet_tree::{
 use rustc_hash::{FxHashMap, FxHashSet};
 use slotmap::KeyData;
 
-use super::{Fragment, FragmentItem, FragmentKey, FragmentLink, tree::FragmentTree};
+use super::{Fragment, FragmentBox, FragmentItem, FragmentKey, FragmentLink, tree::FragmentTree};
 use crate::{
     style::{
         LayoutConstraint,
-        geometry::{Point, Rect, Size},
+        geometry::{Point, Size},
     },
     taffy::{NodeState, TaffyLayout, conv, style},
     tree::{ChildLayoutMode, LayoutItem, LayoutItemKey, LayoutTree},
@@ -291,11 +291,11 @@ fn fragment(
         source,
         node,
         item,
-        location,
-        size,
-        padding: Rect::default(),
-        border: Rect::default(),
-        baseline: None,
+        layout: FragmentBox {
+            location,
+            size,
+            ..Default::default()
+        },
         link: FragmentLink::default(),
     }
 }
@@ -316,8 +316,8 @@ fn emit_box(
         position.unwrap_or_else(|| conv::from_point(bx.location, f64::from)),
         conv::from_size(bx.size, f64::from),
     );
-    f.padding = conv::from_rect(bx.padding, f64::from);
-    f.border = conv::from_rect(bx.border, f64::from);
+    f.layout.padding = conv::from_rect(bx.padding, f64::from);
+    f.layout.border = conv::from_rect(bx.border, f64::from);
     out.push((parent, f));
 
     if engine.tree.items[key].child_layout == ChildLayoutMode::Block {
@@ -345,7 +345,7 @@ fn emit_box(
                 metrics.line_height as f64,
             ),
         );
-        line_fragment.baseline = Some((metrics.baseline - metrics.block_min_coord) as f64);
+        line_fragment.layout.baseline = Some((metrics.baseline - metrics.block_min_coord) as f64);
         out.push((Some(index), line_fragment));
         let mut spans = Vec::new();
         let mut span_indices = FxHashMap::default();
@@ -377,7 +377,7 @@ fn emit_box(
                         Point::new((run.offset() - metrics.inline_min_coord) as f64, 0.0),
                         Size::new(run.advance() as f64, metrics.line_height as f64),
                     );
-                    f.baseline = Some((run.baseline() - metrics.block_min_coord) as f64);
+                    f.layout.baseline = Some((run.baseline() - metrics.block_min_coord) as f64);
                     out.push((Some(parent), f));
                 }
                 parley::PositionedLayoutItem::InlineBox(bx) => {
@@ -434,20 +434,20 @@ fn emit_box(
             let mut bottom = f64::NEG_INFINITY;
             for &child in &children {
                 let f = &out[child].1;
-                left = left.min(f.location.x);
-                top = top.min(f.location.y);
-                right = right.max(f.location.x + f.size.width);
-                bottom = bottom.max(f.location.y + f.size.height);
+                left = left.min(f.layout.location.x);
+                top = top.min(f.layout.location.y);
+                right = right.max(f.layout.location.x + f.layout.size.width);
+                bottom = bottom.max(f.layout.location.y + f.layout.size.height);
             }
 
             if children.is_empty() {
                 continue;
             }
-            out[span].1.location = Point::new(left, top);
-            out[span].1.size = Size::new(right - left, bottom - top);
+            out[span].1.layout.location = Point::new(left, top);
+            out[span].1.layout.size = Size::new(right - left, bottom - top);
             for child in children {
-                out[child].1.location.x -= left;
-                out[child].1.location.y -= top;
+                out[child].1.layout.location.x -= left;
+                out[child].1.layout.location.y -= top;
             }
         }
     }
