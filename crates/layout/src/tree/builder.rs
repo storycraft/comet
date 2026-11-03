@@ -1,10 +1,12 @@
-use std::collections::VecDeque;
+mod candidates;
 
 use comet_tree::{
     node::{Node, NodeKey},
     ui::Ui,
 };
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
+
+use self::candidates::Candidates;
 
 use crate::{
     style::bx::{DisplayInner, DisplayOuter},
@@ -18,8 +20,8 @@ pub struct LayoutTreeBuilder {
     flows: Vec<Flow>,
     spans: Vec<NodeKey>,
     scan: Vec<NodeKey>,
-    // Lazy indexes can retain moved items; never reuse an item twice per update.
-    claimed: FxHashSet<LayoutItemKey>,
+
+    candidates: Candidates,
     last_items: FxHashMap<NodeKey, LayoutItemKey>,
 }
 
@@ -314,7 +316,7 @@ impl LayoutTreeBuilder {
     ) -> Option<LayoutItemKey> {
         let frame = self.frames.last_mut()?;
 
-        if let Some(key) = frame.find(tree, desired, text, &self.claimed) {
+        if let Some(key) = self.candidates.find(tree, frame, desired, text) {
             replace_item(tree, key, desired);
 
             if frame.next == Some(key) {
@@ -323,7 +325,7 @@ impl LayoutTreeBuilder {
                 frame.insert(tree, key);
             }
 
-            self.claimed.insert(key);
+            self.candidates.claim(key);
             self.record_item(tree, key);
 
             return Some(key);
@@ -333,27 +335,28 @@ impl LayoutTreeBuilder {
         if let Some(flow) = self.flows.last().copied()
             && flow.inline_run
             && self.frames.len() == flow.frame + 2
+            && let Some(key) =
+                self.candidates
+                    .adopt(tree, &mut self.frames[flow.frame], desired, text)
         {
             let parent = &mut self.frames[flow.frame];
 
-            if let Some(key) = parent.adopt(tree, desired, text, &self.claimed) {
-                if parent.next == Some(key) {
-                    parent.next = tree.items.next_sibling(key);
-                }
-
-                replace_item(tree, key, desired);
-                self.frames.last()?.insert(tree, key);
-                self.claimed.insert(key);
-                self.record_item(tree, key);
-
-                return Some(key);
+            if parent.next == Some(key) {
+                parent.next = tree.items.next_sibling(key);
             }
+
+            replace_item(tree, key, desired);
+            self.frames.last()?.insert(tree, key);
+            self.candidates.claim(key);
+            self.record_item(tree, key);
+
+            return Some(key);
         }
 
         let frame = self.frames.last_mut()?;
         let key = tree.add_item(desired);
         frame.insert(tree, key);
-        self.claimed.insert(key);
+        self.candidates.claim(key);
         self.record_item(tree, key);
 
         Some(key)
@@ -391,32 +394,27 @@ impl LayoutTreeBuilder {
             .last()
             .is_some_and(|flow| flow.inline_run && self.frames.len() == flow.frame + 1)
         {
-            // Keep the unconsumed tail available when a block splits an old run.
+            // Promote the tail backwards so prepending preserves sibling and candidate order.
             let parent = self.frames.last_mut()?;
-            let mut next = frame.next;
-            let first = next;
-            let mut promoted = Vec::new();
+            let mut next = frame.next.and_then(|_| tree.items.last_child(frame.key));
 
             while let Some(key) = next {
-                next = tree.items.next_sibling(key);
+                next = if Some(key) == frame.next {
+                    None
+                } else {
+                    tree.items.prev_sibling(key)
+                };
 
                 parent.insert(tree, key);
-                promoted.push(key);
-            }
+                parent.next = Some(key);
 
-            // Promoted tails precede the parent's old unconsumed siblings.
-            for key in promoted.into_iter().rev() {
-                if let Some(index) = &mut parent.index {
-                    index.entry(tree.items[key].ty).or_default().push_front(key);
+                if let Some(index) = parent.index {
+                    self.candidates.push(index, tree.items[key].ty, key, true);
                 }
 
-                if let Some(index) = &mut parent.adoption {
-                    index.entry(tree.items[key].ty).or_default().push_front(key);
+                if let Some(index) = parent.adoption {
+                    self.candidates.push(index, tree.items[key].ty, key, true);
                 }
-            }
-
-            if first.is_some() {
-                parent.next = first;
             }
         } else {
             delete_remaining(tree, frame.next);
@@ -510,7 +508,7 @@ impl LayoutTreeBuilder {
         self.flows.clear();
         self.spans.clear();
         self.scan.clear();
-        self.claimed.clear();
+        self.candidates.clear();
         self.last_items.clear();
     }
 }
@@ -525,96 +523,11 @@ enum Task {
 struct Frame {
     key: LayoutItemKey,
     next: Option<LayoutItemKey>,
-    // TODO:: Flatten layout
-    index: Option<Candidates>,
-    adoption: Option<Candidates>,
+    index: Option<usize>,
+    adoption: Option<usize>,
 }
 
-// Inline sources can produce multiple fragments, so preserve candidate order.
-type Candidates = FxHashMap<LayoutItemTy, VecDeque<LayoutItemKey>>;
-
 impl Frame {
-    fn find(
-        &mut self,
-        tree: &LayoutTree,
-        desired: LayoutItem,
-        text: Option<NodeKey>,
-        claimed: &FxHashSet<LayoutItemKey>,
-    ) -> Option<LayoutItemKey> {
-        if let Some(key) = self.next
-            && matches_item(tree, key, desired, text)
-        {
-            return Some(key);
-        }
-
-        let index = self.index.get_or_insert_with(|| {
-            let mut index = Candidates::default();
-
-            for key in tree.items.cursor(self.next) {
-                index.entry(tree.items[key].ty).or_default().push_back(key);
-            }
-
-            index
-        });
-        let candidates = index.get_mut(&desired.ty)?;
-
-        while let Some(key) = candidates.pop_front() {
-            if !claimed.contains(&key)
-                && tree.items.parent(key) == Some(self.key)
-                && matches_item(tree, key, desired, text)
-            {
-                return Some(key);
-            }
-        }
-
-        None
-    }
-
-    fn adopt(
-        &mut self,
-        tree: &LayoutTree,
-        desired: LayoutItem,
-        text: Option<NodeKey>,
-        claimed: &FxHashSet<LayoutItemKey>,
-    ) -> Option<LayoutItemKey> {
-        let anonymous = item(LayoutItemTy::AnonymousBlock, ChildLayoutMode::Inline);
-        let index = self.adoption.get_or_insert_with(|| {
-            let mut index = Candidates::default();
-
-            for key in tree.items.cursor(self.next) {
-                if tree.items[key] == anonymous {
-                    for child in tree.items.children(key) {
-                        index
-                            .entry(tree.items[child].ty)
-                            .or_default()
-                            .push_back(child);
-                    }
-                }
-
-                index.entry(tree.items[key].ty).or_default().push_back(key);
-            }
-
-            index
-        });
-        let candidates = index.get_mut(&desired.ty)?;
-
-        while let Some(key) = candidates.pop_front() {
-            let parent = tree.items.parent(key);
-            let eligible = parent == Some(self.key)
-                || parent.is_some_and(|parent| {
-                    !claimed.contains(&parent)
-                        && tree.items.parent(parent) == Some(self.key)
-                        && tree.items.get(parent) == Some(&anonymous)
-                });
-
-            if eligible && !claimed.contains(&key) && matches_item(tree, key, desired, text) {
-                return Some(key);
-            }
-        }
-
-        None
-    }
-
     fn insert(&self, tree: &mut LayoutTree, key: LayoutItemKey) {
         if let Some(next) = self.next {
             tree.items.before(next, key);
