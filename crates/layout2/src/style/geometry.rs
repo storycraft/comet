@@ -5,10 +5,8 @@ use crate::style::LayoutConstraint;
 pub enum StyleUnit {
     /// Pixel unit
     Px(f64),
-    /// Percentage of parent width. 100% = 1.0
-    Pw(f64),
-    /// Percentage of parent height. 100% = 1.0
-    Ph(f64),
+    /// Percentage of the property's reference value. 100% = 1.0.
+    Percent(f64),
     /// Em unit (relative to parent font size)
     Em(f64),
     /// Rem unit (relative to root font size)
@@ -22,11 +20,11 @@ pub enum StyleUnit {
 impl StyleUnit {
     pub const ZERO: StyleUnit = StyleUnit::Px(0.0);
 
-    pub const fn resolve(self, cx: &LayoutConstraint) -> f64 {
+    /// Resolve a length with the percentage basis chosen by the caller.
+    pub const fn resolve(self, cx: &LayoutConstraint, percentage_basis: f64) -> f64 {
         match self {
             StyleUnit::Px(v) => v,
-            StyleUnit::Pw(v) => cx.parent_size.width * v,
-            StyleUnit::Ph(v) => cx.parent_size.height * v,
+            StyleUnit::Percent(v) => percentage_basis * v,
             StyleUnit::Em(v) => v * cx.font_size,
             StyleUnit::Rem(v) => v * cx.root_font_size,
             StyleUnit::Vw(v) => v * cx.root_size.width,
@@ -80,8 +78,11 @@ impl<T> Size<T> {
 
 impl Size<StyleUnit> {
     #[inline]
-    pub const fn resolve(self, cx: &LayoutConstraint) -> Size<f64> {
-        Size::new(self.width.resolve(cx), self.height.resolve(cx))
+    pub const fn resolve(self, cx: &LayoutConstraint, percentage_basis: Size<f64>) -> Size<f64> {
+        Size::new(
+            self.width.resolve(cx, percentage_basis.width),
+            self.height.resolve(cx, percentage_basis.height),
+        )
     }
 }
 
@@ -101,8 +102,11 @@ impl<T> Point<T> {
 
 impl Point<StyleUnit> {
     #[inline]
-    pub const fn resolve(self, cx: &LayoutConstraint) -> Point<f64> {
-        Point::new(self.x.resolve(cx), self.y.resolve(cx))
+    pub const fn resolve(self, cx: &LayoutConstraint, percentage_basis: Point<f64>) -> Point<f64> {
+        Point::new(
+            self.x.resolve(cx, percentage_basis.x),
+            self.y.resolve(cx, percentage_basis.y),
+        )
     }
 }
 
@@ -140,7 +144,10 @@ impl<T> Rect<T> {
 
 impl Rect<StyleUnit> {
     #[inline]
-    pub const fn resolve(self, cx: &LayoutConstraint) -> Rect<f64> {
-        Rect::new(self.left_top.resolve(cx), self.right_bottom.resolve(cx))
+    pub const fn resolve(self, cx: &LayoutConstraint, percentage_basis: Rect<f64>) -> Rect<f64> {
+        Rect::new(
+            self.left_top.resolve(cx, percentage_basis.left_top),
+            self.right_bottom.resolve(cx, percentage_basis.right_bottom),
+        )
     }
 }
