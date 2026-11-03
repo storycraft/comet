@@ -237,11 +237,11 @@ fn badge(ui: &mut Ui, parent: NodeKey, label: &str, color: Color) {
             DisplayOuter::Inline,
             DisplayInner::FlowRoot,
             Fill(Paint::Solid(color)),
-            FontSize(StyleUnit::Px(14.0)),
-            Padding(Rect::new_axis(StyleUnit::Px(4.0), StyleUnit::Px(8.0))),
         ),
     );
+
     ui.append(parent, badge);
+    text(ui, badge, "✨ ");
     text(ui, badge, label);
 }
 
