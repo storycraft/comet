@@ -822,3 +822,248 @@ fn nested_fragment_reconciliation_matches_fresh_trees() {
         assert_eq!(tree.items.len(), keys(&tree, key).len());
     }
 }
+
+#[test]
+fn partial_text_updates_preserve_shared_runs() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let a = ui.create(Node::Text, ());
+    let b = ui.create(Node::Text, ());
+    let boundary = ui.create(Node::Box, ());
+
+    for node in [a, b, boundary] {
+        ui.append(root, node);
+    }
+
+    let mut tree = LayoutTree::new();
+    let mut builder = LayoutTreeBuilder::new();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
+    let wrapper = tree.items.first_child(key).unwrap();
+    let original = keys(&tree, key);
+
+    for node in [a, b] {
+        ui.set_props(node, (Text("edited".into()),));
+
+        assert_eq!(
+            builder.build(&ui, node, &mut tree, Some(wrapper)),
+            Some(wrapper)
+        );
+        assert_eq!(keys(&tree, key), original);
+        assert_fresh(&ui, root, &tree, key);
+    }
+
+    ui.delete(a);
+
+    assert_eq!(builder.build(&ui, a, &mut tree, Some(wrapper)), None);
+    assert!(tree.item_for_node(b).is_some());
+    assert_fresh(&ui, root, &tree, key);
+}
+
+#[test]
+fn partial_split_inline_updates_reconcile_all_continuations() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let span = ui.create(Node::Box, (DisplayOuter::Inline,));
+    let boundary = ui.create(Node::Box, ());
+    let text = ui.create(Node::Text, ());
+
+    ui.append(root, span);
+    ui.append(span, boundary);
+    ui.append(span, text);
+
+    let mut tree = LayoutTree::new();
+    let mut builder = LayoutTreeBuilder::new();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
+    let first = tree.item_for_node(span).unwrap();
+    let last = tree.items[first].link.next.unwrap();
+    let original = keys(&tree, key);
+
+    for target in [first, last] {
+        assert_eq!(
+            builder.build(&ui, span, &mut tree, Some(target)),
+            Some(first)
+        );
+        assert_eq!(keys(&tree, key), original);
+        assert_fresh(&ui, root, &tree, key);
+    }
+
+    ui.delete(span);
+
+    assert_eq!(builder.build(&ui, span, &mut tree, Some(last)), None);
+    assert_eq!(tree.items.len(), 1);
+    assert_fresh(&ui, root, &tree, key);
+}
+
+#[test]
+fn partial_display_changes_and_deletion_normalize_parent_flow() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let span = ui.create(Node::Box, (DisplayOuter::Inline,));
+    let child = ui.create(Node::Box, ());
+    let text = ui.create(Node::Text, ());
+
+    ui.append(root, span);
+    ui.append(span, child);
+    ui.append(root, text);
+
+    let mut tree = LayoutTree::new();
+    let mut builder = LayoutTreeBuilder::new();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
+
+    for (outer, inner) in [
+        (DisplayOuter::Inline, DisplayInner::Flow),
+        (DisplayOuter::Inline, DisplayInner::FlowRoot),
+        (DisplayOuter::Block, DisplayInner::Flow),
+    ] {
+        let target = tree.item_for_node(child).unwrap();
+        ui.set_props(child, (outer, inner));
+        let updated = builder.build(&ui, child, &mut tree, Some(target)).unwrap();
+
+        assert_eq!(tree.item_for_node(child), Some(updated));
+        assert_fresh(&ui, root, &tree, key);
+    }
+
+    let target = tree.item_for_node(child).unwrap();
+    ui.delete(child);
+
+    assert_eq!(builder.build(&ui, child, &mut tree, Some(target)), None);
+    assert_eq!(tree.items[key].child_layout, Mode::Inline);
+    assert_fresh(&ui, root, &tree, key);
+}
+
+#[test]
+fn partial_moves_and_detachment_update_old_and_new_parents() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let a = ui.create(Node::Box, ());
+    let b = ui.create(Node::Box, ());
+    let text = ui.create(Node::Text, ());
+
+    ui.append(root, a);
+    ui.append(root, b);
+    ui.append(a, text);
+
+    let mut tree = LayoutTree::new();
+    let mut builder = LayoutTreeBuilder::new();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
+    let target = tree.item_for_node(text).unwrap();
+
+    ui.append(b, text);
+    let target = builder.build(&ui, text, &mut tree, Some(target)).unwrap();
+
+    assert_fresh(&ui, root, &tree, key);
+
+    ui.remove_parent(text);
+
+    assert_eq!(builder.build(&ui, text, &mut tree, Some(target)), None);
+    assert_fresh(&ui, root, &tree, key);
+}
+
+#[test]
+fn partial_updates_preserve_inline_root_key_when_splitting_and_merging() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, (DisplayOuter::Inline,));
+    let child = ui.create(Node::Box, (DisplayOuter::Inline,));
+
+    ui.append(root, child);
+
+    let mut tree = LayoutTree::new();
+    let mut builder = LayoutTreeBuilder::new();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
+
+    for outer in [
+        DisplayOuter::Block,
+        DisplayOuter::Inline,
+        DisplayOuter::Block,
+    ] {
+        let target = tree.item_for_node(child).unwrap();
+        ui.set_props(child, (outer,));
+        builder.build(&ui, child, &mut tree, Some(target)).unwrap();
+
+        assert_fresh(&ui, root, &tree, key);
+        assert_eq!(tree.items.len(), keys(&tree, key).len());
+    }
+
+    let target = tree.item_for_node(child).unwrap();
+    ui.delete(child);
+
+    assert_eq!(builder.build(&ui, child, &mut tree, Some(target)), None);
+    assert_fresh(&ui, root, &tree, key);
+}
+
+#[test]
+fn partial_updates_use_target_ownership_across_builders_and_independent_roots() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, (DisplayOuter::Inline,));
+    let child = ui.create(Node::Box, ());
+
+    ui.append(root, child);
+
+    let mut tree = LayoutTree::new();
+    let mut builder = LayoutTreeBuilder::new();
+    let first = builder.build(&ui, root, &mut tree, None).unwrap();
+    let target = tree.item_for_node(child).unwrap();
+    let second = builder.build(&ui, root, &mut tree, None).unwrap();
+    let second_snapshot = snapshot(&tree, second);
+    let second_keys = keys(&tree, second);
+
+    ui.set_props(child, (DisplayOuter::Inline,));
+    let updated = LayoutTreeBuilder::new()
+        .build(&ui, child, &mut tree, Some(target))
+        .unwrap();
+
+    assert!(keys(&tree, first).contains(&updated));
+    assert_fresh(&ui, root, &tree, first);
+    assert_eq!(snapshot(&tree, second), second_snapshot);
+    assert_eq!(keys(&tree, second), second_keys);
+}
+
+#[test]
+fn repeated_partial_edits_match_fresh_trees() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let mut nodes = Vec::new();
+
+    for _ in 0..6 {
+        let span = ui.create(Node::Box, (DisplayOuter::Inline,));
+
+        ui.append(root, span);
+
+        for _ in 0..4 {
+            let child = ui.create(Node::Box, (DisplayOuter::Inline,));
+            let text = ui.create(Node::Text, ());
+
+            ui.append(child, text);
+            ui.append(span, child);
+            nodes.push((span, child));
+        }
+    }
+
+    let mut tree = LayoutTree::new();
+    let mut builder = LayoutTreeBuilder::new();
+    let key = builder.build(&ui, root, &mut tree, None).unwrap();
+    let mut seed = 31_u32;
+
+    for step in 0..256 {
+        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+        let (parent, node) = nodes[(seed as usize >> 8) % nodes.len()];
+        let target = tree.item_for_node(node).unwrap();
+        let outer = if step % 3 == 0 {
+            DisplayOuter::Block
+        } else {
+            DisplayOuter::Inline
+        };
+        let inner = match step % 4 {
+            0 => DisplayInner::FlowRoot,
+            1 => DisplayInner::Content,
+            _ => DisplayInner::Flow,
+        };
+
+        ui.set_props(node, (outer, inner));
+        ui.prepend(parent, node);
+        builder.build(&ui, node, &mut tree, Some(target)).unwrap();
+
+        assert_fresh(&ui, root, &tree, key);
+        assert_eq!(tree.items.len(), keys(&tree, key).len());
+    }
+}

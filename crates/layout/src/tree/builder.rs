@@ -31,12 +31,81 @@ impl LayoutTreeBuilder {
     }
 
     /// Build a new subtree with `None`, or reconcile an existing one with `Some(key)`.
+    ///
+    /// A target inside a previously built tree reconciles that entire owning
+    /// tree, including surrounding flows and continuations. Independent builds
+    /// are unaffected. The owning root keeps its key during a partial update.
+    ///
+    /// Returns the requested node's first item, or its anonymous text wrapper
+    /// when a wrapper was supplied. Returns `None` if the node is no longer
+    /// represented in that tree (for example, after deletion or detachment).
     pub fn build(
         &mut self,
         ui: &Ui,
         root: NodeKey,
         tree: &mut LayoutTree,
         target: Option<LayoutItemKey>,
+    ) -> Option<LayoutItemKey> {
+        if let Some(target) = target {
+            let mut ancestor = tree.items.parent(target);
+            let mut owner = None;
+
+            while let Some(key) = ancestor {
+                if let Some(&source) = tree.build_roots.get(&key) {
+                    owner = Some((key, source));
+                }
+
+                ancestor = tree.items.parent(key);
+            }
+
+            if let Some((key, source)) = owner {
+                let wrapper = tree.items.get(target).is_some_and(|item| {
+                    item.ty == LayoutItemTy::AnonymousBlock
+                        && item.child_layout == ChildLayoutMode::Inline
+                });
+
+                self.build_subtree(ui, source, tree, Some(key), true)?;
+
+                // Search this build, not the global mapping, which can belong
+                // to another independent representation of the same source.
+                let mut pending = vec![key];
+
+                while let Some(key) = pending.pop() {
+                    if tree.items[key].ty.node() == Some(root) {
+                        return Some(if wrapper {
+                            tree.items
+                                .parent(key)
+                                .filter(|&parent| {
+                                    tree.items[parent].ty == LayoutItemTy::AnonymousBlock
+                                        && tree.items[parent].child_layout
+                                            == ChildLayoutMode::Inline
+                                })
+                                .unwrap_or(key)
+                        } else {
+                            key
+                        });
+                    }
+
+                    pending.extend(tree.items.children(key).rev());
+                }
+
+                return None;
+            }
+        }
+
+        let key = self.build_subtree(ui, root, tree, target, false)?;
+        tree.build_roots.insert(key, root);
+
+        Some(key)
+    }
+
+    fn build_subtree(
+        &mut self,
+        ui: &Ui,
+        root: NodeKey,
+        tree: &mut LayoutTree,
+        target: Option<LayoutItemKey>,
+        preserve_root: bool,
     ) -> Option<LayoutItemKey> {
         self.clear();
 
@@ -63,7 +132,16 @@ impl LayoutTreeBuilder {
             self.source_item(ui, root)
         };
 
-        let key = update_item(tree, target, desired);
+        let key = if preserve_root {
+            let key = target?;
+
+            tree.unmap_item(key);
+            replace_item(tree, key, desired);
+
+            key
+        } else {
+            update_item(tree, target, desired)
+        };
         self.record_item(tree, key);
 
         self.push_frame(tree, key);

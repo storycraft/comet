@@ -12,6 +12,10 @@ pub struct LayoutTree {
     /// source mappings and continuation links synchronized.
     pub items: SlotTree<LayoutItemKey, LayoutItem>,
     node_items: FxHashMap<NodeKey, LayoutItemKey>,
+
+    // Build ownership cannot be inferred from source mappings: a split inline
+    // root is anonymous, and independent builds may share the same source nodes.
+    pub(crate) build_roots: FxHashMap<LayoutItemKey, NodeKey>,
 }
 
 impl LayoutTree {
@@ -70,12 +74,16 @@ impl LayoutTree {
     /// Delete a subtree and reconnect continuation chains that cross its boundary.
     pub fn delete_item(&mut self, key: LayoutItemKey) -> Option<LayoutItem> {
         let item = *self.items.get(key)?;
+
+        self.build_roots.remove(&key);
         self.unmap_item(key);
         self.unlink_continuation(key);
+
         let mut pending = Vec::new();
         pending.extend(self.items.children(key));
 
         while let Some(key) = pending.pop() {
+            self.build_roots.remove(&key);
             pending.extend(self.items.children(key));
             self.unmap_item(key);
             self.unlink_continuation(key);
@@ -104,6 +112,7 @@ impl LayoutTree {
     pub fn clear(&mut self) {
         self.items.clear();
         self.node_items.clear();
+        self.build_roots.clear();
     }
 }
 
