@@ -41,13 +41,21 @@ impl Default for StyleUnit {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::Display)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, derive_more::Display)]
 pub enum AutoValue<T> {
+    #[default]
     Auto,
     Value(T),
 }
 
 impl<T> AutoValue<T> {
+    pub fn value_default() -> Self
+    where
+        T: Default,
+    {
+        Self::Value(Default::default())
+    }
+
     pub fn resolve(self, auto_value: T) -> T {
         match self {
             AutoValue::Auto => auto_value,
@@ -56,7 +64,7 @@ impl<T> AutoValue<T> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::Display)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, derive_more::Display)]
 #[display("Size({width}, {height})")]
 pub struct Size<T> {
     pub width: T,
@@ -77,7 +85,7 @@ impl Size<StyleUnit> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::Display)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, derive_more::Display)]
 #[display("Point({x}, {y})")]
 pub struct Point<T> {
     pub x: T,
@@ -98,7 +106,7 @@ impl Point<StyleUnit> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Rect<T> {
     pub left_top: Point<T>,
     pub right_bottom: Point<T>,
@@ -111,6 +119,22 @@ impl<T> Rect<T> {
             left_top,
             right_bottom,
         }
+    }
+
+    #[inline]
+    pub const fn new_invidiual(top: T, right: T, bottom: T, left: T) -> Self {
+        Self {
+            left_top: Point::new(left, top),
+            right_bottom: Point::new(right, bottom),
+        }
+    }
+
+    #[inline]
+    pub const fn new_axis(top_bottom: T, left_right: T) -> Self
+    where
+        T: Copy,
+    {
+        Self::new_invidiual(top_bottom, left_right, top_bottom, left_right)
     }
 }
 
