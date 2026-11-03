@@ -1,6 +1,6 @@
 mod common;
 
-use comet_layout2::{
+use comet_layout::{
     fragment::{FragmentKey, builder::FragmentBuilder, tree::FragmentTree},
     style::{
         LayoutConstraint,

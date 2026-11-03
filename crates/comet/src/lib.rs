@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyrender::WindowRenderer;
 use anyrender_vello::VelloWindowRenderer;
-use comet_layout2::{
+use comet_layout::{
     fragment::{builder::FragmentBuilder, tree::FragmentTree},
     style::{LayoutConstraint, geometry::Size},
     tree::{LayoutItemKey, LayoutTree, builder::LayoutTreeBuilder},

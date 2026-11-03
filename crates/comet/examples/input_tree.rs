@@ -1,6 +1,6 @@
 mod common;
 
-use comet_layout2::tree::{LayoutItemKey, LayoutTree, builder::LayoutTreeBuilder};
+use comet_layout::tree::{LayoutItemKey, LayoutTree, builder::LayoutTreeBuilder};
 use comet_tree::node::Text;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

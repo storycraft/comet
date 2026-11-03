@@ -2,7 +2,7 @@ pub mod prelude;
 pub mod style;
 
 use anyrender::PaintScene;
-use comet_layout2::{
+use comet_layout::{
     fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
     tree::LayoutItemKey,
 };

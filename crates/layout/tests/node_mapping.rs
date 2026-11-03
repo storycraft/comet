@@ -1,4 +1,4 @@
-use comet_layout2::{
+use comet_layout::{
     style::bx::DisplayInner,
     tree::{
         ChildLayoutMode, LayoutItem, LayoutItemLink, LayoutItemTy, LayoutTree,

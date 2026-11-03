@@ -429,7 +429,7 @@ version = "0.1.0"
 dependencies = [
  "anyrender",
  "anyrender_vello",
- "comet-layout2",
+ "comet-layout",
  "comet-renderer",
  "comet-tree",
  "image",
@@ -439,7 +439,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "comet-layout2"
+name = "comet-layout"
 version = "0.1.0"
 dependencies = [
  "comet-tree",
@@ -457,7 +457,7 @@ name = "comet-renderer"
 version = "0.1.0"
 dependencies = [
  "anyrender",
- "comet-layout2",
+ "comet-layout",
  "comet-tree",
  "kurbo",
  "parley",

@@ -1,4 +1,4 @@
-use comet_layout2::{
+use comet_layout::{
     fragment::{FragmentItem, FragmentKey, builder::FragmentBuilder, tree::FragmentTree},
     style::{
         LayoutConstraint, bx,
@@ -336,7 +336,7 @@ fn text_percentages_use_inherited_font_size_and_computed_line_height() {
     ui.append(parent, child);
     ui.append(child, text);
     let mut cache = Default::default();
-    let style = comet_layout2::parley::style::resolve(&ui, text, &constraint(500.0), &mut cache);
+    let style = comet_layout::parley::style::resolve(&ui, text, &constraint(500.0), &mut cache);
 
     assert_eq!(cache[&child].font_size, 30.0);
     assert_eq!(style.font_size, 15.0);

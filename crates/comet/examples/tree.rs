@@ -4,7 +4,7 @@ use std::{fs, io::BufWriter};
 
 use anyrender::{ImageRenderer, PaintScene};
 use anyrender_vello::VelloImageRenderer;
-use comet_layout2::{
+use comet_layout::{
     fragment::{builder::FragmentBuilder, tree::FragmentTree},
     style::{LayoutConstraint, geometry::Size},
     tree::{LayoutTree, builder::LayoutTreeBuilder},

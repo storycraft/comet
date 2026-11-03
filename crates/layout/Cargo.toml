@@ -1,5 +1,5 @@
 [package]
-name = "comet-layout2"
+name = "comet-layout"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }

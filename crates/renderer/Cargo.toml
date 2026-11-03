@@ -7,7 +7,7 @@ license = { workspace = true }
 
 [dependencies]
 comet-tree = { workspace = true }
-comet-layout2 = { workspace = true }
+comet-layout = { workspace = true }
 
 parley = "0.12.0"
 peniko = "0.6.0"

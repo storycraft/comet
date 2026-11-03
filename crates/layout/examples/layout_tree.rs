@@ -1,6 +1,6 @@
 mod common;
 
-use comet_layout2::{
+use comet_layout::{
     style::bx::{DisplayInner, DisplayOuter},
     tree::{LayoutItemKey, LayoutItemTy, LayoutTree, builder::LayoutTreeBuilder},
 };

@@ -1,5 +1,5 @@
 use anyrender::{Glyph, Paint, PaintRef, PaintScene};
-use comet_layout2::{
+use comet_layout::{
     fragment::{FragmentItem, FragmentKey, builder::FragmentBuilder, tree::FragmentTree},
     style::{
         LayoutConstraint, bx,

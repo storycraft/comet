@@ -7,7 +7,7 @@ license = { workspace = true }
 
 [dependencies]
 comet-tree = { workspace = true }
-comet-layout2 = { workspace = true }
+comet-layout = { workspace = true }
 comet-renderer = { workspace = true }
 
 anyrender = "0.7.0"

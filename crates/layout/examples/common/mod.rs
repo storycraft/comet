@@ -1,4 +1,4 @@
-use comet_layout2::style::bx::{DisplayInner, DisplayOuter};
+use comet_layout::style::bx::{DisplayInner, DisplayOuter};
 use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,

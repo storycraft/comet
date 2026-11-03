@@ -1,5 +1,5 @@
 use anyrender::Paint;
-use comet_layout2::style::{
+use comet_layout::style::{
     bx::*,
     geometry::{Rect, StyleUnit},
 };
