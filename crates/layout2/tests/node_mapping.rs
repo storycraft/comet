@@ -1,7 +1,7 @@
 use comet_layout2::{
     style::bx::DisplayInner,
     tree::{
-        ChildLayoutMode, LayoutItemLink, LayoutItem, LayoutItemTy, LayoutTree,
+        ChildLayoutMode, LayoutItem, LayoutItemLink, LayoutItemTy, LayoutTree,
         builder::LayoutTreeBuilder,
     },
 };
