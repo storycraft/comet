@@ -14,7 +14,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Initial layout tree:");
     print_tree(&tree, layout_root);
 
-    let text = ui.last_child(root).ok_or("missing sample text")?;
+    let mut text = root;
+    while let Some(child) = ui.last_child(text) {
+        text = child;
+    }
+    ui.prop::<Text>(text).ok_or("missing sample text")?;
     ui.set_props(text, (Text("Updated text".into()),));
     let updated = builder
         .build(&ui, root, &mut tree, Some(layout_root))

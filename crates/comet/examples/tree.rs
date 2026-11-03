@@ -13,6 +13,9 @@ use comet_renderer::CometRenderer;
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use kurbo::Affine;
 
+const WIDTH: u32 = 640;
+const HEIGHT: u32 = 640;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (ui, root) = common::sample_ui();
     let mut layout = LayoutTree::new();
@@ -20,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(&ui, root, &mut layout, None)
         .ok_or("could not build layout tree")?;
     let mut fragments = FragmentTree::new();
-    let constraint = LayoutConstraint::new_root(Size::new(256.0, 256.0), 16.0);
+    let constraint = LayoutConstraint::new_root(Size::new(WIDTH as f64, HEIGHT as f64), 16.0);
     let root = FragmentBuilder::new()
         .build(&constraint, &ui, &layout, root, &mut fragments)
         .ok_or("could not build fragment tree")?;
@@ -46,16 +49,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut renderer = CometRenderer::new();
-    let mut image_renderer = VelloImageRenderer::new(256, 256);
-    let mut data = vec![0_u8; 256 * 256 * 4];
+    let mut image_renderer = VelloImageRenderer::new(WIDTH, HEIGHT);
+    let mut data = vec![0_u8; (WIDTH * HEIGHT * 4) as usize];
     image_renderer.render(
         |scene| {
             scene.fill(
                 peniko::Fill::NonZero,
                 Affine::IDENTITY,
-                peniko::Color::WHITE,
+                common::BACKGROUND,
                 None,
-                &kurbo::Rect::new(0.0, 0.0, 256.0, 256.0),
+                &kurbo::Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
             );
             renderer.draw(&ui, &fragments, root, scene);
         },
@@ -64,8 +67,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     PngEncoder::new(BufWriter::new(fs::File::create("render.png")?)).write_image(
         &data,
-        256,
-        256,
+        WIDTH,
+        HEIGHT,
         ExtendedColorType::Rgba8,
     )?;
 
