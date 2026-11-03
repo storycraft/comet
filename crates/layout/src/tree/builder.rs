@@ -1,4 +1,5 @@
 mod candidates;
+mod flows;
 
 use comet_tree::{
     node::{Node, NodeKey},
@@ -6,7 +7,7 @@ use comet_tree::{
 };
 use rustc_hash::FxHashMap;
 
-use self::candidates::Candidates;
+use self::{candidates::Candidates, flows::Flows};
 
 use crate::{
     style::bx::{DisplayInner, DisplayOuter},
@@ -17,8 +18,7 @@ use crate::{
 pub struct LayoutTreeBuilder {
     pending: Vec<Task>,
     frames: Vec<Frame>,
-    flows: Vec<Flow>,
-    spans: Vec<NodeKey>,
+    flows: Flows,
     scan: Vec<NodeKey>,
 
     candidates: Candidates,
@@ -145,7 +145,7 @@ impl LayoutTreeBuilder {
         self.record_item(tree, key);
 
         self.push_frame(tree, key);
-        self.push_flow(tree);
+        self.flows.push(tree, &mut self.frames);
 
         if split {
             self.pending.push(Task::Visit(root));
@@ -181,13 +181,13 @@ impl LayoutTreeBuilder {
                     let (outer, inner) = display(ui, node);
 
                     if outer == DisplayOuter::Block {
-                        let base = self.flows.last()?.frame;
+                        let base = self.flows.current_frame()?;
 
                         while self.frames.len() > base + 1 {
                             self.finish_frame(tree)?;
                         }
 
-                        self.flows.last_mut()?.inline_run = false;
+                        self.flows.set_inline_run(false)?;
                     } else {
                         self.resume_spans(tree)?;
                     }
@@ -197,10 +197,10 @@ impl LayoutTreeBuilder {
                     self.push_frame(tree, key);
 
                     if outer == DisplayOuter::Inline && inner == DisplayInner::Flow {
-                        self.spans.push(node);
+                        self.flows.push_span(node);
                         self.pending.push(Task::EndInline);
                     } else {
-                        self.push_flow(tree);
+                        self.flows.push(tree, &mut self.frames);
                         self.pending.push(Task::EndFlow);
                     }
 
@@ -218,7 +218,7 @@ impl LayoutTreeBuilder {
                     // Retain empty trailing fragments as well as nonempty ones.
                     self.resume_spans(tree)?;
                     self.finish_frame(tree)?;
-                    self.spans.pop()?;
+                    self.flows.pop_span()?;
                 }
 
                 Task::EndFlow => self.finish_flow(tree)?,
@@ -287,7 +287,7 @@ impl LayoutTreeBuilder {
         let desired = item(LayoutItemTy::Text(node), ChildLayoutMode::None);
         let anonymous = item(LayoutItemTy::AnonymousBlock, ChildLayoutMode::Inline);
 
-        // Whole-flow updates normalize runs in push_flow/resume_spans. Only a
+        // Whole-flow updates normalize runs in Flows::push/resume_spans. Only a
         // standalone text update needs to repair its surrounding wrapper here.
         let mut candidate = self.flows.is_empty().then_some(frame.next).flatten();
 
@@ -353,24 +353,18 @@ impl LayoutTreeBuilder {
     }
 
     fn resume_spans(&mut self, tree: &mut LayoutTree) -> Option<()> {
-        let flow = *self.flows.last()?;
-
-        if self.frames.len() == flow.frame + 1
-            && tree.items[self.frames[flow.frame].key].child_layout == ChildLayoutMode::Block
-        {
+        if self.flows.needs_inline_run(tree, &self.frames)? {
             let key = self.child(
                 tree,
                 item(LayoutItemTy::AnonymousBlock, ChildLayoutMode::Inline),
             )?;
             self.push_frame(tree, key);
-            self.flows.last_mut()?.inline_run = true;
+            self.flows.set_inline_run(true)?;
         }
 
-        let flow = *self.flows.last()?;
-        let base = flow.frame + 1 + usize::from(flow.inline_run);
-        let mut index = flow.span_start + self.frames.len().checked_sub(base)?;
+        let mut index = self.flows.resume_span_start(self.frames.len())?;
 
-        while let Some(&node) = self.spans.get(index) {
+        while let Some(node) = self.flows.span(index) {
             let key = self.child(
                 tree,
                 item(LayoutItemTy::Inline(node), ChildLayoutMode::Inline),
@@ -410,14 +404,12 @@ impl LayoutTreeBuilder {
         }
 
         // A new inline run can adopt items from the previous direct child list.
-        if let Some(flow) = self.flows.last().copied()
-            && flow.inline_run
-            && self.frames.len() == flow.frame + 2
-            && let Some(key) =
-                self.candidates
-                    .adopt(tree, &mut self.frames[flow.frame], desired, text)
+        if let Some(frame) = self.flows.inline_parent(self.frames.len())
+            && let Some(key) = self
+                .candidates
+                .adopt(tree, &mut self.frames[frame], desired, text)
         {
-            let parent = &mut self.frames[flow.frame];
+            let parent = &mut self.frames[frame];
 
             if parent.next == Some(key) {
                 parent.next = tree.items.next_sibling(key);
@@ -465,13 +457,10 @@ impl LayoutTreeBuilder {
     }
 
     fn finish_frame(&mut self, tree: &mut LayoutTree) -> Option<()> {
+        let promote = self.flows.inline_parent(self.frames.len()).is_some();
         let frame = self.frames.pop()?;
 
-        if self
-            .flows
-            .last()
-            .is_some_and(|flow| flow.inline_run && self.frames.len() == flow.frame + 1)
-        {
+        if promote {
             // Promote the tail backwards so prepending preserves sibling and candidate order.
             let parent = self.frames.last_mut()?;
             let mut next = frame.next.and_then(|_| tree.items.last_child(frame.key));
@@ -501,47 +490,12 @@ impl LayoutTreeBuilder {
         Some(())
     }
 
-    fn push_flow(&mut self, tree: &mut LayoutTree) {
-        if let Some(frame) = self.frames.len().checked_sub(1) {
-            let key = self.frames[frame].key;
-
-            // When block flow becomes inline flow, unwrap its old inline runs.
-            if tree.items[key].child_layout == ChildLayoutMode::Inline {
-                let mut next = tree.items.first_child(key);
-
-                while let Some(child) = next {
-                    next = tree.items.next_sibling(child);
-
-                    if tree.items[child]
-                        == item(LayoutItemTy::AnonymousBlock, ChildLayoutMode::Inline)
-                    {
-                        while let Some(content) = tree.items.first_child(child) {
-                            tree.items.before(child, content);
-                        }
-
-                        tree.delete_item(child);
-                    }
-                }
-
-                self.frames[frame].next = tree.items.first_child(key);
-            }
-
-            self.flows.push(Flow {
-                frame,
-                span_start: self.spans.len(),
-                inline_run: false,
-            });
-        }
-    }
-
     fn finish_flow(&mut self, tree: &mut LayoutTree) -> Option<()> {
-        let flow = self.flows.pop()?;
+        let frame = self.flows.pop()?;
 
-        while self.frames.len() > flow.frame {
+        while self.frames.len() > frame {
             self.finish_frame(tree)?;
         }
-
-        self.spans.truncate(flow.span_start);
 
         Some(())
     }
@@ -584,7 +538,6 @@ impl LayoutTreeBuilder {
         self.pending.clear();
         self.frames.clear();
         self.flows.clear();
-        self.spans.clear();
         self.scan.clear();
         self.candidates.clear();
         self.last_items.clear();
@@ -613,13 +566,6 @@ impl Frame {
             tree.items.append(self.key, key);
         }
     }
-}
-
-#[derive(Clone, Copy)]
-struct Flow {
-    frame: usize,
-    span_start: usize,
-    inline_run: bool,
 }
 
 fn item(ty: LayoutItemTy, child_layout: ChildLayoutMode) -> LayoutItem {
