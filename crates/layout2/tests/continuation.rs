@@ -1,6 +1,6 @@
 use comet_layout2::{
     style::bx::{DisplayInner, DisplayOuter},
-    tree::{Continuation, LayoutItemKey, LayoutItemTy, LayoutTree, builder::LayoutTreeBuilder},
+    tree::{LayoutItemLink, LayoutItemKey, LayoutItemTy, LayoutTree, builder::LayoutTreeBuilder},
 };
 use comet_tree::{
     node::{Node, NodeKey},
@@ -25,8 +25,8 @@ fn fragments(tree: &LayoutTree, root: LayoutItemKey, node: NodeKey) -> Vec<Layou
 fn assert_chain(tree: &LayoutTree, keys: &[LayoutItemKey]) {
     for (index, &key) in keys.iter().enumerate() {
         assert_eq!(
-            tree.items[key].continuation,
-            Continuation {
+            tree.items[key].link,
+            LayoutItemLink {
                 prev: index.checked_sub(1).map(|index| keys[index]),
                 next: keys.get(index + 1).copied(),
             }
@@ -85,7 +85,7 @@ fn nested_inline_fragments_link_across_runs_in_both_directions() {
 
         while let Some(key) = pending.pop() {
             if !matches!(tree.items[key].ty, LayoutItemTy::Inline(_)) {
-                assert_eq!(tree.items[key].continuation, Continuation::default());
+                assert_eq!(tree.items[key].link, LayoutItemLink::default());
             }
 
             pending.extend(tree.items.children(key));
@@ -142,7 +142,7 @@ fn splitting_merging_and_role_changes_reset_continuations() {
     let atomic = tree.items.first_child(key).unwrap();
     assert_eq!(tree.items[atomic].ty, LayoutItemTy::AtomicInline(span));
     assert_eq!(tree.item_for_node(span), Some(atomic));
-    assert_eq!(tree.items[atomic].continuation, Continuation::default());
+    assert_eq!(tree.items[atomic].link, LayoutItemLink::default());
 }
 
 #[test]

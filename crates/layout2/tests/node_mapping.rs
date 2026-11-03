@@ -1,7 +1,7 @@
 use comet_layout2::{
     style::bx::DisplayInner,
     tree::{
-        ChildLayoutMode, Continuation, LayoutItem, LayoutItemTy, LayoutTree,
+        ChildLayoutMode, LayoutItemLink, LayoutItem, LayoutItemTy, LayoutTree,
         builder::LayoutTreeBuilder,
     },
 };
@@ -73,7 +73,7 @@ fn public_item_operations_maintain_source_lookups() {
     let root_key = tree.add_item(LayoutItem {
         ty: LayoutItemTy::Block(root),
         child_layout: ChildLayoutMode::Inline,
-        continuation: Continuation::default(),
+        link: LayoutItemLink::default(),
     });
     let child_key = tree
         .append_item(
@@ -81,7 +81,7 @@ fn public_item_operations_maintain_source_lookups() {
             LayoutItem {
                 ty: LayoutItemTy::Text(child),
                 child_layout: ChildLayoutMode::None,
-                continuation: Continuation::default(),
+                link: LayoutItemLink::default(),
             },
         )
         .unwrap();

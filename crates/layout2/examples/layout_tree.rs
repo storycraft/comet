@@ -67,7 +67,7 @@ fn print_tree(ui: &Ui, tree: &LayoutTree, root: LayoutItemKey) {
         );
 
         if let LayoutItemTy::Inline(_) = item.ty {
-            let part = match (item.continuation.prev, item.continuation.next) {
+            let part = match (item.link.prev, item.link.next) {
                 (None, None) => "unsplit",
                 (None, Some(_)) => "first",
                 (Some(_), Some(_)) => "middle",
@@ -76,7 +76,7 @@ fn print_tree(ui: &Ui, tree: &LayoutTree, root: LayoutItemKey) {
 
             println!(
                 "{indent}  part={part} prev={:?} next={:?}",
-                item.continuation.prev, item.continuation.next
+                item.link.prev, item.link.next
             );
         }
 

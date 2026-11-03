@@ -365,8 +365,8 @@ impl LayoutTreeBuilder {
         if let Some(node) = ty.node() {
             if let Some(prev) = self.last_items.insert(node, key) {
                 if matches!(ty, LayoutItemTy::Inline(_)) {
-                    tree.items[prev].continuation.next = Some(key);
-                    tree.items[key].continuation.prev = Some(prev);
+                    tree.items[prev].link.next = Some(key);
+                    tree.items[key].link.prev = Some(prev);
                 }
             } else {
                 tree.map_first_item(node, key);
@@ -635,7 +635,7 @@ fn item(ty: LayoutItemTy, child_layout: ChildLayoutMode) -> LayoutItem {
     LayoutItem {
         ty,
         child_layout,
-        continuation: Default::default(),
+        link: Default::default(),
     }
 }
 

@@ -46,7 +46,7 @@ impl LayoutTree {
         if let Some(node) = item.ty.node()
             && self.node_items.get(&node) == Some(&key)
         {
-            if let Some(next) = item.continuation.next {
+            if let Some(next) = item.link.next {
                 self.node_items.insert(node, next);
             } else {
                 self.node_items.remove(&node);
@@ -90,14 +90,14 @@ impl LayoutTree {
         let Some(item) = self.items.get_mut(key) else {
             return;
         };
-        let Continuation { prev, next } = std::mem::take(&mut item.continuation);
+        let LayoutItemLink { prev, next } = std::mem::take(&mut item.link);
 
         if let Some(item) = prev.and_then(|key| self.items.get_mut(key)) {
-            item.continuation.next = next;
+            item.link.next = next;
         }
 
         if let Some(item) = next.and_then(|key| self.items.get_mut(key)) {
-            item.continuation.prev = prev;
+            item.link.prev = prev;
         }
     }
 
@@ -111,13 +111,13 @@ impl LayoutTree {
 pub struct LayoutItem {
     pub ty: LayoutItemTy,
     pub child_layout: ChildLayoutMode,
-    pub continuation: Continuation,
+    pub link: LayoutItemLink,
 }
 
 /// Links fragments of one source element in layout order, across anonymous runs.
 /// An unsplit item has neither link; the first/last fragment has no prev/next.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct Continuation {
+pub struct LayoutItemLink {
     pub next: Option<LayoutItemKey>,
     pub prev: Option<LayoutItemKey>,
 }

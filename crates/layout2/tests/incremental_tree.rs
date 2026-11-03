@@ -14,7 +14,7 @@ fn block(node: Option<NodeKey>) -> LayoutItem {
     LayoutItem {
         child_layout: Mode::Block,
         ty: node.map_or(Ty::AnonymousBlock, Ty::Block),
-        continuation: Default::default(),
+        link: Default::default(),
     }
 }
 
@@ -36,7 +36,7 @@ fn snapshot(tree: &LayoutTree, root: LayoutItemKey) -> Vec<(usize, LayoutItem)> 
 
     while let Some((key, depth)) = pending.pop() {
         let mut item = tree.items[key];
-        item.continuation = Default::default();
+        item.link = Default::default();
         result.push((depth, item));
         pending.extend(tree.items.children(key).rev().map(|key| (key, depth + 1)));
     }
@@ -72,7 +72,7 @@ fn assert_fresh(ui: &Ui, source: NodeKey, tree: &LayoutTree, root: LayoutItemKey
 
         keys.iter()
             .map(|&key| {
-                let continuation = tree.items[key].continuation;
+                let continuation = tree.items[key].link;
 
                 (
                     continuation.prev.map(|key| positions[&key]),
@@ -96,7 +96,7 @@ fn public_item_api_deletes_owned_subtrees_and_ignores_stale_keys() {
             LayoutItem {
                 ty: Ty::AnonymousBlock,
                 child_layout: Mode::Inline,
-                continuation: Default::default(),
+                link: Default::default(),
             },
         )
         .unwrap();
