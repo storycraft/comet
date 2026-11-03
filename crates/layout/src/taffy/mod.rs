@@ -90,6 +90,51 @@ impl<'a> TaffyLayout<'a> {
 
     pub fn compute(&mut self, root: LayoutItemKey, available: taffy::Size<taffy::AvailableSpace>) {
         taffy::compute_root_layout(self, to_taffy_key(root), available);
+        // Cached measurements may leave text at an intrinsic width. Finalize it
+        // before a containing inline context reads this subtree's baseline.
+        let mut pending = vec![root];
+        while let Some(key) = pending.pop() {
+            pending.extend(self.tree.items.children(key));
+            if let Some(text) = self.fragments.inline_layouts.get_mut(&key) {
+                let bx = self.nodes[&key].layout;
+                let width = (bx.size.width
+                    - bx.padding.left
+                    - bx.padding.right
+                    - bx.border.left
+                    - bx.border.right)
+                    .max(0.0);
+                text.break_all_lines(Some(width));
+            }
+        }
+    }
+
+    /// Last in-flow line baseline, measured from the border-box top.
+    fn last_baseline(&self, key: LayoutItemKey) -> Option<f32> {
+        let bx = self.nodes[&key].layout;
+        if let Some(text) = self.fragments.inline_layouts.get(&key) {
+            return text
+                .lines()
+                .last()
+                .map(|line| bx.border.top + bx.padding.top + line.metrics().baseline);
+        }
+        self.tree.items.children(key).rev().find_map(|child| {
+            if self.nodes[&child].style.position == taffy::Position::Absolute {
+                return None;
+            }
+            self.last_baseline(child)
+                .map(|baseline| self.nodes[&child].layout.location.y + baseline)
+        })
+    }
+
+    pub(crate) fn inline_baseline(&self, key: LayoutItemKey) -> f32 {
+        let state = &self.nodes[&key];
+        if state.style.overflow.x == taffy::Overflow::Visible
+            && state.style.overflow.y == taffy::Overflow::Visible
+            && let Some(baseline) = self.last_baseline(key)
+        {
+            return baseline;
+        }
+        state.layout.size.height
     }
 
     fn layout_child(
@@ -176,9 +221,11 @@ impl<'a> TaffyLayout<'a> {
             }
         }
 
+        let mut baselines = FxHashMap::default();
         for op in &ops {
             if let Op::Box(child) = op {
                 self.compute(*child, available);
+                baselines.insert(*child, self.inline_baseline(*child));
             }
         }
 
@@ -221,7 +268,7 @@ impl<'a> TaffyLayout<'a> {
                         width: size.width,
                         height: size.height,
                         kind: parley::InlineBoxKind::InFlow,
-                        baseline: None,
+                        baseline: Some(baselines[&child]),
                         vertical_align: Default::default(),
                     });
                 }

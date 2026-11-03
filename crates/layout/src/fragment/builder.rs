@@ -184,21 +184,6 @@ impl FragmentBuilder {
             }),
         );
 
-        // A measurement cache hit can leave Parley at an intrinsic width. Rebreak
-        // every inline context at its final content width before emitting fragments.
-        for key in &keys {
-            if let Some(text) = engine.fragments.inline_layouts.get_mut(key) {
-                let bx = engine.nodes[key].layout;
-                let width = (bx.size.width
-                    - bx.padding.left
-                    - bx.padding.right
-                    - bx.border.left
-                    - bx.border.right)
-                    .max(0.0);
-                text.break_all_lines(Some(width));
-            }
-        }
-
         let mut desired = Vec::new();
         emit_box(&engine, root, None, None, &mut desired);
         engine.fragments.layout_cache.extend(engine.nodes);
@@ -318,6 +303,12 @@ fn emit_box(
     );
     f.layout.padding = conv::from_rect(bx.padding, f64::from);
     f.layout.border = conv::from_rect(bx.border, f64::from);
+    if matches!(
+        engine.tree.items[key].ty,
+        crate::tree::LayoutItemTy::AtomicInline(_)
+    ) {
+        f.layout.baseline = Some(engine.inline_baseline(key) as f64);
+    }
     out.push((parent, f));
 
     if engine.tree.items[key].child_layout == ChildLayoutMode::Block {
