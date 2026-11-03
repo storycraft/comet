@@ -1,13 +1,12 @@
 use anyrender::Paint;
-use comet_div::{define_style_props, style::PropHint};
+use comet_tree::style::define_style_props;
 use peniko::Color;
 
-// TODO:: change names
 define_style_props!(
     // Box draw styles
-    pub Fill(PropHint::Paint): Paint,
-    pub BorderFill(PropHint::Paint): Paint,
+    pub Fill: Paint;
+    pub BorderFill: Paint;
 
     // Text draw styles
-    pub TextColor(PropHint::Paint): Paint = Paint::Solid(Color::BLACK),
+    pub TextColor: Paint = Paint::Solid(Color::BLACK);
 );

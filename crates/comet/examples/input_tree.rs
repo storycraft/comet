@@ -1,76 +1,49 @@
-use comet_div::prelude::*;
-use comet_layout::{
-    style::*,
-    tree::{LayoutNodeKey, LayoutNodeTy, LayoutTree, builder::UiLayoutBuilder},
-};
+mod common;
 
-fn main() {
-    let mut ui = Ui::new();
+use comet_layout2::tree::{LayoutItemKey, LayoutTree, builder::LayoutTreeBuilder};
+use comet_tree::node::Text;
 
-    let root = ui.create(Node::Div, ());
-    let text0 = ui.create(Node::Text("sam\nple".to_string()), ());
-    let text1 = ui.create(Node::Text("text".to_string()), ());
-    let inner = ui.create(Node::Text("start".to_string()), ());
-    let div = ui.create(Node::Div, (DisplayOuter::Inline,));
-    let div1 = ui.create(Node::Div, (DisplayOuter::Inline, DisplayInner::FlowRoot));
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let (mut ui, root) = common::sample_ui();
+    let mut tree = LayoutTree::new();
+    let mut builder = LayoutTreeBuilder::new();
+    let layout_root = builder
+        .build(&ui, root, &mut tree, None)
+        .ok_or("could not build layout tree")?;
 
-    let div2 = ui.create(Node::Div, ());
+    println!("Initial layout tree:");
+    print_tree(&tree, layout_root);
 
-    let inner2 = ui.create(Node::Text("end".to_string()), ());
-    let text2 = ui.create(Node::Text("1".to_string()), ());
-    ui.append(div, text0);
-    ui.append(div, div1);
-    ui.append(div, text1);
-    ui.append(root, div);
-    ui.append(div1, inner);
-    ui.append(root, div2);
-    ui.append(div2, inner2);
-    ui.append(root, text2);
+    let text = ui.last_child(root).ok_or("missing sample text")?;
+    ui.set_props(text, (Text("Updated text".into()),));
+    let updated = builder
+        .build(&ui, root, &mut tree, Some(layout_root))
+        .ok_or("could not update layout tree")?;
+    assert_eq!(layout_root, updated);
 
-    let mut layout_tree = LayoutTree::new();
-    let input_root = layout_tree.create_root();
+    println!("\nAfter updating text:");
+    print_tree(&tree, updated);
 
-    let mut layout_builder = UiLayoutBuilder::new();
-    layout_builder.build(&ui, root, &mut layout_tree, input_root);
-
-    print_input_box_tree(&ui, &layout_tree, input_root, 0);
-
-    dbg!(layout_builder.update(&ui, &mut layout_tree, text2));
-    print_input_box_tree(&ui, &layout_tree, input_root, 0);
+    Ok(())
 }
 
-fn print_input_box_tree(ui: &Ui, tree: &LayoutTree, id: LayoutNodeKey, space: u32) {
-    for _ in 0..space {
-        print!(" ");
-    }
-    print!("- id: {id:?}");
+fn print_tree(tree: &LayoutTree, root: LayoutItemKey) {
+    let mut pending = vec![(root, 0)];
 
-    let Some(node) = tree.nodes.get(id) else {
-        println!();
-        return;
-    };
-    match node.ty {
-        LayoutNodeTy::Block(span) => {
-            println!(" ty: Block span: {span:?}");
-        }
-        LayoutNodeTy::Inline(inline_node_key) => {
-            let Some(inline_node) = tree.inline_nodes.get(inline_node_key) else {
-                return;
-            };
+    while let Some((key, depth)) = pending.pop() {
+        let item = &tree.items[key];
+        println!(
+            "{} {key:?} {:?} children={:?}",
+            "  ".repeat(depth),
+            item.ty,
+            item.child_layout
+        );
 
-            println!(" ty: Inline text: {:?}", inline_node.texts);
-            for _ in 0..(space + 4) {
-                print!(" ");
-            }
-
-            for child_id in tree.inlines.cursor(inline_node.inline_start) {
-                print!("{:?}, ", tree.inlines[child_id]);
-            }
-            println!();
-        }
-    }
-
-    for child_id in tree.nodes.cursor(tree.nodes.first_child(id)) {
-        print_input_box_tree(ui, tree, child_id, space + 4);
+        pending.extend(
+            tree.items
+                .children(key)
+                .rev()
+                .map(|child| (child, depth + 1)),
+        );
     }
 }

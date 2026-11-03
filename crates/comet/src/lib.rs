@@ -3,13 +3,13 @@ use std::sync::Arc;
 
 use anyrender::WindowRenderer;
 use anyrender_vello::VelloWindowRenderer;
-use comet_div::ui::{NodeKey, Ui};
-use comet_layout::{
-    cx::LayoutContext,
-    tree::{LayoutNodeKey, LayoutTree, builder::UiLayoutBuilder},
+use comet_layout2::{
+    fragment::{builder::FragmentBuilder, tree::FragmentTree},
+    style::{LayoutConstraint, geometry::Size},
+    tree::{LayoutItemKey, LayoutTree, builder::LayoutTreeBuilder},
 };
 use comet_renderer::CometRenderer;
-use parley::FontContext;
+use comet_tree::{node::NodeKey, ui::Ui};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -18,40 +18,35 @@ use winit::{
 };
 
 pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
-    let ev = EventLoop::new()?;
-
     let mut layout_tree = LayoutTree::new();
-    let layout_root = layout_tree.create_root();
+    let mut layout_builder = LayoutTreeBuilder::new();
+    let layout_root = layout_builder
+        .build(&ui, root, &mut layout_tree, None)
+        .ok_or("invalid UI root")?;
+    let event_loop = EventLoop::new()?;
 
-    Ok(ev.run_app(&mut App {
+    Ok(event_loop.run_app(&mut App {
         ui,
         ui_root: root,
-
-        builder: UiLayoutBuilder::new(),
-
-        font_cx: FontContext::new(),
-        layout_cx: LayoutContext::new(),
+        layout_builder,
+        fragment_builder: FragmentBuilder::new(),
         layout_tree,
         layout_root,
-
+        fragments: FragmentTree::new(),
         win: None,
         vello: VelloWindowRenderer::new(),
         ui_renderer: CometRenderer::new(),
     })?)
 }
 
-// TODO:: proper impl
 struct App {
     ui: Ui,
     ui_root: NodeKey,
-
-    builder: UiLayoutBuilder,
-
-    font_cx: FontContext,
-    layout_cx: LayoutContext,
+    layout_builder: LayoutTreeBuilder,
+    fragment_builder: FragmentBuilder,
     layout_tree: LayoutTree,
-    layout_root: LayoutNodeKey,
-
+    layout_root: LayoutItemKey,
+    fragments: FragmentTree,
     win: Option<Arc<Window>>,
     vello: VelloWindowRenderer,
     ui_renderer: CometRenderer,
@@ -59,66 +54,84 @@ struct App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let win = self.win.insert(
-            event_loop
-                .create_window(WindowAttributes::default())
-                .unwrap()
-                .into(),
-        );
+        let win: Arc<Window> = event_loop
+            .create_window(WindowAttributes::default())
+            .unwrap()
+            .into();
+        let size = win.inner_size();
 
-        // TODO:: reactive building
-        self.builder.build(
-            &self.ui,
-            self.ui_root,
-            &mut self.layout_tree,
-            self.layout_root,
-        );
+        if size.width > 0 && size.height > 0 {
+            self.vello.resume(win.clone(), size.width, size.height);
+        }
 
-        let surface_size = win.inner_size();
-        self.vello
-            .resume(win.clone(), surface_size.width, surface_size.height);
+        win.request_redraw();
+        self.win = Some(win);
     }
 
     fn suspended(&mut self, _: &ActiveEventLoop) {
+        self.vello.suspend();
         self.win.take();
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        let Some(win) = &self.win else {
+            return;
+        };
+
+        if win.id() != id {
+            return;
+        }
+
         match event {
-            WindowEvent::Resized(resized) => {
-                // Ignore zero size surface
-                if resized.width == 0 || resized.height == 0 {
+            WindowEvent::Resized(size) => {
+                if size.width == 0 || size.height == 0 {
                     return;
                 }
 
-                self.vello.set_size(resized.width, resized.height);
+                if self.vello.is_active() {
+                    self.vello.set_size(size.width, size.height);
+                } else {
+                    self.vello.resume(win.clone(), size.width, size.height);
+                }
+
+                win.request_redraw();
             }
-
             WindowEvent::RedrawRequested => {
-                let surface_size = self.win.as_ref().unwrap().inner_size();
-                if surface_size.width == 0 || surface_size.height == 0 {
+                let size = win.inner_size();
+
+                if size.width == 0 || size.height == 0 || !self.vello.is_active() {
                     return;
                 }
 
-                // Perform layout
-                self.layout_cx.layout(
-                    &mut self.font_cx,
-                    &mut self.ui,
+                let Some(root) = self.layout_builder.build(
+                    &self.ui,
+                    self.ui_root,
                     &mut self.layout_tree,
-                    self.layout_root,
-                    (surface_size.width as _, surface_size.height as _),
+                    Some(self.layout_root),
+                ) else {
+                    return;
+                };
+                self.layout_root = root;
+                let constraint = LayoutConstraint::new_root(
+                    Size::new(size.width as f64, size.height as f64),
+                    16.0,
                 );
+                let Some(root) = self.fragment_builder.build(
+                    &constraint,
+                    &self.ui,
+                    &self.layout_tree,
+                    root,
+                    &mut self.fragments,
+                ) else {
+                    return;
+                };
 
                 self.vello.render(|painter| {
                     self.ui_renderer
-                        .draw(&self.ui, &self.layout_tree, self.layout_root, painter);
+                        .draw(&self.ui, &self.fragments, root, painter);
                 });
             }
-
-            WindowEvent::CloseRequested => {
-                event_loop.exit();
-            }
-
+            WindowEvent::CloseRequested => event_loop.exit(),
             _ => {}
         }
     }
