@@ -1,7 +1,10 @@
 use comet_tree::{node::NodeKey, ui::Ui};
 
 use super::conv;
-use crate::style::{LayoutConstraint, bx};
+use crate::style::{
+    LayoutConstraint,
+    bx::{self, DisplayInner},
+};
 
 /// Box properties never inherit. Missing properties use their declared defaults.
 pub fn resolve(ui: &Ui, node: Option<NodeKey>, cx: &LayoutConstraint) -> taffy::Style {
@@ -11,11 +14,16 @@ pub fn resolve(ui: &Ui, node: Option<NodeKey>, cx: &LayoutConstraint) -> taffy::
     };
     let Some(node) = node else { return style };
 
-    if ui
-        .prop::<bx::DisplayInner>(node)
-        .is_some_and(|v| *v == bx::DisplayInner::FlowRoot)
+    match (ui.prop::<bx::DisplayInner>(node))
+        .as_deref()
+        .copied()
+        .unwrap_or_default()
     {
-        style.display = taffy::Display::FlowRoot;
+        DisplayInner::Flow => {}
+        DisplayInner::FlowRoot => style.display = taffy::Display::FlowRoot,
+        DisplayInner::Content => {
+            style.item_is_replaced = true;
+        }
     }
 
     macro_rules! value {
