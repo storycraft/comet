@@ -152,7 +152,7 @@ impl<'a> TaffyLayout<'a> {
         let key = from_taffy_key(id);
         let item = self.tree.items[key];
 
-        let inline = match item.child_layout {
+        match item.child_layout {
             ChildLayoutMode::Block => {
                 return taffy::compute_block_layout(self, id, input, block_ctx);
             }
@@ -175,23 +175,21 @@ impl<'a> TaffyLayout<'a> {
                     return algorithm.layout(&mut context, input);
                 }
 
-                matches!(item.ty, LayoutItemTy::Text(_))
+                return taffy::LayoutOutput::DEFAULT;
             }
-            ChildLayoutMode::Inline => true,
-            ChildLayoutMode::None => matches!(item.ty, LayoutItemTy::Text(_)),
+
+            ChildLayoutMode::Inline => {}
+            ChildLayoutMode::None if matches!(item.ty, LayoutItemTy::Text(_)) => {}
+
+            _ => return taffy::LayoutOutput::HIDDEN,
         };
 
         let style = self.nodes[&key].style.clone();
-
         let mut output = taffy::compute_leaf_layout(
             input,
             &style,
             |_, _| 0.0,
             |known, available| {
-                if !inline {
-                    return taffy::Size::ZERO;
-                }
-
                 let width = known.width.or(match available.width {
                     taffy::AvailableSpace::Definite(v) => Some(v),
                     taffy::AvailableSpace::MinContent => Some(0.0),
