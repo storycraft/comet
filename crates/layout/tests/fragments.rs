@@ -203,17 +203,11 @@ fn inline_block_baseline_traverses_blocks_and_falls_back_for_hidden_or_empty_con
         (
             bx::DisplayOuter::Inline,
             bx::DisplayInner::FlowRoot,
-            bx::Border(Rect::new_axis(StyleUnit::Px(2.0), StyleUnit::Px(2.0))),
-            bx::Padding(Rect::new_axis(StyleUnit::Px(5.0), StyleUnit::Px(5.0))),
+            bx::Border(Rect::new_all(StyleUnit::Px(2.0))),
+            bx::Padding(Rect::new_all(StyleUnit::Px(5.0))),
         ),
     );
-    let block = ui.create(
-        Node::Box,
-        (bx::Padding(Rect::new_axis(
-            StyleUnit::Px(3.0),
-            StyleUnit::Px(3.0),
-        )),),
-    );
+    let block = ui.create(Node::Box, (bx::Padding(Rect::new_all(StyleUnit::Px(3.0))),));
     let text = ui.create(Node::Text, (Text("nested text".into()),));
     let empty = ui.create(
         Node::Box,
@@ -425,7 +419,7 @@ fn percentages_use_actual_parent_and_box_properties_do_not_inherit() {
                 AutoValue::Value(StyleUnit::Px(200.0)),
                 AutoValue::Auto,
             )),
-            bx::Padding(Rect::new_axis(StyleUnit::Px(10.0), StyleUnit::Px(10.0))),
+            bx::Padding(Rect::new_all(StyleUnit::Px(10.0))),
         ),
     );
     let child = ui.create(

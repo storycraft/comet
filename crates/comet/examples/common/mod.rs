@@ -21,7 +21,7 @@ pub fn sample_ui() -> (Ui, NodeKey) {
             Fill(Paint::Solid(BACKGROUND)),
             TextColor(Paint::Solid(Color::from_rgb8(36, 46, 63))),
             FontSize(StyleUnit::Px(16.0)),
-            Padding(Rect::new_axis(StyleUnit::Px(24.0), StyleUnit::Px(24.0))),
+            Padding(Rect::new_all(StyleUnit::Px(24.0))),
             MinSize(LayoutSize::new(
                 AutoValue::Auto,
                 AutoValue::Value(StyleUnit::Vh(1.0)),
@@ -53,7 +53,7 @@ fn block_inline_sample(ui: &mut Ui, root: NodeKey) {
         (
             DisplayOuter::Inline,
             Fill(Paint::Solid(Color::from_rgb8(224, 233, 255))),
-            BorderRadius(Rect::new_axis(StyleUnit::Px(6.0), StyleUnit::Px(6.0))),
+            BorderRadius(Rect::new_all(StyleUnit::Px(6.0))),
         ),
     );
     ui.append(panel, span);
@@ -65,9 +65,9 @@ fn block_inline_sample(ui: &mut Ui, root: NodeKey) {
     let block = ui.create(
         Node::Box,
         (
-            Padding(Rect::new_axis(StyleUnit::Px(12.0), StyleUnit::Px(12.0))),
+            Padding(Rect::new_all(StyleUnit::Px(12.0))),
             Fill(Paint::Solid(Color::from_rgb8(222, 242, 233))),
-            BorderRadius(Rect::new_axis(StyleUnit::Px(8.0), StyleUnit::Px(8.0))),
+            BorderRadius(Rect::new_all(StyleUnit::Px(8.0))),
         ),
     );
     ui.append(span, block);
@@ -205,8 +205,8 @@ fn panel(ui: &mut Ui, root: NodeKey, label: &str, color: Color) -> NodeKey {
         Node::Box,
         (
             Fill(Paint::Solid(color)),
-            BorderRadius(Rect::new_axis(StyleUnit::Px(12.0), StyleUnit::Px(12.0))),
-            Padding(Rect::new_axis(StyleUnit::Px(16.0), StyleUnit::Px(16.0))),
+            BorderRadius(Rect::new_all(StyleUnit::Px(12.0))),
+            Padding(Rect::new_all(StyleUnit::Px(16.0))),
             Margin(Rect::new_axis(
                 AutoValue::Value(StyleUnit::Px(16.0)),
                 AutoValue::Value(StyleUnit::ZERO),
@@ -240,7 +240,7 @@ fn badge(ui: &mut Ui, parent: NodeKey, label: &str, color: Color) {
             DisplayOuter::Inline,
             DisplayInner::FlowRoot,
             Fill(Paint::Solid(color)),
-            BorderRadius(Rect::new_axis(StyleUnit::Px(6.0), StyleUnit::Px(6.0))),
+            BorderRadius(Rect::new_all(StyleUnit::Px(6.0))),
             Padding(Rect::new_axis(StyleUnit::Px(2.0), StyleUnit::Px(6.0))),
         ),
     );

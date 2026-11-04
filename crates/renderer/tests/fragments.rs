@@ -215,7 +215,7 @@ fn paints_atomic_inline_subtree_border_and_text_override_without_double_offsets(
                 AutoValue::Value(StyleUnit::Px(50.0)),
                 AutoValue::Value(StyleUnit::Px(40.0)),
             )),
-            bx::Border(LayoutRect::new_axis(StyleUnit::Px(2.0), StyleUnit::Px(2.0))),
+            bx::Border(LayoutRect::new_all(StyleUnit::Px(2.0))),
             BorderFill(Paint::Solid(Color::BLACK)),
             Fill(Paint::Solid(Color::WHITE)),
             TextColor(Paint::Solid(red)),
@@ -288,7 +288,7 @@ fn rounds_background_and_border_corners() {
                 AutoValue::Value(StyleUnit::Px(80.0)),
                 AutoValue::Value(StyleUnit::Px(60.0)),
             )),
-            bx::Border(LayoutRect::new_axis(StyleUnit::Px(2.0), StyleUnit::Px(2.0))),
+            bx::Border(LayoutRect::new_all(StyleUnit::Px(2.0))),
             Fill(Paint::Solid(Color::WHITE)),
             BorderFill(Paint::Solid(Color::BLACK)),
             BorderRadius(LayoutRect::new_invidiual(
@@ -350,7 +350,7 @@ fn rounds_only_outer_edges_of_wrapped_fragments() {
             node,
             (
                 Fill(Paint::Solid(Color::WHITE)),
-                BorderRadius(LayoutRect::new_axis(StyleUnit::Px(3.0), StyleUnit::Px(3.0))),
+                BorderRadius(LayoutRect::new_all(StyleUnit::Px(3.0))),
             ),
         );
 

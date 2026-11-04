@@ -140,6 +140,14 @@ impl<T> Rect<T> {
     {
         Self::new_invidiual(top_bottom, left_right, top_bottom, left_right)
     }
+
+    #[inline]
+    pub const fn new_all(all: T) -> Self
+    where
+        T: Copy,
+    {
+        Self::new_axis(all, all)
+    }
 }
 
 impl Rect<StyleUnit> {
