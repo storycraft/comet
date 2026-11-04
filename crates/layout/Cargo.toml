@@ -10,7 +10,7 @@ comet-tree = { workspace = true }
 derive_more = { version = "2.1.1", features = ["full"] }
 
 kurbo = "0.13.1"
-parley = "0.12.0"
+parley = { version = "0.12.0", features = ["complex-scripts"] }
 rustc-hash = "2.1.3"
 scopeguard = "1.2.0"
 slotmap = "1.1.1"
