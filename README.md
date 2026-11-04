@@ -10,7 +10,7 @@ Comet is a Rust GUI library.
    2. It can be grouped in memory.
    3. Props can be queried efficiently.
 3. Rich text is provided as is and subset of css `block`/`inline` layout is provided.
-4. Any layout algorithm can be applied to a `Node` via `ContainerLayoutFn`.
+4. Any layout algorithm can be applied to a `Node` via `ContainerLayout`.
 
 ## Example
 Render of `tree.rs` in `comet/examples`
