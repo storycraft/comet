@@ -20,6 +20,7 @@ use self::inline::{InlineEvents, Op};
 use crate::{
     fragment::tree::FragmentTree,
     parley::default_text_style,
+    style::bx::DisplayInner,
     tree::{ChildLayoutMode, LayoutItemKey, LayoutItemTy, LayoutTree},
 };
 
@@ -161,21 +162,20 @@ impl<'a> TaffyLayout<'a> {
                 let inner = item
                     .ty
                     .node()
-                    .and_then(|node| ui.prop::<crate::style::bx::DisplayInner>(node));
+                    .and_then(|node| ui.prop::<DisplayInner>(node));
 
-                if let Some(crate::style::bx::DisplayInner::Container(algorithm)) = inner.as_deref()
-                {
-                    let children = self.tree.items.children(key).collect();
-                    let mut context = crate::container::ContainerContext {
-                        engine: self,
-                        root: key,
-                        children,
-                    };
+                let Some(DisplayInner::Container(algorithm)) = inner.as_deref() else {
+                    return taffy::LayoutOutput::DEFAULT;
+                };
 
-                    return algorithm.layout(&mut context, input);
-                }
+                let children = self.tree.items.children(key).collect();
+                let mut context = crate::container::ContainerContext {
+                    engine: self,
+                    root: key,
+                    children,
+                };
 
-                return taffy::LayoutOutput::DEFAULT;
+                return algorithm.layout(&mut context, input);
             }
 
             ChildLayoutMode::Inline => {}
@@ -184,28 +184,20 @@ impl<'a> TaffyLayout<'a> {
             _ => return taffy::LayoutOutput::HIDDEN,
         };
 
+        self.layout_inline(key, input)
+    }
+
+    fn layout_inline(
+        &mut self,
+        key: LayoutItemKey,
+        input: taffy::LayoutInput,
+    ) -> taffy::LayoutOutput {
         let style = self.nodes[&key].style.clone();
         let mut output = taffy::compute_leaf_layout(
             input,
             &style,
             |_, _| 0.0,
-            |known, available| {
-                let width = known.width.or(match available.width {
-                    taffy::AvailableSpace::Definite(v) => Some(v),
-                    taffy::AvailableSpace::MinContent => Some(0.0),
-                    taffy::AvailableSpace::MaxContent => None,
-                });
-
-                self.shape(key, available);
-
-                let layout = self.fragments.inline_layouts.get_mut(&key).unwrap();
-                layout.break_all_lines(width);
-
-                taffy::Size {
-                    width: layout.width(),
-                    height: layout.height(),
-                }
-            },
+            |known, available| self.measure_inline(key, known.width, available),
         );
 
         if let Some(text) = self.fragments.inline_layouts.get(&key) {
@@ -232,6 +224,29 @@ impl<'a> TaffyLayout<'a> {
         }
 
         output
+    }
+
+    fn measure_inline(
+        &mut self,
+        key: LayoutItemKey,
+        known_width: Option<f32>,
+        available: taffy::Size<taffy::AvailableSpace>,
+    ) -> taffy::Size<f32> {
+        let width = known_width.or(match available.width {
+            taffy::AvailableSpace::Definite(v) => Some(v),
+            taffy::AvailableSpace::MinContent => Some(0.0),
+            taffy::AvailableSpace::MaxContent => None,
+        });
+
+        self.shape(key, available);
+
+        let layout = self.fragments.inline_layouts.get_mut(&key).unwrap();
+        layout.break_all_lines(width);
+
+        taffy::Size {
+            width: layout.width(),
+            height: layout.height(),
+        }
     }
 
     fn shape(&mut self, key: LayoutItemKey, available: taffy::Size<taffy::AvailableSpace>) {
