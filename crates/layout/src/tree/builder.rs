@@ -121,9 +121,10 @@ impl LayoutTreeBuilder {
             return self.update_text(tree, root, target);
         }
 
-        let (outer, inner) = display(ui, root);
+        let outer = display_outer(ui, root);
+        let inner = ui.prop::<DisplayInner>(root);
         let split = outer == DisplayOuter::Inline
-            && inner == DisplayInner::Flow
+            && matches!(inner.as_deref(), None | Some(DisplayInner::Flow))
             && self.contains_block(ui, root);
 
         let desired = if split {
@@ -178,7 +179,8 @@ impl LayoutTreeBuilder {
                         continue;
                     }
 
-                    let (outer, inner) = display(ui, node);
+                    let outer = display_outer(ui, node);
+                    let inner = ui.prop::<DisplayInner>(node);
 
                     if outer == DisplayOuter::Block {
                         let base = self.flows.current_frame()?;
@@ -196,7 +198,9 @@ impl LayoutTreeBuilder {
                     let key = self.child(tree, desired)?;
                     self.push_frame(tree, key);
 
-                    if outer == DisplayOuter::Inline && inner == DisplayInner::Flow {
+                    if outer == DisplayOuter::Inline
+                        && matches!(inner.as_deref(), None | Some(DisplayInner::Flow))
+                    {
                         self.flows.push_span(node);
                         self.pending.push(Task::EndInline);
                     } else {
@@ -208,10 +212,39 @@ impl LayoutTreeBuilder {
                 }
 
                 Task::Content(node) => {
-                    if tree.items[self.frames.last()?.key].child_layout != ChildLayoutMode::None {
+                    let mode = tree.items[self.frames.last()?.key].child_layout;
+
+                    if mode == ChildLayoutMode::Container {
+                        self.pending
+                            .extend(ui.children(node).rev().map(Task::ContainerChild));
+                    } else if mode != ChildLayoutMode::None {
                         self.pending
                             .extend(ui.children(node).rev().map(Task::Visit));
                     }
+                }
+
+                Task::ContainerChild(node) => {
+                    let outer = display_outer(ui, node);
+                    let inner = ui.prop::<DisplayInner>(node);
+
+                    if outer == DisplayOuter::Inline {
+                        // Each source child owns a separate formatting context,
+                        // including any block interruptions inside an inline.
+                        let mode = if *ui.node(node)? != Node::Text
+                            && matches!(inner.as_deref(), None | Some(DisplayInner::Flow))
+                            && self.contains_block(ui, node)
+                        {
+                            ChildLayoutMode::Block
+                        } else {
+                            ChildLayoutMode::Inline
+                        };
+                        let key = self.child(tree, item(LayoutItemTy::AnonymousBlock, mode))?;
+                        self.push_frame(tree, key);
+                        self.flows.push(tree, &mut self.frames);
+                        self.pending.push(Task::EndFlow);
+                    }
+
+                    self.pending.push(Task::Visit(node));
                 }
 
                 Task::EndInline => {
@@ -229,11 +262,12 @@ impl LayoutTreeBuilder {
     }
 
     fn source_item(&mut self, ui: &Ui, node: NodeKey) -> LayoutItem {
-        let (outer, inner) = display(ui, node);
+        let outer = display_outer(ui, node);
+        let inner = ui.prop::<DisplayInner>(node);
 
-        let ty = match (outer, inner) {
+        let ty = match (outer, inner.as_deref()) {
             (DisplayOuter::Block, _) => LayoutItemTy::Block(node),
-            (DisplayOuter::Inline, DisplayInner::Flow) => LayoutItemTy::Inline(node),
+            (DisplayOuter::Inline, None | Some(DisplayInner::Flow)) => LayoutItemTy::Inline(node),
             (DisplayOuter::Inline, _) => LayoutItemTy::AtomicInline(node),
         };
 
@@ -508,7 +542,8 @@ impl LayoutTreeBuilder {
                 continue;
             }
 
-            let (outer, inner) = display(ui, node);
+            let outer = display_outer(ui, node);
+            let inner = ui.prop::<DisplayInner>(node);
 
             if outer == DisplayOuter::Block {
                 self.scan.clear();
@@ -516,7 +551,7 @@ impl LayoutTreeBuilder {
                 return true;
             }
 
-            if inner == DisplayInner::Flow {
+            if matches!(inner.as_deref(), None | Some(DisplayInner::Flow)) {
                 self.scan.extend(ui.children(node));
             }
         }
@@ -525,12 +560,13 @@ impl LayoutTreeBuilder {
     }
 
     fn content_mode(&mut self, ui: &Ui, node: NodeKey) -> ChildLayoutMode {
-        if display(ui, node).1 == DisplayInner::Content {
-            ChildLayoutMode::None
-        } else if ui.children(node).next().is_none() || self.contains_block(ui, node) {
-            ChildLayoutMode::Block
-        } else {
-            ChildLayoutMode::Inline
+        match ui.prop::<DisplayInner>(node).as_deref() {
+            Some(DisplayInner::Content) => ChildLayoutMode::None,
+            Some(DisplayInner::Container(_)) => ChildLayoutMode::Container,
+            _ if ui.children(node).next().is_none() || self.contains_block(ui, node) => {
+                ChildLayoutMode::Block
+            }
+            _ => ChildLayoutMode::Inline,
         }
     }
 
@@ -546,6 +582,7 @@ impl LayoutTreeBuilder {
 
 enum Task {
     Visit(NodeKey),
+    ContainerChild(NodeKey),
     Content(NodeKey),
     EndInline,
     EndFlow,
@@ -617,19 +654,14 @@ fn update_item(
     key
 }
 
-fn display(ui: &Ui, node: NodeKey) -> (DisplayOuter, DisplayInner) {
+fn display_outer(ui: &Ui, node: NodeKey) -> DisplayOuter {
     if ui.node(node).is_some_and(|node| *node == Node::Text) {
-        return (DisplayOuter::Inline, DisplayInner::Flow);
+        return DisplayOuter::Inline;
     }
 
-    (
-        ui.prop::<DisplayOuter>(node)
-            .map(|v| *v)
-            .unwrap_or_default(),
-        ui.prop::<DisplayInner>(node)
-            .map(|v| *v)
-            .unwrap_or_default(),
-    )
+    ui.prop::<DisplayOuter>(node)
+        .map(|v| *v)
+        .unwrap_or_default()
 }
 
 fn delete_remaining(tree: &mut LayoutTree, mut next: Option<LayoutItemKey>) {

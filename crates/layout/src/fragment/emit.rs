@@ -147,7 +147,10 @@ pub(super) fn emit_box(
 
     out.push((parent, f));
 
-    if engine.tree.items[key].child_layout == ChildLayoutMode::Block {
+    if matches!(
+        engine.tree.items[key].child_layout,
+        ChildLayoutMode::Block | ChildLayoutMode::Container
+    ) {
         for child in engine.tree.items.children(key) {
             emit_box(engine, child, Some(index), None, out);
         }

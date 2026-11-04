@@ -5,7 +5,7 @@ use super::{TextStyle, tree::FragmentTree};
 use crate::{
     style::LayoutConstraint,
     taffy::{NodeState, style},
-    tree::{LayoutItem, LayoutItemKey, LayoutTree},
+    tree::{ChildLayoutMode, LayoutItem, LayoutItemKey, LayoutTree},
 };
 
 #[derive(PartialEq)]
@@ -79,6 +79,14 @@ impl Snapshot {
         self.inputs.keys().copied()
     }
 
+    // Trait objects can contain mutable algorithm state and have no equality
+    // contract. Recompute them on each build rather than comparing pointers.
+    pub fn has_containers(&self) -> bool {
+        self.inputs
+            .values()
+            .any(|input| input.item.child_layout == ChildLayoutMode::Container)
+    }
+
     pub fn contains(&self, key: LayoutItemKey) -> bool {
         self.inputs.contains_key(&key)
     }
@@ -97,6 +105,7 @@ impl Snapshot {
 
         for (&key, input) in &self.inputs {
             if constraint_changed
+                || input.item.child_layout == ChildLayoutMode::Container
                 || previous.as_ref().and_then(|old| old.inputs.get(&key)) != Some(input)
             {
                 let mut ancestor = Some(key);

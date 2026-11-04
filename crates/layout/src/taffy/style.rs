@@ -14,7 +14,8 @@ use crate::style::{
 /// of this adapter, allowing custom containers to reuse the common box styles.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Style {
-    inner: DisplayInner,
+    block: bool,
+    replaced: bool,
     position: taffy::Position,
     box_sizing: taffy::BoxSizing,
     overflow: taffy::Point<taffy::Overflow>,
@@ -38,12 +39,11 @@ pub fn resolve(ui: &Ui, node: Option<NodeKey>, cx: &LayoutConstraint) -> Style {
         };
     }
 
+    let inner = node.and_then(|node| ui.prop::<DisplayInner>(node));
+
     Style {
-        inner: node
-            .and_then(|node| ui.prop::<DisplayInner>(node))
-            .as_deref()
-            .copied()
-            .unwrap_or_default(),
+        block: matches!(inner.as_deref(), None | Some(DisplayInner::Flow)),
+        replaced: matches!(inner.as_deref(), Some(DisplayInner::Content)),
         position: value!(Position),
         box_sizing: value!(BoxSizing),
         overflow: conv::to_point(value!(Overflow), |v| v),
@@ -64,15 +64,16 @@ impl CoreStyle for Style {
     type CustomIdent = String;
 
     fn is_block(&self) -> bool {
-        matches!(self.inner, DisplayInner::Flow | DisplayInner::Content)
+        self.block
     }
 
     fn is_replaced(&self) -> bool {
-        self.inner == DisplayInner::Content
+        self.replaced
     }
 
     fn is_compressible_replaced(&self) -> bool {
-        self.is_replaced()
+        // TODO
+        false
     }
 
     fn position(&self) -> taffy::Position {

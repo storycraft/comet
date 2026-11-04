@@ -27,7 +27,7 @@ impl TraversePartialTree for TaffyLayout<'_> {
         let key = from_taffy_key(id);
 
         Children(
-            (self.tree.items[key].child_layout == ChildLayoutMode::Block)
+            matches!(self.tree.items[key].child_layout, ChildLayoutMode::Block)
                 .then(|| self.tree.items.children(key)),
         )
     }

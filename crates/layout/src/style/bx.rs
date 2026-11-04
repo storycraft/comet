@@ -3,7 +3,10 @@ use kurbo;
 use parley;
 use taffy;
 
-use crate::style::geometry::{self, AutoValue, Point, Rect, StyleUnit};
+use crate::{
+    container::ContainerLayout,
+    style::geometry::{self, AutoValue, Point, Rect, StyleUnit},
+};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DisplayOuter {
@@ -15,11 +18,13 @@ pub enum DisplayOuter {
 }
 impl StyleProp for DisplayOuter {}
 
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Default)]
 pub enum DisplayInner {
     #[default]
     /// Generate layout boxes and display children using Flow layout.
     Flow,
+    /// Lay out independent child boxes using a custom algorithm.
+    Container(Box<dyn ContainerLayout>),
     /// Establish a new flow context and layout children inside.
     FlowRoot,
     /// Display a content inside. Children will not be laid out.

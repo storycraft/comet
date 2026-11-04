@@ -163,6 +163,57 @@ impl<'a> TaffyLayout<'a> {
             &style,
             |_, _| 0.0,
             |known, available| {
+                if item.child_layout == ChildLayoutMode::Container {
+                    let ui = self.ui;
+                    let inner = item
+                        .ty
+                        .node()
+                        .and_then(|node| ui.prop::<crate::style::bx::DisplayInner>(node));
+
+                    if let Some(crate::style::bx::DisplayInner::Container(algorithm)) =
+                        inner.as_deref()
+                    {
+                        use taffy::ResolveOrZero;
+
+                        let padding = style
+                            .padding()
+                            .resolve_or_zero(input.parent_size.width, |_, _| 0.0);
+                        let border = style
+                            .border()
+                            .resolve_or_zero(input.parent_size.width, |_, _| 0.0);
+                        let inset = padding + border;
+                        let children = self.tree.items.children(key).collect();
+                        let mut context = crate::container::ContainerContext {
+                            engine: self,
+                            root: key,
+                            children,
+                            content_offset: taffy::Point {
+                                x: inset.left,
+                                y: inset.top,
+                            },
+                        };
+
+                        return algorithm
+                            .layout(
+                                &mut context,
+                                taffy::LayoutInput {
+                                    known_dimensions: taffy::Size {
+                                        width: known.width.map(|width| {
+                                            (width - inset.left - inset.right).max(0.0)
+                                        }),
+                                        height: known.height.map(|height| {
+                                            (height - inset.top - inset.bottom).max(0.0)
+                                        }),
+                                    },
+                                    available_space: available,
+                                    vertical_margins_are_collapsible: taffy::Line::FALSE,
+                                    ..input
+                                },
+                            )
+                            .size;
+                    }
+                }
+
                 if !inline {
                     return taffy::Size::ZERO;
                 }

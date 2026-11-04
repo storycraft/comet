@@ -158,6 +158,8 @@ pub enum ChildLayoutMode {
     None,
     Block,
     Inline,
+    /// Independent direct child boxes arranged by a custom container algorithm.
+    Container,
 }
 
 new_key_type! {

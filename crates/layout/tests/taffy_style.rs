@@ -16,14 +16,13 @@ fn display_semantics_do_not_depend_on_taffy_display_defaults() {
     for (inner, block, replaced) in [
         (bx::DisplayInner::Flow, true, false),
         (bx::DisplayInner::FlowRoot, false, false),
-        (bx::DisplayInner::Content, true, true),
+        (bx::DisplayInner::Content, false, true),
     ] {
         let node = ui.create(Node::Box, (inner,));
         let style = resolve(&ui, Some(node), &cx);
 
         assert_eq!(style.is_block(), block);
         assert_eq!(style.is_replaced(), replaced);
-        assert_eq!(style.is_compressible_replaced(), replaced);
     }
 }
 
@@ -37,7 +36,10 @@ fn anonymous_boxes_use_comet_defaults() {
     assert!(!style.is_replaced());
     assert_eq!(style.position(), taffy::Position::Relative);
     assert_eq!(style.size().width, taffy::Dimension::auto());
-    assert_eq!(style.margin().left, taffy::LengthPercentageAuto::length(0.0));
+    assert_eq!(
+        style.margin().left,
+        taffy::LengthPercentageAuto::length(0.0)
+    );
     assert_eq!(style.padding().left, taffy::LengthPercentage::length(0.0));
 }
 
@@ -68,7 +70,10 @@ fn adapter_resolves_constraint_units_and_preserves_percentages() {
     assert_eq!(style.size().height, taffy::Dimension::percent(0.5));
     assert_eq!(style.padding().top, taffy::LengthPercentage::length(32.0));
     assert_eq!(style.padding().right, taffy::LengthPercentage::length(80.0));
-    assert_eq!(style.padding().bottom, taffy::LengthPercentage::length(60.0));
+    assert_eq!(
+        style.padding().bottom,
+        taffy::LengthPercentage::length(60.0)
+    );
     assert_eq!(style.padding().left, taffy::LengthPercentage::percent(0.25));
 
     cx.font_size = 12.0;

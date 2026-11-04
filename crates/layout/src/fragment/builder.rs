@@ -40,7 +40,10 @@ impl FragmentBuilder {
         let snapshot = Snapshot::capture(constraint, ui, layout, root, fragments);
         let old_root = fragments.root_for_item(root);
 
-        if old_root.is_some() && fragments.snapshots.get(&root) == Some(&snapshot) {
+        if old_root.is_some()
+            && !snapshot.has_containers()
+            && fragments.snapshots.get(&root) == Some(&snapshot)
+        {
             return old_root;
         }
 
