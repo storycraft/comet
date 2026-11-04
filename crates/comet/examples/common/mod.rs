@@ -4,7 +4,7 @@ use comet_layout::style::{
     geometry::{AutoValue, Rect, Size as LayoutSize, StyleUnit},
     parley,
 };
-use comet_renderer::style::{Fill, TextColor};
+use comet_renderer::style::{BorderRadius, Fill, TextColor};
 use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,
@@ -53,6 +53,7 @@ fn block_inline_sample(ui: &mut Ui, root: NodeKey) {
         (
             DisplayOuter::Inline,
             Fill(Paint::Solid(Color::from_rgb8(224, 233, 255))),
+            BorderRadius(Rect::new_axis(StyleUnit::Px(6.0), StyleUnit::Px(6.0))),
         ),
     );
     ui.append(panel, span);
@@ -66,6 +67,7 @@ fn block_inline_sample(ui: &mut Ui, root: NodeKey) {
         (
             Padding(Rect::new_axis(StyleUnit::Px(12.0), StyleUnit::Px(12.0))),
             Fill(Paint::Solid(Color::from_rgb8(222, 242, 233))),
+            BorderRadius(Rect::new_axis(StyleUnit::Px(8.0), StyleUnit::Px(8.0))),
         ),
     );
     ui.append(span, block);
@@ -203,6 +205,7 @@ fn panel(ui: &mut Ui, root: NodeKey, label: &str, color: Color) -> NodeKey {
         Node::Box,
         (
             Fill(Paint::Solid(color)),
+            BorderRadius(Rect::new_axis(StyleUnit::Px(12.0), StyleUnit::Px(12.0))),
             Padding(Rect::new_axis(StyleUnit::Px(16.0), StyleUnit::Px(16.0))),
             Margin(Rect::new_axis(
                 AutoValue::Value(StyleUnit::Px(16.0)),
@@ -237,6 +240,8 @@ fn badge(ui: &mut Ui, parent: NodeKey, label: &str, color: Color) {
             DisplayOuter::Inline,
             DisplayInner::FlowRoot,
             Fill(Paint::Solid(color)),
+            BorderRadius(Rect::new_axis(StyleUnit::Px(6.0), StyleUnit::Px(6.0))),
+            Padding(Rect::new_axis(StyleUnit::Px(2.0), StyleUnit::Px(6.0))),
         ),
     );
 
