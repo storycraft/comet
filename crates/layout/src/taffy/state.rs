@@ -1,5 +1,5 @@
 pub(crate) struct NodeState {
-    pub style: taffy::Style,
+    pub style: crate::taffy::style::Style,
     pub layout: taffy::Layout,
     pub cache: taffy::Cache,
     pub baseline: f32,
@@ -7,7 +7,7 @@ pub(crate) struct NodeState {
 }
 
 impl NodeState {
-    pub fn new(style: taffy::Style) -> Self {
+    pub fn new(style: crate::taffy::style::Style) -> Self {
         Self {
             style,
             layout: Default::default(),

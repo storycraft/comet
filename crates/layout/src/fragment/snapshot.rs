@@ -18,7 +18,7 @@ pub(crate) struct Snapshot {
 #[derive(PartialEq)]
 struct Input {
     item: LayoutItem,
-    style: taffy::Style,
+    style: crate::taffy::style::Style,
     text_style: Option<TextStyle>,
     text: Option<String>,
     parent: Option<LayoutItemKey>,

@@ -11,6 +11,7 @@ use comet_tree::{
 };
 use rustc_hash::FxHashMap;
 use slotmap::Key;
+use taffy::style::CoreStyle;
 
 pub(crate) use state::NodeState;
 
@@ -116,7 +117,7 @@ impl<'a> TaffyLayout<'a> {
         }
 
         self.tree.items.children(key).rev().find_map(|child| {
-            if self.nodes[&child].style.position == taffy::Position::Absolute {
+            if self.nodes[&child].style.position() == taffy::Position::Absolute {
                 return None;
             }
 
@@ -130,8 +131,8 @@ impl<'a> TaffyLayout<'a> {
     pub(crate) fn inline_baseline(&self, key: LayoutItemKey) -> f32 {
         let state = &self.nodes[&key];
 
-        if state.style.overflow.x == taffy::Overflow::Visible
-            && state.style.overflow.y == taffy::Overflow::Visible
+        if state.style.overflow().x == taffy::Overflow::Visible
+            && state.style.overflow().y == taffy::Overflow::Visible
             && let Some(baseline) = self.last_baseline(key)
         {
             return baseline;

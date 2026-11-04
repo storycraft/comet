@@ -43,7 +43,7 @@ impl TraversePartialTree for TaffyLayout<'_> {
 
 impl LayoutPartialTree for TaffyLayout<'_> {
     type CoreContainerStyle<'a>
-        = &'a taffy::Style
+        = &'a crate::taffy::style::Style
     where
         Self: 'a;
     type CustomIdent = String;
@@ -69,11 +69,11 @@ impl LayoutPartialTree for TaffyLayout<'_> {
 
 impl taffy::LayoutBlockContainer for TaffyLayout<'_> {
     type BlockContainerStyle<'a>
-        = &'a taffy::Style
+        = &'a crate::taffy::style::Style
     where
         Self: 'a;
     type BlockItemStyle<'a>
-        = &'a taffy::Style
+        = &'a crate::taffy::style::Style
     where
         Self: 'a;
 
@@ -99,7 +99,7 @@ impl taffy::LayoutBlockContainer for TaffyLayout<'_> {
 
 impl taffy::LayoutContainingBlock for TaffyLayout<'_> {
     type OofItemStyle<'a>
-        = &'a taffy::Style
+        = &'a crate::taffy::style::Style
     where
         Self: 'a;
 
