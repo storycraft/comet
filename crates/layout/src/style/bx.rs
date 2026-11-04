@@ -49,7 +49,6 @@ define_style_props!(
 
     // border styles.
     pub Border: Rect<StyleUnit> = Rect::default();
-    pub BorderRadius: Rect<StyleUnit> = Rect::default();
     pub BorderJoin: kurbo::Join = kurbo::Join::Bevel;
     pub BorderMiterLimit: StyleUnit = StyleUnit::ZERO;
     pub BorderStartCap: kurbo::Cap = kurbo::Cap::Butt;

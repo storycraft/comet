@@ -9,13 +9,13 @@ use comet_layout::{
 };
 use comet_renderer::{
     CometRenderer,
-    style::{BorderFill, Fill, TextColor},
+    style::{BorderFill, BorderRadius, Fill, TextColor},
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,
 };
-use kurbo::{Rect, Shape};
+use kurbo::{BezPath, PathEl, Rect, Shape};
 use peniko::Color;
 
 fn fills(scene: &Scene) -> Vec<(Rect, Color)> {
@@ -58,6 +58,25 @@ fn solid(paint: &Paint) -> Color {
     match paint {
         Paint::Solid(color) => *color,
         _ => panic!("test only uses solid paints"),
+    }
+}
+
+fn assert_path_close(actual: &BezPath, expected: &BezPath) {
+    assert_eq!(actual.elements().len(), expected.elements().len());
+
+    for (actual, expected) in actual.iter().zip(expected.iter()) {
+        match (actual, expected) {
+            (PathEl::MoveTo(a), PathEl::MoveTo(b)) | (PathEl::LineTo(a), PathEl::LineTo(b)) => {
+                assert!(a.distance(b) < 1e-9);
+            }
+            (PathEl::CurveTo(a, b, c), PathEl::CurveTo(d, e, f)) => {
+                assert!(a.distance(d) < 1e-9);
+                assert!(b.distance(e) < 1e-9);
+                assert!(c.distance(f) < 1e-9);
+            }
+            (PathEl::ClosePath, PathEl::ClosePath) => {}
+            _ => panic!("unexpected path elements: {actual:?}, {expected:?}"),
+        }
     }
 }
 
@@ -257,4 +276,120 @@ fn standalone_text_paints_its_background_only_once() {
 
     assert_eq!(fills(&scene).len(), 1);
     assert!(!glyphs(&scene).is_empty());
+}
+
+#[test]
+fn rounds_background_and_border_corners() {
+    let mut ui = Ui::new();
+    let node = ui.create(
+        Node::Box,
+        (
+            bx::Size(Size::new(
+                AutoValue::Value(StyleUnit::Px(80.0)),
+                AutoValue::Value(StyleUnit::Px(60.0)),
+            )),
+            bx::Border(LayoutRect::new_axis(StyleUnit::Px(2.0), StyleUnit::Px(2.0))),
+            Fill(Paint::Solid(Color::WHITE)),
+            BorderFill(Paint::Solid(Color::BLACK)),
+            BorderRadius(LayoutRect::new_invidiual(
+                StyleUnit::Px(3.0),
+                StyleUnit::Em(0.25),
+                StyleUnit::Rem(0.5),
+                StyleUnit::Vw(0.1),
+            )),
+        ),
+    );
+
+    let (tree, root) = build(&ui, node);
+    let mut scene = Scene::new();
+
+    CometRenderer::new().draw(&ui, &tree, root, &mut scene);
+
+    let [RenderCommand::Fill(fill), RenderCommand::Stroke(stroke)] = scene.commands.as_slice()
+    else {
+        panic!("expected a background and border");
+    };
+    let rect = fill.shape.bounding_box();
+    let radii = (3.0, 4.0, 8.0, 12.0);
+
+    assert_path_close(
+        &fill.shape,
+        &rect.to_rounded_rect(radii).to_path(scene.tolerance),
+    );
+    assert_path_close(
+        &stroke.shape,
+        &rect
+            .inset(-1.0)
+            .to_rounded_rect(radii)
+            .to_path(scene.tolerance),
+    );
+}
+
+#[test]
+fn rounds_only_outer_edges_of_wrapped_fragments() {
+    for standalone in [false, true] {
+        let mut ui = Ui::new();
+        let text = ui.create(
+            Node::Text,
+            (Text(
+                "one two three four five six seven eight nine ten eleven twelve thirteen fourteen"
+                    .into(),
+            ),),
+        );
+        let node = if standalone {
+            text
+        } else {
+            let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+
+            ui.append(span, text);
+
+            span
+        };
+
+        ui.set_props(
+            node,
+            (
+                Fill(Paint::Solid(Color::WHITE)),
+                BorderRadius(LayoutRect::new_axis(StyleUnit::Px(3.0), StyleUnit::Px(3.0))),
+            ),
+        );
+
+        let root_node = if standalone {
+            node
+        } else {
+            let root = ui.create(Node::Box, ());
+
+            ui.append(root, node);
+
+            root
+        };
+        let (tree, root) = build(&ui, root_node);
+        let mut scene = Scene::new();
+
+        CometRenderer::new().draw(&ui, &tree, root, &mut scene);
+
+        let fills: Vec<_> = scene
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                RenderCommand::Fill(fill) => Some(fill),
+                _ => None,
+            })
+            .collect();
+
+        assert!(fills.len() >= 3);
+
+        for (index, fill) in fills.iter().enumerate() {
+            let left = if index == 0 { 3.0 } else { 0.0 };
+            let right = if index == fills.len() - 1 { 3.0 } else { 0.0 };
+            let rect = fill.shape.bounding_box();
+
+            assert_path_close(
+                &fill.shape,
+                &rect
+                    .to_rounded_rect((left, right, right, left))
+                    .to_path(scene.tolerance),
+            );
+        }
+    }
 }

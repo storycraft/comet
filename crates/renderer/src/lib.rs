@@ -10,10 +10,10 @@ use comet_tree::{
     node::{Node, NodeKey},
     ui::Ui,
 };
-use kurbo::{Affine, Point, Rect, Stroke, Vec2};
+use kurbo::{Affine, Point, Rect, RoundedRectRadii, Stroke, Vec2};
 use parley::PositionedLayoutItem;
 
-use crate::style::{BorderFill, Fill, TextColor};
+use crate::style::{BorderFill, BorderRadius, Fill, TextColor};
 
 /// Paints final fragments in tree order, with coordinates relative to their parents.
 #[derive(Default)]
@@ -52,15 +52,15 @@ impl CometRenderer {
                         .and_then(|node| ui.node(node))
                         .is_some_and(|node| *node == Node::Text)
                     {
-                        draw_box(ui, fragment, origin, scene);
+                        draw_box(ui, tree, key, origin, scene);
                     }
                 }
                 FragmentItem::Inline { .. } => {
-                    draw_box(ui, fragment, origin, scene);
+                    draw_box(ui, tree, key, origin, scene);
                 }
                 FragmentItem::Line { .. } => inline_owner = Some(fragment.source),
                 FragmentItem::GlyphRun { line, item } => {
-                    draw_box(ui, fragment, origin, scene);
+                    draw_box(ui, tree, key, origin, scene);
 
                     if let Some(owner) = inline_owner {
                         draw_glyph_run(ui, tree, fragment, owner, (line, item), origin, scene);
@@ -78,7 +78,15 @@ impl CometRenderer {
     }
 }
 
-fn draw_box(ui: &Ui, fragment: &Fragment, origin: Point, scene: &mut impl PaintScene) {
+fn draw_box(
+    ui: &Ui,
+    tree: &FragmentTree,
+    key: FragmentKey,
+    origin: Point,
+    scene: &mut impl PaintScene,
+) {
+    let fragment = &tree.items[key];
+
     let Some(props) = fragment.node.and_then(|node| ui.props(node)) else {
         return;
     };
@@ -87,6 +95,51 @@ fn draw_box(ui: &Ui, fragment: &Fragment, origin: Point, scene: &mut impl PaintS
         origin,
         (fragment.layout.size.width, fragment.layout.size.height),
     );
+    let mut radii = RoundedRectRadii::default();
+
+    if let Some(radius) = props.get::<BorderRadius>()
+        && let Some(constraint) = tree.layout_constraint(key)
+    {
+        let mut constraint = constraint.clone();
+
+        if let Some(style) = fragment.node.and_then(|node| tree.text_styles.get(&node)) {
+            constraint.font_size = style.font_size as f64;
+        }
+
+        let resolve = |value: comet_layout::style::geometry::StyleUnit| {
+            value
+                .resolve(&constraint, rect.width().min(rect.height()))
+                .max(0.0)
+        };
+
+        radii = RoundedRectRadii::new(
+            resolve(radius.0.left_top.y),
+            resolve(radius.0.right_bottom.x),
+            resolve(radius.0.right_bottom.y),
+            resolve(radius.0.left_top.x),
+        );
+    }
+
+    // The standalone text box is linked but does not paint a background.
+    let has_previous = fragment.link.prev.is_some_and(|prev| {
+        let previous = &tree.items[prev];
+
+        !matches!(previous.item, FragmentItem::Box)
+            || !previous
+                .node
+                .and_then(|node| ui.node(node))
+                .is_some_and(|node| *node == Node::Text)
+    });
+
+    if has_previous {
+        radii.top_left = 0.0;
+        radii.bottom_left = 0.0;
+    }
+
+    if fragment.link.next.is_some() {
+        radii.top_right = 0.0;
+        radii.bottom_right = 0.0;
+    }
 
     if let Some(fill) = props.get::<Fill>() {
         scene.fill(
@@ -94,7 +147,7 @@ fn draw_box(ui: &Ui, fragment: &Fragment, origin: Point, scene: &mut impl PaintS
             Affine::IDENTITY,
             &fill.0,
             None,
-            &rect,
+            &rect.to_rounded_rect(radii),
         );
     }
 
@@ -114,7 +167,7 @@ fn draw_box(ui: &Ui, fragment: &Fragment, origin: Point, scene: &mut impl PaintS
             Affine::IDENTITY,
             &fill.0,
             None,
-            &rect.inset(-width / 2.0),
+            &rect.inset(-width / 2.0).to_rounded_rect(radii),
         );
     }
 }

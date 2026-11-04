@@ -21,6 +21,22 @@ impl FragmentTree {
         Self::default()
     }
 
+    /// The constraints used to build the root containing this fragment.
+    pub fn layout_constraint(
+        &self,
+        mut key: FragmentKey,
+    ) -> Option<&crate::style::LayoutConstraint> {
+        while let Some(parent) = self.items.parent(key) {
+            key = parent;
+        }
+
+        let source = self.items.get(key)?.source;
+
+        self.snapshots
+            .get(&source)
+            .map(|snapshot| &snapshot.constraint)
+    }
+
     pub fn root_for_item(&self, item: LayoutItemKey) -> Option<FragmentKey> {
         self.roots
             .get(&item)

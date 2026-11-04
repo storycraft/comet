@@ -10,7 +10,7 @@ use crate::{
 
 #[derive(PartialEq)]
 pub(crate) struct Snapshot {
-    constraint: LayoutConstraint,
+    pub(super) constraint: LayoutConstraint,
     inputs: FxHashMap<LayoutItemKey, Input>,
 }
 
