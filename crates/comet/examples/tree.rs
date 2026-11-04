@@ -3,7 +3,7 @@ mod common;
 use std::{fs, io::BufWriter};
 
 use anyrender::{ImageRenderer, PaintScene};
-use anyrender_vello::VelloImageRenderer;
+use anyrender_vello_cpu::VelloCpuImageRenderer;
 use comet_layout::{
     fragment::{builder::FragmentBuilder, tree::FragmentTree},
     style::{LayoutConstraint, geometry::Size},
@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut renderer = CometRenderer::new();
-    let mut image_renderer = VelloImageRenderer::new(WIDTH, HEIGHT);
+    let mut image_renderer = VelloCpuImageRenderer::new(WIDTH, HEIGHT);
     let mut data = vec![0_u8; (WIDTH * HEIGHT * 4) as usize];
     image_renderer.render(
         |scene| {
