@@ -12,4 +12,4 @@ comet-layout = { workspace = true }
 parley = "0.12.0"
 peniko = "0.6.0"
 kurbo = "0.13.1"
-anyrender = "0.7.0"
+anyrender = "0.14.0"

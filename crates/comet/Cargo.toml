@@ -10,8 +10,8 @@ comet-tree = { workspace = true }
 comet-layout = { workspace = true }
 comet-renderer = { workspace = true }
 
-anyrender = "0.7.0"
-anyrender_vello = "0.7.1"
+anyrender = "0.14.0"
+anyrender_vello = "0.15.0"
 
 winit = { version = "0.30.12", features = ["rwh_06"] }
 

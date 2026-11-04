@@ -10,7 +10,7 @@ use comet_tree::{
     node::{Node, NodeKey},
     ui::Ui,
 };
-use kurbo::{Affine, Point, Rect, Stroke};
+use kurbo::{Affine, Point, Rect, Stroke, Vec2};
 use parley::PositionedLayoutItem;
 
 use crate::style::{BorderFill, Fill, TextColor};
@@ -135,6 +135,7 @@ fn draw_glyph_run(
     else {
         return;
     };
+
     let Some(PositionedLayoutItem::GlyphRun(glyph_run)) = line.items().nth(item) else {
         return;
     };
@@ -158,6 +159,7 @@ fn draw_glyph_run(
         run.font_size(),
         true,
         &normalized_coords,
+        Vec2::ZERO,
         peniko::StyleRef::Fill(peniko::Fill::NonZero),
         &paint,
         1.0,

@@ -61,7 +61,10 @@ impl ApplicationHandler for App {
         let size = win.inner_size();
 
         if size.width > 0 && size.height > 0 {
-            self.vello.resume(win.clone(), size.width, size.height);
+            self.vello.resume(win.clone(), size.width, size.height, || {
+                // TODO
+            });
+            self.vello.complete_resume();
         }
 
         win.request_redraw();
@@ -91,7 +94,10 @@ impl ApplicationHandler for App {
                 if self.vello.is_active() {
                     self.vello.set_size(size.width, size.height);
                 } else {
-                    self.vello.resume(win.clone(), size.width, size.height);
+                    self.vello.resume(win.clone(), size.width, size.height, || {
+                        // TODO
+                    });
+                    self.vello.complete_resume();
                 }
 
                 win.request_redraw();
