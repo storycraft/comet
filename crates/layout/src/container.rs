@@ -11,17 +11,16 @@ use crate::{
 
 /// A custom layout algorithm for one box and its direct children.
 pub trait ContainerLayout: Send + Sync {
-    /// Return this container's content size in `LayoutOutput::size`. Other
-    /// output metadata is ignored by the enclosing leaf layout. Measure
-    /// children through `context`, then assign their border-box sizes and
-    /// positions relative to this container's content box. Descendant layout
+    /// Lay out this container using the original Taffy input and return its
+    /// border-box size and layout metadata. The algorithm owns its sizing
+    /// constraints, padding and border, available through `context.style()`.
+    ///
+    /// Measure children through `context`, then assign their border-box sizes
+    /// and positions relative to this container's border box. Descendant layout
     /// is handled by the engine when a child is measured with its final known
     /// dimensions.
     ///
     /// Honor `input.run_mode`: measurement calls need not place children.
-    /// Taffy applies this container's sizing constraints, padding and border.
-    /// Known dimensions and available space refer to its content area; do not
-    /// subtract its padding or border again.
     fn layout(
         &self,
         context: &mut ContainerContext<'_, '_>,
@@ -35,7 +34,6 @@ pub struct ContainerContext<'a, 'ui> {
     pub(crate) engine: &'a mut TaffyLayout<'ui>,
     pub(crate) root: LayoutItemKey,
     pub(crate) children: Vec<LayoutItemKey>,
-    pub(crate) content_offset: taffy::Point<f32>,
 }
 
 impl ContainerContext<'_, '_> {
@@ -123,10 +121,7 @@ impl ContainerContext<'_, '_> {
 
     /// Set the direct child's box, including padding, border and margin metrics.
     /// Measure it with matching known dimensions first so its contents fit.
-    pub fn set_child_layout(&mut self, index: usize, mut layout: taffy::Layout) {
-        layout.location.x += self.content_offset.x;
-        layout.location.y += self.content_offset.y;
-
+    pub fn set_child_layout(&mut self, index: usize, layout: taffy::Layout) {
         self.engine
             .nodes
             .get_mut(&self.children[index])

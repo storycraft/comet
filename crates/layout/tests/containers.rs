@@ -343,7 +343,7 @@ fn nested_inline_containers_measure_and_emit_their_own_descendants() {
 }
 
 #[test]
-fn containers_are_taffy_leaves_with_outer_box_styling_applied_once() {
+fn containers_receive_original_input_and_return_complete_output() {
     use comet_layout::{
         style::{
             bx,
@@ -351,13 +351,75 @@ fn containers_are_taffy_leaves_with_outer_box_styling_applied_once() {
         },
         taffy::{TaffyLayout, to_taffy_key},
     };
-    use taffy::TraversePartialTree;
+    use taffy::{LayoutPartialTree, TraversePartialTree};
+
+    struct Probe;
+
+    impl ContainerLayout for Probe {
+        fn layout(
+            &self,
+            context: &mut ContainerContext<'_, '_>,
+            input: taffy::LayoutInput,
+        ) -> taffy::LayoutOutput {
+            assert_eq!(input, probe_input(input.run_mode));
+
+            context.set_child_layout(
+                0,
+                taffy::Layout {
+                    location: taffy::Point { x: 3.0, y: 7.0 },
+                    ..Default::default()
+                },
+            );
+
+            probe_output()
+        }
+    }
+
+    fn probe_input(run_mode: taffy::RunMode) -> taffy::LayoutInput {
+        taffy::LayoutInput {
+            run_mode,
+            known_dimensions: taffy::Size {
+                width: Some(120.0),
+                height: None,
+            },
+            known_dimensions_are_definite: taffy::Size {
+                width: false,
+                height: true,
+            },
+            parent_size: taffy::Size {
+                width: Some(400.0),
+                height: Some(600.0),
+            },
+            available_space: taffy::Size {
+                width: taffy::AvailableSpace::Definite(200.0),
+                height: taffy::AvailableSpace::MinContent,
+            },
+            vertical_margins_are_collapsible: taffy::Line {
+                start: true,
+                end: false,
+            },
+            ..taffy::LayoutInput::HIDDEN
+        }
+    }
+
+    fn probe_output() -> taffy::LayoutOutput {
+        let mut output = taffy::LayoutOutput::from_outer_size(taffy::Size {
+            width: 120.0,
+            height: 80.0,
+        });
+        output.baselines = taffy::Baselines {
+            first: Some(17.0),
+            last: Some(37.0),
+        };
+
+        output
+    }
 
     let mut ui = Ui::new();
     let root = ui.create(
         Node::Box,
         (
-            container(),
+            DisplayInner::Container(Box::new(Probe)),
             bx::Size(Size::new(
                 AutoValue::Value(StyleUnit::Px(120.0)),
                 AutoValue::Value(StyleUnit::Px(80.0)),
@@ -406,29 +468,15 @@ fn containers_are_taffy_leaves_with_outer_box_styling_applied_once() {
     assert_eq!(engine.child_count(to_taffy_key(key)), 0);
     assert_eq!(engine.child_ids(to_taffy_key(key)).count(), 0);
 
-    engine.compute(
-        key,
-        taffy::Size {
-            width: taffy::AvailableSpace::Definite(400.0),
-            height: taffy::AvailableSpace::Definite(600.0),
-        },
-    );
+    for mode in [taffy::RunMode::ComputeSize, taffy::RunMode::PerformLayout] {
+        let output = engine.compute_child_layout(to_taffy_key(key), probe_input(mode));
 
-    let root_box = engine.layout(key).unwrap();
-    let child_box = engine.layout(child_key).unwrap();
-
-    assert_eq!(
-        root_box.size,
-        taffy::Size {
-            width: 120.0,
-            height: 80.0
-        }
-    );
-    assert_eq!(root_box.padding.left, 10.0);
-    assert_eq!(root_box.border.left, 2.0);
-    assert_eq!(child_box.location, taffy::Point { x: 12.0, y: 19.0 });
-    assert_eq!(child_box.size.width, 80.0);
-    assert!(child_box.size.height > 0.0);
+        assert_eq!(output, probe_output());
+        assert_eq!(
+            engine.layout(child_key).unwrap().location,
+            taffy::Point { x: 3.0, y: 7.0 }
+        );
+    }
 }
 
 struct Gap(f32);

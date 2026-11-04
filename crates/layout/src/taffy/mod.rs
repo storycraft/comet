@@ -152,106 +152,42 @@ impl<'a> TaffyLayout<'a> {
         let key = from_taffy_key(id);
         let item = self.tree.items[key];
 
-        if item.child_layout == ChildLayoutMode::Block {
-            return taffy::compute_block_layout(self, id, input, block_ctx);
-        }
+        let inline = match item.child_layout {
+            ChildLayoutMode::Block => {
+                return taffy::compute_block_layout(self, id, input, block_ctx);
+            }
+            ChildLayoutMode::Container => {
+                let ui = self.ui;
+                let inner = item
+                    .ty
+                    .node()
+                    .and_then(|node| ui.prop::<crate::style::bx::DisplayInner>(node));
+
+                if let Some(crate::style::bx::DisplayInner::Container(algorithm)) = inner.as_deref()
+                {
+                    let children = self.tree.items.children(key).collect();
+                    let mut context = crate::container::ContainerContext {
+                        engine: self,
+                        root: key,
+                        children,
+                    };
+
+                    return algorithm.layout(&mut context, input);
+                }
+
+                matches!(item.ty, LayoutItemTy::Text(_))
+            }
+            ChildLayoutMode::Inline => true,
+            ChildLayoutMode::None => matches!(item.ty, LayoutItemTy::Text(_)),
+        };
 
         let style = self.nodes[&key].style.clone();
-        let inline = item.child_layout == ChildLayoutMode::Inline
-            || matches!(item.ty, LayoutItemTy::Text(_));
 
         let mut output = taffy::compute_leaf_layout(
             input,
             &style,
             |_, _| 0.0,
             |known, available| {
-                if item.child_layout == ChildLayoutMode::Container {
-                    let ui = self.ui;
-                    let inner = item
-                        .ty
-                        .node()
-                        .and_then(|node| ui.prop::<crate::style::bx::DisplayInner>(node));
-
-                    if let Some(crate::style::bx::DisplayInner::Container(algorithm)) =
-                        inner.as_deref()
-                    {
-                        use taffy::{MaybeMath, MaybeResolve, ResolveOrZero};
-
-                        let padding = style
-                            .padding()
-                            .resolve_or_zero(input.parent_size.width, |_, _| 0.0);
-                        let border = style
-                            .border()
-                            .resolve_or_zero(input.parent_size.width, |_, _| 0.0);
-                        let inset = padding + border;
-                        let inset_size = inset.sum_axes();
-                        let adjustment = if style.box_sizing() == taffy::BoxSizing::ContentBox {
-                            inset_size
-                        } else {
-                            taffy::Size::ZERO
-                        };
-                        let (preferred, min, max) =
-                            if input.sizing_mode == taffy::SizingMode::InherentSize {
-                                (
-                                    style
-                                        .size()
-                                        .maybe_resolve(input.parent_size, |_, _| 0.0)
-                                        .maybe_apply_aspect_ratio(style.aspect_ratio())
-                                        .maybe_add(adjustment),
-                                    style
-                                        .min_size()
-                                        .maybe_resolve(input.parent_size, |_, _| 0.0)
-                                        .maybe_apply_aspect_ratio(style.aspect_ratio())
-                                        .maybe_add(adjustment),
-                                    style
-                                        .max_size()
-                                        .maybe_resolve(input.parent_size, |_, _| 0.0)
-                                        .maybe_add(adjustment),
-                                )
-                            } else {
-                                (taffy::Size::NONE, taffy::Size::NONE, taffy::Size::NONE)
-                            };
-
-                        // Leaf measurement deliberately omits known dimensions
-                        // during PerformLayout. Custom containers still need the
-                        // definite content size for flexing and percentages.
-                        let fixed = min.zip_map(max, |min, max| match (min, max) {
-                            (Some(min), Some(max)) if max <= min => Some(min),
-                            _ => None,
-                        });
-                        let content_known = input
-                            .known_dimensions
-                            .or(preferred)
-                            .or(fixed)
-                            .maybe_clamp(min, max)
-                            .zip_map(inset_size, |size, inset| {
-                                size.map(|size| (size - inset).max(0.0))
-                            });
-                        let children = self.tree.items.children(key).collect();
-                        let mut context = crate::container::ContainerContext {
-                            engine: self,
-                            root: key,
-                            children,
-                            content_offset: taffy::Point {
-                                x: inset.left,
-                                y: inset.top,
-                            },
-                        };
-
-                        return algorithm
-                            .layout(
-                                &mut context,
-                                taffy::LayoutInput {
-                                    known_dimensions: content_known,
-                                    available_space: available,
-                                    vertical_margins_are_collapsible: taffy::Line::FALSE,
-                                    ..input
-                                },
-                            )
-                            .size;
-                    }
-                }
-
                 if !inline {
                     return taffy::Size::ZERO;
                 }

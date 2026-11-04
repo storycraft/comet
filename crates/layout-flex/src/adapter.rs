@@ -117,7 +117,7 @@ impl LayoutContainingBlock for Adapter<'_, '_, '_> {
 }
 
 struct Style {
-    core: Option<comet_layout::taffy::style::Style>,
+    core: comet_layout::taffy::style::Style,
     flex: taffy::Style<String>,
 }
 
@@ -135,10 +135,8 @@ impl Style {
         let gap = prop!(Gap);
 
         Self {
-            // The enclosing leaf already applies the container's box styles.
-            core: None,
+            core: context.style().clone(),
             flex: taffy::Style {
-                position: taffy::Position::Relative,
                 flex_direction: prop!(FlexDirection),
                 flex_wrap: prop!(FlexWrap),
                 flex_line_count: prop!(FlexLineCount),
@@ -170,7 +168,7 @@ impl Style {
         };
 
         Self {
-            core: Some(context.child_style(index).clone()),
+            core: context.child_style(index).clone(),
             flex: taffy::Style {
                 flex_basis: basis,
                 flex_grow: prop!(FlexGrow),
@@ -185,10 +183,7 @@ impl Style {
 macro_rules! core_style {
     ($($name:ident: $ty:ty),* $(,)?) => {$(
         fn $name(&self) -> $ty {
-            match &self.core {
-                Some(core) => core.$name(),
-                None => self.flex.$name(),
-            }
+            self.core.$name()
         }
     )*};
 }

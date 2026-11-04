@@ -114,16 +114,24 @@ fn percentages_use_content_size_and_padding_is_applied_once() {
     ui.append(root, a);
     ui.append(root, b);
 
-    let (tree, key) = layout(&ui, root);
-    let a = box_for(&tree, key, a);
-    let b = box_for(&tree, key, b);
+    for (box_sizing, width, height) in [
+        (taffy::BoxSizing::BorderBox, 224.0, 100.0),
+        (taffy::BoxSizing::ContentBox, 200.0, 76.0),
+    ] {
+        ui.set_props(root, (bx::BoxSizing(box_sizing), size(width, height)));
 
-    close(tree.items[key].layout.size.width, 224.0);
-    close(a.location.x, 12.0);
-    close(a.location.y, 12.0);
-    close(a.size.width, 50.0);
-    close(b.location.x, 82.0);
-    close(b.size.width, 50.0);
+        let (tree, key) = layout(&ui, root);
+        let a = box_for(&tree, key, a);
+        let b = box_for(&tree, key, b);
+
+        close(tree.items[key].layout.size.width, 224.0);
+        close(tree.items[key].layout.size.height, 100.0);
+        close(a.location.x, 12.0);
+        close(a.location.y, 12.0);
+        close(a.size.width, 50.0);
+        close(b.location.x, 82.0);
+        close(b.size.width, 50.0);
+    }
 }
 
 #[test]
