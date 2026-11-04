@@ -14,4 +14,8 @@ parley = { version = "0.12.0", features = ["complex-scripts"] }
 rustc-hash = "2.1.3"
 scopeguard = "1.2.0"
 slotmap = "1.1.1"
-taffy = "0.15.1"
+
+[dependencies.taffy]
+version = "0.15.1"
+default-features = false
+features = ["std", "block_layout", "float_layout", "content_size"]
