@@ -4,6 +4,38 @@ use super::SlotTree;
 
 type Tree = SlotTree<DefaultKey, i32>;
 
+#[test]
+fn descendants_follow_preorder_and_stop_at_the_subtree_boundary() {
+    let mut tree = Tree::new();
+    let root = tree.insert(0);
+    let first = tree.insert(1);
+    let nested = tree.insert(2);
+    let last = tree.insert(3);
+    let sibling = tree.insert(4);
+
+    tree.append(root, first);
+    tree.append(first, nested);
+    tree.append(root, last);
+    tree.after(root, sibling);
+
+    assert_eq!(
+        tree.descendants(root).collect::<Vec<_>>(),
+        [root, first, nested, last]
+    );
+    assert_eq!(tree.descendants(first).collect::<Vec<_>>(), [first, nested]);
+
+    let mut leaf = tree.descendants(last);
+
+    assert_eq!(leaf.next(), Some(last));
+    assert_eq!(leaf.next(), None);
+    assert_eq!(leaf.next(), None);
+
+    tree.delete_node(first);
+
+    assert_eq!(tree.descendants(first).next(), None);
+    assert_eq!(tree.descendants(root).collect::<Vec<_>>(), [root, last]);
+}
+
 fn assert_children(tree: &Tree, parent: DefaultKey, expected: &[DefaultKey]) {
     assert_eq!(tree.children(parent).collect::<Vec<_>>(), expected);
     assert_eq!(

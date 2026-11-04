@@ -6,7 +6,7 @@ mod tests;
 use core::ops::{Index, IndexMut};
 use slotmap::{Key, SlotMap};
 
-use self::iterator::Cursor;
+use self::iterator::{Cursor, Descendants};
 
 /// An ordered forest backed by generational slots.
 ///
@@ -45,6 +45,11 @@ impl<K: Key, V> SlotTree<K, V> {
 
     pub fn children(&self, parent: K) -> Cursor<'_, K, V> {
         self.cursor(self.first_child(parent))
+    }
+
+    /// Visit the root and its descendants in preorder without allocating.
+    pub fn descendants(&self, root: K) -> Descendants<'_, K, V> {
+        Descendants::new(self, root)
     }
 
     pub fn parent(&self, id: K) -> Option<K> {

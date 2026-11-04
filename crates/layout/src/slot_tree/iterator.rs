@@ -61,3 +61,47 @@ impl<K: Key, V> DoubleEndedIterator for Cursor<'_, K, V> {
 }
 
 impl<K: Key, V> FusedIterator for Cursor<'_, K, V> {}
+
+/// Preorder traversal of one subtree using its existing parent/sibling links.
+/// No traversal stack is allocated, and siblings of the root are excluded.
+pub struct Descendants<'a, K: Key, V> {
+    tree: &'a SlotTree<K, V>,
+    root: K,
+    next: Option<K>,
+}
+
+impl<'a, K: Key, V> Descendants<'a, K, V> {
+    pub fn new(tree: &'a SlotTree<K, V>, root: K) -> Self {
+        Self {
+            tree,
+            root,
+            next: tree.get(root).map(|_| root),
+        }
+    }
+}
+
+impl<K: Key, V> Iterator for Descendants<'_, K, V> {
+    type Item = K;
+
+    fn next(&mut self) -> Option<K> {
+        let key = self.next?;
+        self.next = self.tree.first_child(key);
+
+        if self.next.is_none() {
+            let mut ancestor = key;
+
+            while ancestor != self.root {
+                if let Some(sibling) = self.tree.next_sibling(ancestor) {
+                    self.next = Some(sibling);
+                    break;
+                }
+
+                ancestor = self.tree.parent(ancestor)?;
+            }
+        }
+
+        Some(key)
+    }
+}
+
+impl<K: Key, V> FusedIterator for Descendants<'_, K, V> {}

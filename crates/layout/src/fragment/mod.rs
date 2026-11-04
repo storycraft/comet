@@ -1,3 +1,7 @@
+mod emit;
+mod reconcile;
+mod snapshot;
+
 pub mod builder;
 pub mod tree;
 

@@ -1,7 +1,7 @@
 use comet_tree::node::NodeKey;
 use rustc_hash::FxHashMap;
 
-use super::{Fragment, FragmentKey, TextStyle, builder};
+use super::{Fragment, FragmentKey, TextStyle, snapshot::Snapshot};
 use crate::{slot_tree::SlotTree, tree::LayoutItemKey};
 
 #[derive(Default)]
@@ -12,7 +12,7 @@ pub struct FragmentTree {
     pub inline_layouts: FxHashMap<LayoutItemKey, parley::Layout<Option<NodeKey>>>,
     pub texts: FxHashMap<LayoutItemKey, String>,
     pub(crate) roots: FxHashMap<LayoutItemKey, FragmentKey>,
-    pub(crate) snapshots: FxHashMap<LayoutItemKey, builder::Snapshot>,
+    pub(crate) snapshots: FxHashMap<LayoutItemKey, Snapshot>,
     pub(crate) layout_cache: FxHashMap<LayoutItemKey, crate::taffy::NodeState>,
 }
 
@@ -26,6 +26,24 @@ impl FragmentTree {
             .get(&item)
             .copied()
             .filter(|key| self.items.get(*key).is_some())
+    }
+
+    pub(crate) fn remove_source(&mut self, key: LayoutItemKey) {
+        self.inline_layouts.remove(&key);
+        self.texts.remove(&key);
+        self.layout_cache.remove(&key);
+    }
+
+    pub(crate) fn remove_root(&mut self, root: LayoutItemKey) {
+        if let Some(snapshot) = self.snapshots.remove(&root) {
+            for key in snapshot.keys() {
+                self.remove_source(key);
+            }
+        }
+
+        if let Some(key) = self.roots.remove(&root) {
+            self.items.delete_node(key);
+        }
     }
 
     pub fn clear(&mut self) {

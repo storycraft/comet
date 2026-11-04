@@ -1,3 +1,7 @@
+mod adapter;
+mod inline;
+mod state;
+
 pub mod conv;
 pub mod style;
 
@@ -7,20 +11,16 @@ use comet_tree::{
 };
 use rustc_hash::FxHashMap;
 use slotmap::Key;
-use taffy::{CacheTree, LayoutPartialTree, TraversePartialTree};
+
+pub(crate) use state::NodeState;
+
+use self::inline::{InlineEvents, Op};
 
 use crate::{
     fragment::tree::FragmentTree,
     parley::default_text_style,
     tree::{ChildLayoutMode, LayoutItemKey, LayoutItemTy, LayoutTree},
 };
-
-pub(crate) struct NodeState {
-    pub style: taffy::Style,
-    pub layout: taffy::Layout,
-    pub cache: taffy::Cache,
-    pub hoisted: Vec<taffy::NodeId>,
-}
 
 /// Adapter over layout items. Inline formatting contexts are measured by Parley.
 pub struct TaffyLayout<'a> {
@@ -47,12 +47,13 @@ impl<'a> TaffyLayout<'a> {
         root: LayoutItemKey,
     ) -> Option<Self> {
         tree.items.get(root)?;
+
         let mut nodes = FxHashMap::default();
         let mut resolved = FxHashMap::default();
-        let mut pending = vec![root];
 
-        while let Some(key) = pending.pop() {
+        for key in tree.items.descendants(root) {
             let mut cx = constraint.clone();
+
             if let Some(style) =
                 crate::parley::style::resolve_for_item(ui, tree, key, constraint, &mut resolved)
             {
@@ -60,16 +61,8 @@ impl<'a> TaffyLayout<'a> {
             }
 
             let style = style::resolve(ui, tree.items[key].ty.node(), &cx);
-            nodes.insert(
-                key,
-                NodeState {
-                    style,
-                    layout: Default::default(),
-                    cache: Default::default(),
-                    hoisted: Vec::new(),
-                },
-            );
-            pending.extend(tree.items.children(key));
+
+            nodes.insert(key, NodeState::new(style));
         }
 
         fragments.text_styles.extend(resolved);
@@ -93,11 +86,7 @@ impl<'a> TaffyLayout<'a> {
 
         // Cached measurements may leave text at an intrinsic width. Finalize it
         // before a containing inline context reads this subtree's baseline.
-        let mut pending = vec![root];
-
-        while let Some(key) = pending.pop() {
-            pending.extend(self.tree.items.children(key));
-
+        for key in self.tree.items.descendants(root) {
             if let Some(text) = self.fragments.inline_layouts.get_mut(&key) {
                 let bx = self.nodes[&key].layout;
                 let width = (bx.size.width
@@ -110,6 +99,9 @@ impl<'a> TaffyLayout<'a> {
                 text.break_all_lines(Some(width));
             }
         }
+
+        let baseline = self.inline_baseline(root);
+        self.nodes.get_mut(&root).unwrap().baseline = baseline;
     }
 
     /// Last in-flow line baseline, measured from the border-box top.
@@ -164,6 +156,7 @@ impl<'a> TaffyLayout<'a> {
         let style = self.nodes[&key].style.clone();
         let inline = item.child_layout == ChildLayoutMode::Inline
             || matches!(item.ty, LayoutItemTy::Text(_));
+
         taffy::compute_leaf_layout(
             input,
             &style,
@@ -178,7 +171,9 @@ impl<'a> TaffyLayout<'a> {
                     taffy::AvailableSpace::MinContent => Some(0.0),
                     taffy::AvailableSpace::MaxContent => None,
                 });
+
                 self.shape(key, available);
+
                 let layout = self.fragments.inline_layouts.get_mut(&key).unwrap();
                 layout.break_all_lines(width);
 
@@ -191,63 +186,23 @@ impl<'a> TaffyLayout<'a> {
     }
 
     fn shape(&mut self, key: LayoutItemKey, available: taffy::Size<taffy::AvailableSpace>) {
-        enum Op {
-            Push(NodeKey),
-            Pop,
-            Text(NodeKey),
-            Box(LayoutItemKey),
-            Empty(LayoutItemKey),
-        }
-
-        fn collect(tree: &LayoutTree, key: LayoutItemKey, ops: &mut Vec<Op>) {
-            match tree.items[key].ty {
-                LayoutItemTy::Text(node) => ops.push(Op::Text(node)),
-                LayoutItemTy::AtomicInline(_) => ops.push(Op::Box(key)),
-                _ => {
-                    let node = tree.items[key].ty.node();
-                    if let Some(node) = node {
-                        ops.push(Op::Push(node));
-                    }
-                    for child in tree.items.children(key) {
-                        collect(tree, child, ops);
-                    }
-
-                    if tree.items.first_child(key).is_none() {
-                        ops.push(Op::Empty(key));
-                    }
-
-                    if node.is_some() {
-                        ops.push(Op::Pop);
-                    }
-                }
-            }
-        }
-
-        let mut ops = Vec::new();
-        if let LayoutItemTy::Text(node) = self.tree.items[key].ty {
-            ops.push(Op::Text(node));
-        } else {
-            for child in self.tree.items.children(key) {
-                collect(self.tree, child, &mut ops);
-            }
-        }
-
-        let mut baselines = FxHashMap::default();
-
-        for op in &ops {
+        // Atomic children must be laid out before borrowing Parley's builder.
+        for op in InlineEvents::new(self.tree, key) {
             if let Op::Box(child) = op {
-                self.compute(*child, available);
-                baselines.insert(*child, self.inline_baseline(*child));
+                self.compute(child, available);
             }
         }
 
         let mut ancestor = Some(key);
         let mut source = None;
+
         while let Some(key) = ancestor {
             source = self.tree.items[key].ty.node();
+
             if source.is_some() {
                 break;
             }
+
             ancestor = self.tree.items.parent(key);
         }
 
@@ -259,7 +214,7 @@ impl<'a> TaffyLayout<'a> {
             .parley
             .tree_builder(self.fonts, 1.0, false, &root_style);
 
-        for op in ops {
+        for op in InlineEvents::new(self.tree, key) {
             match op {
                 Op::Push(node) => {
                     builder.push_style_span(self.fragments.text_styles[&node].clone())
@@ -267,9 +222,11 @@ impl<'a> TaffyLayout<'a> {
                 Op::Pop => builder.pop_style_span(),
                 Op::Text(node) => {
                     builder.push_style_span(self.fragments.text_styles[&node].clone());
+
                     if let Some(text) = self.ui.prop::<Text>(node) {
                         builder.push_text(&text.0);
                     }
+
                     builder.pop_style_span();
                 }
                 Op::Box(child) => {
@@ -283,7 +240,7 @@ impl<'a> TaffyLayout<'a> {
                         width: layout.size.width + layout.margin.left + layout.margin.right,
                         height: layout.size.height + layout.margin.top + layout.margin.bottom,
                         kind: parley::InlineBoxKind::InFlow,
-                        baseline: Some(layout.margin.top + baselines[&child]),
+                        baseline: Some(layout.margin.top + self.nodes[&child].baseline),
                         vertical_align: Default::default(),
                     });
                 }
@@ -304,152 +261,5 @@ impl<'a> TaffyLayout<'a> {
         let (layout, text) = builder.build();
         self.fragments.inline_layouts.insert(key, layout);
         self.fragments.texts.insert(key, text);
-    }
-}
-
-impl TraversePartialTree for TaffyLayout<'_> {
-    type ChildIter<'a>
-        = std::vec::IntoIter<taffy::NodeId>
-    where
-        Self: 'a;
-
-    fn child_ids(&self, id: taffy::NodeId) -> Self::ChildIter<'_> {
-        let key = from_taffy_key(id);
-        if self.tree.items[key].child_layout != ChildLayoutMode::Block {
-            return Vec::new().into_iter();
-        }
-
-        self.tree
-            .items
-            .children(key)
-            .map(to_taffy_key)
-            .collect::<Vec<_>>()
-            .into_iter()
-    }
-
-    fn child_count(&self, id: taffy::NodeId) -> usize {
-        self.child_ids(id).len()
-    }
-
-    fn get_child_id(&self, id: taffy::NodeId, index: usize) -> taffy::NodeId {
-        self.child_ids(id).nth(index).unwrap()
-    }
-}
-
-impl LayoutPartialTree for TaffyLayout<'_> {
-    type CoreContainerStyle<'a>
-        = &'a taffy::Style
-    where
-        Self: 'a;
-    type CustomIdent = String;
-
-    fn get_core_container_style(&self, id: taffy::NodeId) -> Self::CoreContainerStyle<'_> {
-        &self.nodes[&from_taffy_key(id)].style
-    }
-
-    fn set_unrounded_layout(&mut self, id: taffy::NodeId, layout: &taffy::Layout) {
-        self.nodes.get_mut(&from_taffy_key(id)).unwrap().layout = *layout;
-    }
-
-    fn compute_child_layout(
-        &mut self,
-        id: taffy::NodeId,
-        input: taffy::LayoutInput,
-    ) -> taffy::LayoutOutput {
-        taffy::compute_cached_layout(self, id, input, |this, id, input| {
-            this.layout_child(id, input, None)
-        })
-    }
-}
-
-impl taffy::LayoutBlockContainer for TaffyLayout<'_> {
-    type BlockContainerStyle<'a>
-        = &'a taffy::Style
-    where
-        Self: 'a;
-    type BlockItemStyle<'a>
-        = &'a taffy::Style
-    where
-        Self: 'a;
-
-    fn get_block_container_style(&self, id: taffy::NodeId) -> Self::BlockContainerStyle<'_> {
-        self.get_core_container_style(id)
-    }
-
-    fn get_block_child_style(&self, id: taffy::NodeId) -> Self::BlockItemStyle<'_> {
-        self.get_core_container_style(id)
-    }
-
-    fn compute_block_child_layout(
-        &mut self,
-        id: taffy::NodeId,
-        input: taffy::LayoutInput,
-        block_ctx: Option<&mut taffy::BlockContext<'_>>,
-    ) -> taffy::LayoutOutput {
-        taffy::compute_cached_layout(self, id, input, |this, id, input| {
-            this.layout_child(id, input, block_ctx)
-        })
-    }
-}
-
-impl taffy::LayoutContainingBlock for TaffyLayout<'_> {
-    type OofItemStyle<'a>
-        = &'a taffy::Style
-    where
-        Self: 'a;
-
-    fn get_oof_item_style(&self, id: taffy::NodeId) -> Self::OofItemStyle<'_> {
-        self.get_core_container_style(id)
-    }
-
-    fn clear_hoisted_children(&mut self, id: taffy::NodeId) {
-        self.nodes
-            .get_mut(&from_taffy_key(id))
-            .unwrap()
-            .hoisted
-            .clear();
-    }
-
-    fn add_hoisted_children(&mut self, id: taffy::NodeId, children: &[taffy::NodeId]) {
-        self.nodes
-            .get_mut(&from_taffy_key(id))
-            .unwrap()
-            .hoisted
-            .extend_from_slice(children);
-    }
-}
-
-impl CacheTree for TaffyLayout<'_> {
-    fn cache_get(
-        &mut self,
-        id: taffy::NodeId,
-        input: &taffy::LayoutInput,
-    ) -> Option<taffy::LayoutOutput> {
-        self.nodes
-            .get_mut(&from_taffy_key(id))
-            .unwrap()
-            .cache
-            .get(input)
-    }
-
-    fn cache_store(
-        &mut self,
-        id: taffy::NodeId,
-        input: &taffy::LayoutInput,
-        output: taffy::LayoutOutput,
-    ) {
-        self.nodes
-            .get_mut(&from_taffy_key(id))
-            .unwrap()
-            .cache
-            .store(input, output);
-    }
-
-    fn cache_clear(&mut self, id: taffy::NodeId) {
-        self.nodes
-            .get_mut(&from_taffy_key(id))
-            .unwrap()
-            .cache
-            .clear();
     }
 }

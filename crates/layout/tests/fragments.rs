@@ -17,6 +17,103 @@ fn constraint(width: f64) -> LayoutConstraint {
 }
 
 #[test]
+fn fragment_buffers_handle_reordering_nested_contexts_and_independent_roots() {
+    let mut ui = Ui::new();
+    let root_node = ui.create(Node::Box, ());
+    let other_node = ui.create(Node::Box, ());
+    let other_text = ui.create(Node::Text, (Text("independent root".into()),));
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    let inner = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    let atomic = ui.create(
+        Node::Box,
+        (bx::DisplayOuter::Inline, bx::DisplayInner::FlowRoot),
+    );
+    let atomic_text = ui.create(Node::Text, (Text("atomic text".into()),));
+    let texts: Vec<_> = ["first words ", "second words ", "third words "]
+        .into_iter()
+        .map(|text| ui.create(Node::Text, (Text(text.into()),)))
+        .collect();
+
+    ui.append(other_node, other_text);
+    ui.append(root_node, span);
+    ui.append(span, inner);
+
+    for &text in &texts {
+        ui.append(inner, text);
+    }
+
+    ui.append(inner, atomic);
+    ui.append(atomic, atomic_text);
+
+    let mut layout = LayoutTree::new();
+    let mut layout_builder = LayoutTreeBuilder::new();
+    let root = layout_builder
+        .build(&ui, root_node, &mut layout, None)
+        .unwrap();
+    let other = layout_builder
+        .build(&ui, other_node, &mut layout, None)
+        .unwrap();
+    let mut builder = FragmentBuilder::new();
+    let mut tree = FragmentTree::new();
+    let other_root = builder
+        .build(&constraint(200.0), &ui, &layout, other, &mut tree)
+        .unwrap();
+    let other_keys = keys(&tree, other_root);
+
+    for step in 0..5 {
+        match step {
+            1 => {
+                ui.before(texts[1], texts[2]);
+            }
+            2 => {
+                ui.append(span, texts[1]);
+            }
+            3 => {
+                ui.set_props(
+                    atomic_text,
+                    (Text("changed nested text with wrapping".into()),),
+                );
+            }
+            4 => {
+                ui.delete(texts[2]);
+            }
+            _ => {}
+        }
+
+        layout_builder.build(&ui, root_node, &mut layout, Some(root));
+
+        let cx = constraint(if step % 2 == 0 { 120.0 } else { 200.0 });
+        let result = builder.build(&cx, &ui, &layout, root, &mut tree).unwrap();
+        let actual = keys(&tree, result);
+        let mut fresh = FragmentTree::new();
+        let fresh_root = FragmentBuilder::new()
+            .build(&cx, &ui, &layout, root, &mut fresh)
+            .unwrap();
+        let expected = keys(&fresh, fresh_root);
+
+        assert_eq!(actual.len(), expected.len());
+
+        for (&a, b) in actual.iter().zip(expected) {
+            let a = &tree.items[a];
+            let b = &fresh.items[b];
+
+            assert_eq!((&a.item, a.node, a.layout), (&b.item, b.node, b.layout));
+        }
+
+        assert_eq!(
+            builder.build(&cx, &ui, &layout, root, &mut tree),
+            Some(result)
+        );
+        assert_eq!(keys(&tree, result), actual);
+        assert_eq!(
+            builder.build(&constraint(200.0), &ui, &layout, other, &mut tree),
+            Some(other_root)
+        );
+        assert_eq!(keys(&tree, other_root), other_keys);
+    }
+}
+
+#[test]
 fn inline_block_uses_its_font_size_and_last_line_baseline() {
     let mut ui = Ui::new();
     let root_node = ui.create(Node::Box, (bx::FontSize(StyleUnit::Px(20.0)),));
