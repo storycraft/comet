@@ -1,3 +1,5 @@
+mod flex;
+
 use anyrender::Paint;
 use comet_layout::style::{
     bx::*,
@@ -38,6 +40,7 @@ pub fn sample_ui() -> (Ui, NodeKey) {
     ui.append(root, title);
     text(&mut ui, title, "Comet / layout & text");
 
+    flex::showcase(&mut ui, root);
     block_inline_sample(&mut ui, root);
     rich_text_sample(&mut ui, root);
     typography_sample(&mut ui, root);
@@ -46,7 +49,7 @@ pub fn sample_ui() -> (Ui, NodeKey) {
 }
 
 fn block_inline_sample(ui: &mut Ui, root: NodeKey) {
-    let panel = panel(ui, root, "01 / Block + inline", Color::WHITE);
+    let panel = panel(ui, root, "02 / Block + inline", Color::WHITE);
     text(ui, panel, "Inline content starts here, ");
     let span = ui.create(
         Node::Box,
@@ -86,7 +89,7 @@ fn rich_text_sample(ui: &mut Ui, root: NodeKey) {
     let panel = panel(
         ui,
         root,
-        "02 / Rich text + inline block",
+        "03 / Rich text + inline block",
         Color::from_rgb8(255, 250, 240),
     );
     text(ui, panel, "Regular text, ");
@@ -139,7 +142,7 @@ fn typography_sample(ui: &mut Ui, root: NodeKey) {
     let panel = panel(
         ui,
         root,
-        "03 / Font families + spacing",
+        "04 / Font families + spacing",
         Color::from_rgb8(242, 238, 250),
     );
     let serif = ui.create(
