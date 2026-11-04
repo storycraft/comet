@@ -1,0 +1,15 @@
+[package]
+name = "comet-layout-flex"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+comet-layout = { workspace = true }
+comet-tree = { workspace = true }
+
+[dependencies.taffy]
+version = "0.15.1"
+default-features = false
+features = ["std", "flexbox", "flexbox_balance", "content_size"]

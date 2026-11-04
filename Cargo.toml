@@ -12,3 +12,5 @@ license = "Apache-2.0"
 comet-tree = { path = "./crates/tree" }
 comet-layout = { path = "./crates/layout" }
 comet-renderer = { path = "./crates/renderer" }
+
+comet-layout-flex = { path = "./crates/layout-flex" }

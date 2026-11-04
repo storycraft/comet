@@ -4,6 +4,7 @@ use comet_tree::{node::NodeKey, style::StyleProp};
 use taffy::LayoutPartialTree;
 
 use crate::{
+    style::geometry::StyleUnit,
     taffy::{TaffyLayout, style::Style, to_taffy_key},
     tree::LayoutItemKey,
 };
@@ -77,6 +78,31 @@ impl ContainerContext<'_, '_> {
         self.engine.ui.prop::<T>(self.child_node(index)?)
     }
 
+    /// Resolve font and viewport units for the container, keeping percentages
+    /// symbolic so the layout algorithm can select their reference size.
+    pub fn resolve_length(&self, value: StyleUnit) -> taffy::LengthPercentage {
+        self.resolve_node_length(self.node(), value)
+    }
+
+    /// Resolve an item's custom length using its source node's computed font.
+    pub fn resolve_child_length(&self, index: usize, value: StyleUnit) -> taffy::LengthPercentage {
+        self.resolve_node_length(self.child_node(index), value)
+    }
+
+    fn resolve_node_length(
+        &self,
+        node: Option<NodeKey>,
+        value: StyleUnit,
+    ) -> taffy::LengthPercentage {
+        let mut constraint = self.engine.constraint.clone();
+
+        if let Some(style) = node.and_then(|node| self.engine.fragments.text_styles.get(&node)) {
+            constraint.font_size = f64::from(style.font_size);
+        }
+
+        crate::taffy::conv::length(value, &constraint)
+    }
+
     /// Lay out a child's contents without exposing its descendants for mutation.
     pub fn measure_child(
         &mut self,
@@ -85,8 +111,14 @@ impl ContainerContext<'_, '_> {
     ) -> taffy::LayoutOutput {
         input.vertical_margins_are_collapsible = taffy::Line::FALSE;
 
-        self.engine
-            .compute_child_layout(to_taffy_key(self.children[index]), input)
+        let key = to_taffy_key(self.children[index]);
+        let mut output = self.engine.compute_child_layout(key, input);
+
+        // Descendant IDs belong to Comet's tree, not the custom algorithm's
+        // local adapter. Resolve their positioning before returning the child.
+        taffy::compute_oof_layout(self.engine, key, &mut output);
+
+        output
     }
 
     /// Set the direct child's box, including padding, border and margin metrics.

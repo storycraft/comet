@@ -49,6 +49,7 @@ impl FragmentBuilder {
 
         let nodes = snapshot.prepare(layout, root, fragments);
         let mut engine = TaffyLayout {
+            constraint: constraint.clone(),
             ui,
             tree: layout,
             fragments,

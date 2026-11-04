@@ -25,6 +25,7 @@ use crate::{
 
 /// Adapter over layout items. Inline formatting contexts are measured by Parley.
 pub struct TaffyLayout<'a> {
+    pub(crate) constraint: crate::style::LayoutConstraint,
     pub(crate) ui: &'a Ui,
     pub(crate) tree: &'a LayoutTree,
     pub(crate) fragments: &'a mut FragmentTree,
@@ -69,6 +70,7 @@ impl<'a> TaffyLayout<'a> {
         fragments.text_styles.extend(resolved);
 
         Some(Self {
+            constraint: constraint.clone(),
             ui,
             tree,
             fragments,
@@ -158,7 +160,7 @@ impl<'a> TaffyLayout<'a> {
         let inline = item.child_layout == ChildLayoutMode::Inline
             || matches!(item.ty, LayoutItemTy::Text(_));
 
-        taffy::compute_leaf_layout(
+        let mut output = taffy::compute_leaf_layout(
             input,
             &style,
             |_, _| 0.0,
@@ -173,7 +175,7 @@ impl<'a> TaffyLayout<'a> {
                     if let Some(crate::style::bx::DisplayInner::Container(algorithm)) =
                         inner.as_deref()
                     {
-                        use taffy::ResolveOrZero;
+                        use taffy::{MaybeMath, MaybeResolve, ResolveOrZero};
 
                         let padding = style
                             .padding()
@@ -182,6 +184,49 @@ impl<'a> TaffyLayout<'a> {
                             .border()
                             .resolve_or_zero(input.parent_size.width, |_, _| 0.0);
                         let inset = padding + border;
+                        let inset_size = inset.sum_axes();
+                        let adjustment = if style.box_sizing() == taffy::BoxSizing::ContentBox {
+                            inset_size
+                        } else {
+                            taffy::Size::ZERO
+                        };
+                        let (preferred, min, max) =
+                            if input.sizing_mode == taffy::SizingMode::InherentSize {
+                                (
+                                    style
+                                        .size()
+                                        .maybe_resolve(input.parent_size, |_, _| 0.0)
+                                        .maybe_apply_aspect_ratio(style.aspect_ratio())
+                                        .maybe_add(adjustment),
+                                    style
+                                        .min_size()
+                                        .maybe_resolve(input.parent_size, |_, _| 0.0)
+                                        .maybe_apply_aspect_ratio(style.aspect_ratio())
+                                        .maybe_add(adjustment),
+                                    style
+                                        .max_size()
+                                        .maybe_resolve(input.parent_size, |_, _| 0.0)
+                                        .maybe_add(adjustment),
+                                )
+                            } else {
+                                (taffy::Size::NONE, taffy::Size::NONE, taffy::Size::NONE)
+                            };
+
+                        // Leaf measurement deliberately omits known dimensions
+                        // during PerformLayout. Custom containers still need the
+                        // definite content size for flexing and percentages.
+                        let fixed = min.zip_map(max, |min, max| match (min, max) {
+                            (Some(min), Some(max)) if max <= min => Some(min),
+                            _ => None,
+                        });
+                        let content_known = input
+                            .known_dimensions
+                            .or(preferred)
+                            .or(fixed)
+                            .maybe_clamp(min, max)
+                            .zip_map(inset_size, |size, inset| {
+                                size.map(|size| (size - inset).max(0.0))
+                            });
                         let children = self.tree.items.children(key).collect();
                         let mut context = crate::container::ContainerContext {
                             engine: self,
@@ -197,14 +242,7 @@ impl<'a> TaffyLayout<'a> {
                             .layout(
                                 &mut context,
                                 taffy::LayoutInput {
-                                    known_dimensions: taffy::Size {
-                                        width: known.width.map(|width| {
-                                            (width - inset.left - inset.right).max(0.0)
-                                        }),
-                                        height: known.height.map(|height| {
-                                            (height - inset.top - inset.bottom).max(0.0)
-                                        }),
-                                    },
+                                    known_dimensions: content_known,
                                     available_space: available,
                                     vertical_margins_are_collapsible: taffy::Line::FALSE,
                                     ..input
@@ -234,7 +272,32 @@ impl<'a> TaffyLayout<'a> {
                     height: layout.height(),
                 }
             },
-        )
+        );
+
+        if let Some(text) = self.fragments.inline_layouts.get(&key) {
+            use taffy::ResolveOrZero;
+
+            let padding = style
+                .padding()
+                .resolve_or_zero(input.parent_size.width, |_, _| 0.0);
+            let border = style
+                .border()
+                .resolve_or_zero(input.parent_size.width, |_, _| 0.0);
+            let top = padding.top + border.top;
+
+            output.baselines = taffy::Baselines {
+                first: text
+                    .lines()
+                    .next()
+                    .map(|line| top + line.metrics().baseline),
+                last: text
+                    .lines()
+                    .last()
+                    .map(|line| top + line.metrics().baseline),
+            };
+        }
+
+        output
     }
 
     fn shape(&mut self, key: LayoutItemKey, available: taffy::Size<taffy::AvailableSpace>) {
