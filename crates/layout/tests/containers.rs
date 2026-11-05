@@ -1,3 +1,5 @@
+mod common;
+
 use std::sync::{
     Arc,
     atomic::{AtomicU32, Ordering},
@@ -82,25 +84,9 @@ fn container() -> DisplayInner {
     DisplayInner::Container(Box::new(Row(Arc::new(AtomicU32::new(80)))))
 }
 
-fn snapshot(tree: &LayoutTree, root: LayoutItemKey) -> Vec<(usize, Ty, Mode)> {
-    let mut pending = vec![(root, 0)];
-    let mut result = Vec::new();
-
-    while let Some((key, depth)) = pending.pop() {
-        result.push((depth, tree.items[key].ty, tree.items[key].child_layout));
-        pending.extend(tree.items.children(key).rev().map(|key| (key, depth + 1)));
-    }
-
-    result
-}
-
 fn assert_fresh(ui: &Ui, source: NodeKey, tree: &LayoutTree, key: LayoutItemKey) {
-    let mut fresh = LayoutTree::new();
-    let root = LayoutTreeBuilder::new()
-        .build(ui, source, &mut fresh, None)
-        .unwrap();
+    common::assert_fresh(ui, source, tree, key);
 
-    assert_eq!(snapshot(tree, key), snapshot(&fresh, root));
     assert_eq!(tree.items.len(), tree.items.descendants(key).count());
 }
 

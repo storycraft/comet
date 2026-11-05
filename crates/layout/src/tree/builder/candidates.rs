@@ -34,8 +34,8 @@ impl Candidates {
         let index = if let Some(index) = frame.index {
             index
         } else {
-            let index = self.next_index;
-            self.next_index += 1;
+            let index = self.allocate_index();
+
             frame.index = Some(index);
 
             for key in tree.items.cursor(next) {
@@ -69,8 +69,8 @@ impl Candidates {
         let index = if let Some(index) = frame.adoption {
             index
         } else {
-            let index = self.next_index;
-            self.next_index += 1;
+            let index = self.allocate_index();
+
             frame.adoption = Some(index);
 
             for key in tree.items.cursor(next) {
@@ -101,6 +101,14 @@ impl Candidates {
         }
 
         None
+    }
+
+    fn allocate_index(&mut self) -> usize {
+        let index = self.next_index;
+
+        self.next_index += 1;
+
+        index
     }
 
     pub fn push(&mut self, index: usize, ty: LayoutItemTy, key: LayoutItemKey, front: bool) {

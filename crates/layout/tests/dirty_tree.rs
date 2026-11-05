@@ -1,3 +1,7 @@
+mod common;
+
+use common::assert_fresh;
+
 use comet_layout::{
     style::bx::{DisplayInner, DisplayOuter},
     tree::{
@@ -5,45 +9,12 @@ use comet_layout::{
         builder::LayoutTreeBuilder,
     },
 };
-use comet_tree::{
-    node::{Node, NodeKey},
-    ui::Ui,
-};
+use comet_tree::{node::Node, ui::Ui};
 
 fn assert_clean(tree: &LayoutTree, root: LayoutItemKey) {
     for key in tree.items.descendants(root) {
         assert!(tree.items[key].flags.is_empty(), "dirty item {key:?}");
     }
-}
-
-fn assert_fresh(ui: &Ui, source: NodeKey, tree: &LayoutTree, root: LayoutItemKey) {
-    let mut fresh = LayoutTree::new();
-    let fresh_root = LayoutTreeBuilder::new()
-        .build(ui, source, &mut fresh, None)
-        .unwrap();
-    let snapshot = |tree: &LayoutTree, root| {
-        let keys: Vec<_> = tree.items.descendants(root).collect();
-        let position = |key: Option<LayoutItemKey>| {
-            key.map(|key| keys.iter().position(|&item| item == key).unwrap())
-        };
-
-        keys.iter()
-            .map(|&key| {
-                let item = tree.items[key];
-
-                (
-                    item.ty,
-                    item.child_layout,
-                    item.flags,
-                    position(tree.items.parent(key)),
-                    position(item.link.prev),
-                    position(item.link.next),
-                )
-            })
-            .collect::<Vec<_>>()
-    };
-
-    assert_eq!(snapshot(tree, root), snapshot(&fresh, fresh_root));
 }
 
 #[test]
