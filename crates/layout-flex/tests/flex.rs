@@ -336,6 +336,7 @@ fn nested_flex_and_incremental_style_changes_match_fresh_layout() {
                 (flex::Gap(Size::new(StyleUnit::Px(10.0), StyleUnit::ZERO)),),
             );
             ui.set_props(b, (flex::FlexGrow(2.0),));
+            fragments.invalidate(key);
         } else if step == 2 {
             ui.prepend(nested, b);
             layout_tree.mark_dirty(key);

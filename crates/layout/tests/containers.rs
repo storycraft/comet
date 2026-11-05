@@ -232,7 +232,7 @@ fn container_flow_transitions_reorders_and_partial_edits_match_fresh_builds() {
 }
 
 #[test]
-fn custom_layout_positions_children_and_recomputes_mutable_algorithm_state() {
+fn custom_layout_reuses_cache_until_invalidated_or_constraints_change() {
     let width = Arc::new(AtomicU32::new(80));
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
@@ -260,10 +260,19 @@ fn custom_layout_positions_children_and_recomputes_mutable_algorithm_state() {
     let mut fragments = FragmentTree::new();
     let mut previous = None;
     let mut builder = FragmentBuilder::new();
-    let cx = LayoutConstraint::new_root(Size::new(400.0, 600.0), 16.0);
+    let mut cx = LayoutConstraint::new_root(Size::new(400.0, 600.0), 16.0);
 
-    for child_width in [80, 40, 100] {
-        width.store(child_width, Ordering::Relaxed);
+    for (state_width, child_width, invalidate, viewport_width) in [
+        (80, 80, false, 400.0),
+        (40, 80, false, 400.0),
+        (40, 40, true, 400.0),
+        (100, 100, false, 500.0),
+    ] {
+        width.store(state_width, Ordering::Relaxed);
+        cx.available_size.width = viewport_width;
+        if invalidate {
+            fragments.invalidate(key);
+        }
 
         let fragment_root = builder
             .build(&cx, &ui, &tree, key, &mut fragments, previous)
@@ -580,6 +589,7 @@ fn custom_props_resolve_wrapped_sources_and_invalidate_cached_layout() {
     ] {
         ui.set_props(root, (Gap(gap),));
         ui.set_props(span, (ChildWidth(widths[1]),));
+        fragments.invalidate(key);
 
         let result = fragment_builder
             .build(&cx, &ui, &tree, key, &mut fragments, previous)

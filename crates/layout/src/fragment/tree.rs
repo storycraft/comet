@@ -62,7 +62,8 @@ impl FragmentTree {
         self.layout_cache.clear();
     }
 
-    /// Invalidate a root after changing external font registrations or font data.
+    /// Invalidate a root after changing external font registrations, font data,
+    /// or custom layout state and properties not captured by the layout snapshot.
     pub fn invalidate(&mut self, root: LayoutItemKey) {
         self.snapshots.remove(&root);
     }
