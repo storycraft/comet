@@ -5,7 +5,7 @@
 //!
 //! ```
 //! use comet_layout::style::{bx::DisplayInner, geometry::{Size, StyleUnit}};
-//! use comet_layout_flex::{Flex, styles::{FlexGrow, Gap}};
+//! use comet_layout_flex::prelude::*;
 //! use comet_tree::{node::Node, ui::Ui};
 //!
 //! let mut ui = Ui::new();
@@ -19,6 +19,7 @@
 
 mod adapter;
 
+pub mod prelude;
 pub mod styles;
 
 use comet_layout::container::{ContainerContext, ContainerLayout};

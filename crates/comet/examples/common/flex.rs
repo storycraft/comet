@@ -1,10 +1,12 @@
 use anyrender::Paint;
-use comet_layout::style::{
-    bx::*,
-    geometry::{AutoValue, Rect, Size as LayoutSize, StyleUnit},
-    parley,
+use comet_layout::{
+    prelude::*,
+    style::{
+        geometry::{AutoValue, Rect, Size as LayoutSize, StyleUnit},
+        parley,
+    },
 };
-use comet_layout_flex::{Flex, styles as flex};
+use comet_layout_flex::{prelude::*, styles as flex};
 use comet_renderer::style::{BorderRadius, Fill, TextColor};
 use comet_tree::{
     node::{Node, NodeKey},
@@ -30,8 +32,8 @@ pub(super) fn showcase(ui: &mut Ui, root: NodeKey) {
         ui.set_props(
             card,
             (
-                flex::FlexBasis(AutoValue::Value(StyleUnit::ZERO)),
-                flex::FlexGrow(grow),
+                FlexBasis(AutoValue::Value(StyleUnit::ZERO)),
+                FlexGrow(grow),
                 MinSize(LayoutSize::new(
                     AutoValue::Value(StyleUnit::ZERO),
                     AutoValue::Auto,
@@ -46,8 +48,8 @@ pub(super) fn showcase(ui: &mut Ui, root: NodeKey) {
     ui.set_props(
         row,
         (
-            flex::AlignItems(taffy::AlignItems::END),
-            flex::JustifyContent(taffy::JustifyContent::SPACE_BETWEEN),
+            AlignItems(flex::taffy::AlignItems::END),
+            JustifyContent(flex::taffy::JustifyContent::SPACE_BETWEEN),
         ),
     );
 
@@ -60,7 +62,7 @@ pub(super) fn showcase(ui: &mut Ui, root: NodeKey) {
                     AutoValue::Auto,
                     AutoValue::Value(StyleUnit::Px(height)),
                 )),
-                flex::FlexGrow(1.0),
+                FlexGrow(1.0),
             ),
         );
     }
@@ -68,7 +70,7 @@ pub(super) fn showcase(ui: &mut Ui, root: NodeKey) {
     label(ui, panel, "WRAP / resize the window to reflow these items");
 
     let row = flex_row(ui, panel);
-    ui.set_props(row, (flex::FlexWrap(taffy::FlexWrap::Wrap),));
+    ui.set_props(row, (FlexWrap(flex::taffy::FlexWrap::Wrap),));
 
     for caption in [
         "Layout",
@@ -84,8 +86,8 @@ pub(super) fn showcase(ui: &mut Ui, root: NodeKey) {
         ui.set_props(
             chip,
             (
-                flex::FlexBasis(AutoValue::Value(StyleUnit::Px(112.0))),
-                flex::FlexShrink(0.0),
+                FlexBasis(AutoValue::Value(StyleUnit::Px(112.0))),
+                FlexShrink(0.0),
             ),
         );
     }
@@ -96,7 +98,7 @@ fn flex_row(ui: &mut Ui, parent: NodeKey) -> NodeKey {
         Node::Box,
         (
             DisplayInner::Container(Box::new(Flex)),
-            flex::Gap(LayoutSize::new(StyleUnit::Px(8.0), StyleUnit::Px(8.0))),
+            Gap(LayoutSize::new(StyleUnit::Px(8.0), StyleUnit::Px(8.0))),
         ),
     );
     ui.append(parent, row);

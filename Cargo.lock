@@ -391,7 +391,6 @@ dependencies = [
  "image",
  "kurbo",
  "peniko",
- "taffy",
  "winit",
 ]
 
@@ -2549,7 +2548,6 @@ checksum = "31f7bd2d97198df05186f93a3a3c306845f40e8b3c22bf9279cdd7e5cf5fea7d"
 dependencies = [
  "serde",
  "slotmap",
- "smallvec",
 ]
 
 [[package]]

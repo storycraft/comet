@@ -20,4 +20,3 @@ winit = { version = "0.30.12", features = ["rwh_06"] }
 peniko = "0.6.0"
 kurbo = "0.13.1"
 image = "0.25.8"
-taffy = "0.15.1"
