@@ -23,6 +23,9 @@ impl FragmentBuilder {
     }
 
     /// Call after updating `LayoutTree`. `root` identifies an independent layout root.
+    /// Build new fragments with `None`, or update the supplied root with `Some(key)`.
+    /// The target must belong to this layout root; descendant targets are not
+    /// resolved to an owning root. A missing layout root deletes the target.
     pub fn build(
         &mut self,
         constraint: &LayoutConstraint,
@@ -30,15 +33,18 @@ impl FragmentBuilder {
         layout: &LayoutTree,
         root: LayoutItemKey,
         fragments: &mut FragmentTree,
+        target: Option<FragmentKey>,
     ) -> Option<FragmentKey> {
+        let old_root = target.filter(|&key| fragments.items.get(key).is_some());
         if layout.items.get(root).is_none() {
-            fragments.remove_root(root);
+            if let Some(key) = old_root {
+                fragments.remove_root(key);
+            }
 
             return None;
         }
 
         let snapshot = Snapshot::capture(constraint, ui, layout, root, fragments);
-        let old_root = fragments.root_for_item(root);
 
         if old_root.is_some()
             && !snapshot.has_containers()
@@ -73,7 +79,6 @@ impl FragmentBuilder {
         let result = self
             .reconciliation
             .apply(fragments, old_root, &mut self.desired, &snapshot);
-        fragments.roots.insert(root, result);
         fragments.snapshots.insert(root, snapshot);
         fragments
             .text_styles

@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut fragments = FragmentTree::new();
     let constraint = LayoutConstraint::new_root(Size::new(WIDTH as f64, HEIGHT as f64), 16.0);
     let root = FragmentBuilder::new()
-        .build(&constraint, &ui, &layout, root, &mut fragments)
+        .build(&constraint, &ui, &layout, root, &mut fragments, None)
         .ok_or("could not build fragment tree")?;
 
     let mut pending = vec![(root, 0)];

@@ -17,6 +17,53 @@ fn constraint(width: f64) -> LayoutConstraint {
 }
 
 #[test]
+fn fragment_roots_are_selected_explicitly() {
+    let mut ui = Ui::new();
+    let node = ui.create(Node::Box, ());
+    let mut layout = LayoutTree::new();
+    let root = LayoutTreeBuilder::new()
+        .build(&ui, node, &mut layout, None)
+        .unwrap();
+    let mut tree = FragmentTree::new();
+    let mut builder = FragmentBuilder::new();
+    let cx = constraint(200.0);
+    let first = builder
+        .build(&cx, &ui, &layout, root, &mut tree, None)
+        .unwrap();
+    let second = builder
+        .build(&cx, &ui, &layout, root, &mut tree, None)
+        .unwrap();
+    assert_ne!(first, second);
+    assert_eq!(tree.items.len(), 2);
+
+    // A different builder can update the caller's chosen root.
+    assert_eq!(
+        FragmentBuilder::new().build(&cx, &ui, &layout, root, &mut tree, Some(first)),
+        Some(first)
+    );
+
+    tree.items.delete_node(first);
+    let replacement = builder
+        .build(&cx, &ui, &layout, root, &mut tree, Some(first))
+        .unwrap();
+    assert_ne!(replacement, first);
+    assert_ne!(replacement, second);
+
+    layout.delete_item(root);
+    assert_eq!(
+        builder.build(&cx, &ui, &layout, root, &mut tree, None),
+        None
+    );
+    assert_eq!(tree.items.len(), 2);
+    assert_eq!(
+        builder.build(&cx, &ui, &layout, root, &mut tree, Some(replacement)),
+        None
+    );
+    assert!(tree.items.get(replacement).is_none());
+    assert!(tree.items.get(second).is_some());
+}
+
+#[test]
 fn fragment_buffers_handle_reordering_nested_contexts_and_independent_roots() {
     let mut ui = Ui::new();
     let root_node = ui.create(Node::Box, ());
@@ -55,8 +102,9 @@ fn fragment_buffers_handle_reordering_nested_contexts_and_independent_roots() {
         .unwrap();
     let mut builder = FragmentBuilder::new();
     let mut tree = FragmentTree::new();
+    let mut previous = None;
     let other_root = builder
-        .build(&constraint(200.0), &ui, &layout, other, &mut tree)
+        .build(&constraint(200.0), &ui, &layout, other, &mut tree, None)
         .unwrap();
     let other_keys = keys(&tree, other_root);
 
@@ -85,11 +133,14 @@ fn fragment_buffers_handle_reordering_nested_contexts_and_independent_roots() {
         layout_builder.build(&ui, root_node, &mut layout, Some(root));
 
         let cx = constraint(if step % 2 == 0 { 120.0 } else { 200.0 });
-        let result = builder.build(&cx, &ui, &layout, root, &mut tree).unwrap();
+        let result = builder
+            .build(&cx, &ui, &layout, root, &mut tree, previous)
+            .unwrap();
+        previous = Some(result);
         let actual = keys(&tree, result);
         let mut fresh = FragmentTree::new();
         let fresh_root = FragmentBuilder::new()
-            .build(&cx, &ui, &layout, root, &mut fresh)
+            .build(&cx, &ui, &layout, root, &mut fresh, None)
             .unwrap();
         let expected = keys(&fresh, fresh_root);
 
@@ -103,12 +154,19 @@ fn fragment_buffers_handle_reordering_nested_contexts_and_independent_roots() {
         }
 
         assert_eq!(
-            builder.build(&cx, &ui, &layout, root, &mut tree),
+            builder.build(&cx, &ui, &layout, root, &mut tree, previous),
             Some(result)
         );
         assert_eq!(keys(&tree, result), actual);
         assert_eq!(
-            builder.build(&constraint(200.0), &ui, &layout, other, &mut tree),
+            builder.build(
+                &constraint(200.0),
+                &ui,
+                &layout,
+                other,
+                &mut tree,
+                Some(other_root)
+            ),
             Some(other_root)
         );
         assert_eq!(keys(&tree, other_root), other_keys);
@@ -145,13 +203,15 @@ fn inline_block_uses_its_font_size_and_last_line_baseline() {
         .unwrap();
     let mut builder = FragmentBuilder::new();
     let mut tree = FragmentTree::new();
+    let mut previous = None;
 
     for font_size in [20.0, 30.0] {
         ui.set_props(root_node, (bx::FontSize(StyleUnit::Px(font_size)),));
 
         let result = builder
-            .build(&constraint(500.0), &ui, &layout, root, &mut tree)
+            .build(&constraint(500.0), &ui, &layout, root, &mut tree, previous)
             .unwrap();
+        previous = Some(result);
         let atomic_key = keys(&tree, result)
             .into_iter()
             .find(|&key| tree.items[key].node == Some(atomic))
@@ -231,6 +291,7 @@ fn inline_block_baseline_traverses_blocks_and_falls_back_for_hidden_or_empty_con
         .unwrap();
     let mut builder = FragmentBuilder::new();
     let mut tree = FragmentTree::new();
+    let mut previous = None;
 
     for mode in 0..3 {
         if mode == 1 {
@@ -256,8 +317,9 @@ fn inline_block_baseline_traverses_blocks_and_falls_back_for_hidden_or_empty_con
         }
 
         let result = builder
-            .build(&constraint(500.0), &ui, &layout, root, &mut tree)
+            .build(&constraint(500.0), &ui, &layout, root, &mut tree, previous)
             .unwrap();
+        previous = Some(result);
         let atomic_key = keys(&tree, result)
             .into_iter()
             .find(|&key| tree.items[key].node == Some(atomic))
@@ -317,6 +379,7 @@ fn inline_block_margins_preserve_text_and_fallback_baselines() {
         .unwrap();
     let mut builder = FragmentBuilder::new();
     let mut tree = FragmentTree::new();
+    let mut previous = None;
 
     for mode in 0..3 {
         if mode == 1 {
@@ -342,8 +405,9 @@ fn inline_block_margins_preserve_text_and_fallback_baselines() {
         }
 
         let result = builder
-            .build(&constraint(500.0), &ui, &layout, root, &mut tree)
+            .build(&constraint(500.0), &ui, &layout, root, &mut tree, previous)
             .unwrap();
+        previous = Some(result);
         let all = keys(&tree, result);
         let find = |node| {
             all.iter()
@@ -376,7 +440,7 @@ fn inline_block_margins_preserve_text_and_fallback_baselines() {
 
         let mut fresh = FragmentTree::new();
         let fresh_root = FragmentBuilder::new()
-            .build(&constraint(500.0), &ui, &layout, root, &mut fresh)
+            .build(&constraint(500.0), &ui, &layout, root, &mut fresh, None)
             .unwrap();
         let expected = keys(&fresh, fresh_root);
 
@@ -442,7 +506,7 @@ fn percentages_use_actual_parent_and_box_properties_do_not_inherit() {
         .unwrap();
     let mut tree = FragmentTree::new();
     let root = FragmentBuilder::new()
-        .build(&constraint(500.0), &ui, &layout, root, &mut tree)
+        .build(&constraint(500.0), &ui, &layout, root, &mut tree, None)
         .unwrap();
     let child = tree.items.children(root).next().unwrap();
     assert_eq!(tree.items[root].layout.size.width, 200.0);
@@ -475,7 +539,7 @@ fn text_inherits_wraps_links_and_reconciles() {
     let mut tree = FragmentTree::new();
     let mut builder = FragmentBuilder::new();
     let result = builder
-        .build(&constraint(80.0), &ui, &layout, root, &mut tree)
+        .build(&constraint(80.0), &ui, &layout, root, &mut tree, None)
         .unwrap();
     assert_eq!(tree.text_styles[&text].font_size, 12.0);
     let original = keys(&tree, result);
@@ -496,25 +560,53 @@ fn text_inherits_wraps_links_and_reconciles() {
     }
 
     assert_eq!(
-        builder.build(&constraint(80.0), &ui, &layout, root, &mut tree),
+        builder.build(
+            &constraint(80.0),
+            &ui,
+            &layout,
+            root,
+            &mut tree,
+            Some(result)
+        ),
         Some(result)
     );
     assert_eq!(keys(&tree, result), original);
     ui.set_props(root_node, (bx::FontSize(StyleUnit::Px(32.0)),));
     assert_eq!(
-        builder.build(&constraint(80.0), &ui, &layout, root, &mut tree),
+        builder.build(
+            &constraint(80.0),
+            &ui,
+            &layout,
+            root,
+            &mut tree,
+            Some(result)
+        ),
         Some(result)
     );
     assert_eq!(tree.text_styles[&text].font_size, 16.0);
     ui.set_props(text, (Text("short".into()),));
-    builder.build(&constraint(500.0), &ui, &layout, root, &mut tree);
+    builder.build(
+        &constraint(500.0),
+        &ui,
+        &layout,
+        root,
+        &mut tree,
+        Some(result),
+    );
     assert!(tree.items.len() < original.len());
 
     ui.delete(span);
     layout.mark_dirty(root);
 
     layout_builder.build(&ui, root_node, &mut layout, Some(root));
-    builder.build(&constraint(500.0), &ui, &layout, root, &mut tree);
+    builder.build(
+        &constraint(500.0),
+        &ui,
+        &layout,
+        root,
+        &mut tree,
+        Some(result),
+    );
     assert_eq!(tree.items.len(), 1);
     assert!(tree.inline_layouts.is_empty());
 }
@@ -551,7 +643,7 @@ fn atomic_inline_is_positioned_by_parley_and_keeps_its_subtree() {
         .unwrap();
     let mut tree = FragmentTree::new();
     let root = FragmentBuilder::new()
-        .build(&constraint(200.0), &ui, &layout, root, &mut tree)
+        .build(&constraint(200.0), &ui, &layout, root, &mut tree, None)
         .unwrap();
     let atomic_key = keys(&tree, root)
         .into_iter()
@@ -584,6 +676,7 @@ fn incremental_edits_match_fresh_layout_and_deleted_roots_are_pruned() {
         .unwrap();
     let mut builder = FragmentBuilder::new();
     let mut tree = FragmentTree::new();
+    let mut previous = None;
     for step in 0..6 {
         if step % 2 == 1 {
             ui.set_props(
@@ -592,10 +685,13 @@ fn incremental_edits_match_fresh_layout_and_deleted_roots_are_pruned() {
             );
         }
         let cx = constraint(if step < 3 { 120.0 } else { 240.0 });
-        let result = builder.build(&cx, &ui, &layout, root, &mut tree).unwrap();
+        let result = builder
+            .build(&cx, &ui, &layout, root, &mut tree, previous)
+            .unwrap();
+        previous = Some(result);
         let mut fresh = FragmentTree::new();
         let fresh_root = FragmentBuilder::new()
-            .build(&cx, &ui, &layout, root, &mut fresh)
+            .build(&cx, &ui, &layout, root, &mut fresh, None)
             .unwrap();
         let actual = keys(&tree, result);
         let expected = keys(&fresh, fresh_root);
@@ -609,7 +705,7 @@ fn incremental_edits_match_fresh_layout_and_deleted_roots_are_pruned() {
 
     layout.delete_item(root);
     assert_eq!(
-        builder.build(&constraint(120.0), &ui, &layout, root, &mut tree),
+        builder.build(&constraint(120.0), &ui, &layout, root, &mut tree, previous),
         None
     );
     assert!(tree.items.is_empty());
@@ -651,7 +747,7 @@ fn absolute_child_uses_taffy_containing_block() {
         .unwrap();
     let mut tree = FragmentTree::new();
     let root = FragmentBuilder::new()
-        .build(&constraint(500.0), &ui, &layout, root, &mut tree)
+        .build(&constraint(500.0), &ui, &layout, root, &mut tree, None)
         .unwrap();
     let child = tree.items.children(root).next().unwrap();
     assert_eq!(tree.items[child].layout.location, Point::new(15.0, 20.0));
@@ -673,7 +769,7 @@ fn empty_inline_continuations_keep_fragment_links() {
         .unwrap();
     let mut tree = FragmentTree::new();
     let root = FragmentBuilder::new()
-        .build(&constraint(200.0), &ui, &layout, root, &mut tree)
+        .build(&constraint(200.0), &ui, &layout, root, &mut tree, None)
         .unwrap();
     let spans: Vec<_> = keys(&tree, root)
         .into_iter()
@@ -730,7 +826,7 @@ fn one_percentage_unit_uses_each_taffy_axis() {
         .unwrap();
     let mut tree = FragmentTree::new();
     let root = FragmentBuilder::new()
-        .build(&constraint(500.0), &ui, &layout, root, &mut tree)
+        .build(&constraint(500.0), &ui, &layout, root, &mut tree, None)
         .unwrap();
     let child = tree.items.children(root).next().unwrap();
 

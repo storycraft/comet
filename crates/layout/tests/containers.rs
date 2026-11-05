@@ -258,13 +258,17 @@ fn custom_layout_positions_children_and_recomputes_mutable_algorithm_state() {
         .unwrap();
     let custom_key = tree.item_for_node(custom).unwrap();
     let mut fragments = FragmentTree::new();
+    let mut previous = None;
     let mut builder = FragmentBuilder::new();
     let cx = LayoutConstraint::new_root(Size::new(400.0, 600.0), 16.0);
 
     for child_width in [80, 40, 100] {
         width.store(child_width, Ordering::Relaxed);
 
-        let fragment_root = builder.build(&cx, &ui, &tree, key, &mut fragments).unwrap();
+        let fragment_root = builder
+            .build(&cx, &ui, &tree, key, &mut fragments, previous)
+            .unwrap();
+        previous = Some(fragment_root);
         let custom_fragment = fragments
             .items
             .descendants(fragment_root)
@@ -315,7 +319,7 @@ fn nested_inline_containers_measure_and_emit_their_own_descendants() {
     let mut fragments = FragmentTree::new();
     let cx = LayoutConstraint::new_root(Size::new(400.0, 600.0), 16.0);
     let fragment_root = FragmentBuilder::new()
-        .build(&cx, &ui, &tree, key, &mut fragments)
+        .build(&cx, &ui, &tree, key, &mut fragments, None)
         .unwrap();
 
     for node in [outer, inner] {
@@ -566,6 +570,7 @@ fn custom_props_resolve_wrapped_sources_and_invalidate_cached_layout() {
     let mut builder = LayoutTreeBuilder::new();
     let key = builder.build(&ui, root, &mut tree, None).unwrap();
     let mut fragments = FragmentTree::new();
+    let mut previous = None;
     let mut fragment_builder = FragmentBuilder::new();
     let cx = LayoutConstraint::new_root(Size::new(500.0, 600.0), 16.0);
 
@@ -577,8 +582,9 @@ fn custom_props_resolve_wrapped_sources_and_invalidate_cached_layout() {
         ui.set_props(span, (ChildWidth(widths[1]),));
 
         let result = fragment_builder
-            .build(&cx, &ui, &tree, key, &mut fragments)
+            .build(&cx, &ui, &tree, key, &mut fragments, previous)
             .unwrap();
+        previous = Some(result);
         let children: Vec<_> = fragments.items.children(result).collect();
         let mut x = 0.0_f32;
 

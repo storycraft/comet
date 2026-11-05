@@ -27,7 +27,7 @@ fn layout(ui: &Ui, root: NodeKey) -> (FragmentTree, FragmentKey) {
     let mut fragments = FragmentTree::new();
     let cx = LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0);
     let root = FragmentBuilder::new()
-        .build(&cx, ui, &tree, key, &mut fragments)
+        .build(&cx, ui, &tree, key, &mut fragments, None)
         .unwrap();
 
     (fragments, root)
@@ -325,6 +325,7 @@ fn nested_flex_and_incremental_style_changes_match_fresh_layout() {
         .build(&ui, root, &mut layout_tree, None)
         .unwrap();
     let mut fragments = FragmentTree::new();
+    let mut previous = None;
     let mut builder = FragmentBuilder::new();
     let cx = LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0);
 
@@ -345,8 +346,9 @@ fn nested_flex_and_incremental_style_changes_match_fresh_layout() {
         }
 
         let current = builder
-            .build(&cx, &ui, &layout_tree, key, &mut fragments)
+            .build(&cx, &ui, &layout_tree, key, &mut fragments, previous)
             .unwrap();
+        previous = Some(current);
         let (fresh, fresh_root) = layout(&ui, root);
 
         for node in [root, nested, a, b, sibling] {

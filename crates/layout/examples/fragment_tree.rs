@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(&ui, root, &mut layout, None)
         .ok_or("could not build sample UI")?;
     let fragment_root = fragment_builder
-        .build(&constraint, &ui, &layout, layout_root, &mut fragments)
+        .build(&constraint, &ui, &layout, layout_root, &mut fragments, None)
         .ok_or("could not build fragments")?;
 
     println!("Initial fragment tree at 320px:");
@@ -45,7 +45,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(&ui, root, &mut layout, Some(layout_root))
         .ok_or("could not update sample UI")?;
     let updated = fragment_builder
-        .build(&constraint, &ui, &layout, layout_root, &mut fragments)
+        .build(
+            &constraint,
+            &ui,
+            &layout,
+            layout_root,
+            &mut fragments,
+            Some(fragment_root),
+        )
         .ok_or("could not update fragments")?;
     assert_eq!(updated, fragment_root);
 
@@ -54,7 +61,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     constraint = LayoutConstraint::new_root(Size::new(180.0, 600.0), 16.0);
     let resized = fragment_builder
-        .build(&constraint, &ui, &layout, layout_root, &mut fragments)
+        .build(
+            &constraint,
+            &ui,
+            &layout,
+            layout_root,
+            &mut fragments,
+            Some(updated),
+        )
         .ok_or("could not reflow fragments")?;
 
     println!("\nAfter narrowing the viewport to 180px:");
@@ -67,7 +81,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(&ui, root, &mut layout, Some(layout_root))
         .ok_or("could not merge inline span")?;
     let merged = fragment_builder
-        .build(&constraint, &ui, &layout, layout_root, &mut fragments)
+        .build(
+            &constraint,
+            &ui,
+            &layout,
+            layout_root,
+            &mut fragments,
+            Some(resized),
+        )
         .ok_or("could not rebuild merged fragments")?;
 
     println!("\nAfter changing the interruption to inline-block:");

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use anyrender::WindowRenderer;
 use anyrender_vello_cpu::VelloCpuWindowRenderer;
 use comet_layout::{
-    fragment::{builder::FragmentBuilder, tree::FragmentTree},
+    fragment::{FragmentKey, builder::FragmentBuilder, tree::FragmentTree},
     style::{LayoutConstraint, geometry::Size},
     tree::{LayoutItemKey, LayoutTree, builder::LayoutTreeBuilder},
 };
@@ -33,6 +33,7 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
         layout_tree,
         layout_root,
         fragments: FragmentTree::new(),
+        fragment_root: None,
         win: None,
         vello: VelloCpuWindowRenderer::new(),
         ui_renderer: CometRenderer::new(),
@@ -47,6 +48,7 @@ struct App {
     layout_tree: LayoutTree,
     layout_root: LayoutItemKey,
     fragments: FragmentTree,
+    fragment_root: Option<FragmentKey>,
     win: Option<Arc<Window>>,
     vello: VelloCpuWindowRenderer,
     ui_renderer: CometRenderer,
@@ -128,9 +130,12 @@ impl ApplicationHandler for App {
                     &self.layout_tree,
                     root,
                     &mut self.fragments,
+                    self.fragment_root,
                 ) else {
                     return;
                 };
+
+                self.fragment_root = Some(root);
 
                 self.vello.render(|painter| {
                     self.ui_renderer
