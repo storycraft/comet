@@ -236,7 +236,7 @@ impl Ui {
         old
     }
 
-    /// Delete a whole subtree without using the call stack for traversal.
+    /// Delete a whole subtree.
     pub fn delete(&mut self, id: NodeKey) {
         if self.ui_node(id.0).is_none() {
             return;
@@ -244,16 +244,30 @@ impl Ui {
 
         self.remove_parent(id);
 
-        let mut pending = vec![id.0];
-        while let Some(id) = pending.pop() {
-            let mut child = self.ui_node(id).and_then(|n| n.first_child);
-
-            while let Some(next) = child {
-                pending.push(next);
-                child = self.ui_node(next).and_then(|n| n.next_sibling);
+        let mut current = id.0;
+        loop {
+            while let Some(child) = self.ui_node(current).and_then(|n| n.first_child) {
+                current = child;
             }
 
-            let _ = self.world.despawn(id);
+            // Delete children before their parents, using the surviving links
+            // to find the next branch. Ascending must not revisit deleted children.
+            loop {
+                let Some(node) = self.ui_node(current).map(|n| *n) else {
+                    return;
+                };
+                let _ = self.world.despawn(current);
+
+                if let Some(next) = node.next_sibling {
+                    current = next;
+                    break;
+                }
+
+                let Some(parent) = node.parent else {
+                    return;
+                };
+                current = parent;
+            }
         }
     }
 
