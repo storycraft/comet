@@ -242,6 +242,12 @@ impl<'a> TaffyLayout<'a> {
         let layout = self.fragments.inline_layouts.get_mut(&key).unwrap();
         layout.break_all_lines(width);
 
+        if available.width == taffy::AvailableSpace::MinContent {
+            // Zero width determines the intrinsic minimum. Measure height at
+            // that width so short words can share a line in the final layout.
+            layout.break_all_lines(Some(layout.width()));
+        }
+
         taffy::Size {
             width: layout.width(),
             height: layout.height(),
