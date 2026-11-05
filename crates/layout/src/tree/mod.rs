@@ -1,5 +1,6 @@
 pub mod builder;
 
+use bitflags::bitflags;
 use comet_tree::node::NodeKey;
 use rustc_hash::FxHashMap;
 use slotmap::new_key_type;
@@ -12,10 +13,6 @@ pub struct LayoutTree {
     /// source mappings and continuation links synchronized.
     pub items: SlotTree<LayoutItemKey, LayoutItem>,
     node_items: FxHashMap<NodeKey, LayoutItemKey>,
-
-    // Build ownership cannot be inferred from source mappings: a split inline
-    // root is anonymous, and independent builds may share the same source nodes.
-    pub(crate) build_roots: FxHashMap<LayoutItemKey, NodeKey>,
 }
 
 impl LayoutTree {
@@ -38,6 +35,41 @@ impl LayoutTree {
     /// roots more than once, the most recently built representation owns the lookup.
     pub fn item_for_node(&self, node: NodeKey) -> Option<LayoutItemKey> {
         self.node_items.get(&node).copied()
+    }
+
+    /// Invalidate this item and propagate descendant dirtiness to its ancestors.
+    /// Mark the parent for insertions, and both parents when moving a source node.
+    /// Stale keys are ignored. Use `mark_node_dirty` for split source elements.
+    pub fn mark_dirty(&mut self, key: LayoutItemKey) {
+        let Some(item) = self.items.get_mut(key) else {
+            return;
+        };
+
+        item.flags.insert(LayoutItemFlags::DIRTY);
+
+        let mut ancestor = self.items.parent(key);
+
+        while let Some(key) = ancestor {
+            let item = &mut self.items[key];
+
+            if item.flags.contains(LayoutItemFlags::CHILDREN_DIRTY) {
+                break;
+            }
+
+            item.flags.insert(LayoutItemFlags::CHILDREN_DIRTY);
+            ancestor = self.items.parent(key);
+        }
+    }
+
+    /// Invalidate all fragments in the source node's mapped representation.
+    /// Unmapped nodes are ignored; mark their parent when inserting new content.
+    pub fn mark_node_dirty(&mut self, node: NodeKey) {
+        let mut next = self.item_for_node(node);
+
+        while let Some(key) = next {
+            next = self.items.get(key).and_then(|item| item.link.next);
+            self.mark_dirty(key);
+        }
     }
 
     pub(crate) fn map_first_item(&mut self, node: NodeKey, key: LayoutItemKey) {
@@ -75,7 +107,6 @@ impl LayoutTree {
     pub fn delete_item(&mut self, key: LayoutItemKey) -> Option<LayoutItem> {
         let item = *self.items.get(key)?;
 
-        self.build_roots.remove(&key);
         self.unmap_item(key);
         self.unlink_continuation(key);
 
@@ -83,7 +114,6 @@ impl LayoutTree {
         pending.extend(self.items.children(key));
 
         while let Some(key) = pending.pop() {
-            self.build_roots.remove(&key);
             pending.extend(self.items.children(key));
             self.unmap_item(key);
             self.unlink_continuation(key);
@@ -112,7 +142,6 @@ impl LayoutTree {
     pub fn clear(&mut self) {
         self.items.clear();
         self.node_items.clear();
-        self.build_roots.clear();
     }
 }
 
@@ -121,6 +150,20 @@ pub struct LayoutItem {
     pub ty: LayoutItemTy,
     pub child_layout: ChildLayoutMode,
     pub link: LayoutItemLink,
+    /// Use the tree marking methods to keep ancestor flags synchronized.
+    pub flags: LayoutItemFlags,
+}
+
+bitflags! {
+    /// Invalidation state maintained by `LayoutTree` and consumed by the builder.
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    pub struct LayoutItemFlags: u8 {
+        /// This item's source or child list needs reconciliation.
+        const DIRTY = 1 << 0;
+
+        /// At least one descendant needs reconciliation.
+        const CHILDREN_DIRTY = 1 << 1;
+    }
 }
 
 /// Links fragments of one source element in layout order, across anonymous runs.

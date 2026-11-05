@@ -72,6 +72,8 @@ fn nested_inline_fragments_link_across_runs_in_both_directions() {
         assert_chain(&tree, &inner_parts);
 
         for _ in 0..3 {
+            tree.mark_dirty(key);
+
             assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
             assert_eq!(fragments(&tree, key, outer), outer_parts);
             assert_eq!(fragments(&tree, key, inner), inner_parts);
@@ -110,6 +112,8 @@ fn splitting_merging_and_role_changes_reset_continuations() {
     for _ in 0..3 {
         let block = ui.create(Node::Box, ());
         ui.before(text, block);
+        tree.mark_dirty(key);
+
         builder.build(&ui, root, &mut tree, Some(key)).unwrap();
         let split = fragments(&tree, key, span);
         assert_eq!(split.len(), 2);
@@ -117,6 +121,8 @@ fn splitting_merging_and_role_changes_reset_continuations() {
         assert_chain(&tree, &split);
 
         ui.delete(block);
+        tree.mark_dirty(key);
+
         builder.build(&ui, root, &mut tree, Some(key)).unwrap();
         let merged = fragments(&tree, key, span);
         assert_eq!(merged.len(), 1);
@@ -133,9 +139,13 @@ fn splitting_merging_and_role_changes_reset_continuations() {
 
     let block = ui.create(Node::Box, ());
     ui.before(text, block);
+    tree.mark_dirty(key);
+
     builder.build(&ui, root, &mut tree, Some(key)).unwrap();
     let split = fragments(&tree, key, span);
     ui.set_props(span, (DisplayInner::FlowRoot,));
+    tree.mark_dirty(key);
+
     builder.build(&ui, root, &mut tree, Some(key)).unwrap();
 
     assert!(split.iter().all(|&key| tree.items.get(key).is_none()));

@@ -80,6 +80,8 @@ fn fragment_buffers_handle_reordering_nested_contexts_and_independent_roots() {
             _ => {}
         }
 
+        layout.mark_dirty(root);
+
         layout_builder.build(&ui, root_node, &mut layout, Some(root));
 
         let cx = constraint(if step % 2 == 0 { 120.0 } else { 200.0 });
@@ -248,6 +250,8 @@ fn inline_block_baseline_traverses_blocks_and_falls_back_for_hidden_or_empty_con
                 )),),
             );
             ui.delete(block);
+            layout.mark_dirty(root);
+
             layout_builder.build(&ui, root_node, &mut layout, Some(root));
         }
 
@@ -332,6 +336,8 @@ fn inline_block_margins_preserve_text_and_fallback_baselines() {
                 )),),
             );
             ui.delete(text);
+            layout.mark_dirty(root);
+
             layout_builder.build(&ui, root_node, &mut layout, Some(root));
         }
 
@@ -505,6 +511,8 @@ fn text_inherits_wraps_links_and_reconciles() {
     assert!(tree.items.len() < original.len());
 
     ui.delete(span);
+    layout.mark_dirty(root);
+
     layout_builder.build(&ui, root_node, &mut layout, Some(root));
     builder.build(&constraint(500.0), &ui, &layout, root, &mut tree);
     assert_eq!(tree.items.len(), 1);

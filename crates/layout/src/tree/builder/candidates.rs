@@ -1,8 +1,8 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::{
-    ChildLayoutMode, Frame, LayoutItem, LayoutItemKey, LayoutItemTy, LayoutTree, NodeKey, item,
-    matches_item,
+    ChildLayoutMode, Frame, LayoutItem, LayoutItemKey, LayoutItemTy, LayoutTree, item,
+    matches_item, same_shape,
 };
 
 // Queues share one arena and retain their capacity across builds.
@@ -22,10 +22,9 @@ impl Candidates {
         tree: &LayoutTree,
         frame: &mut Frame,
         desired: LayoutItem,
-        text: Option<NodeKey>,
     ) -> Option<LayoutItemKey> {
         if let Some(key) = frame.next
-            && matches_item(tree, key, desired, text)
+            && matches_item(tree, key, desired)
         {
             return Some(key);
         }
@@ -49,7 +48,7 @@ impl Candidates {
         while let Some(key) = self.pop(index, desired.ty) {
             if !self.claimed.contains(&key)
                 && tree.items.parent(key) == Some(parent)
-                && matches_item(tree, key, desired, text)
+                && matches_item(tree, key, desired)
             {
                 return Some(key);
             }
@@ -63,7 +62,6 @@ impl Candidates {
         tree: &LayoutTree,
         frame: &mut Frame,
         desired: LayoutItem,
-        text: Option<NodeKey>,
     ) -> Option<LayoutItemKey> {
         let anonymous = item(LayoutItemTy::AnonymousBlock, ChildLayoutMode::Inline);
         let frame_key = frame.key;
@@ -76,7 +74,7 @@ impl Candidates {
             frame.adoption = Some(index);
 
             for key in tree.items.cursor(next) {
-                if tree.items[key] == anonymous {
+                if same_shape(tree, key, anonymous) {
                     for child in tree.items.children(key) {
                         self.push(index, tree.items[child].ty, child, false);
                     }
@@ -94,10 +92,10 @@ impl Candidates {
                 || parent.is_some_and(|parent| {
                     !self.claimed.contains(&parent)
                         && tree.items.parent(parent) == Some(frame_key)
-                        && tree.items.get(parent) == Some(&anonymous)
+                        && same_shape(tree, parent, anonymous)
                 });
 
-            if eligible && !self.claimed.contains(&key) && matches_item(tree, key, desired, text) {
+            if eligible && !self.claimed.contains(&key) && matches_item(tree, key, desired) {
                 return Some(key);
             }
         }

@@ -1,4 +1,4 @@
-use super::{ChildLayoutMode, Frame, LayoutItemTy, LayoutTree, NodeKey, item};
+use super::{ChildLayoutMode, Frame, LayoutItemTy, LayoutTree, NodeKey, item, same_shape};
 
 /// Tracks nested formatting contexts and the inline spans resumed after a block.
 #[derive(Default)]
@@ -19,9 +19,11 @@ impl Flows {
                 while let Some(child) = next {
                     next = tree.items.next_sibling(child);
 
-                    if tree.items[child]
-                        == item(LayoutItemTy::AnonymousBlock, ChildLayoutMode::Inline)
-                    {
+                    if same_shape(
+                        tree,
+                        child,
+                        item(LayoutItemTy::AnonymousBlock, ChildLayoutMode::Inline),
+                    ) {
                         while let Some(content) = tree.items.first_child(child) {
                             tree.items.before(child, content);
                         }
@@ -50,10 +52,6 @@ impl Flows {
 
     pub fn current_frame(&self) -> Option<usize> {
         Some(self.stack.last()?.frame)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.stack.is_empty()
     }
 
     pub fn set_inline_run(&mut self, active: bool) -> Option<()> {

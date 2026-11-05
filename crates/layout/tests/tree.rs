@@ -326,6 +326,8 @@ fn atomic_inline_child_mode_changes_without_changing_its_outer_role() {
 
         ui.append(atomic, block);
 
+        tree.mark_dirty(key);
+
         assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
         assert_eq!(children(&tree, key), [atomic_key]);
         check(&tree, key, Mode::Inline, Ty::Block(root));

@@ -39,6 +39,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Updated greeting with enough text to wrap over several lines. ".into(),
         ),),
     );
+    layout.mark_dirty(layout_root);
+
     layout_root = layout_builder
         .build(&ui, root, &mut layout, Some(layout_root))
         .ok_or("could not update sample UI")?;
@@ -59,6 +61,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     print_tree(&fragments, resized);
 
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
+    layout.mark_dirty(layout_root);
+
     layout_root = layout_builder
         .build(&ui, root, &mut layout, Some(layout_root))
         .ok_or("could not merge inline span")?;

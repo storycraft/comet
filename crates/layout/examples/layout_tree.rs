@@ -25,6 +25,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Text stays in the UI; updating preserves compatible layout object keys.
     ui.set_props(greeting, (Text("Updated greeting! ".into()),));
+    tree.mark_node_dirty(greeting);
+
     let layout_root = builder
         .build(&ui, root, &mut tree, Some(layout_root))
         .ok_or("could not update sample UI")?;
@@ -34,6 +36,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // An atomic inline no longer interrupts the span: its parts merge and unlink.
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
+    tree.mark_node_dirty(interruption);
+
     let layout_root = builder
         .build(&ui, root, &mut tree, Some(layout_root))
         .ok_or("could not merge the inline span")?;
@@ -43,6 +47,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Restoring the block splits the span and rebuilds its continuation chain.
     ui.set_props(interruption, (DisplayOuter::Block, DisplayInner::Flow));
+    tree.mark_node_dirty(interruption);
+
     let layout_root = builder
         .build(&ui, root, &mut tree, Some(layout_root))
         .ok_or("could not split the inline span again")?;

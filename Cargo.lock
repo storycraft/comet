@@ -399,6 +399,7 @@ dependencies = [
 name = "comet-layout"
 version = "0.1.0"
 dependencies = [
+ "bitflags 2.10.0",
  "comet-tree",
  "derive_more",
  "kurbo",

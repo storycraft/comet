@@ -10,6 +10,6 @@ pub use crate::style::{
     geometry::{self, AutoValue, Point, Rect, StyleUnit},
 };
 pub use crate::tree::{
-    ChildLayoutMode, LayoutItem, LayoutItemKey, LayoutItemTy, LayoutTree,
+    ChildLayoutMode, LayoutItem, LayoutItemFlags, LayoutItemKey, LayoutItemTy, LayoutTree,
     builder::LayoutTreeBuilder,
 };

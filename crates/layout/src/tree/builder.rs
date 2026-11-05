@@ -11,7 +11,7 @@ use self::{candidates::Candidates, flows::Flows};
 
 use crate::{
     style::bx::{DisplayInner, DisplayOuter},
-    tree::{ChildLayoutMode, LayoutItem, LayoutItemKey, LayoutItemTy, LayoutTree},
+    tree::{ChildLayoutMode, LayoutItem, LayoutItemFlags, LayoutItemKey, LayoutItemTy, LayoutTree},
 };
 
 #[derive(Default)]
@@ -23,6 +23,7 @@ pub struct LayoutTreeBuilder {
 
     candidates: Candidates,
     last_items: FxHashMap<NodeKey, LayoutItemKey>,
+    child_is_clean: bool,
 }
 
 impl LayoutTreeBuilder {
@@ -30,15 +31,10 @@ impl LayoutTreeBuilder {
         Self::default()
     }
 
-    /// Build a new subtree with `None`, or reconcile an existing one with `Some(key)`.
-    ///
-    /// A target inside a previously built tree reconciles that entire owning
-    /// tree, including surrounding flows and continuations. Independent builds
-    /// are unaffected. The owning root keeps its key during a partial update.
-    ///
-    /// Returns the requested node's first item, or its anonymous text wrapper
-    /// when a wrapper was supplied. Returns `None` if the node is no longer
-    /// represented in that tree (for example, after deletion or detachment).
+    /// Build a new tree with `None`, or update the supplied root with `Some(key)`.
+    /// Mark changed items before updating. Clean roots return immediately.
+    /// The source and layout root must describe the same tree; descendant targets
+    /// are not resolved to an owning root. Use `item_for_node` for child results.
     pub fn build(
         &mut self,
         ui: &Ui,
@@ -46,67 +42,15 @@ impl LayoutTreeBuilder {
         tree: &mut LayoutTree,
         target: Option<LayoutItemKey>,
     ) -> Option<LayoutItemKey> {
-        if let Some(target) = target {
-            let mut ancestor = tree.items.parent(target);
-            let mut owner = None;
-
-            while let Some(key) = ancestor {
-                if let Some(&source) = tree.build_roots.get(&key) {
-                    owner = Some((key, source));
-                }
-
-                ancestor = tree.items.parent(key);
-            }
-
-            if let Some((key, source)) = owner {
-                let wrapper = tree.items.get(target).is_some_and(|item| {
-                    item.ty == LayoutItemTy::AnonymousBlock
-                        && item.child_layout == ChildLayoutMode::Inline
-                });
-
-                self.build_subtree(ui, source, tree, Some(key), true)?;
-
-                // Search this build, not the global mapping, which can belong
-                // to another independent representation of the same source.
-                let mut pending = vec![key];
-
-                while let Some(key) = pending.pop() {
-                    if tree.items[key].ty.node() == Some(root) {
-                        return Some(if wrapper {
-                            tree.items
-                                .parent(key)
-                                .filter(|&parent| {
-                                    tree.items[parent].ty == LayoutItemTy::AnonymousBlock
-                                        && tree.items[parent].child_layout
-                                            == ChildLayoutMode::Inline
-                                })
-                                .unwrap_or(key)
-                        } else {
-                            key
-                        });
-                    }
-
-                    pending.extend(tree.items.children(key).rev());
-                }
-
-                return None;
-            }
+        if let Some(key) = target
+            && tree
+                .items
+                .get(key)
+                .is_some_and(|item| item.flags.is_empty())
+        {
+            return Some(key);
         }
 
-        let key = self.build_subtree(ui, root, tree, target, false)?;
-        tree.build_roots.insert(key, root);
-
-        Some(key)
-    }
-
-    fn build_subtree(
-        &mut self,
-        ui: &Ui,
-        root: NodeKey,
-        tree: &mut LayoutTree,
-        target: Option<LayoutItemKey>,
-        preserve_root: bool,
-    ) -> Option<LayoutItemKey> {
         self.clear();
 
         if ui.node(root).is_none() {
@@ -133,9 +77,11 @@ impl LayoutTreeBuilder {
             self.source_item(ui, root)
         };
 
-        let key = if preserve_root {
-            let key = target?;
-
+        let key = if let Some(key) = target.filter(|&key| {
+            tree.items
+                .get(key)
+                .is_some_and(|item| !item.flags.contains(LayoutItemFlags::DIRTY))
+        }) {
             tree.unmap_item(key);
             replace_item(tree, key, desired);
 
@@ -172,6 +118,10 @@ impl LayoutTreeBuilder {
         while let Some(task) = self.pending.pop() {
             match task {
                 Task::Visit(node) => {
+                    if self.reuse_clean_child(tree, node) {
+                        continue;
+                    }
+
                     if *ui.node(node)? == Node::Text {
                         self.resume_spans(tree)?;
                         self.text_child(tree, node)?;
@@ -196,6 +146,13 @@ impl LayoutTreeBuilder {
 
                     let desired = self.source_item(ui, node);
                     let key = self.child(tree, desired)?;
+
+                    // Split spans must replay their flow interruptions. Unsplit clean
+                    // items retain their entire subtree and continuation links.
+                    if self.child_is_clean && !self.frames.last()?.force {
+                        continue;
+                    }
+
                     self.push_frame(tree, key);
 
                     if outer == DisplayOuter::Inline
@@ -261,6 +218,35 @@ impl LayoutTreeBuilder {
         Some(())
     }
 
+    /// Consume an unchanged next sibling without reading its UI properties or children.
+    fn reuse_clean_child(&mut self, tree: &mut LayoutTree, node: NodeKey) -> bool {
+        let Some(frame) = self.frames.last_mut() else {
+            return false;
+        };
+
+        let Some(key) = frame.next else {
+            return false;
+        };
+
+        let item = tree.items[key];
+
+        if frame.force
+            || !item.flags.is_empty()
+            || item.ty.node() != Some(node)
+            || item.link != Default::default()
+            || (tree.items[frame.key].child_layout == ChildLayoutMode::Block
+                && !matches!(item.ty, LayoutItemTy::Block(_)))
+        {
+            return false;
+        }
+
+        frame.next = tree.items.next_sibling(key);
+        self.candidates.claim(key);
+        self.record_item(tree, key);
+
+        true
+    }
+
     fn source_item(&mut self, ui: &Ui, node: NodeKey) -> LayoutItem {
         let outer = display_outer(ui, node);
         let inner = ui.prop::<DisplayInner>(node);
@@ -286,29 +272,9 @@ impl LayoutTreeBuilder {
         node: NodeKey,
         target: Option<LayoutItemKey>,
     ) -> Option<LayoutItemKey> {
-        if let Some(parent) = target.and_then(|key| tree.items.parent(key)) {
-            // Start at the target and prune only up to its original next sibling.
-            self.frames.push(Frame {
-                key: parent,
-                next: target,
-                index: None,
-                adoption: None,
-            });
-            let next = target.and_then(|key| tree.items.next_sibling(key));
-            let key = self.text_child(tree, node)?;
-            let mut obsolete = self.frames.pop()?.next;
-
-            while obsolete != next {
-                let old = obsolete?;
-                obsolete = tree.items.next_sibling(old);
-                tree.delete_item(old);
-            }
-
-            return Some(key);
-        }
-
         let desired = item(LayoutItemTy::Text(node), ChildLayoutMode::None);
         let key = update_item(tree, target, desired);
+        tree.items[key].flags = LayoutItemFlags::empty();
         self.record_item(tree, key);
         delete_remaining(tree, tree.items.first_child(key));
 
@@ -316,74 +282,13 @@ impl LayoutTreeBuilder {
     }
 
     fn text_child(&mut self, tree: &mut LayoutTree, node: NodeKey) -> Option<LayoutItemKey> {
-        let frame = self.frames.last_mut()?;
-        let wrap = tree.items.get(frame.key)?.child_layout == ChildLayoutMode::Block;
-        let desired = item(LayoutItemTy::Text(node), ChildLayoutMode::None);
-        let anonymous = item(LayoutItemTy::AnonymousBlock, ChildLayoutMode::Inline);
+        // resume_spans has already established the containing inline run.
+        let key = self.child(tree, item(LayoutItemTy::Text(node), ChildLayoutMode::None))?;
 
-        // Whole-flow updates normalize runs in Flows::push/resume_spans. Only a
-        // standalone text update needs to repair its surrounding wrapper here.
-        let mut candidate = self.flows.is_empty().then_some(frame.next).flatten();
+        tree.items[key].flags = LayoutItemFlags::empty();
+        delete_remaining(tree, tree.items.first_child(key));
 
-        // Move the existing leaf when the parent's flow changes.
-        while let Some(key) = candidate {
-            if matches_item(
-                tree,
-                key,
-                if wrap { anonymous } else { desired },
-                wrap.then_some(node),
-            ) {
-                break;
-            }
-
-            if wrap && tree.items.get(key) == Some(&desired) {
-                let wrapper = tree.add_item(anonymous);
-                tree.items.before(key, wrapper);
-                tree.items.append(wrapper, key);
-
-                if frame.next == Some(key) {
-                    frame.next = Some(wrapper);
-                }
-
-                break;
-            }
-
-            if !wrap
-                && tree.items.get(key) == Some(&anonymous)
-                && let Some(leaf) = tree.items.first_child(key)
-                && tree.items.get(leaf) == Some(&desired)
-            {
-                tree.items.before(key, leaf);
-
-                if frame.next == Some(key) {
-                    frame.next = Some(leaf);
-                }
-
-                tree.delete_item(key);
-
-                break;
-            }
-
-            candidate = tree.items.next_sibling(key);
-        }
-
-        let wrapper = if wrap {
-            let key = self.child_with_text(tree, anonymous, Some(node))?;
-            self.push_frame(tree, key);
-
-            Some(key)
-        } else {
-            None
-        };
-
-        let leaf = self.child(tree, desired)?;
-        delete_remaining(tree, tree.items.first_child(leaf));
-
-        if wrapper.is_some() {
-            self.finish_frame(tree)?;
-        }
-
-        Some(wrapper.unwrap_or(leaf))
+        Some(key)
     }
 
     fn resume_spans(&mut self, tree: &mut LayoutTree) -> Option<()> {
@@ -411,18 +316,12 @@ impl LayoutTreeBuilder {
     }
 
     fn child(&mut self, tree: &mut LayoutTree, desired: LayoutItem) -> Option<LayoutItemKey> {
-        self.child_with_text(tree, desired, None)
-    }
-
-    fn child_with_text(
-        &mut self,
-        tree: &mut LayoutTree,
-        desired: LayoutItem,
-        text: Option<NodeKey>,
-    ) -> Option<LayoutItemKey> {
         let frame = self.frames.last_mut()?;
 
-        if let Some(key) = self.candidates.find(tree, frame, desired, text) {
+        if let Some(key) = self.candidates.find(tree, frame, desired) {
+            self.child_is_clean = tree.items[key].flags.is_empty()
+                && tree.items[key].child_layout == desired.child_layout
+                && tree.items[key].link == Default::default();
             replace_item(tree, key, desired);
 
             if frame.next == Some(key) {
@@ -441,7 +340,7 @@ impl LayoutTreeBuilder {
         if let Some(frame) = self.flows.inline_parent(self.frames.len())
             && let Some(key) = self
                 .candidates
-                .adopt(tree, &mut self.frames[frame], desired, text)
+                .adopt(tree, &mut self.frames[frame], desired)
         {
             let parent = &mut self.frames[frame];
 
@@ -449,6 +348,9 @@ impl LayoutTreeBuilder {
                 parent.next = tree.items.next_sibling(key);
             }
 
+            self.child_is_clean = tree.items[key].flags.is_empty()
+                && tree.items[key].child_layout == desired.child_layout
+                && tree.items[key].link == Default::default();
             replace_item(tree, key, desired);
             self.frames.last()?.insert(tree, key);
             self.candidates.claim(key);
@@ -459,6 +361,8 @@ impl LayoutTreeBuilder {
 
         let frame = self.frames.last_mut()?;
         let key = tree.add_item(desired);
+        tree.items[key].flags.insert(LayoutItemFlags::DIRTY);
+        self.child_is_clean = false;
         frame.insert(tree, key);
         self.candidates.claim(key);
         self.record_item(tree, key);
@@ -481,12 +385,17 @@ impl LayoutTreeBuilder {
         }
     }
 
-    fn push_frame(&mut self, tree: &LayoutTree, key: LayoutItemKey) {
+    fn push_frame(&mut self, tree: &mut LayoutTree, key: LayoutItemKey) {
+        let force = self.frames.last().is_some_and(|frame| frame.force)
+            || tree.items[key].flags.contains(LayoutItemFlags::DIRTY);
+
+        tree.items[key].flags = LayoutItemFlags::empty();
         self.frames.push(Frame {
             key,
             next: tree.items.first_child(key),
             index: None,
             adoption: None,
+            force,
         });
     }
 
@@ -543,13 +452,14 @@ impl LayoutTreeBuilder {
             }
 
             let outer = display_outer(ui, node);
-            let inner = ui.prop::<DisplayInner>(node);
 
             if outer == DisplayOuter::Block {
                 self.scan.clear();
 
                 return true;
             }
+
+            let inner = ui.prop::<DisplayInner>(node);
 
             if matches!(inner.as_deref(), None | Some(DisplayInner::Flow)) {
                 self.scan.extend(ui.children(node));
@@ -577,6 +487,7 @@ impl LayoutTreeBuilder {
         self.scan.clear();
         self.candidates.clear();
         self.last_items.clear();
+        self.child_is_clean = false;
     }
 }
 
@@ -593,6 +504,7 @@ struct Frame {
     next: Option<LayoutItemKey>,
     index: Option<usize>,
     adoption: Option<usize>,
+    force: bool,
 }
 
 impl Frame {
@@ -610,27 +522,24 @@ fn item(ty: LayoutItemTy, child_layout: ChildLayoutMode) -> LayoutItem {
         ty,
         child_layout,
         link: Default::default(),
+        flags: Default::default(),
     }
 }
 
 fn replace_item(tree: &mut LayoutTree, key: LayoutItemKey, desired: LayoutItem) {
+    let mut flags = tree.items[key].flags;
+
+    if tree.items[key].ty != desired.ty || tree.items[key].child_layout != desired.child_layout {
+        flags.insert(LayoutItemFlags::DIRTY);
+    }
+
     tree.unlink_continuation(key);
     tree.items[key] = desired;
+    tree.items[key].flags = flags;
 }
 
-fn matches_item(
-    tree: &LayoutTree,
-    key: LayoutItemKey,
-    desired: LayoutItem,
-    text: Option<NodeKey>,
-) -> bool {
+fn matches_item(tree: &LayoutTree, key: LayoutItemKey, desired: LayoutItem) -> bool {
     tree.items.get(key).is_some_and(|old| old.ty == desired.ty)
-        && text.is_none_or(|node| {
-            tree.items
-                .first_child(key)
-                .and_then(|child| tree.items.get(child))
-                .is_some_and(|item| item.ty == LayoutItemTy::Text(node))
-        })
 }
 
 fn update_item(
@@ -638,13 +547,14 @@ fn update_item(
     target: Option<LayoutItemKey>,
     desired: LayoutItem,
 ) -> LayoutItemKey {
-    if let Some(key) = target.filter(|&key| matches_item(tree, key, desired, None)) {
+    if let Some(key) = target.filter(|&key| matches_item(tree, key, desired)) {
         replace_item(tree, key, desired);
 
         return key;
     }
 
     let key = tree.add_item(desired);
+    tree.items[key].flags.insert(LayoutItemFlags::DIRTY);
 
     if let Some(old) = target {
         tree.items.before(old, key);
@@ -669,4 +579,10 @@ fn delete_remaining(tree: &mut LayoutTree, mut next: Option<LayoutItemKey>) {
         next = tree.items.next_sibling(key);
         tree.delete_item(key);
     }
+}
+
+fn same_shape(tree: &LayoutTree, key: LayoutItemKey, desired: LayoutItem) -> bool {
+    tree.items
+        .get(key)
+        .is_some_and(|item| item.ty == desired.ty && item.child_layout == desired.child_layout)
 }

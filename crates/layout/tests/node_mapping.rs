@@ -28,25 +28,29 @@ fn scoped_updates_remove_obsolete_mappings_and_preserve_other_subtrees() {
     assert_eq!(tree.items[text_key].ty, LayoutItemTy::Text(text));
 
     ui.set_props(content, (DisplayInner::Content,));
+    tree.mark_dirty(content_key);
+
     assert_eq!(
-        builder.build(&ui, content, &mut tree, Some(content_key)),
-        Some(content_key)
+        builder.build(&ui, root, &mut tree, Some(root_key)),
+        Some(root_key)
     );
     assert_eq!(tree.item_for_node(content), Some(content_key));
     assert_eq!(tree.item_for_node(text), None);
     assert_eq!(tree.item_for_node(sibling), Some(sibling_key));
 
     ui.set_props(content, (DisplayInner::Flow,));
-    builder
-        .build(&ui, content, &mut tree, Some(content_key))
-        .unwrap();
+    tree.mark_dirty(content_key);
+
+    builder.build(&ui, root, &mut tree, Some(root_key)).unwrap();
     assert_ne!(tree.item_for_node(text).unwrap(), text_key);
     assert_eq!(tree.item_for_node(sibling), Some(sibling_key));
 
     ui.delete(content);
+    tree.mark_dirty(content_key);
+
     assert_eq!(
-        builder.build(&ui, content, &mut tree, Some(content_key)),
-        None
+        builder.build(&ui, root, &mut tree, Some(root_key)),
+        Some(root_key)
     );
     assert_eq!(tree.item_for_node(content), None);
     assert_eq!(tree.item_for_node(text), None);
@@ -74,6 +78,7 @@ fn public_item_operations_maintain_source_lookups() {
         ty: LayoutItemTy::Block(root),
         child_layout: ChildLayoutMode::Inline,
         link: LayoutItemLink::default(),
+        flags: Default::default(),
     });
     let child_key = tree
         .append_item(
@@ -82,6 +87,7 @@ fn public_item_operations_maintain_source_lookups() {
                 ty: LayoutItemTy::Text(child),
                 child_layout: ChildLayoutMode::None,
                 link: LayoutItemLink::default(),
+                flags: Default::default(),
             },
         )
         .unwrap();

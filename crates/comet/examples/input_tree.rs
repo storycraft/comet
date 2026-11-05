@@ -20,6 +20,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     ui.prop::<Text>(text).ok_or("missing sample text")?;
     ui.set_props(text, (Text("Updated text".into()),));
+    tree.mark_dirty(layout_root);
+
     let updated = builder
         .build(&ui, root, &mut tree, Some(layout_root))
         .ok_or("could not update layout tree")?;

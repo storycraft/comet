@@ -158,6 +158,8 @@ fn children_have_separate_wrappers_and_blocks_stay_inside_each_child() {
 
     let original: Vec<_> = tree.items.descendants(key).collect();
 
+    tree.mark_dirty(key);
+
     builder.build(&ui, root, &mut tree, Some(key)).unwrap();
 
     assert_eq!(tree.items.descendants(key).collect::<Vec<_>>(), original);
@@ -219,6 +221,8 @@ fn container_flow_transitions_reorders_and_partial_edits_match_fresh_builds() {
     ] {
         ui.set_props(root, (mode,));
         ui.prepend(root, text);
+        tree.mark_dirty(key);
+
         builder.build(&ui, root, &mut tree, Some(key)).unwrap();
 
         assert_fresh(&ui, root, &tree, key);
@@ -226,14 +230,18 @@ fn container_flow_transitions_reorders_and_partial_edits_match_fresh_builds() {
 
     let target = tree.item_for_node(block).unwrap();
     ui.set_props(block, (DisplayOuter::Inline,));
-    builder.build(&ui, block, &mut tree, Some(target)).unwrap();
+    tree.mark_dirty(target);
+
+    builder.build(&ui, root, &mut tree, Some(key)).unwrap();
 
     assert_fresh(&ui, root, &tree, key);
 
     let target = tree.item_for_node(span).unwrap();
     ui.delete(span);
 
-    assert_eq!(builder.build(&ui, span, &mut tree, Some(target)), None);
+    tree.mark_dirty(target);
+
+    assert_eq!(builder.build(&ui, root, &mut tree, Some(key)), Some(key));
     assert_fresh(&ui, root, &tree, key);
 }
 
