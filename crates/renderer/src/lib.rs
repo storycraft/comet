@@ -49,8 +49,8 @@ impl CometRenderer {
                     // belongs to its glyph fragments, not to both representations.
                     if !fragment
                         .node
-                        .and_then(|node| ui.node(node))
-                        .is_some_and(|node| *node == Node::Text)
+                        .and_then(|node| ui.kind(node))
+                        .is_some_and(|node| node == Node::Text)
                     {
                         draw_box(ui, tree, key, origin, scene);
                     }
@@ -127,8 +127,8 @@ fn draw_box(
         !matches!(previous.item, FragmentItem::Box)
             || !previous
                 .node
-                .and_then(|node| ui.node(node))
-                .is_some_and(|node| *node == Node::Text)
+                .and_then(|node| ui.kind(node))
+                .is_some_and(|node| node == Node::Text)
     });
 
     if has_previous {

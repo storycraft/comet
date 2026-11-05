@@ -52,7 +52,7 @@ impl LayoutTreeBuilder {
 
         self.clear();
 
-        if ui.node(root).is_none() {
+        if ui.kind(root).is_none() {
             if let Some(key) = target {
                 tree.delete_item(key);
             }
@@ -60,7 +60,7 @@ impl LayoutTreeBuilder {
             return None;
         }
 
-        if ui.node(root).is_some_and(|node| *node == Node::Text) {
+        if ui.kind(root).is_some_and(|node| node == Node::Text) {
             return self.update_text(tree, root, target);
         }
 
@@ -119,7 +119,7 @@ impl LayoutTreeBuilder {
                         continue;
                     }
 
-                    if *ui.node(node)? == Node::Text {
+                    if ui.kind(node)? == Node::Text {
                         self.resume_spans(tree)?;
                         self.text_child(tree, node)?;
 
@@ -182,7 +182,7 @@ impl LayoutTreeBuilder {
                     if outer == DisplayOuter::Inline {
                         // Each source child owns a separate formatting context,
                         // including any block interruptions inside an inline.
-                        let mode = if *ui.node(node)? != Node::Text
+                        let mode = if ui.kind(node)? != Node::Text
                             && is_inline_flow(outer, inner.as_deref())
                             && self.contains_block(ui, node)
                         {
@@ -450,7 +450,7 @@ impl LayoutTreeBuilder {
         self.scan.extend(ui.children(root));
 
         while let Some(node) = self.scan.pop() {
-            if ui.node(node).is_some_and(|node| *node == Node::Text) {
+            if ui.kind(node).is_some_and(|node| node == Node::Text) {
                 continue;
             }
 
@@ -572,7 +572,7 @@ fn update_item(
 }
 
 fn display_outer(ui: &Ui, node: NodeKey) -> DisplayOuter {
-    if ui.node(node).is_some_and(|node| *node == Node::Text) {
+    if ui.kind(node).is_some_and(|node| node == Node::Text) {
         return DisplayOuter::Inline;
     }
 

@@ -13,7 +13,7 @@ pub struct Cursor<'a> {
 
 impl<'a> Cursor<'a> {
     pub(super) fn new(ui: &'a Ui, start: Option<NodeKey>) -> Self {
-        let front = start.filter(|key| ui.links(key.0).is_some());
+        let front = start.filter(|key| ui.ui_node(key.0).is_some());
         let back = front.and_then(|key| match ui.parent(key) {
             Some(parent) => ui.last_child(parent),
             None => Some(key),

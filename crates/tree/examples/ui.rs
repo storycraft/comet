@@ -26,7 +26,7 @@ fn main() {
 fn print_tree(ui: &Ui, key: NodeKey, depth: usize) {
     let indent = "  ".repeat(depth);
 
-    match *ui.node(key).expect("node exists in the example tree") {
+    match ui.kind(key).expect("node exists in the example tree") {
         Node::Box => {
             println!("{indent}<box>");
 

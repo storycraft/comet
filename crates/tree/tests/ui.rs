@@ -73,8 +73,8 @@ fn deleting_deep_subtree_does_not_recurse() {
 
     ui.delete(root);
 
-    assert!(ui.node(root).is_none());
-    assert!(ui.node(leaf).is_none());
+    assert!(ui.kind(root).is_none());
+    assert!(ui.kind(leaf).is_none());
 }
 
 #[derive(Debug, PartialEq)]
@@ -209,7 +209,7 @@ fn invalid_keys_return_quietly() {
     ui.append(root, child);
     ui.delete(invalid);
 
-    assert!(ui.node(invalid).is_none());
+    assert!(ui.kind(invalid).is_none());
     assert!(ui.props(invalid).is_none());
     assert!(ui.prop::<Text>(invalid).is_none());
     assert!(ui.prop_mut::<Text>(invalid).is_none());
@@ -300,7 +300,7 @@ fn deletion_removes_every_branch_and_repairs_survivors() {
     ui.delete(branch);
 
     for key in deleted {
-        assert!(ui.node(key).is_none());
+        assert!(ui.kind(key).is_none());
     }
     check(&ui, root, &[left, right]);
 
@@ -315,7 +315,7 @@ fn deletion_removes_every_branch_and_repairs_survivors() {
     assert!(ui.props(root).is_none());
 
     let fresh = ui.create(Node::Box, ());
-    assert_eq!(*ui.node(fresh).unwrap(), Node::Box);
+    assert_eq!(ui.kind(fresh).unwrap(), Node::Box);
     check(&ui, fresh, &[]);
 }
 
@@ -323,7 +323,7 @@ fn deletion_removes_every_branch_and_repairs_survivors() {
 fn properties_and_required_node_kind() {
     let mut ui = Ui::new();
     let key = ui.create(Node::Text, (Width::default(), Text("hello".into())));
-    assert_eq!(*ui.node(key).unwrap(), Node::Text);
+    assert_eq!(ui.kind(key).unwrap(), Node::Text);
     assert_eq!(ui.prop::<Width>(key).unwrap().0, 10);
 
     ui.prop_mut::<Width>(key).unwrap().0 = 20;
@@ -340,7 +340,7 @@ fn properties_and_required_node_kind() {
 
     assert_eq!(ui.remove_prop::<Width>(key), Some(Width(30)));
     assert!(ui.prop::<Width>(key).is_none());
-    assert_eq!(*ui.node(key).unwrap(), Node::Text);
+    assert_eq!(ui.kind(key).unwrap(), Node::Text);
 
     let empty = ui.create(Node::Box, ());
     assert!(ui.prop::<Color>(empty).is_none());

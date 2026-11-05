@@ -77,7 +77,7 @@ impl FragmentBuilder {
         fragments.snapshots.insert(root, snapshot);
         fragments
             .text_styles
-            .retain(|node, _| ui.node(*node).is_some());
+            .retain(|node, _| ui.kind(*node).is_some());
 
         Some(result)
     }
