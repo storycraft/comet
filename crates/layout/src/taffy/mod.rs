@@ -197,7 +197,7 @@ impl<'a> TaffyLayout<'a> {
             input,
             &style,
             |_, _| 0.0,
-            |known, available| self.measure_inline(key, known.width, available),
+            |_, available| self.measure_inline(key, available),
         );
 
         if let Some(text) = self.fragments.inline_layouts.get(&key) {
@@ -229,14 +229,13 @@ impl<'a> TaffyLayout<'a> {
     fn measure_inline(
         &mut self,
         key: LayoutItemKey,
-        known_width: Option<f32>,
         available: taffy::Size<taffy::AvailableSpace>,
     ) -> taffy::Size<f32> {
-        let width = known_width.or(match available.width {
+        let width = match available.width {
             taffy::AvailableSpace::Definite(v) => Some(v),
             taffy::AvailableSpace::MinContent => Some(0.0),
             taffy::AvailableSpace::MaxContent => None,
-        });
+        };
 
         self.shape(key, available);
 
