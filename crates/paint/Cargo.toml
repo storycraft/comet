@@ -1,5 +1,5 @@
 [package]
-name = "comet-painter"
+name = "comet-paint"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }

@@ -7,7 +7,7 @@ use comet_layout::{
     },
     tree::{LayoutTree, builder::LayoutTreeBuilder},
 };
-use comet_painter::{
+use comet_paint::{
     CometPainter,
     style::{BorderFill, BorderRadius, Fill, TextColor},
 };

@@ -8,7 +8,7 @@ use comet_layout::{
     style::{LayoutConstraint, geometry::Size},
     tree::{LayoutItemKey, LayoutTree, builder::LayoutTreeBuilder},
 };
-use comet_painter::CometPainter;
+use comet_paint::CometPainter;
 use comet_tree::{node::NodeKey, ui::Ui};
 use winit::{
     application::ApplicationHandler,

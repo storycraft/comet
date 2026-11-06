@@ -9,7 +9,7 @@ license = { workspace = true }
 comet-tree = { workspace = true }
 comet-layout = { workspace = true }
 comet-layout-flex = { workspace = true }
-comet-painter = { workspace = true }
+comet-paint = { workspace = true }
 
 anyrender = "0.14.0"
 anyrender_vello_cpu = { version = "0.18.0", features = ["softbuffer_window_renderer"] }

@@ -7,7 +7,7 @@ use comet_layout::{
     },
 };
 use comet_layout_flex::{prelude::*, styles as flex};
-use comet_painter::style::{BorderRadius, Fill, TextColor};
+use comet_paint::style::{BorderRadius, Fill, TextColor};
 use comet_tree::{
     node::{Node, NodeKey},
     ui::Ui,
