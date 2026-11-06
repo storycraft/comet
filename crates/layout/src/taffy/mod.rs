@@ -166,13 +166,13 @@ impl<'a> TaffyLayout<'a> {
                 return algorithm.layout(&mut context, input);
             }
 
-            ChildLayoutMode::Inline => {}
-            ChildLayoutMode::None if matches!(item.ty, LayoutItemTy::Text(_)) => {}
+            ChildLayoutMode::Inline => self.layout_inline(key, input),
+            ChildLayoutMode::None if matches!(item.ty, LayoutItemTy::Text(_)) => {
+                self.layout_inline(key, input)
+            }
 
             _ => return taffy::LayoutOutput::HIDDEN,
-        };
-
-        self.layout_inline(key, input)
+        }
     }
 
     fn layout_inline(
@@ -234,7 +234,7 @@ impl<'a> TaffyLayout<'a> {
                     .map(|line| top + line.metrics().baseline),
                 last: text
                     .lines()
-                    .last()
+                    .next_back()
                     .map(|line| top + line.metrics().baseline),
             };
         }
