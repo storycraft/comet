@@ -9,7 +9,7 @@ use comet_layout::{
     style::{LayoutConstraint, geometry::Size},
     tree::{LayoutTree, builder::LayoutTreeBuilder},
 };
-use comet_renderer::CometRenderer;
+use comet_renderer::CometPainter;
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use kurbo::Affine;
 
@@ -48,7 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    let mut renderer = CometRenderer::new();
+    let mut renderer = CometPainter::new();
     let mut image_renderer = VelloCpuImageRenderer::new(WIDTH, HEIGHT);
     let mut data = vec![0_u8; (WIDTH * HEIGHT * 4) as usize];
     image_renderer.render(

@@ -8,7 +8,7 @@ use comet_layout::{
     tree::{LayoutTree, builder::LayoutTreeBuilder},
 };
 use comet_renderer::{
-    CometRenderer,
+    CometPainter,
     style::{BorderFill, BorderRadius, Fill, TextColor},
 };
 use comet_tree::{
@@ -128,7 +128,7 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
     ui.append(span, text);
 
     let (mut tree, root) = build(&ui, root_node);
-    let mut renderer = CometRenderer::new();
+    let mut renderer = CometPainter::new();
     let mut scene = Scene::new();
 
     renderer.draw(&ui, &tree, root, &mut scene);
@@ -232,7 +232,7 @@ fn paints_atomic_inline_subtree_border_and_text_override_without_double_offsets(
     let (tree, root) = build(&ui, root_node);
     let mut scene = Scene::new();
 
-    CometRenderer::new().draw(&ui, &tree, root, &mut scene);
+    CometPainter::new().draw(&ui, &tree, root, &mut scene);
 
     let scene_fills = fills(&scene);
     let scene_strokes = strokes(&scene);
@@ -274,7 +274,7 @@ fn standalone_text_paints_its_background_only_once() {
     let (tree, root) = build(&ui, node);
     let mut scene = Scene::new();
 
-    CometRenderer::new().draw(&ui, &tree, root, &mut scene);
+    CometPainter::new().draw(&ui, &tree, root, &mut scene);
 
     assert_eq!(fills(&scene).len(), 1);
     assert!(!glyphs(&scene).is_empty());
@@ -305,7 +305,7 @@ fn rounds_background_and_border_corners() {
     let (tree, root) = build(&ui, node);
     let mut scene = Scene::new();
 
-    CometRenderer::new().draw(&ui, &tree, root, &mut scene);
+    CometPainter::new().draw(&ui, &tree, root, &mut scene);
 
     let [RenderCommand::Fill(fill), RenderCommand::Stroke(stroke)] = scene.commands.as_slice()
     else {
@@ -368,7 +368,7 @@ fn rounds_only_outer_edges_of_wrapped_fragments() {
         let (tree, root) = build(&ui, root_node);
         let mut scene = Scene::new();
 
-        CometRenderer::new().draw(&ui, &tree, root, &mut scene);
+        CometPainter::new().draw(&ui, &tree, root, &mut scene);
 
         let fills: Vec<_> = scene
             .commands

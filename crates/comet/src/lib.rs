@@ -8,7 +8,7 @@ use comet_layout::{
     style::{LayoutConstraint, geometry::Size},
     tree::{LayoutItemKey, LayoutTree, builder::LayoutTreeBuilder},
 };
-use comet_renderer::CometRenderer;
+use comet_renderer::CometPainter;
 use comet_tree::{node::NodeKey, ui::Ui};
 use winit::{
     application::ApplicationHandler,
@@ -36,7 +36,7 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
         fragment_root: None,
         win: None,
         vello: VelloCpuWindowRenderer::new(),
-        ui_renderer: CometRenderer::new(),
+        ui_renderer: CometPainter::new(),
     })?)
 }
 
@@ -51,7 +51,7 @@ struct App {
     fragment_root: Option<FragmentKey>,
     win: Option<Arc<Window>>,
     vello: VelloCpuWindowRenderer,
-    ui_renderer: CometRenderer,
+    ui_renderer: CometPainter,
 }
 
 impl ApplicationHandler for App {

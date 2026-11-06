@@ -17,11 +17,11 @@ use crate::style::{BorderFill, BorderRadius, Fill, TextColor};
 
 /// Paints final fragments in tree order, with coordinates relative to their parents.
 #[derive(Default)]
-pub struct CometRenderer {
+pub struct CometPainter {
     pending: Vec<(FragmentKey, Point, Option<LayoutItemKey>)>,
 }
 
-impl CometRenderer {
+impl CometPainter {
     pub fn new() -> Self {
         Self::default()
     }
