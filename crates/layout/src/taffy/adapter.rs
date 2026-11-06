@@ -130,11 +130,13 @@ impl CacheTree for TaffyLayout<'_> {
         id: taffy::NodeId,
         input: &taffy::LayoutInput,
     ) -> Option<taffy::LayoutOutput> {
-        self.nodes
-            .get_mut(&from_taffy_key(id))
-            .unwrap()
-            .cache
-            .get(input)
+        let state = self.nodes.get_mut(&from_taffy_key(id)).unwrap();
+
+        if input.run_mode == taffy::RunMode::PerformLayout && !state.final_layout_valid {
+            return None;
+        }
+
+        state.cache.get(input)
     }
 
     fn cache_store(
@@ -143,11 +145,12 @@ impl CacheTree for TaffyLayout<'_> {
         input: &taffy::LayoutInput,
         output: taffy::LayoutOutput,
     ) {
-        self.nodes
-            .get_mut(&from_taffy_key(id))
-            .unwrap()
-            .cache
-            .store(input, output);
+        let state = self.nodes.get_mut(&from_taffy_key(id)).unwrap();
+        state.cache.store(input, output);
+
+        if input.run_mode == taffy::RunMode::PerformLayout {
+            state.final_layout_valid = true;
+        }
     }
 
     fn cache_clear(&mut self, id: taffy::NodeId) {

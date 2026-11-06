@@ -95,7 +95,7 @@ fn intrinsic_text_height_matches_retained_lines() {
 }
 
 #[test]
-fn sizing_probes_preserve_final_text_and_atomic_descendants() {
+fn final_layout_after_sizing_probes_matches_fresh_layout() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, (bx::DisplayInner::FlowRoot,));
     let before = ui.create(Node::Text, (Text("before the inline box ".into()),));
@@ -164,21 +164,18 @@ fn sizing_probes_preserve_final_text_and_atomic_descendants() {
             ..LayoutInput::HIDDEN
         };
 
-        for _ in 0..2 {
-            engine.compute_child_layout(to_taffy_key(key), input);
+        let atomic_key = tree.item_for_node(atomic).unwrap();
+
+        for probe in [key, key, atomic_key, atomic_key] {
+            engine.compute_child_layout(to_taffy_key(probe), input);
+
+            // Sizing may replace intermediate text and geometry. Only the
+            // subsequent final layout must match a fresh layout of the tree.
+            engine.compute(key, available);
 
             for (&key, expected) in &layouts {
                 assert_eq!(&engine.nodes[&key].layout, expected);
             }
-
-            for (&key, expected) in &texts {
-                let text = &engine.fragments.inline_layouts[&key].layout;
-                assert_eq!(&text_metrics(text), expected);
-            }
-
-            // The original PerformLayout entry is still valid after a sizing
-            // probe. Reusing it must also preserve its matching text layout.
-            engine.compute(key, available);
 
             for (&key, expected) in &texts {
                 let text = &engine.fragments.inline_layouts[&key].layout;

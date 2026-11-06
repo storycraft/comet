@@ -180,32 +180,6 @@ impl<'a> TaffyLayout<'a> {
         key: LayoutItemKey,
         input: taffy::LayoutInput,
     ) -> taffy::LayoutOutput {
-        if input.run_mode == taffy::RunMode::ComputeSize {
-            // Intrinsic probes must not overwrite a cached final text layout or
-            // the geometry and baselines of its atomic inline descendants.
-            let mut fragments = FragmentTree::new();
-            let mut measurement = TaffyLayout::new(
-                self.ui,
-                self.tree,
-                &mut fragments,
-                self.fonts,
-                self.parley,
-                &self.constraint,
-                key,
-            )
-            .unwrap();
-
-            return measurement.compute_inline(key, input);
-        }
-
-        self.compute_inline(key, input)
-    }
-
-    fn compute_inline(
-        &mut self,
-        key: LayoutItemKey,
-        input: taffy::LayoutInput,
-    ) -> taffy::LayoutOutput {
         let style = self.nodes[&key].style.clone();
         let mut output = taffy::compute_leaf_layout(
             input,
@@ -271,6 +245,19 @@ impl<'a> TaffyLayout<'a> {
     }
 
     fn shape(&mut self, key: LayoutItemKey, available: taffy::Size<taffy::AvailableSpace>) {
+        // Shaping may replace final text and atomic descendant geometry. Size
+        // caches remain useful, but ancestors must run final layout again.
+        let mut ancestor = Some(key);
+
+        while let Some(key) = ancestor {
+            let Some(state) = self.nodes.get_mut(&key) else {
+                break;
+            };
+
+            state.final_layout_valid = false;
+            ancestor = self.tree.items.parent(key);
+        }
+
         // Atomic children must be laid out before borrowing Parley's builder.
         for op in InlineEvents::new(self.tree, key) {
             if let Op::Box(child) = op {
