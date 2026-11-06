@@ -2,6 +2,9 @@ mod adapter;
 mod inline;
 mod state;
 
+#[cfg(test)]
+mod tests;
+
 pub mod conv;
 pub mod style;
 
@@ -18,7 +21,7 @@ pub(crate) use state::NodeState;
 use self::inline::{InlineEvents, Op};
 
 use crate::{
-    fragment::tree::FragmentTree,
+    fragment::{FragmentTree, InlineLayout},
     parley::default_text_style,
     style::bx::DisplayInner,
     tree::{ChildLayoutMode, LayoutItemKey, LayoutItemTy, LayoutTree},
@@ -88,22 +91,6 @@ impl<'a> TaffyLayout<'a> {
     pub fn compute(&mut self, root: LayoutItemKey, available: taffy::Size<taffy::AvailableSpace>) {
         taffy::compute_root_layout(self, to_taffy_key(root), available);
 
-        // Cached measurements may leave text at an intrinsic width. Finalize it
-        // before a containing inline context reads this subtree's baseline.
-        for key in self.tree.items.descendants(root) {
-            if let Some(text) = self.fragments.inline_layouts.get_mut(&key) {
-                let bx = self.nodes[&key].layout;
-                let width = (bx.size.width
-                    - bx.padding.left
-                    - bx.padding.right
-                    - bx.border.left
-                    - bx.border.right)
-                    .max(0.0);
-
-                text.break_all_lines(Some(width));
-            }
-        }
-
         let baseline = self.inline_baseline(root);
         self.nodes.get_mut(&root).unwrap().baseline = baseline;
     }
@@ -114,6 +101,7 @@ impl<'a> TaffyLayout<'a> {
 
         if let Some(text) = self.fragments.inline_layouts.get(&key) {
             return text
+                .layout
                 .lines()
                 .last()
                 .map(|line| bx.border.top + bx.padding.top + line.metrics().baseline);
@@ -192,6 +180,32 @@ impl<'a> TaffyLayout<'a> {
         key: LayoutItemKey,
         input: taffy::LayoutInput,
     ) -> taffy::LayoutOutput {
+        if input.run_mode == taffy::RunMode::ComputeSize {
+            // Intrinsic probes must not overwrite a cached final text layout or
+            // the geometry and baselines of its atomic inline descendants.
+            let mut fragments = FragmentTree::new();
+            let mut measurement = TaffyLayout::new(
+                self.ui,
+                self.tree,
+                &mut fragments,
+                self.fonts,
+                self.parley,
+                &self.constraint,
+                key,
+            )
+            .unwrap();
+
+            return measurement.compute_inline(key, input);
+        }
+
+        self.compute_inline(key, input)
+    }
+
+    fn compute_inline(
+        &mut self,
+        key: LayoutItemKey,
+        input: taffy::LayoutInput,
+    ) -> taffy::LayoutOutput {
         let style = self.nodes[&key].style.clone();
         let mut output = taffy::compute_leaf_layout(
             input,
@@ -202,6 +216,8 @@ impl<'a> TaffyLayout<'a> {
 
         if let Some(text) = self.fragments.inline_layouts.get(&key) {
             use taffy::ResolveOrZero;
+
+            let text = &text.layout;
 
             let padding = style
                 .padding()
@@ -239,7 +255,7 @@ impl<'a> TaffyLayout<'a> {
 
         self.shape(key, available);
 
-        let layout = self.fragments.inline_layouts.get_mut(&key).unwrap();
+        let layout = &mut self.fragments.inline_layouts.get_mut(&key).unwrap().layout;
         layout.break_all_lines(width);
 
         if available.width == taffy::AvailableSpace::MinContent {
@@ -328,7 +344,8 @@ impl<'a> TaffyLayout<'a> {
         }
 
         let (layout, text) = builder.build();
-        self.fragments.inline_layouts.insert(key, layout);
-        self.fragments.texts.insert(key, text);
+        self.fragments
+            .inline_layouts
+            .insert(key, InlineLayout { text, layout });
     }
 }

@@ -156,6 +156,7 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
 
         if let FragmentItem::Line { line } = fragment.item {
             for item in tree.inline_layouts[&fragment.source]
+                .layout
                 .get(line)
                 .unwrap()
                 .items()

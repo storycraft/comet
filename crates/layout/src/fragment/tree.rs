@@ -1,7 +1,7 @@
 use comet_tree::node::NodeKey;
 use rustc_hash::FxHashMap;
 
-use super::{Fragment, FragmentKey, TextStyle, snapshot::Snapshot};
+use super::{Fragment, FragmentKey, InlineLayout, TextStyle, snapshot::Snapshot};
 use crate::{slot_tree::SlotTree, tree::LayoutItemKey};
 
 #[derive(Default)]
@@ -9,8 +9,7 @@ pub struct FragmentTree {
     pub items: SlotTree<FragmentKey, Fragment>,
     pub text_styles: FxHashMap<NodeKey, TextStyle>,
     /// Shaped text retained for rendering glyph runs by their line/item indices.
-    pub inline_layouts: FxHashMap<LayoutItemKey, parley::Layout<Option<NodeKey>>>,
-    pub texts: FxHashMap<LayoutItemKey, String>,
+    pub inline_layouts: FxHashMap<LayoutItemKey, InlineLayout>,
     pub(crate) snapshots: FxHashMap<LayoutItemKey, Snapshot>,
     pub(crate) layout_cache: FxHashMap<LayoutItemKey, crate::taffy::NodeState>,
 }
@@ -38,7 +37,6 @@ impl FragmentTree {
 
     pub(crate) fn remove_source(&mut self, key: LayoutItemKey) {
         self.inline_layouts.remove(&key);
-        self.texts.remove(&key);
         self.layout_cache.remove(&key);
     }
 
@@ -57,7 +55,6 @@ impl FragmentTree {
         self.items.clear();
         self.text_styles.clear();
         self.inline_layouts.clear();
-        self.texts.clear();
         self.snapshots.clear();
         self.layout_cache.clear();
     }

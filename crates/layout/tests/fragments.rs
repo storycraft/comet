@@ -217,7 +217,7 @@ fn inline_block_uses_its_font_size_and_last_line_baseline() {
             .find(|&key| tree.items[key].node == Some(atomic))
             .unwrap();
         let atomic_fragment = &tree.items[atomic_key];
-        let shaped = &tree.inline_layouts[&atomic_fragment.source];
+        let shaped = &tree.inline_layouts[&atomic_fragment.source].layout;
 
         assert!(shaped.len() > 1);
 
@@ -710,7 +710,6 @@ fn incremental_edits_match_fresh_layout_and_deleted_roots_are_pruned() {
     );
     assert!(tree.items.is_empty());
     assert!(tree.inline_layouts.is_empty());
-    assert!(tree.texts.is_empty());
 }
 
 #[test]

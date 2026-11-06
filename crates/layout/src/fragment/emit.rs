@@ -156,12 +156,12 @@ pub(super) fn emit_box(
         }
     }
 
-    let Some(layout) = engine.fragments.inline_layouts.get(&key) else {
+    let Some(inline) = engine.fragments.inline_layouts.get(&key) else {
         return;
     };
     out.index_sources(engine.tree, key, key);
 
-    for (line_index, line) in layout.lines().enumerate() {
+    for (line_index, line) in inline.layout.lines().enumerate() {
         let metrics = line.metrics();
         let line_parent = out.len();
         let mut line_fragment = fragment(

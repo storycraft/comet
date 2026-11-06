@@ -127,7 +127,6 @@ impl Snapshot {
             if dirty.contains(&key) {
                 state.cache.clear();
                 fragments.inline_layouts.remove(&key);
-                fragments.texts.remove(&key);
             }
         }
 
