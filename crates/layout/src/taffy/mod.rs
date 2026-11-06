@@ -277,10 +277,12 @@ impl<'a> TaffyLayout<'a> {
             ancestor = self.tree.items.parent(key);
         }
 
-        let root_style = source
+        let mut root_style = source
             .and_then(|node| self.fragments.text_styles.get(&node))
-            .cloned()
+            .map(|style| style.as_ref().clone())
             .unwrap_or_else(default_text_style);
+        // Node identity belongs to the shaping span, not the shared inherited style.
+        root_style.brush = source;
         let mut builder = self
             .parley
             .tree_builder(self.fonts, 1.0, false, &root_style);
@@ -288,11 +290,15 @@ impl<'a> TaffyLayout<'a> {
         for op in InlineEvents::new(self.tree, key) {
             match op {
                 Op::Push(node) => {
-                    builder.push_style_span(self.fragments.text_styles[&node].clone())
+                    let mut style = self.fragments.text_styles[&node].as_ref().clone();
+                    style.brush = Some(node);
+                    builder.push_style_span(style);
                 }
                 Op::Pop => builder.pop_style_span(),
                 Op::Text(node) => {
-                    builder.push_style_span(self.fragments.text_styles[&node].clone());
+                    let mut style = self.fragments.text_styles[&node].as_ref().clone();
+                    style.brush = Some(node);
+                    builder.push_style_span(style);
 
                     if let Some(text) = self.ui.prop::<Text>(node) {
                         builder.push_text(&text.0);

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use comet_tree::{node::NodeKey, ui::Ui};
 use rustc_hash::FxHashMap;
 
@@ -8,19 +10,20 @@ use crate::{
 };
 
 /// Resolve from the UI ancestors down, caching computed inherited values.
+/// Equal inherited styles share an allocation; brushes are assigned during shaping.
 pub fn resolve(
     ui: &Ui,
     node: NodeKey,
     cx: &LayoutConstraint,
-    cache: &mut FxHashMap<NodeKey, TextStyle>,
-) -> TextStyle {
+    cache: &mut FxHashMap<NodeKey, Arc<TextStyle>>,
+) -> Arc<TextStyle> {
     let mut pending = Vec::new();
     let mut ancestor = Some(node);
-    let mut style = default_text_style();
+    let mut style = None;
 
     while let Some(node) = ancestor {
         if let Some(cached) = cache.get(&node) {
-            style = cached.clone();
+            style = Some(cached.clone());
             break;
         }
 
@@ -28,6 +31,7 @@ pub fn resolve(
         ancestor = ui.parent(node);
     }
 
+    let mut style = style.unwrap_or_else(|| Arc::new(default_text_style()));
     for node in pending.into_iter().rev() {
         style = conv::text_style(ui, node, cx, &style);
         cache.insert(node, style.clone());
@@ -42,8 +46,8 @@ pub(crate) fn resolve_for_item(
     tree: &LayoutTree,
     key: LayoutItemKey,
     cx: &LayoutConstraint,
-    cache: &mut FxHashMap<NodeKey, TextStyle>,
-) -> Option<TextStyle> {
+    cache: &mut FxHashMap<NodeKey, Arc<TextStyle>>,
+) -> Option<Arc<TextStyle>> {
     let mut ancestor = Some(key);
 
     while let Some(key) = ancestor {

@@ -780,6 +780,38 @@ fn empty_inline_continuations_keep_fragment_links() {
 }
 
 #[test]
+fn inherited_text_styles_share_allocations_until_values_change() {
+    use std::sync::Arc;
+
+    let mut ui = Ui::new();
+    let parent = ui.create(Node::Box, (bx::FontSize(StyleUnit::Px(20.0)),));
+    let inherited = ui.create(Node::Box, ());
+    let equal = ui.create(Node::Text, (bx::FontSize(StyleUnit::Percent(1.0)),));
+    let changed = ui.create(Node::Box, (bx::FontSize(StyleUnit::Percent(1.5)),));
+    let descendant = ui.create(Node::Text, ());
+    ui.append(parent, inherited);
+    ui.append(inherited, equal);
+    ui.append(parent, changed);
+    ui.append(changed, descendant);
+
+    let mut cache = Default::default();
+    let cx = constraint(500.0);
+    let equal_style = comet_layout::parley::style::resolve(&ui, equal, &cx, &mut cache);
+    let changed_style = comet_layout::parley::style::resolve(&ui, descendant, &cx, &mut cache);
+
+    assert!(Arc::ptr_eq(&cache[&parent], &cache[&inherited]));
+    assert!(Arc::ptr_eq(&cache[&parent], &equal_style));
+    assert!(Arc::ptr_eq(&cache[&changed], &changed_style));
+    assert!(!Arc::ptr_eq(&equal_style, &changed_style));
+    assert_eq!(equal_style.font_size, 20.0);
+    assert_eq!(changed_style.font_size, 30.0);
+    assert!(Arc::ptr_eq(
+        &equal_style,
+        &comet_layout::parley::style::resolve(&ui, equal, &cx, &mut cache),
+    ));
+}
+
+#[test]
 fn text_percentages_use_inherited_font_size_and_computed_line_height() {
     let mut ui = Ui::new();
     let parent = ui.create(Node::Box, (bx::FontSize(StyleUnit::Px(20.0)),));

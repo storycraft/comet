@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use comet_tree::{node::Text, ui::Ui};
 use rustc_hash::{FxHashMap, FxHashSet};
 use slotmap::SecondaryMap;
@@ -20,7 +22,7 @@ pub(crate) struct Snapshot {
 struct Input {
     item: LayoutItem,
     style: crate::taffy::style::Style,
-    text_style: Option<TextStyle>,
+    text_style: Option<Arc<TextStyle>>,
     text: Option<String>,
     parent: Option<LayoutItemKey>,
     first_child: Option<LayoutItemKey>,

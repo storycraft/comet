@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use comet_tree::node::NodeKey;
 use rustc_hash::FxHashMap;
 use slotmap::{SecondaryMap, SparseSecondaryMap};
@@ -8,7 +10,7 @@ use crate::{slot_tree::SlotTree, tree::LayoutItemKey};
 #[derive(Default)]
 pub struct FragmentTree {
     pub items: SlotTree<FragmentKey, Fragment>,
-    pub text_styles: FxHashMap<NodeKey, TextStyle>,
+    pub text_styles: FxHashMap<NodeKey, Arc<TextStyle>>,
     /// Shaped text retained for rendering glyph runs by their line/item indices.
     pub inline_layouts: SparseSecondaryMap<LayoutItemKey, InlineLayout>,
     pub(crate) snapshots: SparseSecondaryMap<LayoutItemKey, Snapshot>,
