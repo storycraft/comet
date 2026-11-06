@@ -19,8 +19,6 @@ pub trait ContainerLayout: Send + Sync {
     /// and positions relative to this container's border box. Descendant layout
     /// is handled by the engine when a child is measured with its final known
     /// dimensions.
-    ///
-    /// Honor `input.run_mode`: measurement calls need not place children.
     fn layout(
         &self,
         context: &mut ContainerContext<'_, '_>,
