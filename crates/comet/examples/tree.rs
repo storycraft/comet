@@ -9,7 +9,7 @@ use comet_layout::{
     style::{LayoutConstraint, geometry::Size},
     tree::{LayoutTree, builder::LayoutTreeBuilder},
 };
-use comet_renderer::CometPainter;
+use comet_painter::CometPainter;
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use kurbo::Affine;
 

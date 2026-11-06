@@ -6,7 +6,7 @@ use comet_layout::style::{
     geometry::{AutoValue, Rect, Size as LayoutSize, StyleUnit},
     parley,
 };
-use comet_renderer::style::{BorderRadius, Fill, TextColor};
+use comet_painter::style::{BorderRadius, Fill, TextColor};
 use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,

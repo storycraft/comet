@@ -395,7 +395,7 @@ dependencies = [
  "anyrender_vello_cpu",
  "comet-layout",
  "comet-layout-flex",
- "comet-renderer",
+ "comet-painter",
  "comet-tree",
  "image",
  "kurbo",
@@ -436,7 +436,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "comet-renderer"
+name = "comet-painter"
 version = "0.1.0"
 dependencies = [
  "anyrender",
