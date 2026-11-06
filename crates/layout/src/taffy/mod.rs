@@ -171,7 +171,7 @@ impl<'a> TaffyLayout<'a> {
                 self.layout_inline(key, input)
             }
 
-            _ => return taffy::LayoutOutput::HIDDEN,
+            _ => taffy::LayoutOutput::HIDDEN,
         }
     }
 
