@@ -1,0 +1,11 @@
+[package]
+name = "comet-accesskit"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+comet-layout = { workspace = true }
+
+accesskit = "0.25.2"
