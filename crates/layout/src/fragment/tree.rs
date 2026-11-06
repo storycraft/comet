@@ -1,5 +1,6 @@
 use comet_tree::node::NodeKey;
 use rustc_hash::FxHashMap;
+use slotmap::{SecondaryMap, SparseSecondaryMap};
 
 use super::{Fragment, FragmentKey, InlineLayout, TextStyle, snapshot::Snapshot};
 use crate::{slot_tree::SlotTree, tree::LayoutItemKey};
@@ -9,9 +10,9 @@ pub struct FragmentTree {
     pub items: SlotTree<FragmentKey, Fragment>,
     pub text_styles: FxHashMap<NodeKey, TextStyle>,
     /// Shaped text retained for rendering glyph runs by their line/item indices.
-    pub inline_layouts: FxHashMap<LayoutItemKey, InlineLayout>,
-    pub(crate) snapshots: FxHashMap<LayoutItemKey, Snapshot>,
-    pub(crate) layout_cache: FxHashMap<LayoutItemKey, crate::taffy::NodeState>,
+    pub inline_layouts: SparseSecondaryMap<LayoutItemKey, InlineLayout>,
+    pub(crate) snapshots: SparseSecondaryMap<LayoutItemKey, Snapshot>,
+    pub(crate) layout_cache: SecondaryMap<LayoutItemKey, crate::taffy::NodeState>,
 }
 
 impl FragmentTree {
@@ -31,18 +32,18 @@ impl FragmentTree {
         let source = self.items.get(key)?.source;
 
         self.snapshots
-            .get(&source)
+            .get(source)
             .map(|snapshot| &snapshot.constraint)
     }
 
     pub(crate) fn remove_source(&mut self, key: LayoutItemKey) {
-        self.inline_layouts.remove(&key);
-        self.layout_cache.remove(&key);
+        self.inline_layouts.remove(key);
+        self.layout_cache.remove(key);
     }
 
     pub(crate) fn remove_root(&mut self, key: FragmentKey) {
         let root = self.items[key].source;
-        if let Some(snapshot) = self.snapshots.remove(&root) {
+        if let Some(snapshot) = self.snapshots.remove(root) {
             for key in snapshot.keys() {
                 self.remove_source(key);
             }
@@ -62,6 +63,6 @@ impl FragmentTree {
     /// Invalidate a root after changing external font registrations, font data,
     /// or custom layout state and properties not captured by the layout snapshot.
     pub fn invalidate(&mut self, root: LayoutItemKey) {
-        self.snapshots.remove(&root);
+        self.snapshots.remove(root);
     }
 }

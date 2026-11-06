@@ -48,7 +48,7 @@ impl ContainerContext<'_, '_> {
     }
 
     pub fn style(&self) -> &Style {
-        &self.engine.nodes[&self.root].style
+        &self.engine.nodes[self.root].style
     }
 
     pub fn child_count(&self) -> usize {
@@ -56,7 +56,7 @@ impl ContainerContext<'_, '_> {
     }
 
     pub fn child_style(&self, index: usize) -> &Style {
-        &self.engine.nodes[&self.children[index]].style
+        &self.engine.nodes[self.children[index]].style
     }
 
     /// The source node represented by a direct child box. For an anonymous
@@ -124,7 +124,7 @@ impl ContainerContext<'_, '_> {
     pub fn set_child_layout(&mut self, index: usize, layout: taffy::Layout) {
         self.engine
             .nodes
-            .get_mut(&self.children[index])
+            .get_mut(self.children[index])
             .unwrap()
             .layout = layout;
     }

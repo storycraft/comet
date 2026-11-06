@@ -217,7 +217,7 @@ fn inline_block_uses_its_font_size_and_last_line_baseline() {
             .find(|&key| tree.items[key].node == Some(atomic))
             .unwrap();
         let atomic_fragment = &tree.items[atomic_key];
-        let shaped = &tree.inline_layouts[&atomic_fragment.source].layout;
+        let shaped = &tree.inline_layouts[atomic_fragment.source].layout;
 
         assert!(shaped.len() > 1);
 

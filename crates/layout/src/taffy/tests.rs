@@ -76,7 +76,7 @@ fn intrinsic_text_height_matches_retained_lines() {
                 );
 
                 let bx = engine.layout(key).unwrap();
-                let text = &engine.fragments.inline_layouts[&key].layout;
+                let text = &engine.fragments.inline_layouts[key].layout;
                 let content_height = bx.size.height - bx.padding.top - bx.padding.bottom;
                 assert!((content_height - text.height()).abs() < 0.01);
 
@@ -139,13 +139,13 @@ fn final_layout_after_sizing_probes_matches_fresh_layout() {
     let layouts: FxHashMap<_, _> = engine
         .nodes
         .iter()
-        .map(|(&key, state)| (key, state.layout))
+        .map(|(key, state)| (key, state.layout))
         .collect();
     let texts: FxHashMap<_, _> = engine
         .fragments
         .inline_layouts
         .iter()
-        .map(|(&key, text)| (key, text_metrics(&text.layout)))
+        .map(|(key, text)| (key, text_metrics(&text.layout)))
         .collect();
 
     assert_eq!(texts.len(), 2);
@@ -174,11 +174,11 @@ fn final_layout_after_sizing_probes_matches_fresh_layout() {
             engine.compute(key, available);
 
             for (&key, expected) in &layouts {
-                assert_eq!(&engine.nodes[&key].layout, expected);
+                assert_eq!(&engine.nodes[key].layout, expected);
             }
 
             for (&key, expected) in &texts {
-                let text = &engine.fragments.inline_layouts[&key].layout;
+                let text = &engine.fragments.inline_layouts[key].layout;
                 assert_eq!(&text_metrics(text), expected);
             }
         }

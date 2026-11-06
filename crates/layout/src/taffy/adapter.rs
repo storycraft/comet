@@ -49,11 +49,11 @@ impl LayoutPartialTree for TaffyLayout<'_> {
     type CustomIdent = String;
 
     fn get_core_container_style(&self, id: taffy::NodeId) -> Self::CoreContainerStyle<'_> {
-        &self.nodes[&from_taffy_key(id)].style
+        &self.nodes[from_taffy_key(id)].style
     }
 
     fn set_unrounded_layout(&mut self, id: taffy::NodeId, layout: &taffy::Layout) {
-        self.nodes.get_mut(&from_taffy_key(id)).unwrap().layout = *layout;
+        self.nodes.get_mut(from_taffy_key(id)).unwrap().layout = *layout;
     }
 
     fn compute_child_layout(
@@ -109,7 +109,7 @@ impl taffy::LayoutContainingBlock for TaffyLayout<'_> {
 
     fn clear_hoisted_children(&mut self, id: taffy::NodeId) {
         self.nodes
-            .get_mut(&from_taffy_key(id))
+            .get_mut(from_taffy_key(id))
             .unwrap()
             .hoisted
             .clear();
@@ -117,7 +117,7 @@ impl taffy::LayoutContainingBlock for TaffyLayout<'_> {
 
     fn add_hoisted_children(&mut self, id: taffy::NodeId, children: &[taffy::NodeId]) {
         self.nodes
-            .get_mut(&from_taffy_key(id))
+            .get_mut(from_taffy_key(id))
             .unwrap()
             .hoisted
             .extend_from_slice(children);
@@ -130,7 +130,7 @@ impl CacheTree for TaffyLayout<'_> {
         id: taffy::NodeId,
         input: &taffy::LayoutInput,
     ) -> Option<taffy::LayoutOutput> {
-        let state = self.nodes.get_mut(&from_taffy_key(id)).unwrap();
+        let state = self.nodes.get_mut(from_taffy_key(id)).unwrap();
 
         if input.run_mode == taffy::RunMode::PerformLayout && !state.final_layout_valid {
             return None;
@@ -145,7 +145,7 @@ impl CacheTree for TaffyLayout<'_> {
         input: &taffy::LayoutInput,
         output: taffy::LayoutOutput,
     ) {
-        let state = self.nodes.get_mut(&from_taffy_key(id)).unwrap();
+        let state = self.nodes.get_mut(from_taffy_key(id)).unwrap();
         state.cache.store(input, output);
 
         if input.run_mode == taffy::RunMode::PerformLayout {
@@ -155,7 +155,7 @@ impl CacheTree for TaffyLayout<'_> {
 
     fn cache_clear(&mut self, id: taffy::NodeId) {
         self.nodes
-            .get_mut(&from_taffy_key(id))
+            .get_mut(from_taffy_key(id))
             .unwrap()
             .cache
             .clear();

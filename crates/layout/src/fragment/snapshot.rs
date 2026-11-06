@@ -1,5 +1,6 @@
 use comet_tree::{node::Text, ui::Ui};
 use rustc_hash::{FxHashMap, FxHashSet};
+use slotmap::SecondaryMap;
 
 use super::{TextStyle, tree::FragmentTree};
 use crate::{
@@ -11,7 +12,7 @@ use crate::{
 #[derive(PartialEq)]
 pub(crate) struct Snapshot {
     pub(super) constraint: LayoutConstraint,
-    inputs: FxHashMap<LayoutItemKey, Input>,
+    inputs: SecondaryMap<LayoutItemKey, Input>,
 }
 
 /// Linked topology captures ordering without allocating a child vector per item.
@@ -34,7 +35,7 @@ impl Snapshot {
         root: LayoutItemKey,
         fragments: &mut FragmentTree,
     ) -> Self {
-        let mut inputs = FxHashMap::default();
+        let mut inputs = SecondaryMap::new();
         let mut resolved = FxHashMap::default();
 
         for key in layout.items.descendants(root) {
@@ -76,11 +77,11 @@ impl Snapshot {
     }
 
     pub fn keys(&self) -> impl Iterator<Item = LayoutItemKey> + '_ {
-        self.inputs.keys().copied()
+        self.inputs.keys()
     }
 
     pub fn contains(&self, key: LayoutItemKey) -> bool {
-        self.inputs.contains_key(&key)
+        self.inputs.contains_key(key)
     }
 
     pub fn prepare(
@@ -88,16 +89,16 @@ impl Snapshot {
         layout: &LayoutTree,
         root: LayoutItemKey,
         fragments: &mut FragmentTree,
-    ) -> FxHashMap<LayoutItemKey, NodeState> {
-        let previous = fragments.snapshots.remove(&root);
+    ) -> SecondaryMap<LayoutItemKey, NodeState> {
+        let previous = fragments.snapshots.remove(root);
         let constraint_changed = previous
             .as_ref()
             .is_none_or(|old| old.constraint != self.constraint);
         let mut dirty = FxHashSet::default();
 
-        for (&key, input) in &self.inputs {
+        for (key, input) in &self.inputs {
             if constraint_changed
-                || previous.as_ref().and_then(|old| old.inputs.get(&key)) != Some(input)
+                || previous.as_ref().and_then(|old| old.inputs.get(key)) != Some(input)
             {
                 let mut ancestor = Some(key);
 
@@ -117,16 +118,17 @@ impl Snapshot {
             }
         }
 
-        for (&key, input) in &self.inputs {
+        for (key, input) in &self.inputs {
             let state = fragments
                 .layout_cache
                 .entry(key)
+                .expect("snapshot keys belong to the current layout tree")
                 .or_insert_with(|| NodeState::new(input.style.clone()));
             state.style.clone_from(&input.style);
 
             if dirty.contains(&key) {
                 state.cache.clear();
-                fragments.inline_layouts.remove(&key);
+                fragments.inline_layouts.remove(key);
             }
         }
 

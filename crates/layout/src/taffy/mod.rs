@@ -13,7 +13,7 @@ use comet_tree::{
     ui::Ui,
 };
 use rustc_hash::FxHashMap;
-use slotmap::Key;
+use slotmap::{Key, SecondaryMap};
 use taffy::style::CoreStyle;
 
 pub(crate) use state::NodeState;
@@ -35,7 +35,7 @@ pub struct TaffyLayout<'a> {
     pub(crate) fragments: &'a mut FragmentTree,
     pub(crate) fonts: &'a mut parley::FontContext,
     pub(crate) parley: &'a mut parley::LayoutContext<Option<NodeKey>>,
-    pub(crate) nodes: FxHashMap<LayoutItemKey, NodeState>,
+    pub(crate) nodes: SecondaryMap<LayoutItemKey, NodeState>,
 }
 
 pub use conv::{from_taffy_key, to_taffy_key};
@@ -54,7 +54,7 @@ impl<'a> TaffyLayout<'a> {
     ) -> Option<Self> {
         tree.items.get(root)?;
 
-        let mut nodes = FxHashMap::default();
+        let mut nodes = SecondaryMap::new();
         let mut resolved = FxHashMap::default();
 
         for key in tree.items.descendants(root) {
@@ -85,21 +85,21 @@ impl<'a> TaffyLayout<'a> {
     }
 
     pub fn layout(&self, key: LayoutItemKey) -> Option<&taffy::Layout> {
-        self.nodes.get(&key).map(|node| &node.layout)
+        self.nodes.get(key).map(|node| &node.layout)
     }
 
     pub fn compute(&mut self, root: LayoutItemKey, available: taffy::Size<taffy::AvailableSpace>) {
         taffy::compute_root_layout(self, to_taffy_key(root), available);
 
         let baseline = self.inline_baseline(root);
-        self.nodes.get_mut(&root).unwrap().baseline = baseline;
+        self.nodes.get_mut(root).unwrap().baseline = baseline;
     }
 
     /// Last in-flow line baseline, measured from the border-box top.
     fn last_baseline(&self, key: LayoutItemKey) -> Option<f32> {
-        let bx = self.nodes[&key].layout;
+        let bx = self.nodes[key].layout;
 
-        if let Some(text) = self.fragments.inline_layouts.get(&key) {
+        if let Some(text) = self.fragments.inline_layouts.get(key) {
             return text
                 .layout
                 .lines()
@@ -108,19 +108,19 @@ impl<'a> TaffyLayout<'a> {
         }
 
         self.tree.items.children(key).rev().find_map(|child| {
-            if self.nodes[&child].style.position() == taffy::Position::Absolute {
+            if self.nodes[child].style.position() == taffy::Position::Absolute {
                 return None;
             }
 
             self.last_baseline(child)
-                .map(|baseline| self.nodes[&child].layout.location.y + baseline)
+                .map(|baseline| self.nodes[child].layout.location.y + baseline)
         })
     }
 
     /// Baseline relative to the border-box top. The fallback is the bottom
     /// margin edge, which can lie outside the border box.
     pub(crate) fn inline_baseline(&self, key: LayoutItemKey) -> f32 {
-        let state = &self.nodes[&key];
+        let state = &self.nodes[key];
 
         if state.style.overflow().x == taffy::Overflow::Visible
             && state.style.overflow().y == taffy::Overflow::Visible
@@ -180,7 +180,7 @@ impl<'a> TaffyLayout<'a> {
         key: LayoutItemKey,
         input: taffy::LayoutInput,
     ) -> taffy::LayoutOutput {
-        let style = self.nodes[&key].style.clone();
+        let style = self.nodes[key].style.clone();
         let mut output = taffy::compute_leaf_layout(
             input,
             &style,
@@ -188,7 +188,7 @@ impl<'a> TaffyLayout<'a> {
             |_, available| self.measure_inline(key, available),
         );
 
-        if let Some(text) = self.fragments.inline_layouts.get(&key) {
+        if let Some(text) = self.fragments.inline_layouts.get(key) {
             use taffy::ResolveOrZero;
 
             let text = &text.layout;
@@ -229,7 +229,7 @@ impl<'a> TaffyLayout<'a> {
 
         self.shape(key, available);
 
-        let layout = &mut self.fragments.inline_layouts.get_mut(&key).unwrap().layout;
+        let layout = &mut self.fragments.inline_layouts.get_mut(key).unwrap().layout;
         layout.break_all_lines(width);
 
         if available.width == taffy::AvailableSpace::MinContent {
@@ -249,7 +249,7 @@ impl<'a> TaffyLayout<'a> {
         // caches remain useful, but ancestors must run final layout again.
         let mut ancestor = Some(key);
         while let Some(key) = ancestor {
-            let Some(state) = self.nodes.get_mut(&key) else {
+            let Some(state) = self.nodes.get_mut(key) else {
                 break;
             };
 
@@ -301,7 +301,7 @@ impl<'a> TaffyLayout<'a> {
                     builder.pop_style_span();
                 }
                 Op::Box(child) => {
-                    let layout = self.nodes[&child].layout;
+                    let layout = self.nodes[child].layout;
 
                     // Parley places the margin box; emitted fragments retain
                     // border-box coordinates and dimensions.
@@ -311,7 +311,7 @@ impl<'a> TaffyLayout<'a> {
                         width: layout.size.width + layout.margin.left + layout.margin.right,
                         height: layout.size.height + layout.margin.top + layout.margin.bottom,
                         kind: parley::InlineBoxKind::InFlow,
-                        baseline: Some(layout.margin.top + self.nodes[&child].baseline),
+                        baseline: Some(layout.margin.top + self.nodes[child].baseline),
                         vertical_align: Default::default(),
                     });
                 }
@@ -329,7 +329,7 @@ impl<'a> TaffyLayout<'a> {
             }
         }
 
-        if let Some(inline) = self.fragments.inline_layouts.get_mut(&key) {
+        if let Some(inline) = self.fragments.inline_layouts.get_mut(key) {
             inline.text = builder.build_into(&mut inline.layout);
         } else {
             let (layout, text) = builder.build();

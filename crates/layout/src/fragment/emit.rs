@@ -126,7 +126,7 @@ pub(super) fn emit_box(
     position: Option<Point<f64>>,
     out: &mut Desired,
 ) {
-    let bx = engine.nodes[&key].layout;
+    let bx = engine.nodes[key].layout;
     let index = out.len();
     let mut f = fragment(
         key,
@@ -156,7 +156,7 @@ pub(super) fn emit_box(
         }
     }
 
-    let Some(inline) = engine.fragments.inline_layouts.get(&key) else {
+    let Some(inline) = engine.fragments.inline_layouts.get(key) else {
         return;
     };
     out.index_sources(engine.tree, key, key);
@@ -224,7 +224,7 @@ pub(super) fn emit_box(
                         continue;
                     }
 
-                    let margin = engine.nodes[&child].layout.margin;
+                    let margin = engine.nodes[child].layout.margin;
 
                     emit_box(
                         engine,

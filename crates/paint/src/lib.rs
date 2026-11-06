@@ -183,7 +183,7 @@ fn draw_glyph_run(
 ) {
     let Some(line) = tree
         .inline_layouts
-        .get(&owner)
+        .get(owner)
         .and_then(|inline| inline.layout.get(line))
     else {
         return;
