@@ -248,7 +248,6 @@ impl<'a> TaffyLayout<'a> {
         // Shaping may replace final text and atomic descendant geometry. Size
         // caches remain useful, but ancestors must run final layout again.
         let mut ancestor = Some(key);
-
         while let Some(key) = ancestor {
             let Some(state) = self.nodes.get_mut(&key) else {
                 break;
@@ -330,9 +329,14 @@ impl<'a> TaffyLayout<'a> {
             }
         }
 
-        let (layout, text) = builder.build();
-        self.fragments
-            .inline_layouts
-            .insert(key, InlineLayout { text, layout });
+        if let Some(inline) = self.fragments.inline_layouts.get_mut(&key) {
+            inline.text = builder.build_into(&mut inline.layout);
+        } else {
+            let (layout, text) = builder.build();
+
+            self.fragments
+                .inline_layouts
+                .insert(key, InlineLayout { text, layout });
+        }
     }
 }
