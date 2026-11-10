@@ -117,15 +117,15 @@ fn draw_box(
     if let Some(radius) = props.get::<BorderRadius>()
         && let Some(constraint) = tree.layout_constraint(key)
     {
-        let mut constraint = constraint.clone();
+        let mut units = constraint.units.clone();
 
         if let Some(item) = inputs.items.get(fragment.source) {
-            constraint.font_size = item.text_style.span.font_size as f64;
+            units.font_size = item.text_style.span.font_size as f64;
         }
 
         let resolve = |value: comet_layout::style::geometry::StyleUnit| {
             value
-                .resolve(&constraint, rect.width().min(rect.height()))
+                .resolve(&units, rect.width().min(rect.height()))
                 .max(0.0)
         };
 

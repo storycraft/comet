@@ -40,7 +40,7 @@ pub fn from_rect<T, U>(v: taffy::Rect<T>, mut f: impl FnMut(T) -> U) -> g::Rect<
 pub fn length(v: g::StyleUnit, cx: &LayoutConstraint) -> taffy::LengthPercentage {
     match v {
         g::StyleUnit::Percent(v) => taffy::LengthPercentage::percent(v as f32),
-        v => taffy::LengthPercentage::length(v.resolve(cx, 0.0) as f32),
+        v => taffy::LengthPercentage::length(v.resolve(&cx.units, 0.0) as f32),
     }
 }
 

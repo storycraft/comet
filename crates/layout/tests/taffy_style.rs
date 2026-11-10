@@ -62,7 +62,7 @@ fn adapter_resolves_constraint_units_and_preserves_percentages() {
         ),
     );
     let mut cx = LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0);
-    cx.font_size = 24.0;
+    cx.units.font_size = 24.0;
 
     let style = resolve(&ui, Some(node), &cx);
 
@@ -76,7 +76,7 @@ fn adapter_resolves_constraint_units_and_preserves_percentages() {
     );
     assert_eq!(style.padding().left, taffy::LengthPercentage::percent(0.25));
 
-    cx.font_size = 12.0;
+    cx.units.font_size = 12.0;
 
     let updated = resolve(&ui, Some(node), &cx);
 

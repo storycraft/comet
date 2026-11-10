@@ -129,7 +129,6 @@ impl LayoutInputTreeBuilder {
         self.force = force;
 
         let cx = UnitResolveContext {
-            percentage_basis: root_font_size,
             root_font_size,
             font_size: root_font_size,
             viewport,

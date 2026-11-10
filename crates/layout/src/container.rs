@@ -99,7 +99,8 @@ impl ContainerContext<'_, '_> {
         value: StyleUnit,
     ) -> taffy::LengthPercentage {
         let mut constraint = self.engine.constraint.clone();
-        constraint.font_size = f64::from(self.engine.tree.items[key].text_style.span.font_size);
+        constraint.units.font_size =
+            f64::from(self.engine.tree.items[key].text_style.span.font_size);
 
         conv::length(value, &constraint)
     }

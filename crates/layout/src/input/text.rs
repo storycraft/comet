@@ -35,15 +35,15 @@ pub fn root_text_style(root_font_size: f64) -> TextStyle {
 }
 
 /// Resolve a text length. Percentages and `em` use `cx.font_size`.
-fn resolve_length(value: StyleUnit, cx: &UnitResolveContext) -> f32 {
-    value.resolve2(cx) as f32
+fn resolve_length(value: StyleUnit, cx: &UnitResolveContext, percentage_basis: f64) -> f32 {
+    value.resolve(cx, percentage_basis) as f32
 }
 
 /// Overlay explicit properties on the parent's computed style, including the
 /// span style and the text alignment.
 ///
-/// `cx` supplies the root font size and viewport; its `font_size` and
-/// `percentage_basis` are overwritten. `font-size` resolves against the parent's
+/// `cx` supplies the root font size and viewport; its `font_size` is
+/// overwritten. `font-size` resolves `em` and percentages against the parent's
 /// font size, while every other length resolves against the resolved font size.
 /// The parent allocation is shared when no property changes the style.
 pub fn resolve_text_style(
@@ -54,7 +54,6 @@ pub fn resolve_text_style(
 ) -> Arc<TextStyle> {
     let mut style = parent.clone();
     let mut cx = UnitResolveContext {
-        percentage_basis: style.span.font_size as f64,
         font_size: style.span.font_size as f64,
         ..cx.clone()
     };
@@ -68,12 +67,14 @@ pub fn resolve_text_style(
         };
     }
 
+    // `font-size` percentages use the parent's font size.
     if let Some(value) = ui.prop::<bx::FontSize>(node) {
-        set!(span.font_size, resolve_length(value.0, &cx));
+        set!(span.font_size, resolve_length(value.0, &cx, cx.font_size));
     }
 
+    // Every other length resolves against the resolved font size.
     cx.font_size = style.span.font_size as f64;
-    cx.percentage_basis = cx.font_size;
+    let percentage_basis = cx.font_size;
 
     macro_rules! inherit {
         ($prop:ident, $field:ident) => {
@@ -85,12 +86,15 @@ pub fn resolve_text_style(
         };
         ($prop:ident, $field:ident, length) => {
             if let Some(value) = ui.prop::<bx::$prop>(node) {
-                set!(span.$field, resolve_length(value.0, &cx));
+                set!(span.$field, resolve_length(value.0, &cx, percentage_basis));
             }
         };
         ($prop:ident, $field:ident, optional) => {
             if let Some(value) = ui.prop::<bx::$prop>(node) {
-                set!(span.$field, Some(resolve_length(value.0, &cx)));
+                set!(
+                    span.$field,
+                    Some(resolve_length(value.0, &cx, percentage_basis))
+                );
             }
         };
     }
@@ -114,7 +118,7 @@ pub fn resolve_text_style(
     if let Some(value) = ui.prop::<bx::LineHeight>(node) {
         set!(
             span.line_height,
-            parley::LineHeight::Absolute(resolve_length(value.0, &cx))
+            parley::LineHeight::Absolute(resolve_length(value.0, &cx, percentage_basis))
         );
     }
     if let Some(value) = ui.prop::<bx::TextAlign>(node) {
