@@ -20,6 +20,7 @@ pub enum StyleUnit {
 impl StyleUnit {
     pub const ZERO: StyleUnit = StyleUnit::Px(0.0);
 
+    /// OLD
     /// Resolve a length with the percentage basis chosen by the caller.
     pub const fn resolve(self, cx: &LayoutConstraint, percentage_basis: f64) -> f64 {
         match self {
@@ -31,12 +32,32 @@ impl StyleUnit {
             StyleUnit::Vh(v) => v * cx.root_size.height,
         }
     }
+
+    /// Resolve a length.
+    pub const fn resolve2(self, cx: &UnitResolveContext) -> f64 {
+        match self {
+            StyleUnit::Px(v) => v,
+            StyleUnit::Percent(v) => cx.percentage_basis * v,
+            StyleUnit::Em(v) => v * cx.font_size,
+            StyleUnit::Rem(v) => v * cx.root_font_size,
+            StyleUnit::Vw(v) => v * cx.viewport.width,
+            StyleUnit::Vh(v) => v * cx.viewport.height,
+        }
+    }
 }
 
 impl Default for StyleUnit {
     fn default() -> Self {
         Self::ZERO
     }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct UnitResolveContext {
+    pub percentage_basis: f64,
+    pub root_font_size: f64,
+    pub font_size: f64,
+    pub viewport: Size<f64>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, derive_more::Display)]
