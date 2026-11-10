@@ -54,6 +54,29 @@ impl LayoutInputTree {
         }
     }
 
+    /// Clear the flags of an item and all of its descendants. Run it after
+    /// consuming the flags, such as after building fragments.
+    ///
+    /// Only flagged subtrees are visited. Flags of ancestors are kept, so clear
+    /// from the root unless other subtrees still need to be consumed.
+    /// Stale keys are ignored.
+    pub fn clear_flags(&mut self, key: LayoutInputKey) {
+        if self.items.get(key).is_none() {
+            return;
+        }
+
+        let mut pending = vec![key];
+
+        while let Some(key) = pending.pop() {
+            let flags = std::mem::take(&mut self.items[key].flags);
+
+            // Flagged descendants always have flagged ancestors.
+            if flags.contains(LayoutFlags::CHILDREN_DIRTY) {
+                pending.extend(self.items.children(key));
+            }
+        }
+    }
+
     /// Flag the item generated for a source node. Unmapped nodes are ignored;
     /// mark their parent when inserting new content.
     pub fn mark_node_dirty(&mut self, node: NodeKey) {
