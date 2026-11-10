@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use comet_layout::{
     input::{
-        ChildLayout, LayoutFlags, LayoutInputKey, LayoutInputKind, builder::LayoutInputTreeBuilder,
+        ChildLayout, LayoutFlags, LayoutInputKey, LayoutInputKind,
+        builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
     style::{
@@ -21,7 +22,11 @@ fn build(
     tree: &mut LayoutInputTree,
     target: Option<LayoutInputKey>,
 ) -> Option<LayoutInputKey> {
-    builder.build(ui, root, 16.0, VIEWPORT, tree, target, false)
+    builder.build(
+        ui,
+        tree,
+        BuildRequest::new(root, 16.0, VIEWPORT).with_target(target),
+    )
 }
 
 fn clean(tree: &mut LayoutInputTree, root: LayoutInputKey) {
@@ -450,14 +455,24 @@ fn force_re_resolves_and_flags_clean_subtrees() {
     // Without force, a clean target ignores the new root font size and viewport.
     let viewport = Size::new(1000.0, 600.0);
     assert_eq!(
-        builder.build(&ui, root, 20.0, viewport, &mut tree, Some(key), false),
+        builder.build(
+            &ui,
+            &mut tree,
+            BuildRequest::new(root, 20.0, viewport).with_target(Some(key))
+        ),
         Some(key)
     );
     assert_eq!(tree.items[child_key].text_style.font_size, 32.0);
     assert!(tree.items[key].flags.is_empty());
 
     assert_eq!(
-        builder.build(&ui, root, 20.0, viewport, &mut tree, Some(key), true),
+        builder.build(
+            &ui,
+            &mut tree,
+            BuildRequest::new(root, 20.0, viewport)
+                .with_target(Some(key))
+                .with_force(true),
+        ),
         Some(key)
     );
     assert_eq!(tree.item_for_node(child), Some(child_key));
@@ -472,6 +487,10 @@ fn force_re_resolves_and_flags_clean_subtrees() {
 
     // Force does not leak into the next build.
     clean(&mut tree, key);
-    builder.build(&ui, root, 20.0, viewport, &mut tree, Some(key), false);
+    builder.build(
+        &ui,
+        &mut tree,
+        BuildRequest::new(root, 20.0, viewport).with_target(Some(key)),
+    );
     assert!(tree.items[key].flags.is_empty());
 }

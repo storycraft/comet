@@ -2,7 +2,9 @@ mod common;
 
 use comet_layout::{
     input::{
-        LayoutInputKey, LayoutInputKind, builder::LayoutInputTreeBuilder, tree::LayoutInputTree,
+        LayoutInputKey, LayoutInputKind,
+        builder::{BuildRequest, LayoutInputTreeBuilder},
+        tree::LayoutInputTree,
     },
     style::{
         bx::{DisplayInner, DisplayOuter, FontSize},
@@ -25,7 +27,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tree = LayoutInputTree::new();
     let mut builder = LayoutInputTreeBuilder::new();
     let layout_root = builder
-        .build(&ui, root, ROOT_FONT_SIZE, VIEWPORT, &mut tree, None, false)
+        .build(
+            &ui,
+            &mut tree,
+            BuildRequest::new(root, ROOT_FONT_SIZE, VIEWPORT),
+        )
         .ok_or("could not build sample UI")?;
 
     println!("Initial layout input tree (every item is flagged):");
@@ -41,12 +47,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let greeting_item = builder
         .build(
             &ui,
-            greeting,
-            ROOT_FONT_SIZE,
-            VIEWPORT,
             &mut tree,
-            greeting_item,
-            false,
+            BuildRequest::new(greeting, ROOT_FONT_SIZE, VIEWPORT).with_target(greeting_item),
         )
         .ok_or("could not rebuild the greeting")?;
 
@@ -61,12 +63,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let interruption_item = builder
         .build(
             &ui,
-            interruption,
-            ROOT_FONT_SIZE,
-            VIEWPORT,
             &mut tree,
-            interruption_item,
-            false,
+            BuildRequest::new(interruption, ROOT_FONT_SIZE, VIEWPORT)
+                .with_target(interruption_item),
         )
         .ok_or("could not rebuild the interruption")?;
 
@@ -80,12 +79,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let interruption_item = builder
         .build(
             &ui,
-            interruption,
-            ROOT_FONT_SIZE,
-            VIEWPORT,
             &mut tree,
-            Some(interruption_item),
-            false,
+            BuildRequest::new(interruption, ROOT_FONT_SIZE, VIEWPORT)
+                .with_target(Some(interruption_item)),
         )
         .ok_or("could not restore the block")?;
 
@@ -99,12 +95,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let layout_root = builder
         .build(
             &ui,
-            root,
-            20.0,
-            Size::new(1024.0, 768.0),
             &mut tree,
-            Some(layout_root),
-            true,
+            BuildRequest::new(root, 20.0, Size::new(1024.0, 768.0))
+                .with_target(Some(layout_root))
+                .with_force(true),
         )
         .ok_or("could not re-resolve the tree")?;
 

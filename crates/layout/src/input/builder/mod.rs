@@ -17,6 +17,48 @@ use crate::{
     },
 };
 
+/// What [`LayoutInputTreeBuilder::build`] builds, and how.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BuildRequest {
+    /// Source node to build.
+    pub root: NodeKey,
+    /// Font size of the root element, used for `rem` and as the initial font size.
+    pub root_font_size: f64,
+    /// Viewport size, used for `vw` and `vh`.
+    pub viewport: Size<f64>,
+    /// `None` builds a new tree; `Some(key)` updates the item generated for `root`.
+    pub target: Option<LayoutInputKey>,
+    /// Re-resolve the whole target subtree and flag every item as if it were
+    /// newly generated, even when the target is clean. Keys are still reused.
+    /// Use it when the root font size or the viewport changes, since every item
+    /// may depend on them.
+    pub force: bool,
+}
+
+impl BuildRequest {
+    /// Request a fresh build of `root`.
+    pub const fn new(root: NodeKey, root_font_size: f64, viewport: Size<f64>) -> Self {
+        Self {
+            root,
+            root_font_size,
+            viewport,
+            target: None,
+            force: false,
+        }
+    }
+
+    /// Update `target` instead of building a new tree when it is `Some`.
+    pub const fn with_target(mut self, target: Option<LayoutInputKey>) -> Self {
+        self.target = target;
+        self
+    }
+
+    pub const fn with_force(mut self, force: bool) -> Self {
+        self.force = force;
+        self
+    }
+}
+
 /// Builds a [`LayoutInputTree`] that mirrors the source UI 1:1.
 #[derive(Default)]
 pub struct LayoutInputTreeBuilder {
@@ -30,9 +72,9 @@ impl LayoutInputTreeBuilder {
         Self::default()
     }
 
-    /// Build a new tree for `root` with `None`, or update the item generated for
-    /// `root` with `Some(key)`. Clean targets return immediately; mark changed
-    /// nodes before updating.
+    /// Build a new tree for `request.root`, or update `request.target`. Clean
+    /// targets return immediately unless forced; mark changed nodes before
+    /// updating.
     ///
     /// Returns `target` when it is updated in place, or the newly created key.
     /// A target generated for a different node is replaced by a new item at its
@@ -44,23 +86,21 @@ impl LayoutInputTreeBuilder {
     /// changed. Existing items are only marked dirty when their contents or child
     /// lists change. Flags are left for the consumer of the input tree to clear.
     /// Items only describe their own node, so any changed node can be updated on
-    /// its own. Use `item_for_node` for child results.
-    ///
-    /// With `force`, the whole target subtree is re-resolved and every item is
-    /// flagged as if it were newly generated, even when the target is clean. Keys
-    /// are still reused. Use it when the root font size or the viewport changes,
-    /// since every item may depend on them.
-    #[allow(clippy::too_many_arguments)]
+    /// its own. See [`BuildRequest::force`] for forced builds. Use
+    /// `item_for_node` for child results.
     pub fn build(
         &mut self,
         ui: &Ui,
-        root: NodeKey,
-        root_font_size: f64,
-        viewport: Size<f64>,
         tree: &mut LayoutInputTree,
-        target: Option<LayoutInputKey>,
-        force: bool,
+        request: BuildRequest,
     ) -> Option<LayoutInputKey> {
+        let BuildRequest {
+            root,
+            root_font_size,
+            viewport,
+            target,
+            force,
+        } = request;
         let target = target.filter(|&key| tree.items.get(key).is_some());
 
         if ui.kind(root).is_none() {
