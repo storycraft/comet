@@ -21,7 +21,7 @@ fn build(
     tree: &mut LayoutInputTree,
     target: Option<LayoutInputKey>,
 ) -> Option<LayoutInputKey> {
-    builder.build(ui, root, 16.0, VIEWPORT, tree, target)
+    builder.build(ui, root, 16.0, VIEWPORT, tree, target, false)
 }
 
 fn clean(tree: &mut LayoutInputTree, root: LayoutInputKey) {
@@ -428,4 +428,50 @@ fn assert_fresh(
     )
     .unwrap();
     assert_eq!(shape(tree, key), shape(&fresh, fresh_key));
+}
+
+#[test]
+fn force_re_resolves_and_flags_clean_subtrees() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let child = ui.create(Node::Box, (bx::FontSize(StyleUnit::Rem(2.0)),));
+    let text = ui.create(Node::Text, (bx::LetterSpacing(StyleUnit::Vw(0.01)),));
+
+    ui.append(root, child);
+    ui.append(child, text);
+
+    let mut tree = LayoutInputTree::new();
+    let mut builder = LayoutInputTreeBuilder::new();
+    let key = build(&mut builder, &ui, root, &mut tree, None).unwrap();
+    let child_key = tree.item_for_node(child).unwrap();
+    let text_key = tree.item_for_node(text).unwrap();
+    clean(&mut tree, key);
+
+    // Without force, a clean target ignores the new root font size and viewport.
+    let viewport = Size::new(1000.0, 600.0);
+    assert_eq!(
+        builder.build(&ui, root, 20.0, viewport, &mut tree, Some(key), false),
+        Some(key)
+    );
+    assert_eq!(tree.items[child_key].text_style.font_size, 32.0);
+    assert!(tree.items[key].flags.is_empty());
+
+    assert_eq!(
+        builder.build(&ui, root, 20.0, viewport, &mut tree, Some(key), true),
+        Some(key)
+    );
+    assert_eq!(tree.item_for_node(child), Some(child_key));
+    assert_eq!(tree.item_for_node(text), Some(text_key));
+    assert_eq!(tree.items[key].text_style.font_size, 20.0);
+    assert_eq!(tree.items[child_key].text_style.font_size, 40.0);
+    assert_eq!(tree.items[text_key].text_style.letter_spacing, 10.0);
+
+    for item in tree.items.descendants(key) {
+        assert_eq!(tree.items[item].flags, LayoutFlags::all());
+    }
+
+    // Force does not leak into the next build.
+    clean(&mut tree, key);
+    builder.build(&ui, root, 20.0, viewport, &mut tree, Some(key), false);
+    assert!(tree.items[key].flags.is_empty());
 }

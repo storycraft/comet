@@ -21,6 +21,8 @@ use crate::{
 #[derive(Default)]
 pub struct LayoutInputTreeBuilder {
     pending: Vec<Task>,
+    /// Re-resolve every item in the current build, as if it were generated.
+    force: bool,
 }
 
 impl LayoutInputTreeBuilder {
@@ -43,6 +45,12 @@ impl LayoutInputTreeBuilder {
     /// lists change. Flags are left for the consumer of the input tree to clear.
     /// Items only describe their own node, so any changed node can be updated on
     /// its own. Use `item_for_node` for child results.
+    ///
+    /// With `force`, the whole target subtree is re-resolved and every item is
+    /// flagged as if it were newly generated, even when the target is clean. Keys
+    /// are still reused. Use it when the root font size or the viewport changes,
+    /// since every item may depend on them.
+    #[allow(clippy::too_many_arguments)]
     pub fn build(
         &mut self,
         ui: &Ui,
@@ -51,6 +59,7 @@ impl LayoutInputTreeBuilder {
         viewport: Size<f64>,
         tree: &mut LayoutInputTree,
         target: Option<LayoutInputKey>,
+        force: bool,
     ) -> Option<LayoutInputKey> {
         let target = target.filter(|&key| tree.items.get(key).is_some());
 
@@ -68,13 +77,15 @@ impl LayoutInputTreeBuilder {
             return None;
         }
 
-        if let Some(key) = target
+        if !force
+            && let Some(key) = target
             && tree.items[key].flags.is_empty()
         {
             return Some(key);
         }
 
         self.clear();
+        self.force = force;
 
         let cx = UnitResolveContext {
             percentage_basis: root_font_size,
@@ -100,6 +111,8 @@ impl LayoutInputTreeBuilder {
             tree.items.before(old, update.key);
             tree.delete_item(old);
             // Propagate the new item's flags to the ancestors.
+            tree.mark_dirty(update.key);
+        } else if force {
             tree.mark_dirty(update.key);
         }
 
@@ -141,11 +154,13 @@ impl LayoutInputTreeBuilder {
 
                 let update = match existing {
                     // Clean items keep their entire subtree.
-                    Some(item) if !force && tree.items[item].flags.is_empty() => Update {
-                        key: item,
-                        descend: false,
-                        force: false,
-                    },
+                    Some(item) if !force && !self.force && tree.items[item].flags.is_empty() => {
+                        Update {
+                            key: item,
+                            descend: false,
+                            force: false,
+                        }
+                    }
 
                     _ => self.update(ui, tree, child, existing, &parent_style, cx),
                 };
@@ -218,6 +233,20 @@ impl LayoutInputTreeBuilder {
         };
 
         let item = &mut tree.items[key];
+
+        if self.force {
+            item.kind = kind;
+            item.text_style = text_style;
+            item.child_layout = child_layout;
+            item.flags = LayoutFlags::all();
+
+            return Update {
+                key,
+                descend: true,
+                force: true,
+            };
+        }
+
         let style_changed =
             !Arc::ptr_eq(&item.text_style, &text_style) && item.text_style != text_style;
         let changed = style_changed || item.kind != kind || item.child_layout != child_layout;
@@ -241,6 +270,7 @@ impl LayoutInputTreeBuilder {
 
     fn clear(&mut self) {
         self.pending.clear();
+        self.force = false;
     }
 }
 

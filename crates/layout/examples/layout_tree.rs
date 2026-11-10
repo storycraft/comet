@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tree = LayoutInputTree::new();
     let mut builder = LayoutInputTreeBuilder::new();
     let layout_root = builder
-        .build(&ui, root, ROOT_FONT_SIZE, VIEWPORT, &mut tree, None)
+        .build(&ui, root, ROOT_FONT_SIZE, VIEWPORT, &mut tree, None, false)
         .ok_or("could not build sample UI")?;
 
     println!("Initial layout input tree (every item is flagged):");
@@ -46,6 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             VIEWPORT,
             &mut tree,
             greeting_item,
+            false,
         )
         .ok_or("could not rebuild the greeting")?;
 
@@ -65,6 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             VIEWPORT,
             &mut tree,
             interruption_item,
+            false,
         )
         .ok_or("could not rebuild the interruption")?;
 
@@ -83,12 +85,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             VIEWPORT,
             &mut tree,
             Some(interruption_item),
+            false,
         )
         .ok_or("could not restore the block")?;
 
     println!(
         "\nAfter restoring the block and rebuilding {interruption_item:?} with font-size: 1.5em:"
     );
+    print_tree(&ui, &tree, layout_root);
+
+    // Every item may depend on the root font size or the viewport, so a change
+    // to either forces the whole tree to be re-resolved. Keys are kept.
+    let layout_root = builder
+        .build(
+            &ui,
+            root,
+            20.0,
+            Size::new(1024.0, 768.0),
+            &mut tree,
+            Some(layout_root),
+            true,
+        )
+        .ok_or("could not re-resolve the tree")?;
+
+    println!("\nAfter forcing a rebuild with a 20px root font size:");
     print_tree(&ui, &tree, layout_root);
 
     Ok(())
