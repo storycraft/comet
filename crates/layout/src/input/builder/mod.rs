@@ -70,7 +70,10 @@ impl LayoutInputTreeBuilder {
     /// item, update its parent.
     ///
     /// Returns the item generated for `source`. Returns `None` and deletes its item
-    /// if `source` is not in the UI, even when the item is clean.
+    /// if `source` is not in the UI, even when the item is clean. Also returns
+    /// `None` without changes when `source` has a UI parent but its item has no
+    /// parent item, since the tree no longer mirrors the UI. Build from the UI
+    /// root first.
     ///
     /// Generated items have every [`LayoutFlags`] set. Updating visits flagged
     /// items and keeps clean subtrees as they are, unless an inherited text style
@@ -114,6 +117,14 @@ impl LayoutInputTreeBuilder {
             return Some(key);
         }
 
+        let parent_style = match target.and_then(|key| tree.items.parent(key)) {
+            Some(parent) => tree.items[parent].text_style.clone(),
+            // A source with a UI parent always has a parent item, so the tree
+            // does not mirror the UI.
+            None if ui.parent(source).is_some() => return None,
+            None => Arc::new(style::root_text_style(root_font_size)),
+        };
+
         self.clear();
         self.force = force;
 
@@ -122,14 +133,6 @@ impl LayoutInputTreeBuilder {
             root_font_size,
             font_size: root_font_size,
             viewport,
-        };
-
-        let parent_style = match target.and_then(|key| tree.items.parent(key)) {
-            Some(parent) => tree.items[parent].text_style.clone(),
-            None => match ui.parent(source) {
-                Some(parent) => style::resolve_inherited(ui, parent, &cx),
-                None => Arc::new(style::root_text_style(root_font_size)),
-            },
         };
 
         let update = self.update(ui, tree, source, target, &parent_style, &cx);

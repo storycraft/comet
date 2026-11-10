@@ -307,10 +307,10 @@ fn partial_update_of_descendant_uses_parent_style() {
     assert_eq!(tree.item_for_node(child), Some(child_key));
     assert!(tree.items[child_key].flags.is_empty());
 
-    // A descendant root without a parent item resolves its UI ancestors.
+    // A descendant without a parent item means the tree does not mirror the UI.
     let mut other = LayoutInputTree::new();
-    let other_key = build(&mut builder, &ui, child, &mut other).unwrap();
-    assert_eq!(other.items[other_key].text_style.font_size, 40.0);
+    assert_eq!(build(&mut builder, &ui, child, &mut other), None);
+    assert!(other.items.is_empty());
 }
 
 #[test]
