@@ -13,6 +13,7 @@ mod inline;
 mod retain;
 
 use comet_tree::ui::Ui;
+use rustc_hash::FxHashSet;
 use slotmap::{Key, KeyData};
 
 use super::{
@@ -43,6 +44,9 @@ pub(crate) struct Scratch {
     /// Retained fragments detached from their parents during this build. Those
     /// left without a parent at the end are deleted.
     detached: Vec<FragmentKey>,
+    /// Box fragments created during this build, whose mode and style are
+    /// already resolved.
+    created: FxHashSet<FragmentKey>,
     inline: inline::Scratch,
 }
 
@@ -94,12 +98,21 @@ impl Engine<'_> {
         }
     }
 
-    fn resolve_style(&self, key: LayoutInputKey) -> Style {
-        let item = &self.tree.items[key];
+    /// The build constraint with the font size of an item, resolving `em`
+    /// units of its box and of the anonymous blocks it owns.
+    fn style_constraint(&self, key: LayoutInputKey) -> LayoutConstraint {
         let mut cx = self.constraint.clone();
-        cx.units.font_size = item.text_style.span.font_size as f64;
+        cx.units.font_size = self.tree.items[key].text_style.span.font_size as f64;
 
-        style::resolve(self.ui, Some(item.node), &cx)
+        cx
+    }
+
+    fn resolve_style(&self, key: LayoutInputKey) -> Style {
+        style::resolve(
+            self.ui,
+            Some(self.tree.items[key].node),
+            &self.style_constraint(key),
+        )
     }
 
     /// The box fragment of a box generating item, created with its state if
@@ -118,6 +131,7 @@ impl Engine<'_> {
 
         self.fragments.states.insert(fragment, state);
         self.fragments.first.insert(key, fragment);
+        self.scratch.created.insert(fragment);
 
         fragment
     }
@@ -127,6 +141,7 @@ impl Engine<'_> {
     pub fn invalidate(&mut self) {
         // Without retained fragments every item is treated as flagged.
         let force = self.fragments.box_fragment(self.root).is_none();
+        self.scratch.created.clear();
         let mut stack = std::mem::take(&mut self.scratch.stack);
         stack.push(self.root);
 
@@ -140,7 +155,7 @@ impl Engine<'_> {
             }
 
             if self.is_box(key) {
-                self.invalidate_box(key, force);
+                self.invalidate_box(key, flags, force);
             } else if let Some(fragment) = self.fragments.box_fragment(key) {
                 // The item no longer generates a box.
                 self.drop_state(fragment);
@@ -159,14 +174,30 @@ impl Engine<'_> {
 
     /// Refresh a flagged box and rebuild its fragment children. Lines are
     /// attached again when they are emitted.
-    fn invalidate_box(&mut self, key: LayoutInputKey, force: bool) {
+    ///
+    /// Boxes created in this build are already resolved. The style of a box
+    /// is kept when only its descendants are flagged, but its mode is not:
+    /// children changing kind only flag their parent's descendants.
+    fn invalidate_box(&mut self, key: LayoutInputKey, flags: LayoutFlags, force: bool) {
         let fragment = self.ensure_box(key);
-        let mode = self.mode(key);
-        let style = self.resolve_style(key);
+        let created = self.scratch.created.contains(&fragment);
+        let dirty = force || flags.contains(LayoutFlags::DIRTY);
+        let previous = self.fragments.states[fragment].mode;
+
+        if !created {
+            let mode = self.mode(key);
+            let style = dirty.then(|| self.resolve_style(key));
+
+            let state = &mut self.fragments.states[fragment];
+            state.mode = mode;
+
+            if let Some(style) = style {
+                state.style = style;
+            }
+        }
 
         let state = &mut self.fragments.states[fragment];
-        state.mode = mode;
-        state.style = style;
+        let mode = state.mode;
         state.invalidate();
 
         match mode {
@@ -183,6 +214,13 @@ impl Engine<'_> {
             }
             Mode::Block | Mode::Container => {
                 self.fragments.inline_layouts.remove(fragment);
+
+                // Child list changes flag the box itself, so its children are
+                // still attached unless it is new or changed mode.
+                if !created && !dirty && mode == previous {
+                    return;
+                }
+
                 self.release_children(fragment);
 
                 for child in self.tree.items.children(key) {

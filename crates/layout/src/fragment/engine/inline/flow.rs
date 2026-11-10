@@ -118,7 +118,7 @@ impl Engine<'_> {
                 anonymous
             }
             None => {
-                let style = style::resolve(self.ui, None, self.constraint);
+                let style = style::resolve(self.ui, None, &self.style_constraint(owner));
                 let anonymous = self.fragments.items.insert(Fragment::new(
                     owner,
                     FragmentItem::AnonymousBlock,
