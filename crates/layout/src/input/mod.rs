@@ -13,6 +13,7 @@ use crate::parley::TextStyle;
 pub struct LayoutInputItem {
     pub kind: LayoutInputKind,
     pub node: NodeKey,
+    /// Inherited text properties. Equal styles share an allocation.
     pub text_style: Arc<TextStyle>,
     pub child_layout: ChildLayout,
     pub flags: LayoutFlags,

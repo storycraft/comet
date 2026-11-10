@@ -84,7 +84,7 @@ impl Engine<'_> {
     fn resolve_style(&self, key: LayoutInputKey) -> Style {
         let item = &self.tree.items[key];
         let mut cx = self.constraint.clone();
-        cx.font_size = item.text_style.font_size as f64;
+        cx.font_size = item.text_style.span.font_size as f64;
 
         style::resolve(self.ui, Some(item.node), &cx)
     }

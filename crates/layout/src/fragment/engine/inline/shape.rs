@@ -10,7 +10,7 @@ use super::{
 use crate::{
     fragment::InlineLayout,
     input::{LayoutInputKey, tree::LayoutInputTree},
-    parley::TextStyle,
+    parley::SpanStyle,
 };
 
 impl Engine<'_> {
@@ -67,9 +67,9 @@ impl Engine<'_> {
 
 /// The item's inherited text style, branded with its node so glyph runs can
 /// be traced back to their source.
-fn span_style(tree: &LayoutInputTree, key: LayoutInputKey) -> TextStyle {
+fn span_style(tree: &LayoutInputTree, key: LayoutInputKey) -> SpanStyle {
     let item = &tree.items[key];
-    let mut style = item.text_style.as_ref().clone();
+    let mut style = item.text_style.span.clone();
     style.brush = Some(item.node);
 
     style
@@ -87,7 +87,7 @@ struct Content<'a> {
 }
 
 impl Content<'_> {
-    fn text(&mut self, style: TextStyle, text: &str) {
+    fn text(&mut self, style: SpanStyle, text: &str) {
         if text.is_empty() {
             return;
         }

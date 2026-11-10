@@ -82,9 +82,11 @@ define_style_props!(
 
     // Line settings
     pub LineHeight: StyleUnit;
-    pub WordBreak: parley::style::WordBreak;
+    pub WordBreak: parley::WordBreak;
 
     // Text spacing
     pub WordSpacing: StyleUnit;
     pub LetterSpacing: StyleUnit;
+
+    pub TextAlign: parley::Alignment;
 );

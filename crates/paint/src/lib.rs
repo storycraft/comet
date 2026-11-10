@@ -117,7 +117,7 @@ fn draw_box(
         let mut constraint = constraint.clone();
 
         if let Some(item) = inputs.items.get(fragment.source) {
-            constraint.font_size = item.text_style.font_size as f64;
+            constraint.font_size = item.text_style.span.font_size as f64;
         }
 
         let resolve = |value: comet_layout::style::geometry::StyleUnit| {

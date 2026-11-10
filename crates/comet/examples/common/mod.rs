@@ -2,9 +2,7 @@ mod flex;
 
 use anyrender::Paint;
 use comet_layout::style::{
-    bx::*,
-    geometry::{AutoValue, Rect, Size as LayoutSize, StyleUnit},
-    parley,
+    bx::*, geometry::{AutoValue, Rect, Size as LayoutSize, StyleUnit}, parley::{self, Alignment},
 };
 use comet_paint::style::{BorderRadius, Fill, TextColor};
 use comet_tree::{
@@ -71,6 +69,7 @@ fn block_inline_sample(ui: &mut Ui, root: NodeKey) {
             Padding(Rect::new_all(StyleUnit::Px(12.0))),
             Fill(Paint::Solid(Color::from_rgb8(222, 242, 233))),
             BorderRadius(Rect::new_all(StyleUnit::Px(8.0))),
+            TextAlign(Alignment::Center),
         ),
     );
     ui.append(span, block);

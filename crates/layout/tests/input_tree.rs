@@ -44,7 +44,7 @@ fn shape(
                 item.node,
                 item.kind,
                 item.child_layout,
-                item.text_style.font_size,
+                item.text_style.span.font_size,
             )
         })
         .collect()
@@ -128,15 +128,15 @@ fn text_styles_resolve_units_and_share_allocations() {
             .clone()
     };
 
-    assert_eq!(style(root).font_size, 20.0);
+    assert_eq!(style(root).span.font_size, 20.0);
     assert!(Arc::ptr_eq(&tree.items[key].text_style, &style(inherited)));
 
     let changed = style(changed);
-    assert_eq!(changed.font_size, 30.0);
-    assert_eq!(changed.line_height, parley::LineHeight::Absolute(60.0));
-    assert_eq!(changed.letter_spacing, 3.0);
-    assert_eq!(style(rem).font_size, 32.0);
-    assert_eq!(style(vw).font_size, 8.0);
+    assert_eq!(changed.span.font_size, 30.0);
+    assert_eq!(changed.span.line_height, parley::LineHeight::Absolute(60.0));
+    assert_eq!(changed.span.letter_spacing, 3.0);
+    assert_eq!(style(rem).span.font_size, 32.0);
+    assert_eq!(style(vw).span.font_size, 8.0);
 }
 
 #[test]
@@ -260,14 +260,14 @@ fn changed_text_style_updates_descendants() {
 
     let item = |node| &tree.items[tree.item_for_node(node).unwrap()];
 
-    assert_eq!(item(text).text_style.font_size, 24.0);
+    assert_eq!(item(text).text_style.span.font_size, 24.0);
     assert_eq!(item(text).flags, LayoutFlags::DIRTY);
     assert_eq!(
         item(child).flags,
         LayoutFlags::DIRTY | LayoutFlags::CHILDREN_DIRTY
     );
     // Its own font size wins, so the resolved style is unchanged and it stays clean.
-    assert_eq!(item(fixed).text_style.font_size, 10.0);
+    assert_eq!(item(fixed).text_style.span.font_size, 10.0);
     assert!(item(fixed).flags.is_empty());
 
     let mut fresh = LayoutInputTree::new();
@@ -292,7 +292,7 @@ fn partial_update_of_descendant_uses_parent_style() {
     tree.mark_dirty(child_key);
 
     assert_eq!(build(&mut builder, &ui, child, &mut tree), Some(child_key));
-    assert_eq!(tree.items[child_key].text_style.font_size, 40.0);
+    assert_eq!(tree.items[child_key].text_style.span.font_size, 40.0);
 
     // A new node is inserted by updating the item of its parent.
     clean(&mut tree, key);
@@ -403,7 +403,7 @@ fn force_re_resolves_and_flags_clean_subtrees() {
         builder.build(&ui, &mut tree, BuildRequest::new(root, 20.0, viewport)),
         Some(key)
     );
-    assert_eq!(tree.items[child_key].text_style.font_size, 32.0);
+    assert_eq!(tree.items[child_key].text_style.span.font_size, 32.0);
     assert!(tree.items[key].flags.is_empty());
 
     assert_eq!(
@@ -416,9 +416,9 @@ fn force_re_resolves_and_flags_clean_subtrees() {
     );
     assert_eq!(tree.item_for_node(child), Some(child_key));
     assert_eq!(tree.item_for_node(text), Some(text_key));
-    assert_eq!(tree.items[key].text_style.font_size, 20.0);
-    assert_eq!(tree.items[child_key].text_style.font_size, 40.0);
-    assert_eq!(tree.items[text_key].text_style.letter_spacing, 10.0);
+    assert_eq!(tree.items[key].text_style.span.font_size, 20.0);
+    assert_eq!(tree.items[child_key].text_style.span.font_size, 40.0);
+    assert_eq!(tree.items[text_key].text_style.span.letter_spacing, 10.0);
 
     for item in tree.items.descendants(key) {
         assert_eq!(tree.items[item].flags, LayoutFlags::all());

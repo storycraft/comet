@@ -55,7 +55,7 @@ fn print_tree(tree: &LayoutInputTree, root: LayoutInputKey) {
             item.kind,
             item.node,
             item.child_layout,
-            item.text_style.font_size,
+            item.text_style.span.font_size,
             item.flags
         );
 

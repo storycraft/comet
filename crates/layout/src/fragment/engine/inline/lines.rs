@@ -70,8 +70,8 @@ impl Lines<'_> {
 
 impl Engine<'_> {
     /// Break the inline content into lines of `max_advance`, placing block
-    /// children between them. With `emit`, placed content is recorded for
-    /// [`Self::emit_inline`].
+    /// children between them. With `emit`, lines are aligned by the root's
+    /// `text_style.align` and placed content is recorded for [`Self::emit_inline`].
     pub(super) fn break_inline(
         &mut self,
         key: LayoutInputKey,
@@ -129,6 +129,15 @@ impl Engine<'_> {
 
         let height = breaker.committed_y() as f32;
         breaker.finish();
+
+        if emit {
+            // Alignment only moves content within lines, so measuring skips it.
+            // Positioned line items include the alignment offset.
+            inline.layout.align(
+                self.tree.items[key].text_style.align,
+                parley::AlignmentOptions::default(),
+            );
+        }
 
         inline.first_baseline = lines.first_baseline;
         inline.last_baseline = lines.last_baseline;

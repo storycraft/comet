@@ -8,6 +8,7 @@ use comet_layout::{
     style::{
         LayoutConstraint, bx,
         geometry::{AutoValue, Size, StyleUnit},
+        parley::Alignment as TextAlign,
     },
 };
 use comet_tree::{
@@ -374,4 +375,143 @@ fn fragments_iterate_linked_fragments_of_an_item() {
     assert_eq!(f.fragments.fragments(span_key).count(), 0);
     assert_eq!(f.fragments.fragments(before_key).count(), 0);
     assert_eq!(f.fragments.fragments(block_key).count(), 0);
+}
+
+/// Horizontal extents of the glyph runs on each line of a box, relative to
+/// the box, as `(line, left, right)`.
+fn line_runs(f: &Fixture, node: NodeKey) -> Vec<(usize, f64, f64)> {
+    let fragment = f
+        .fragments
+        .box_fragment(f.tree.item_for_node(node).unwrap())
+        .unwrap();
+
+    f.children(fragment)
+        .into_iter()
+        .filter_map(|line| match f.fragments.items[line].item {
+            FragmentItem::Line { line: index } => Some((line, index)),
+            _ => None,
+        })
+        .map(|(line, index)| {
+            let offset = f.fragments.items[line].layout.location.x;
+            let (left, right) = f
+                .children(line)
+                .into_iter()
+                .map(|run| f.fragments.items[run].layout)
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(left, right), run| {
+                    (
+                        left.min(run.location.x),
+                        right.max(run.location.x + run.size.width),
+                    )
+                });
+
+            (index, offset + left, offset + right)
+        })
+        .collect()
+}
+
+fn aligned_text(ui: &mut Ui, align: TextAlign, value: &str) -> NodeKey {
+    let root = ui.create(Node::Box, (bx::TextAlign(align),));
+    let content = text(ui, value);
+    ui.append(root, content);
+
+    root
+}
+
+fn close(actual: f64, expected: f64) {
+    assert!((actual - expected).abs() < 0.5, "{actual} != {expected}");
+}
+
+#[test]
+fn lines_are_aligned_within_the_content_box() {
+    let mut ui = Ui::new();
+    let start_node = aligned_text(&mut ui, TextAlign::Start, "short");
+    let center_node = aligned_text(&mut ui, TextAlign::Center, "short");
+    let right_node = aligned_text(&mut ui, TextAlign::Right, "short");
+
+    let mut f = Fixture::new();
+    f.build(&ui, start_node);
+    let [(_, left, width)] = line_runs(&f, start_node)[..] else {
+        panic!("expected one line");
+    };
+    let width = width - left;
+
+    close(left, 0.0);
+
+    f.build(&ui, center_node);
+    let [(_, left, right)] = line_runs(&f, center_node)[..] else {
+        panic!("expected one line");
+    };
+    close(left, (VIEWPORT.width - width) / 2.0);
+    close(right - left, width);
+
+    f.build(&ui, right_node);
+    let [(_, left, right)] = line_runs(&f, right_node)[..] else {
+        panic!("expected one line");
+    };
+    close(right, VIEWPORT.width);
+    close(left, VIEWPORT.width - width);
+}
+
+#[test]
+fn justified_lines_fill_the_width_except_the_last() {
+    let value = "justified text spreads words across the whole line until \
+                 the paragraph ends with a shorter last line";
+    let mut ui = Ui::new();
+    let start = aligned_text(&mut ui, TextAlign::Start, value);
+    let justify = aligned_text(&mut ui, TextAlign::Justify, value);
+
+    let mut f = Fixture::new();
+    f.build(&ui, start);
+    let start = line_runs(&f, start);
+    f.build(&ui, justify);
+    let justify = line_runs(&f, justify);
+
+    assert!(start.len() > 1);
+    assert_eq!(start.len(), justify.len());
+
+    let (last, rest) = justify.split_last().unwrap();
+
+    for (&(_, left, right), &(_, _, start_right)) in rest.iter().zip(&start) {
+        close(left, 0.0);
+        assert!(right > start_right, "{right} <= {start_right}");
+    }
+
+    // The last line keeps start alignment.
+    assert_eq!(*last, *start.last().unwrap());
+}
+
+#[test]
+fn text_align_is_inherited_and_updates_descendants() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, (bx::TextAlign(TextAlign::Left),));
+    let paragraph = ui.create(Node::Box, ());
+    let content = text(&mut ui, "inherited");
+    ui.append(root, paragraph);
+    ui.append(paragraph, content);
+
+    let mut f = Fixture::new();
+    let (input_root, _) = f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+
+    let [(_, left, right)] = line_runs(&f, paragraph)[..] else {
+        panic!("expected one line");
+    };
+    close(left, 0.0);
+
+    // Only the ancestor is marked; the change reaches the inline layout below.
+    ui.set_props(root, (bx::TextAlign(TextAlign::Right),));
+    f.tree.mark_node_dirty(root);
+    f.build(&ui, root);
+
+    let paragraph_key = f.tree.item_for_node(paragraph).unwrap();
+    assert_eq!(
+        f.tree.items[paragraph_key].text_style.align,
+        TextAlign::Right
+    );
+
+    let [(_, aligned_left, aligned_right)] = line_runs(&f, paragraph)[..] else {
+        panic!("expected one line");
+    };
+    close(aligned_right, VIEWPORT.width);
+    close(aligned_right - aligned_left, right - left);
 }

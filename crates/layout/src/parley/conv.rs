@@ -13,7 +13,8 @@ fn resolve_length(value: StyleUnit, cx: &UnitResolveContext) -> f32 {
     value.resolve2(cx) as f32
 }
 
-/// Overlay explicit properties on the parent's computed style.
+/// Overlay explicit properties on the parent's computed style, including the
+/// span style and the text alignment.
 ///
 /// `cx` supplies the root font size and viewport; its `font_size` and
 /// `percentage_basis` are overwritten. `font-size` resolves against the parent's
@@ -27,43 +28,43 @@ pub fn resolve_text_style(
 ) -> Arc<TextStyle> {
     let mut style = parent.clone();
     let mut cx = UnitResolveContext {
-        percentage_basis: style.font_size as f64,
-        font_size: style.font_size as f64,
+        percentage_basis: style.span.font_size as f64,
+        font_size: style.span.font_size as f64,
         ..cx.clone()
     };
 
     macro_rules! set {
-        ($field:ident, $value:expr) => {
+        ($($field:ident).+, $value:expr) => {
             let value = $value;
-            if style.$field != value {
-                Arc::make_mut(&mut style).$field = value;
+            if style.$($field).+ != value {
+                Arc::make_mut(&mut style).$($field).+ = value;
             }
         };
     }
 
     if let Some(value) = ui.prop::<bx::FontSize>(node) {
-        set!(font_size, resolve_length(value.0, &cx));
+        set!(span.font_size, resolve_length(value.0, &cx));
     }
 
-    cx.font_size = style.font_size as f64;
+    cx.font_size = style.span.font_size as f64;
     cx.percentage_basis = cx.font_size;
 
     macro_rules! inherit {
         ($prop:ident, $field:ident) => {
             if let Some(value) = ui.prop::<bx::$prop>(node) {
-                if style.$field != value.0 {
-                    Arc::make_mut(&mut style).$field = value.0.clone();
+                if style.span.$field != value.0 {
+                    Arc::make_mut(&mut style).span.$field = value.0.clone();
                 }
             }
         };
         ($prop:ident, $field:ident, length) => {
             if let Some(value) = ui.prop::<bx::$prop>(node) {
-                set!($field, resolve_length(value.0, &cx));
+                set!(span.$field, resolve_length(value.0, &cx));
             }
         };
         ($prop:ident, $field:ident, optional) => {
             if let Some(value) = ui.prop::<bx::$prop>(node) {
-                set!($field, Some(resolve_length(value.0, &cx)));
+                set!(span.$field, Some(resolve_length(value.0, &cx)));
             }
         };
     }
@@ -82,13 +83,16 @@ pub fn resolve_text_style(
     inherit!(StrikethroughSize, strikethrough_size, optional);
 
     if let Some(value) = ui.prop::<bx::Locale>(node) {
-        set!(locale, Some(value.0));
+        set!(span.locale, Some(value.0));
     }
     if let Some(value) = ui.prop::<bx::LineHeight>(node) {
         set!(
-            line_height,
+            span.line_height,
             parley::LineHeight::Absolute(resolve_length(value.0, &cx))
         );
+    }
+    if let Some(value) = ui.prop::<bx::TextAlign>(node) {
+        set!(align, value.0);
     }
 
     style
