@@ -1,4 +1,5 @@
 pub mod builder;
+pub mod text;
 pub mod tree;
 
 use std::sync::Arc;
@@ -7,7 +8,7 @@ use bitflags::bitflags;
 use comet_tree::node::NodeKey;
 use slotmap::new_key_type;
 
-use crate::parley::TextStyle;
+pub use text::{SpanStyle, TextStyle};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutInputItem {

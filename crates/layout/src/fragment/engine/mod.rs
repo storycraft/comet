@@ -12,7 +12,7 @@ mod block;
 mod inline;
 mod retain;
 
-use comet_tree::{node::NodeKey, ui::Ui};
+use comet_tree::ui::Ui;
 use slotmap::{Key, KeyData};
 
 use super::{
@@ -51,7 +51,7 @@ pub(crate) struct Engine<'a> {
     pub tree: &'a LayoutInputTree,
     pub fragments: &'a mut FragmentTree,
     pub fonts: &'a mut parley::FontContext,
-    pub parley: &'a mut parley::LayoutContext<Option<NodeKey>>,
+    pub parley: &'a mut parley::LayoutContext<Option<LayoutInputKey>>,
     pub constraint: &'a LayoutConstraint,
     pub root: LayoutInputKey,
     pub scratch: &'a mut Scratch,

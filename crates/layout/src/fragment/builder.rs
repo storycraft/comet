@@ -1,4 +1,4 @@
-use comet_tree::{node::NodeKey, ui::Ui};
+use comet_tree::ui::Ui;
 
 use super::{
     FragmentKey,
@@ -16,7 +16,7 @@ use crate::{
 #[derive(Default)]
 pub struct FragmentTreeBuilder {
     pub fonts: parley::FontContext,
-    parley: parley::LayoutContext<Option<NodeKey>>,
+    parley: parley::LayoutContext<Option<LayoutInputKey>>,
     scratch: Scratch,
 }
 

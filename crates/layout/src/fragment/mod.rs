@@ -14,7 +14,6 @@ pub mod builder;
 pub mod iter;
 pub mod tree;
 
-use comet_tree::node::NodeKey;
 use slotmap::new_key_type;
 
 use crate::{
@@ -31,7 +30,8 @@ new_key_type! { pub struct FragmentKey; }
 /// the lines of `layout`.
 pub struct InlineLayout {
     pub text: String,
-    pub layout: parley::Layout<Option<NodeKey>>,
+    /// Layout whose span brushes are the items owning the spans.
+    pub layout: parley::Layout<Option<LayoutInputKey>>,
     /// Items of the inline boxes in `layout`, indexed by inline box id.
     pub(crate) boxes: Vec<LayoutInputKey>,
     /// Whether `layout` matches the current inline content. Line breaking

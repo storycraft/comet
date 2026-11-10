@@ -8,8 +8,7 @@ use super::{
 };
 use crate::{
     fragment::InlineLayout,
-    input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
-    parley::SpanStyle,
+    input::{LayoutInputKey, LayoutInputKind, SpanStyle, tree::LayoutInputTree},
 };
 
 impl Engine<'_> {
@@ -126,12 +125,11 @@ impl Engine<'_> {
     }
 }
 
-/// The item's inherited text style, branded with its node so glyph runs can
+/// The item's inherited text style, branded with the item so glyph runs can
 /// be traced back to their source.
 fn span_style(tree: &LayoutInputTree, key: LayoutInputKey) -> SpanStyle {
-    let item = &tree.items[key];
-    let mut style = item.text_style.span.clone();
-    style.brush = Some(item.node);
+    let mut style = tree.items[key].text_style.span.clone();
+    style.brush = Some(key);
 
     style
 }

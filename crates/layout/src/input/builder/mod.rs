@@ -7,10 +7,10 @@ use comet_tree::{
 
 use crate::{
     input::{
-        ChildLayout, LayoutFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind,
+        ChildLayout, LayoutFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind, TextStyle,
+        text::{resolve_text_style, root_text_style},
         tree::LayoutInputTree,
     },
-    parley::{TextStyle, conv, style},
     style::{
         bx::{DisplayInner, DisplayOuter},
         geometry::{Size, UnitResolveContext},
@@ -122,7 +122,7 @@ impl LayoutInputTreeBuilder {
             // A source with a UI parent always has a parent item, so the tree
             // does not mirror the UI.
             None if ui.parent(source).is_some() => return None,
-            None => Arc::new(style::root_text_style(root_font_size)),
+            None => Arc::new(root_text_style(root_font_size)),
         };
 
         self.clear();
@@ -240,7 +240,7 @@ impl LayoutInputTreeBuilder {
         cx: &UnitResolveContext,
     ) -> Update {
         let (kind, child_layout) = classify(ui, node);
-        let text_style = conv::resolve_text_style(ui, node, cx, parent_style);
+        let text_style = resolve_text_style(ui, node, cx, parent_style);
 
         let Some(key) = existing else {
             let key = tree.add_item(LayoutInputItem {

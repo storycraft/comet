@@ -1,12 +1,38 @@
+//! Inherited text styles of input items, resolved for Parley inline layout.
+
 use std::sync::Arc;
 
 use comet_tree::{node::NodeKey, ui::Ui};
 
-use super::TextStyle;
+use super::LayoutInputKey;
 use crate::style::{
     bx,
     geometry::{StyleUnit, UnitResolveContext},
+    parley::Alignment,
 };
+
+/// Parley style of a text span. Its brush is set while shaping to the item
+/// owning the span, so glyph runs map back to their item.
+pub type SpanStyle = ::parley::TextStyle<'static, 'static, Option<LayoutInputKey>>;
+
+/// Inherited text properties of an item: the style of its text spans and the
+/// alignment of the lines in an inline formatting context it establishes.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TextStyle {
+    pub span: SpanStyle,
+    pub align: Alignment,
+}
+
+/// Default style for a root without a source parent. Its font size is the root font size.
+pub fn root_text_style(root_font_size: f64) -> TextStyle {
+    TextStyle {
+        span: SpanStyle {
+            font_size: root_font_size as f32,
+            ..SpanStyle::default()
+        },
+        ..TextStyle::default()
+    }
+}
 
 /// Resolve a text length. Percentages and `em` use `cx.font_size`.
 fn resolve_length(value: StyleUnit, cx: &UnitResolveContext) -> f32 {

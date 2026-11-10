@@ -1,6 +1,5 @@
 //! Converting lines into fragments.
 
-use comet_tree::node::NodeKey;
 use rustc_hash::FxHashMap;
 use slotmap::{SecondaryMap, SparseSecondaryMap};
 
@@ -123,7 +122,7 @@ struct Emitter<'a> {
 
 impl Emitter<'_> {
     /// Emit a line box and its content.
-    fn line(&mut self, index: usize, line: &parley::Line<'_, Option<NodeKey>>) {
+    fn line(&mut self, index: usize, line: &parley::Line<'_, Option<LayoutInputKey>>) {
         let metrics = line.metrics();
         let left = metrics.inline_min_coord;
         let top = metrics.block_min_coord;
@@ -160,23 +159,15 @@ impl Emitter<'_> {
 
     fn glyph_run(
         &mut self,
-        run: &parley::GlyphRun<'_, Option<NodeKey>>,
+        run: &parley::GlyphRun<'_, Option<LayoutInputKey>>,
         item: usize,
         (left, top, line_height): (f32, f32, f32),
     ) {
-        let Some(source) = run
-            .style()
-            .brush
-            .and_then(|node| self.tree.item_for_node(node))
-            .filter(|&source| {
-                self.tree
-                    .items
-                    .get(source)
-                    .is_some_and(|item| item.kind == LayoutInputKind::Text)
-            })
-        else {
+        // Text is only pushed inside the span of its own item.
+        let Some(source) = run.style().brush else {
             return;
         };
+        debug_assert_eq!(self.tree.items[source].kind, LayoutInputKind::Text);
 
         let layout = FragmentBox {
             location: Point::new((run.offset() - left) as f64, 0.0),
