@@ -38,9 +38,9 @@ impl FragmentTreeBuilder {
     /// size changes. Returns `None` and deletes the retained fragments if `root`
     /// is no longer in the input tree.
     ///
-    /// Box fragments of block level and atomic inline items keep their keys
-    /// across builds. Line, inline and glyph run fragments of a laid out inline
-    /// formatting context are replaced.
+    /// Box fragments of block level and atomic inline items, and anonymous
+    /// blocks of unchanged runs, keep their keys across builds. Line, inline and
+    /// glyph run fragments of laid out lines are replaced.
     pub fn build(
         &mut self,
         ui: &Ui,
@@ -61,11 +61,11 @@ impl FragmentTreeBuilder {
         };
 
         if tree.items.get(root).is_none() {
-            engine.fragments.constraints.remove(root);
-
-            if let Some(state) = engine.fragments.states.remove(root) {
-                engine.fragments.inline_layouts.remove(root);
-                engine.release(state.fragment);
+            if let Some(&fragment) = engine.fragments.first.get(root)
+                && engine.fragments.items.get(fragment).is_some()
+            {
+                engine.drop_state(fragment);
+                engine.release(fragment);
                 engine.sweep();
             }
 
@@ -73,8 +73,10 @@ impl FragmentTreeBuilder {
         }
 
         engine.invalidate();
+
+        let fragment = engine.ensure_box(root);
         engine.compute(
-            root,
+            fragment,
             conv::to_size(constraint.available_size, |v| {
                 taffy::AvailableSpace::Definite(v as f32)
             }),
@@ -83,8 +85,11 @@ impl FragmentTreeBuilder {
         engine
             .fragments
             .constraints
-            .insert(root, constraint.clone());
+            .insert(fragment, constraint.clone());
 
-        engine.fragments.box_fragment(root)
+        #[cfg(debug_assertions)]
+        engine.check();
+
+        Some(fragment)
     }
 }

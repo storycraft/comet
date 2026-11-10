@@ -2,7 +2,9 @@ mod flex;
 
 use anyrender::Paint;
 use comet_layout::style::{
-    bx::*, geometry::{AutoValue, Rect, Size as LayoutSize, StyleUnit}, parley::{self, Alignment},
+    bx::*,
+    geometry::{AutoValue, Rect, Size as LayoutSize, StyleUnit},
+    parley::{self, Alignment},
 };
 use comet_paint::style::{BorderRadius, Fill, TextColor};
 use comet_tree::{

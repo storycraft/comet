@@ -7,7 +7,7 @@ use comet_layout::{
     },
     style::{
         LayoutConstraint, bx,
-        geometry::{AutoValue, Size, StyleUnit},
+        geometry::{AutoValue, Rect, Size, StyleUnit},
         parley::Alignment as TextAlign,
     },
 };
@@ -81,8 +81,17 @@ fn sized_block(ui: &mut Ui, height: f64) -> NodeKey {
     )
 }
 
+fn margin(top: f64, bottom: f64) -> bx::Margin {
+    bx::Margin(Rect::new_invidiual(
+        AutoValue::Value(StyleUnit::Px(top)),
+        AutoValue::Value(StyleUnit::ZERO),
+        AutoValue::Value(StyleUnit::Px(bottom)),
+        AutoValue::Value(StyleUnit::ZERO),
+    ))
+}
+
 #[test]
-fn block_children_split_inline_content() {
+fn block_children_split_inline_content_into_anonymous_blocks() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let before = text(&mut ui, "before");
@@ -93,14 +102,14 @@ fn block_children_split_inline_content() {
     ui.append(root, after);
 
     let mut f = Fixture::new();
-    let (input_root, root_fragment) = f.build(&ui, root);
+    let (_, root_fragment) = f.build(&ui, root);
 
     assert_eq!(
         f.items(root_fragment),
         vec![
-            FragmentItem::Line { line: 0 },
+            FragmentItem::AnonymousBlock,
             FragmentItem::Box,
-            FragmentItem::Line { line: 2 },
+            FragmentItem::AnonymousBlock,
         ]
     );
 
@@ -109,7 +118,17 @@ fn block_children_split_inline_content() {
     let block_box = f.fragments.items[children[1]].layout;
     let second = f.fragments.items[children[2]].layout;
 
+    // Each anonymous block holds its own lines, positioned relative to it.
+    for &anonymous in &[children[0], children[2]] {
+        let lines = f.children(anonymous);
+
+        assert_eq!(f.items(anonymous), vec![FragmentItem::Line { line: 0 }]);
+        assert_eq!(f.fragments.items[lines[0]].layout.location.y, 0.0);
+        assert!(f.fragments.inline_layout(lines[0]).is_some());
+    }
+
     assert!(first.size.height > 0.0);
+    assert_eq!(first.size.width, VIEWPORT.width);
     assert_eq!(block_box.location.y, first.location.y + first.size.height);
     assert_eq!(block_box.size, Size::new(VIEWPORT.width, 20.0));
     assert_eq!(second.location.y, block_box.location.y + 20.0);
@@ -121,11 +140,10 @@ fn block_children_split_inline_content() {
             .box_fragment(f.tree.item_for_node(block).unwrap()),
         Some(children[1])
     );
-    assert!(f.fragments.inline_layouts.get(input_root).is_some());
 }
 
 #[test]
-fn leading_and_trailing_blocks_add_no_empty_lines() {
+fn leading_and_trailing_blocks_add_no_anonymous_blocks() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let first = sized_block(&mut ui, 10.0);
@@ -142,18 +160,21 @@ fn leading_and_trailing_blocks_add_no_empty_lines() {
         f.items(root_fragment),
         vec![
             FragmentItem::Box,
-            FragmentItem::Line { line: 1 },
+            FragmentItem::AnonymousBlock,
             FragmentItem::Box,
         ]
     );
 
     let children = f.children(root_fragment);
-    let line = f.fragments.items[children[1]].layout;
+    let anonymous = f.fragments.items[children[1]].layout;
     let last = f.fragments.items[children[2]].layout;
 
     assert_eq!(f.fragments.items[children[0]].layout.location.y, 0.0);
-    assert_eq!(line.location.y, 10.0);
-    assert_eq!(last.location.y, line.location.y + line.size.height);
+    assert_eq!(anonymous.location.y, 10.0);
+    assert_eq!(
+        last.location.y,
+        anonymous.location.y + anonymous.size.height
+    );
     assert_eq!(
         f.fragments.items[root_fragment].layout.size.height,
         last.location.y + 30.0
@@ -179,8 +200,8 @@ fn inline_elements_split_around_blocks_are_linked() {
 
     assert_eq!(children.len(), 3);
 
-    let first_span = f.children(children[0])[0];
-    let second_span = f.children(children[2])[0];
+    let first_span = f.children(f.children(children[0])[0])[0];
+    let second_span = f.children(f.children(children[2])[0])[0];
     let span_key = f.tree.item_for_node(span).unwrap();
 
     assert_eq!(f.fragments.items[first_span].source, span_key);
@@ -191,6 +212,148 @@ fn inline_elements_split_around_blocks_are_linked() {
         f.fragments.items[f.children(first_span)[0]].item,
         FragmentItem::GlyphRun { .. }
     ));
+}
+
+#[test]
+fn margins_of_adjacent_blocks_in_inline_content_collapse() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    let before = text(&mut ui, "before");
+    let first = sized_block(&mut ui, 10.0);
+    let second = sized_block(&mut ui, 10.0);
+    let after = text(&mut ui, "after");
+    ui.set_props(first, (margin(0.0, 20.0),));
+    ui.set_props(second, (margin(30.0, 0.0),));
+    ui.append(root, span);
+    ui.append(span, before);
+    ui.append(span, first);
+    ui.append(span, second);
+    ui.append(span, after);
+
+    let mut f = Fixture::new();
+    let (_, root_fragment) = f.build(&ui, root);
+
+    assert_eq!(
+        f.items(root_fragment),
+        vec![
+            FragmentItem::AnonymousBlock,
+            FragmentItem::Box,
+            FragmentItem::Box,
+            FragmentItem::AnonymousBlock,
+        ]
+    );
+
+    let children = f.children(root_fragment);
+    let first = f.fragments.items[children[1]].layout;
+    let second = f.fragments.items[children[2]].layout;
+
+    // The larger margin separates the blocks.
+    assert_eq!(second.location.y, first.location.y + 10.0 + 30.0);
+}
+
+#[test]
+fn inline_content_between_blocks_keeps_both_margins() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let first = sized_block(&mut ui, 10.0);
+    let middle = text(&mut ui, "middle");
+    let second = sized_block(&mut ui, 10.0);
+    ui.set_props(first, (margin(0.0, 20.0),));
+    ui.set_props(second, (margin(30.0, 0.0),));
+    ui.append(root, first);
+    ui.append(root, middle);
+    ui.append(root, second);
+
+    let mut f = Fixture::new();
+    let (_, root_fragment) = f.build(&ui, root);
+    let children = f.children(root_fragment);
+    let first = f.fragments.items[children[0]].layout;
+    let anonymous = f.fragments.items[children[1]].layout;
+    let second = f.fragments.items[children[2]].layout;
+
+    assert_eq!(anonymous.location.y, first.location.y + 10.0 + 20.0);
+    assert_eq!(
+        second.location.y,
+        anonymous.location.y + anonymous.size.height + 30.0
+    );
+}
+
+#[test]
+fn first_block_margin_collapses_through_mixed_content_without_padding() {
+    for padding in [0.0, 5.0] {
+        let mut ui = Ui::new();
+        let root = ui.create(Node::Box, ());
+        let paragraph = ui.create(
+            Node::Box,
+            (bx::Padding(Rect::new_all(StyleUnit::Px(padding))),),
+        );
+        let block = sized_block(&mut ui, 10.0);
+        let after = text(&mut ui, "after");
+        ui.set_props(block, (margin(25.0, 0.0),));
+        ui.append(root, paragraph);
+        ui.append(paragraph, block);
+        ui.append(paragraph, after);
+
+        let mut f = Fixture::new();
+        f.build(&ui, root);
+
+        let paragraph = f
+            .fragments
+            .box_fragment(f.tree.item_for_node(paragraph).unwrap())
+            .unwrap();
+        let block = f
+            .fragments
+            .box_fragment(f.tree.item_for_node(block).unwrap())
+            .unwrap();
+
+        if padding == 0.0 {
+            assert_eq!(f.fragments.items[paragraph].layout.location.y, 25.0);
+            assert_eq!(f.fragments.items[block].layout.location.y, 0.0);
+        } else {
+            assert_eq!(f.fragments.items[paragraph].layout.location.y, 0.0);
+            assert_eq!(f.fragments.items[block].layout.location.y, padding + 25.0);
+        }
+    }
+}
+
+#[test]
+fn editing_one_run_keeps_the_fragments_of_other_runs() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let before = text(&mut ui, "before");
+    let block = sized_block(&mut ui, 20.0);
+    let after = text(&mut ui, "after");
+    ui.append(root, before);
+    ui.append(root, block);
+    ui.append(root, after);
+
+    let mut f = Fixture::new();
+    let (input_root, root_fragment) = f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+
+    let children = f.children(root_fragment);
+    let first_lines = f.children(children[0]);
+    let second_lines = f.children(children[2]);
+
+    ui.set_props(after, (Text("after, but longer".into()),));
+    f.tree.mark_node_dirty(after);
+    f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+
+    // Anonymous blocks are reused, and only the edited run is emitted again.
+    assert_eq!(f.children(root_fragment), children);
+    assert_eq!(f.children(children[0]), first_lines);
+    assert_ne!(f.children(children[2]), second_lines);
+
+    // Removing the block merges the runs into one inline formatting context.
+    ui.delete(block);
+    f.tree.mark_node_dirty(root);
+    f.build(&ui, root);
+
+    assert_eq!(f.items(root_fragment), vec![FragmentItem::Line { line: 0 }]);
+    assert!(f.fragments.items.get(children[0]).is_none());
+    assert!(f.fragments.items.get(children[2]).is_none());
 }
 
 #[test]
@@ -267,7 +430,7 @@ fn removed_items_drop_their_fragments() {
 
     assert!(f.children(root_fragment).is_empty());
     assert_eq!(f.fragments.items.len(), 1);
-    assert!(f.fragments.inline_layouts.is_empty());
+    assert!(f.fragments.inline_layout(root_fragment).is_none());
 
     f.tree.delete_item(input_root);
     assert_eq!(
@@ -343,8 +506,14 @@ fn fragments_iterate_linked_fragments_of_an_item() {
     let children = f.children(root_fragment);
 
     assert_eq!(spans.len(), 2);
-    assert_eq!(f.fragments.items.parent(spans[0]), Some(children[0]));
-    assert_eq!(f.fragments.items.parent(spans[1]), Some(children[2]));
+    assert_eq!(
+        f.fragments.items.parent(spans[0]),
+        Some(f.children(children[0])[0])
+    );
+    assert_eq!(
+        f.fragments.items.parent(spans[1]),
+        Some(f.children(children[2])[0])
+    );
     assert!(
         spans
             .iter()

@@ -1,8 +1,27 @@
-use super::FragmentKey;
-use crate::taffy::style::Style;
+use crate::{input::LayoutInputKey, taffy::style::Style};
 
-/// Retained layout state of a box generating item.
+/// How a box lays out its content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Mode {
+    /// Children are block level boxes laid out by Taffy's block algorithm.
+    Block,
+    /// Inline content without block boxes, measured as one Parley layout.
+    Inline,
+    /// Inline content interrupted by block boxes. It is laid out as a block
+    /// container of anonymous blocks and the block boxes.
+    MixedInline,
+    /// Children are laid out by a custom container algorithm.
+    Container,
+    /// No children are laid out.
+    Leaf,
+    /// Anonymous block holding one run of inline content. The run starts after
+    /// `after`, or at the start of the owner's inline content.
+    Run { after: Option<LayoutInputKey> },
+}
+
+/// Retained layout state of a box or anonymous block fragment.
 pub(crate) struct NodeState {
+    pub mode: Mode,
     pub style: Style,
     /// Unrounded layout of the latest final layout pass.
     pub layout: taffy::Layout,
@@ -12,20 +31,24 @@ pub(crate) struct NodeState {
     /// Baseline relative to the border box top, for atomic inlines and roots.
     pub baseline: f32,
     pub hoisted: Vec<taffy::NodeId>,
-    /// Box fragment of this item. Its geometry is written in place.
-    pub fragment: FragmentKey,
 }
 
 impl NodeState {
-    pub fn new(style: Style, fragment: FragmentKey) -> Self {
+    pub fn new(mode: Mode, style: Style) -> Self {
         Self {
+            mode,
             style,
             layout: Default::default(),
             cache: Default::default(),
             final_layout_valid: false,
             baseline: 0.0,
             hoisted: Vec::new(),
-            fragment,
         }
+    }
+
+    /// Drop cached layouts, keeping the retained geometry.
+    pub fn invalidate(&mut self) {
+        self.cache.clear();
+        self.final_layout_valid = false;
     }
 }

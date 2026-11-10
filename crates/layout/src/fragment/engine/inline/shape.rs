@@ -1,61 +1,122 @@
-//! Building the Parley layout of an inline formatting context.
+//! Building the Parley layout of a fragment owning lines.
 
-use comet_tree::node::{NodeKey, Text};
-use slotmap::Key;
+use comet_tree::node::Text;
 
 use super::{
-    super::Engine,
+    super::{Engine, FragmentKey, Mode},
     events::{InlineEvents, Op},
 };
 use crate::{
     fragment::InlineLayout,
-    input::{LayoutInputKey, tree::LayoutInputTree},
+    input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     parley::SpanStyle,
 };
 
 impl Engine<'_> {
-    /// Build the Parley layout of an inline formatting context.
-    pub(super) fn shape(&mut self, key: LayoutInputKey) {
+    /// Build the Parley layout of an inline formatting context's box, or of
+    /// one run of an anonymous block. A run starts after its preceding block
+    /// box and ends at the next one.
+    pub(super) fn shape(&mut self, fragment: FragmentKey) {
         let tree = self.tree;
         let ui = self.ui;
-
-        let root_style = span_style(tree, key);
-        let mut content = Content {
-            builder: self
-                .parley
-                .tree_builder(self.fonts, 1.0, false, &root_style),
-            line_open: false,
-            after_block: false,
+        let owner = self.fragments.items[fragment].source;
+        let after = match self.fragments.states[fragment].mode {
+            Mode::Run { after } => after,
+            _ => None,
         };
 
-        for op in InlineEvents::new(tree, key) {
+        let mut boxes = self
+            .fragments
+            .inline_layouts
+            .get_mut(fragment)
+            .map(|inline| std::mem::take(&mut inline.boxes))
+            .unwrap_or_default();
+        boxes.clear();
+
+        let root_style = span_style(tree, owner);
+        let mut builder = self
+            .parley
+            .tree_builder(self.fonts, 1.0, false, &root_style);
+        // Style spans open in the builder.
+        let mut open = 0;
+
+        let events = match after {
+            Some(block) => {
+                // Inline elements containing the block continue in this run.
+                let ancestors = &mut self.scratch.inline.ancestors;
+                ancestors.clear();
+                ancestors.extend(
+                    std::iter::successors(tree.items.parent(block), |&key| tree.items.parent(key))
+                        .take_while(|&key| key != owner)
+                        .filter(|&key| tree.items[key].kind == LayoutInputKind::Inline),
+                );
+
+                for &key in ancestors.iter().rev() {
+                    builder.push_style_span(span_style(tree, key));
+                    open += 1;
+                }
+
+                InlineEvents::after(tree, owner, block)
+            }
+            None => InlineEvents::new(tree, owner),
+        };
+
+        for op in events {
             match op {
-                Op::Push(child) => content.builder.push_style_span(span_style(tree, child)),
-                Op::Pop => content.builder.pop_style_span(),
-                Op::Text(child) => {
-                    if let Some(text) = ui.prop::<Text>(tree.items[child].node) {
-                        content.text(span_style(tree, child), &text.0);
+                Op::Push(key) => {
+                    builder.push_style_span(span_style(tree, key));
+                    open += 1;
+                }
+                Op::Pop => {
+                    builder.pop_style_span();
+                    open -= 1;
+                }
+                Op::Text(key) => {
+                    let Some(text) = ui.prop::<Text>(tree.items[key].node) else {
+                        continue;
+                    };
+
+                    if !text.0.is_empty() {
+                        builder.push_style_span(span_style(tree, key));
+                        builder.push_text(&text.0);
+                        builder.pop_style_span();
                     }
                 }
-                Op::Box(child) => content.atomic(child),
-                Op::Empty(child) => content.empty(child),
-                Op::Block(child) => content.block(child),
+                // Atomic inline metrics are set after laying out the box.
+                Op::Box(key) | Op::Empty(key) => {
+                    builder.push_inline_box(parley::InlineBox {
+                        id: boxes.len() as u64,
+                        index: 0,
+                        width: 0.0,
+                        height: 0.0,
+                        kind: parley::InlineBoxKind::InFlow,
+                        baseline: None,
+                        vertical_align: Default::default(),
+                    });
+                    boxes.push(key);
+                }
+                // The run ends at the next block box.
+                Op::Block(_) => break,
             }
         }
 
-        let builder = content.builder;
+        for _ in 0..open {
+            builder.pop_style_span();
+        }
 
-        if let Some(inline) = self.fragments.inline_layouts.get_mut(key) {
+        if let Some(inline) = self.fragments.inline_layouts.get_mut(fragment) {
             inline.text = builder.build_into(&mut inline.layout);
+            inline.boxes = boxes;
             inline.shaped = true;
         } else {
             let (layout, text) = builder.build();
 
             self.fragments.inline_layouts.insert(
-                key,
+                fragment,
                 InlineLayout {
                     text,
                     layout,
+                    boxes,
                     shaped: true,
                     first_baseline: None,
                     last_baseline: None,
@@ -73,70 +134,4 @@ fn span_style(tree: &LayoutInputTree, key: LayoutInputKey) -> SpanStyle {
     style.brush = Some(item.node);
 
     style
-}
-
-/// Inline content pushed into a Parley tree builder. Block children are
-/// separated from surrounding inline content by line breaks, inserted only
-/// where inline content needs them.
-struct Content<'a> {
-    builder: parley::TreeBuilder<'a, Option<NodeKey>>,
-    /// Inline content on the current line since the last forced break.
-    line_open: bool,
-    /// A block was placed and inline content following it needs a new line.
-    after_block: bool,
-}
-
-impl Content<'_> {
-    fn text(&mut self, style: SpanStyle, text: &str) {
-        if text.is_empty() {
-            return;
-        }
-
-        self.break_after_block();
-        self.builder.push_style_span(style);
-        self.builder.push_text(text);
-        self.builder.pop_style_span();
-        self.line_open = true;
-    }
-
-    /// An atomic inline box. Its metrics are set after laying out the box.
-    fn atomic(&mut self, key: LayoutInputKey) {
-        self.break_after_block();
-        self.inline_box(key, parley::InlineBoxKind::InFlow);
-        self.line_open = true;
-    }
-
-    /// An inline element without children, placed to anchor its fragment.
-    fn empty(&mut self, key: LayoutInputKey) {
-        self.inline_box(key, parley::InlineBoxKind::InFlow);
-    }
-
-    /// A block box. The line breaker yields at it so it can be placed between lines.
-    fn block(&mut self, key: LayoutInputKey) {
-        if self.line_open && !self.builder.text().ends_with('\n') {
-            self.builder.push_text("\n");
-        }
-
-        self.inline_box(key, parley::InlineBoxKind::CustomOutOfFlow);
-        self.line_open = false;
-        self.after_block = true;
-    }
-
-    fn break_after_block(&mut self) {
-        if std::mem::take(&mut self.after_block) {
-            self.builder.push_text("\n");
-        }
-    }
-
-    fn inline_box(&mut self, key: LayoutInputKey, kind: parley::InlineBoxKind) {
-        self.builder.push_inline_box(parley::InlineBox {
-            id: key.data().as_ffi(),
-            index: 0,
-            width: 0.0,
-            height: 0.0,
-            kind,
-            baseline: None,
-            vertical_align: Default::default(),
-        });
-    }
 }

@@ -1,60 +1,58 @@
-//! Inline formatting contexts laid out with Parley.
+//! Inline content laid out with Parley.
 //!
-//! An inline layout runs in three steps:
-//! 1. [`shape`]: build the Parley layout from the inline content. Block children
-//!    become custom out-of-flow boxes surrounded by line breaks.
-//! 2. [`lines`]: break it into lines, placing block children between them.
-//! 3. [`emit`]: replace the line, span and glyph run fragments.
+//! Lines are owned by the box of an inline formatting context, or by an
+//! anonymous block when block boxes interrupt the inline content:
+//! 1. [`flow`]: split inline content interrupted by block boxes into runs, each
+//!    in its own anonymous block.
+//! 2. [`shape`]: build the Parley layout of a fragment owning lines.
+//! 3. Break it into lines and align them.
+//! 4. [`emit`]: replace the line, span and glyph run fragments, and link the
+//!    fragments of each source across lines.
 
 mod emit;
 mod events;
-mod lines;
+mod flow;
 mod shape;
 
 use rustc_hash::FxHashMap;
-use slotmap::KeyData;
 use taffy::{ResolveOrZero, style::CoreStyle};
 
-use self::{
-    events::{InlineEvents, Op},
-    lines::Placed,
-};
-use super::Engine;
+use super::{Engine, FragmentKey, Mode};
 use crate::{
-    fragment::{FragmentKey, tree::FragmentTree},
+    fragment::{InlineLayout, tree::FragmentTree},
     input::{LayoutInputKey, LayoutInputKind},
 };
 
 /// Buffers for inline layout, retained between builds.
 #[derive(Default)]
 pub(super) struct Scratch {
-    /// Content placed by the latest emitting line break.
-    events: Vec<Placed>,
     /// Inline span fragments created during emission, in creation order.
     spans: Vec<FragmentKey>,
     /// Span fragments of the current line by inline item.
     span_parents: FxHashMap<LayoutInputKey, FragmentKey>,
     /// Latest fragment of each source, for linking fragments across lines.
     links: FxHashMap<LayoutInputKey, FragmentKey>,
+    /// Inline elements reopened at the start of a run.
+    ancestors: Vec<LayoutInputKey>,
+    /// Atomic inline children of the inline layout being prepared.
+    atomics: Vec<LayoutInputKey>,
 }
 
-fn from_box_id(id: u64) -> LayoutInputKey {
-    KeyData::from_ffi(id).into()
-}
-
-/// Result of breaking an inline formatting context into lines.
+/// Result of breaking inline content into lines.
 struct Flow {
     width: f32,
     height: f32,
 }
 
 impl Engine<'_> {
-    pub(super) fn layout_inline(
+    /// Lay out the lines of an inline formatting context's box, or of an
+    /// anonymous block.
+    pub(super) fn layout_lines(
         &mut self,
-        key: LayoutInputKey,
+        fragment: FragmentKey,
         input: taffy::LayoutInput,
     ) -> taffy::LayoutOutput {
-        let style = self.fragments.states[key].style.clone();
+        let style = self.fragments.states[fragment].style.clone();
         let padding = style
             .padding()
             .resolve_or_zero(input.parent_size.width, |_, _| 0.0);
@@ -67,7 +65,7 @@ impl Engine<'_> {
             input,
             &style,
             |_, _| 0.0,
-            |known, available| self.measure_inline(key, known, available),
+            |known, available| self.measure_lines(fragment, known, available),
         );
 
         if input.run_mode == taffy::RunMode::PerformLayout {
@@ -77,18 +75,24 @@ impl Engine<'_> {
                 height: input.available_space.height,
             };
 
-            self.prepare_inline(key, available);
-            self.break_inline(key, width, true);
-            self.emit_inline(
-                key,
+            self.prepare(fragment, available);
+            self.break_lines(fragment, width);
+            self.align_lines(fragment);
+            self.emit(
+                fragment,
                 taffy::Point {
                     x: inset.left,
                     y: inset.top,
                 },
             );
+
+            // Fragments of runs are linked once the owner's runs are emitted.
+            if self.fragments.states[fragment].mode == Mode::Inline {
+                self.link_inline(fragment);
+            }
         }
 
-        if let Some(inline) = self.fragments.inline_layouts.get(key) {
+        if let Some(inline) = self.fragments.inline_layouts.get(fragment) {
             output.baselines = taffy::Baselines {
                 first: inline.first_baseline.map(|baseline| inset.top + baseline),
                 last: inline.last_baseline.map(|baseline| inset.top + baseline),
@@ -98,13 +102,13 @@ impl Engine<'_> {
         output
     }
 
-    fn measure_inline(
+    fn measure_lines(
         &mut self,
-        key: LayoutInputKey,
+        fragment: FragmentKey,
         known: taffy::Size<Option<f32>>,
         available: taffy::Size<taffy::AvailableSpace>,
     ) -> taffy::Size<f32> {
-        self.invalidate_final(key);
+        self.invalidate_final(fragment);
 
         let available = taffy::Size {
             width: known
@@ -114,16 +118,16 @@ impl Engine<'_> {
             height: available.height,
         };
 
-        self.prepare_inline(key, available);
+        self.prepare(fragment, available);
 
         let flow = match available.width {
-            taffy::AvailableSpace::Definite(width) => self.break_inline(key, width, false),
-            taffy::AvailableSpace::MaxContent => self.break_inline(key, f32::MAX, false),
+            taffy::AvailableSpace::Definite(width) => self.break_lines(fragment, width),
+            taffy::AvailableSpace::MaxContent => self.break_lines(fragment, f32::MAX),
             taffy::AvailableSpace::MinContent => {
                 // Zero width determines the intrinsic minimum. Measure height at
                 // that width so short words can share a line in the final layout.
-                let flow = self.break_inline(key, 0.0, false);
-                self.break_inline(key, flow.width, false)
+                let flow = self.break_lines(fragment, 0.0);
+                self.break_lines(fragment, flow.width)
             }
         };
 
@@ -133,56 +137,58 @@ impl Engine<'_> {
         }
     }
 
-    /// Shape the inline content if needed, lay out atomic inline and block
-    /// children, and update the inline box metrics.
-    fn prepare_inline(
-        &mut self,
-        key: LayoutInputKey,
-        available: taffy::Size<taffy::AvailableSpace>,
-    ) {
+    /// Shape the inline content if needed, lay out atomic inline children, and
+    /// update their inline box metrics.
+    fn prepare(&mut self, fragment: FragmentKey, available: taffy::Size<taffy::AvailableSpace>) {
         if !self
             .fragments
             .inline_layouts
-            .get(key)
+            .get(fragment)
             .is_some_and(|inline| inline.shaped)
         {
-            self.shape(key);
+            self.shape(fragment);
         }
 
         let tree = self.tree;
+        let mut atomics = std::mem::take(&mut self.scratch.inline.atomics);
+        atomics.clear();
+        atomics.extend(
+            self.fragments.inline_layouts[fragment]
+                .boxes
+                .iter()
+                .copied()
+                .filter(|&key| tree.items[key].kind == LayoutInputKind::AtomicInline),
+        );
 
-        for op in InlineEvents::new(tree, key) {
-            if let Op::Box(child) | Op::Block(child) = op {
-                self.ensure_state(child);
-                self.compute(child, available);
-            }
+        for &key in &atomics {
+            let atomic = self.ensure_box(key);
+            self.compute(atomic, available);
         }
 
-        self.update_inline_boxes(key);
+        self.scratch.inline.atomics = atomics;
+        self.update_inline_boxes(fragment);
     }
 
     /// Copy the margin box metrics of atomic inline children into their
     /// inline boxes, so lines can be broken again without reshaping.
-    fn update_inline_boxes(&mut self, key: LayoutInputKey) {
+    fn update_inline_boxes(&mut self, fragment: FragmentKey) {
         let tree = self.tree;
         let FragmentTree {
             inline_layouts,
             states,
+            first,
             ..
         } = &mut *self.fragments;
+        let InlineLayout { layout, boxes, .. } = &mut inline_layouts[fragment];
 
-        for inline_box in inline_layouts[key].layout.inline_boxes_mut() {
-            if inline_box.kind != parley::InlineBoxKind::InFlow {
+        for inline_box in layout.inline_boxes_mut() {
+            let key = boxes[inline_box.id as usize];
+
+            if tree.items[key].kind != LayoutInputKind::AtomicInline {
                 continue;
             }
 
-            let child = from_box_id(inline_box.id);
-
-            if tree.items[child].kind != LayoutInputKind::AtomicInline {
-                continue;
-            }
-
-            let state = &states[child];
+            let state = &states[first[key]];
             let layout = state.layout;
 
             // Parley places the margin box; fragments retain border-box
@@ -191,5 +197,41 @@ impl Engine<'_> {
             inline_box.height = layout.size.height + layout.margin.top + layout.margin.bottom;
             inline_box.baseline = Some(layout.margin.top + state.baseline);
         }
+    }
+
+    /// Break the lines at `max_advance`, measuring their extent and baselines.
+    fn break_lines(&mut self, fragment: FragmentKey, max_advance: f32) -> Flow {
+        let inline = &mut self.fragments.inline_layouts[fragment];
+        inline.layout.break_all_lines(Some(max_advance));
+
+        let mut width = 0.0f32;
+        let mut first_baseline = None;
+        let mut last_baseline = None;
+
+        for line in inline.layout.lines() {
+            let metrics = line.metrics();
+            width = width.max(metrics.advance - metrics.hanging_advance);
+            first_baseline.get_or_insert(metrics.baseline);
+            last_baseline = Some(metrics.baseline);
+        }
+
+        inline.first_baseline = first_baseline;
+        inline.last_baseline = last_baseline;
+
+        Flow {
+            width,
+            height: inline.layout.height(),
+        }
+    }
+
+    /// Align the lines by the owner's alignment. Alignment only moves content
+    /// within lines, so measuring skips it.
+    fn align_lines(&mut self, fragment: FragmentKey) {
+        let owner = self.fragments.items[fragment].source;
+
+        self.fragments.inline_layouts[fragment].layout.align(
+            self.tree.items[owner].text_style.align,
+            parley::AlignmentOptions::default(),
+        );
     }
 }

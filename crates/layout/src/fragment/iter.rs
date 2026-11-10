@@ -15,9 +15,7 @@ pub struct Fragments<'a> {
 
 impl<'a> Fragments<'a> {
     pub(super) fn new(tree: &'a FragmentTree, source: LayoutInputKey) -> Self {
-        let next = tree
-            .box_fragment(source)
-            .or_else(|| tree.first.get(source).copied());
+        let next = tree.first.get(source).copied();
 
         Self { tree, source, next }
     }

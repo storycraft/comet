@@ -2,8 +2,9 @@
 //!
 //! Block level boxes are laid out by Taffy and written into their box fragments
 //! in place. Inline formatting contexts are laid out by Parley and split into
-//! line boxes, inline span fragments, glyph runs and the block boxes that
-//! interrupt the inline content.
+//! line boxes, inline span fragments and glyph runs. Inline content containing
+//! block boxes is split into anonymous blocks, laid out between the block boxes
+//! by Taffy's block algorithm so their margins collapse.
 
 mod adapter;
 pub(crate) mod engine;
@@ -25,10 +26,14 @@ new_key_type! { pub struct FragmentKey; }
 
 /// Source text and its shaped layout, retained together for rendering.
 ///
-/// `GlyphRun` and `Line` fragments index into the lines of `layout`.
+/// Owned by the fragment containing the lines: the box of an inline formatting
+/// context, or an anonymous block. `GlyphRun` and `Line` fragments index into
+/// the lines of `layout`.
 pub struct InlineLayout {
     pub text: String,
     pub layout: parley::Layout<Option<NodeKey>>,
+    /// Items of the inline boxes in `layout`, indexed by inline box id.
+    pub(crate) boxes: Vec<LayoutInputKey>,
     /// Whether `layout` matches the current inline content. Line breaking
     /// alone does not require reshaping.
     pub(crate) shaped: bool,
@@ -49,7 +54,10 @@ pub enum FragmentItem {
     /// Box of a block level or atomic inline item. Box fragments keep their keys
     /// across rebuilds.
     Box,
-    /// Line box of the inline layout owned by `source`.
+    /// Block containing one run of inline content of `source`, between the
+    /// block boxes interrupting it. It holds the run's line boxes.
+    AnonymousBlock,
+    /// Line box of the inline layout owned by its parent fragment.
     Line { line: usize },
     /// Index into the owning inline layout's positioned line items.
     GlyphRun { line: usize, item: usize },
@@ -59,8 +67,8 @@ pub enum FragmentItem {
 
 #[derive(Debug, Clone)]
 pub struct Fragment {
-    /// Item generating this fragment. Line boxes belong to the item
-    /// establishing the inline formatting context.
+    /// Item generating this fragment. Line boxes and anonymous blocks belong to
+    /// the item establishing the inline formatting context.
     pub source: LayoutInputKey,
     pub item: FragmentItem,
     pub layout: FragmentBox,

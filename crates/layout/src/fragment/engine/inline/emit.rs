@@ -1,33 +1,30 @@
-//! Converting placed lines and blocks into fragments.
+//! Converting lines into fragments.
 
+use comet_tree::node::NodeKey;
 use rustc_hash::FxHashMap;
 use slotmap::{SecondaryMap, SparseSecondaryMap};
 
-use super::{super::Engine, Scratch, from_box_id, lines::Placed};
+use super::{super::Engine, Scratch};
 use crate::{
     fragment::{
-        Fragment, FragmentBox, FragmentItem, FragmentKey, state::NodeState, tree::FragmentTree,
+        Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, state::NodeState,
+        tree::FragmentTree,
     },
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     slot_tree::SlotTree,
     style::geometry::{Point, Size},
 };
 
-type Layout = parley::Layout<Option<comet_tree::node::NodeKey>>;
-
 impl Engine<'_> {
-    /// Replace the fragments of an inline formatting context with the content
-    /// placed by the last [`Self::break_inline`] call. `origin` is the content
-    /// box offset from the border box.
-    pub(super) fn emit_inline(&mut self, key: LayoutInputKey, origin: taffy::Point<f32>) {
-        let fragment = self.fragments.states[key].fragment;
+    /// Replace the lines of a fragment owning them with its broken and aligned
+    /// inline layout. `origin` is the content box offset from the border box.
+    pub(super) fn emit(&mut self, fragment: FragmentKey, origin: taffy::Point<f32>) {
         self.release_children(fragment);
 
         let Scratch {
-            events,
             spans,
             span_parents,
-            links,
+            ..
         } = &mut self.scratch.inline;
         let FragmentTree {
             items,
@@ -36,52 +33,88 @@ impl Engine<'_> {
             first,
             ..
         } = &mut *self.fragments;
-        let layout = &inline_layouts[key].layout;
+        let InlineLayout { layout, boxes, .. } = &inline_layouts[fragment];
 
         let mut emitter = Emitter {
             tree: self.tree,
-            root: key,
+            owner: items[fragment].source,
             fragment,
             origin,
             items,
             states,
+            first,
+            boxes,
             span_parents,
             spans,
-            links,
-            first,
             line: 0,
             line_key: fragment,
         };
 
-        emitter.links.clear();
-
-        for event in events.drain(..) {
-            match event {
-                Placed::Block { key, top } => emitter.block(key, top),
-                Placed::Line(index) => emitter.line(layout, index),
-            }
+        for (index, line) in layout.lines().enumerate() {
+            emitter.line(index, &line);
         }
 
         emitter.fit_spans();
-        emitter.links.clear();
+    }
+
+    /// Chain the inline and glyph run fragments of each source across the
+    /// lines of a fragment, including the anonymous blocks of mixed inline
+    /// content. Nested boxes link their own lines.
+    pub(in crate::fragment::engine) fn link_inline(&mut self, fragment: FragmentKey) {
+        let FragmentTree {
+            items,
+            first,
+            states,
+            ..
+        } = &mut *self.fragments;
+        let links = &mut self.scratch.inline.links;
+        let mut pending: Vec<FragmentKey> = items.children(fragment).rev().collect();
+
+        links.clear();
+
+        while let Some(key) = pending.pop() {
+            match items[key].item {
+                FragmentItem::Box => continue,
+                FragmentItem::AnonymousBlock | FragmentItem::Line { .. } => {}
+                FragmentItem::Inline { .. } | FragmentItem::GlyphRun { .. } => {
+                    let source = items[key].source;
+                    items[key].link = Default::default();
+
+                    if let Some(prev) = links.insert(source, key) {
+                        items[prev].link.next = Some(key);
+                        items[key].link.prev = Some(prev);
+                    } else if !first.get(source).is_some_and(|&first| {
+                        // A text item generating a box keeps its box first.
+                        states.contains_key(first) && items[first].item == FragmentItem::Box
+                    }) {
+                        first.insert(source, key);
+                    }
+                }
+            }
+
+            pending.extend(items.children(key).rev());
+        }
+
+        links.clear();
     }
 }
 
-/// Emits the fragments of one inline formatting context.
+/// Emits the lines of one fragment owning them.
 struct Emitter<'a> {
     tree: &'a LayoutInputTree,
     /// Item establishing the inline formatting context.
-    root: LayoutInputKey,
-    /// Box fragment of `root`.
+    owner: LayoutInputKey,
+    /// Fragment owning the lines.
     fragment: FragmentKey,
     /// Content box offset from the border box.
     origin: taffy::Point<f32>,
     items: &'a mut SlotTree<FragmentKey, Fragment>,
-    states: &'a SecondaryMap<LayoutInputKey, NodeState>,
+    states: &'a SparseSecondaryMap<FragmentKey, NodeState>,
+    first: &'a SecondaryMap<LayoutInputKey, FragmentKey>,
+    /// Items of the inline boxes, by inline box id.
+    boxes: &'a [LayoutInputKey],
     span_parents: &'a mut FxHashMap<LayoutInputKey, FragmentKey>,
     spans: &'a mut Vec<FragmentKey>,
-    links: &'a mut FxHashMap<LayoutInputKey, FragmentKey>,
-    first: &'a mut SparseSecondaryMap<LayoutInputKey, FragmentKey>,
     /// Index of the current line in the Parley layout.
     line: usize,
     /// Fragment of the current line.
@@ -89,29 +122,15 @@ struct Emitter<'a> {
 }
 
 impl Emitter<'_> {
-    /// Attach a block box between lines, `top` being its margin box top.
-    fn block(&mut self, key: LayoutInputKey, top: f32) {
-        let state = &self.states[key];
-
-        self.items[state.fragment].layout.location = Point::new(
-            (self.origin.x + state.layout.location.x) as f64,
-            (self.origin.y + top + state.layout.margin.top) as f64,
-        );
-        self.items.append(self.fragment, state.fragment);
-    }
-
     /// Emit a line box and its content.
-    fn line(&mut self, layout: &Layout, index: usize) {
-        let Some(line) = layout.get(index) else {
-            return;
-        };
+    fn line(&mut self, index: usize, line: &parley::Line<'_, Option<NodeKey>>) {
         let metrics = line.metrics();
         let left = metrics.inline_min_coord;
         let top = metrics.block_min_coord;
 
         self.line = index;
         self.line_key = self.items.insert(Fragment::new(
-            self.root,
+            self.owner,
             FragmentItem::Line { line: index },
             FragmentBox {
                 location: Point::new((self.origin.x + left) as f64, (self.origin.y + top) as f64),
@@ -141,11 +160,10 @@ impl Emitter<'_> {
 
     fn glyph_run(
         &mut self,
-        run: &parley::GlyphRun<'_, Option<comet_tree::node::NodeKey>>,
+        run: &parley::GlyphRun<'_, Option<NodeKey>>,
         item: usize,
         (left, top, line_height): (f32, f32, f32),
     ) {
-        // Line breaks around blocks belong to non-text spans.
         let Some(source) = run
             .style()
             .brush
@@ -182,12 +200,7 @@ impl Emitter<'_> {
         bx: &parley::PositionedInlineBox,
         (left, top, line_height): (f32, f32, f32),
     ) {
-        // Blocks are placed between lines.
-        if bx.kind == parley::InlineBoxKind::CustomOutOfFlow {
-            return;
-        }
-
-        let child = from_box_id(bx.id);
+        let child = self.boxes[bx.id as usize];
 
         // An empty inline element.
         if self.tree.items[child].kind == LayoutInputKind::Inline {
@@ -202,30 +215,29 @@ impl Emitter<'_> {
         }
 
         let parent = self.parent(child);
-        let state = &self.states[child];
-        let margin = state.layout.margin;
+        let atomic = self.first[child];
+        let margin = self.states[atomic].layout.margin;
 
-        self.items[state.fragment].layout.location = Point::new(
+        self.items[atomic].layout.location = Point::new(
             (bx.x + margin.left - left) as f64,
             (bx.y + margin.top - top) as f64,
         );
-        self.items.append(parent, state.fragment);
+        self.items.append(parent, atomic);
     }
 
-    /// Insert a linked fragment under the span containing `source`.
+    /// Insert a fragment under the span containing `source`.
     fn push(&mut self, source: LayoutInputKey, item: FragmentItem, layout: FragmentBox) {
         let parent = self.parent(source);
         let key = self.items.insert(Fragment::new(source, item, layout));
 
         self.items.append(parent, key);
-        self.link(source, key);
     }
 
     /// The fragment containing `source` on this line, creating span fragments
     /// for its inline ancestors.
     fn parent(&mut self, source: LayoutInputKey) -> FragmentKey {
         // A text root's own runs belong to its line, even if it has a parent.
-        if source == self.root {
+        if source == self.owner {
             return self.line_key;
         }
 
@@ -233,7 +245,7 @@ impl Emitter<'_> {
             .tree
             .items
             .parent(source)
-            .filter(|&key| key != self.root)
+            .filter(|&key| key != self.owner)
         else {
             return self.line_key;
         };
@@ -255,21 +267,10 @@ impl Emitter<'_> {
             FragmentBox::default(),
         ));
         self.items.append(parent, fragment);
-        self.link(key, fragment);
         self.spans.push(fragment);
         self.span_parents.insert(key, fragment);
 
         fragment
-    }
-
-    /// Chain fragments generated by the same source across lines.
-    fn link(&mut self, source: LayoutInputKey, key: FragmentKey) {
-        if let Some(prev) = self.links.insert(source, key) {
-            self.items[prev].link.next = Some(key);
-            self.items[key].link.prev = Some(prev);
-        } else {
-            self.first.insert(source, key);
-        }
     }
 
     /// Fit inline spans to their contents. Nested spans finish before their parents.

@@ -162,7 +162,9 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
         }
 
         if let FragmentItem::Line { line } = fragment.item {
-            for item in tree.inline_layouts[fragment.source]
+            for item in tree
+                .inline_layout(key)
+                .unwrap()
                 .layout
                 .get(line)
                 .unwrap()
@@ -401,4 +403,76 @@ fn rounds_only_outer_edges_of_wrapped_fragments() {
             );
         }
     }
+}
+
+#[test]
+fn anonymous_blocks_paint_nothing_and_offset_their_lines() {
+    let mut ui = Ui::new();
+    let gray = Color::from_rgb8(200, 200, 200);
+    let yellow = Color::from_rgb8(250, 240, 20);
+    let root_node = ui.create(Node::Box, (Fill(Paint::Solid(gray)),));
+    let span = ui.create(
+        Node::Box,
+        (bx::DisplayOuter::Inline, Fill(Paint::Solid(yellow))),
+    );
+    let before = ui.create(Node::Text, (Text("before".into()),));
+    let block = ui.create(
+        Node::Box,
+        (
+            bx::Size(Size::new(
+                AutoValue::Auto,
+                AutoValue::Value(StyleUnit::Px(20.0)),
+            )),
+            Fill(Paint::Solid(Color::WHITE)),
+        ),
+    );
+    let after = ui.create(Node::Text, (Text("after".into()),));
+
+    ui.append(root_node, span);
+    ui.append(span, before);
+    ui.append(span, block);
+    ui.append(span, after);
+
+    let (inputs, tree, root) = build(&ui, root_node);
+    let mut scene = Scene::new();
+
+    CometPainter::new().draw(&ui, &inputs, &tree, root, &mut scene);
+
+    let scene_fills = fills(&scene);
+    let block_rect = scene_fills
+        .iter()
+        .find(|(_, color)| *color == Color::WHITE)
+        .unwrap()
+        .0;
+
+    // The root, both pieces of the span and the block; anonymous blocks add none.
+    assert_eq!(scene_fills.len(), 4);
+    assert_eq!(
+        scene_fills[0],
+        (
+            Rect::new(0.0, 0.0, 120.0, tree.items[root].layout.size.height),
+            gray
+        )
+    );
+    assert_eq!(
+        scene_fills
+            .iter()
+            .filter(|(_, color)| *color == yellow)
+            .count(),
+        2
+    );
+
+    // Glyphs of the second run are placed below the block.
+    let scene_glyphs = glyphs(&scene);
+    let (above, below): (Vec<_>, Vec<_>) = scene_glyphs
+        .iter()
+        .partition(|(glyph, _)| (glyph.y as f64) < block_rect.y0);
+
+    assert!(!above.is_empty());
+    assert!(!below.is_empty());
+    assert!(
+        below
+            .iter()
+            .all(|(glyph, _)| glyph.y as f64 > block_rect.y1)
+    );
 }

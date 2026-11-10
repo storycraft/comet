@@ -44,6 +44,16 @@ impl<'a> InlineEvents<'a> {
             phase,
         }
     }
+
+    /// Resume the stream of `root` right after a block box in its content.
+    pub fn after(tree: &'a LayoutInputTree, root: LayoutInputKey, block: LayoutInputKey) -> Self {
+        Self {
+            tree,
+            root,
+            current: Some(block),
+            phase: Phase::Advance,
+        }
+    }
 }
 
 impl Iterator for InlineEvents<'_> {

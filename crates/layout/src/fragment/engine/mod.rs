@@ -1,8 +1,12 @@
 //! Layout engine shared by the builder and the Taffy adapter.
 //!
+//! Every Taffy node is a retained fragment: the box of an item or an anonymous
+//! block. Layout state and inline layouts are keyed by those fragments, and
+//! Taffy traverses their fragment children.
+//!
 //! - [`block`] lays out boxes with Taffy, including custom containers.
-//! - [`inline`] lays out inline formatting contexts with Parley.
-//! - [`retain`] keeps retained box fragments and their state in sync.
+//! - [`inline`] lays out inline content with Parley.
+//! - [`retain`] keeps retained fragments and their state in sync.
 
 mod block;
 mod inline;
@@ -12,7 +16,9 @@ use comet_tree::{node::NodeKey, ui::Ui};
 use slotmap::{Key, KeyData};
 
 use super::{
-    Fragment, FragmentBox, FragmentItem, FragmentKey, state::NodeState, tree::FragmentTree,
+    Fragment, FragmentBox, FragmentItem, FragmentKey,
+    state::{Mode, NodeState},
+    tree::FragmentTree,
 };
 use crate::{
     input::{ChildLayout, LayoutFlags, LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
@@ -20,38 +26,22 @@ use crate::{
     taffy::style::{self, Style},
 };
 
-pub(crate) fn to_taffy_key(key: LayoutInputKey) -> taffy::NodeId {
-    taffy::NodeId::new(key.data().as_ffi())
+/// The Taffy node of a retained fragment.
+pub(crate) fn node_id(fragment: FragmentKey) -> taffy::NodeId {
+    taffy::NodeId::new(fragment.data().as_ffi())
 }
 
-pub(super) fn from_taffy_key(id: taffy::NodeId) -> LayoutInputKey {
+/// The retained fragment of a Taffy node.
+pub(crate) fn fragment_of(id: taffy::NodeId) -> FragmentKey {
     KeyData::from_ffi(id.into()).into()
-}
-
-/// Whether the item lays out its children in an inline formatting context.
-///
-/// Block containers with any inline level child establish one; block children
-/// then interrupt the inline content instead of being wrapped in anonymous boxes.
-pub(super) fn is_inline_root(tree: &LayoutInputTree, key: LayoutInputKey) -> bool {
-    let item = &tree.items[key];
-
-    match item.child_layout {
-        ChildLayout::None => item.kind == LayoutInputKind::Text,
-        ChildLayout::Inline => true,
-        ChildLayout::Block => tree
-            .items
-            .children(key)
-            .any(|child| tree.items[child].kind != LayoutInputKind::Block),
-        ChildLayout::Container => false,
-    }
 }
 
 /// Buffers retained by the builder between builds.
 #[derive(Default)]
 pub(crate) struct Scratch {
     stack: Vec<LayoutInputKey>,
-    /// Box fragments detached from their parents during this build. Those left
-    /// without a parent at the end are deleted.
+    /// Retained fragments detached from their parents during this build. Those
+    /// left without a parent at the end are deleted.
     detached: Vec<FragmentKey>,
     inline: inline::Scratch,
 }
@@ -81,6 +71,29 @@ impl Engine<'_> {
             })
     }
 
+    /// How a box generating item lays out its content.
+    fn mode(&self, key: LayoutInputKey) -> Mode {
+        let item = &self.tree.items[key];
+
+        let inline = match item.child_layout {
+            ChildLayout::None => item.kind == LayoutInputKind::Text,
+            ChildLayout::Inline => true,
+            ChildLayout::Block => self
+                .tree
+                .items
+                .children(key)
+                .any(|child| self.tree.items[child].kind != LayoutInputKind::Block),
+            ChildLayout::Container => return Mode::Container,
+        };
+
+        match (inline, item.child_layout) {
+            (true, _) if self.has_block_content(key) => Mode::MixedInline,
+            (true, _) => Mode::Inline,
+            (false, ChildLayout::Block) => Mode::Block,
+            _ => Mode::Leaf,
+        }
+    }
+
     fn resolve_style(&self, key: LayoutInputKey) -> Style {
         let item = &self.tree.items[key];
         let mut cx = self.constraint.clone();
@@ -89,39 +102,24 @@ impl Engine<'_> {
         style::resolve(self.ui, Some(item.node), &cx)
     }
 
-    /// Create the state and box fragment of a box generating item if missing.
-    pub fn ensure_state(&mut self, key: LayoutInputKey) {
-        let valid = self
-            .fragments
-            .states
-            .get(key)
-            .is_some_and(|state| self.fragments.items.get(state.fragment).is_some());
-
-        if valid {
-            return;
+    /// The box fragment of a box generating item, created with its state if
+    /// missing.
+    pub fn ensure_box(&mut self, key: LayoutInputKey) -> FragmentKey {
+        if let Some(fragment) = self.fragments.box_fragment(key) {
+            return fragment;
         }
 
-        let style = self.resolve_style(key);
+        let state = NodeState::new(self.mode(key), self.resolve_style(key));
         let fragment = self.fragments.items.insert(Fragment::new(
             key,
             FragmentItem::Box,
             FragmentBox::default(),
         ));
 
-        self.fragments
-            .states
-            .insert(key, NodeState::new(style, fragment));
-    }
+        self.fragments.states.insert(fragment, state);
+        self.fragments.first.insert(key, fragment);
 
-    /// Resolve the box style again and drop cached layouts of a flagged item.
-    fn refresh_state(&mut self, key: LayoutInputKey) {
-        let style = self.resolve_style(key);
-        self.ensure_state(key);
-
-        let state = &mut self.fragments.states[key];
-        state.style = style;
-        state.cache.clear();
-        state.final_layout_valid = false;
+        fragment
     }
 
     /// Visit flagged items from the root. Cached layouts of flagged items are
@@ -142,11 +140,11 @@ impl Engine<'_> {
             }
 
             if self.is_box(key) {
-                self.invalidate_box(key);
-            } else if let Some(state) = self.fragments.states.remove(key) {
+                self.invalidate_box(key, force);
+            } else if let Some(fragment) = self.fragments.box_fragment(key) {
                 // The item no longer generates a box.
-                self.fragments.inline_layouts.remove(key);
-                self.release(state.fragment);
+                self.drop_state(fragment);
+                self.release(fragment);
             }
 
             if (force || flags.contains(LayoutFlags::CHILDREN_DIRTY))
@@ -159,75 +157,89 @@ impl Engine<'_> {
         self.scratch.stack = stack;
     }
 
-    /// Refresh a flagged box and rebuild its fragment children. Inline content
-    /// is attached again when its inline layout is emitted.
-    fn invalidate_box(&mut self, key: LayoutInputKey) {
-        self.refresh_state(key);
+    /// Refresh a flagged box and rebuild its fragment children. Lines are
+    /// attached again when they are emitted.
+    fn invalidate_box(&mut self, key: LayoutInputKey, force: bool) {
+        let fragment = self.ensure_box(key);
+        let mode = self.mode(key);
+        let style = self.resolve_style(key);
 
-        let fragment = self.fragments.states[key].fragment;
-        let inline = is_inline_root(self.tree, key);
+        let state = &mut self.fragments.states[fragment];
+        state.mode = mode;
+        state.style = style;
+        state.invalidate();
 
-        if inline {
-            if let Some(layout) = self.fragments.inline_layouts.get_mut(key) {
-                layout.shaped = false;
+        match mode {
+            Mode::Inline => {
+                self.release_children(fragment);
+
+                if let Some(inline) = self.fragments.inline_layouts.get_mut(fragment) {
+                    inline.shaped = false;
+                }
             }
-        } else {
-            self.fragments.inline_layouts.remove(key);
-        }
+            Mode::MixedInline => {
+                self.fragments.inline_layouts.remove(fragment);
+                self.rebuild_runs(key, fragment, force);
+            }
+            Mode::Block | Mode::Container => {
+                self.fragments.inline_layouts.remove(fragment);
+                self.release_children(fragment);
 
-        self.release_children(fragment);
-
-        if !inline
-            && matches!(
-                self.tree.items[key].child_layout,
-                ChildLayout::Block | ChildLayout::Container
-            )
-        {
-            for child in self.tree.items.children(key) {
-                self.ensure_state(child);
-
-                let child = self.fragments.states[child].fragment;
-                self.fragments.items.append(fragment, child);
+                for child in self.tree.items.children(key) {
+                    let child = self.ensure_box(child);
+                    self.fragments.items.append(fragment, child);
+                }
+            }
+            Mode::Leaf | Mode::Run { .. } => {
+                self.fragments.inline_layouts.remove(fragment);
+                self.release_children(fragment);
             }
         }
     }
 
-    /// Mark the final layout of the item and its ancestors invalid. Measuring
-    /// replaces retained lines and descendant geometry, so the final layout
-    /// must run again even when its cache entry matches.
-    fn invalidate_final(&mut self, key: LayoutInputKey) {
-        let mut ancestor = Some(key);
+    /// Mark the final layout of a fragment and its laid out ancestors invalid.
+    /// Measuring replaces retained lines and descendant geometry, so the final
+    /// layout must run again even when its cache entry matches.
+    fn invalidate_final(&mut self, fragment: FragmentKey) {
+        let root = self.fragments.box_fragment(self.root);
+        let mut ancestor = Some(fragment);
 
         while let Some(key) = ancestor {
             if let Some(state) = self.fragments.states.get_mut(key) {
                 state.final_layout_valid = false;
             }
 
-            if key == self.root {
+            if Some(key) == root {
                 break;
             }
 
-            ancestor = self.tree.items.parent(key);
+            ancestor = self.fragments.items.parent(key);
         }
     }
 
-    /// Lay out a box with the algorithm selected by its children.
+    /// Lay out a fragment with the algorithm of its mode.
     pub fn layout_child(
         &mut self,
         id: taffy::NodeId,
         input: taffy::LayoutInput,
         block_ctx: Option<&mut taffy::BlockContext<'_>>,
     ) -> taffy::LayoutOutput {
-        let key = from_taffy_key(id);
+        let fragment = fragment_of(id);
 
-        if is_inline_root(self.tree, key) {
-            return self.layout_inline(key, input);
-        }
+        match self.fragments.states[fragment].mode {
+            Mode::Inline | Mode::Run { .. } => self.layout_lines(fragment, input),
+            Mode::Block => taffy::compute_block_layout(self, id, input, block_ctx),
+            Mode::MixedInline => {
+                let output = taffy::compute_block_layout(self, id, input, block_ctx);
 
-        match self.tree.items[key].child_layout {
-            ChildLayout::Block => taffy::compute_block_layout(self, id, input, block_ctx),
-            ChildLayout::Container => self.layout_container(key, input),
-            ChildLayout::None | ChildLayout::Inline => self.layout_leaf(key, input),
+                if input.run_mode == taffy::RunMode::PerformLayout {
+                    self.link_inline(fragment);
+                }
+
+                output
+            }
+            Mode::Container => self.layout_container(fragment, input),
+            Mode::Leaf => self.layout_leaf(fragment, input),
         }
     }
 }

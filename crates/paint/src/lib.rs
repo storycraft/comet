@@ -4,7 +4,7 @@ pub mod style;
 use anyrender::PaintScene;
 use comet_layout::{
     fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
-    input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
+    input::{LayoutInputKind, tree::LayoutInputTree},
 };
 use comet_tree::{node::NodeKey, ui::Ui};
 use kurbo::{Affine, Point, Rect, RoundedRectRadii, Stroke, Vec2};
@@ -15,7 +15,8 @@ use crate::style::{BorderFill, BorderRadius, Fill, TextColor};
 /// Paints final fragments in tree order, with coordinates relative to their parents.
 #[derive(Default)]
 pub struct CometPainter {
-    pending: Vec<(FragmentKey, Point, Option<LayoutInputKey>)>,
+    /// Fragments to paint, with their parent origin and the line containing them.
+    pending: Vec<(FragmentKey, Point, Option<FragmentKey>)>,
 }
 
 impl CometPainter {
@@ -58,7 +59,9 @@ impl CometPainter {
                 FragmentItem::Inline { .. } => {
                     draw_box(ui, inputs, tree, key, origin, scene);
                 }
-                FragmentItem::Line { .. } => inline_owner = Some(fragment.source),
+                // Anonymous blocks only position their lines.
+                FragmentItem::AnonymousBlock => {}
+                FragmentItem::Line { .. } => inline_owner = Some(key),
                 FragmentItem::GlyphRun { line, item } => {
                     draw_box(ui, inputs, tree, key, origin, scene);
 
@@ -179,14 +182,13 @@ fn draw_glyph_run(
     tree: &FragmentTree,
     fragment: &Fragment,
     paint: anyrender::Paint,
-    owner: LayoutInputKey,
+    owner_line: FragmentKey,
     (line, item): (usize, usize),
     origin: Point,
     scene: &mut impl PaintScene,
 ) {
     let Some(line) = tree
-        .inline_layouts
-        .get(owner)
+        .inline_layout(owner_line)
         .and_then(|inline| inline.layout.get(line))
     else {
         return;
