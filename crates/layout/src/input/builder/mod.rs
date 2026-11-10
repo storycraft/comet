@@ -28,20 +28,21 @@ impl LayoutInputTreeBuilder {
         Self::default()
     }
 
-    /// Build a new tree for `root` with `None`, or rebuild the item generated for
+    /// Build a new tree for `root` with `None`, or update the item generated for
     /// `root` with `Some(key)`. Clean targets return immediately; mark changed
-    /// nodes before rebuilding.
+    /// nodes before updating.
     ///
-    /// Returns `target` when it is rebuilt in place, or the newly created key.
+    /// Returns `target` when it is updated in place, or the newly created key.
     /// A target generated for a different node is replaced by a new item at its
     /// position. Returns `None` and deletes `target` if `root` is not in the UI,
     /// even when `target` is clean.
     ///
-    /// Generated items have every [`LayoutFlags`] set. Rebuilding re-resolves the
-    /// whole target subtree, reusing keys of items whose node stays under the same
-    /// parent, and marks every rebuilt item dirty. Items only describe their own
-    /// node, so any changed node can be rebuilt on its own. Flags are left for the
-    /// consumer of the input tree to clear. Use `item_for_node` for child results.
+    /// Generated items have every [`LayoutFlags`] set. Updating visits flagged
+    /// items and keeps clean subtrees as they are, unless an inherited text style
+    /// changed. Existing items are only marked dirty when their contents or child
+    /// lists change. Flags are left for the consumer of the input tree to clear.
+    /// Items only describe their own node, so any changed node can be updated on
+    /// its own. Use `item_for_node` for child results.
     pub fn build(
         &mut self,
         ui: &Ui,
@@ -91,18 +92,24 @@ impl LayoutInputTreeBuilder {
         };
 
         let existing = target.filter(|&key| tree.items[key].node == root);
-        let key = self.update(ui, tree, root, existing, &parent_style, &cx);
+        let update = self.update(ui, tree, root, existing, &parent_style, &cx);
 
         if existing.is_none()
             && let Some(old) = target
         {
-            tree.items.before(old, key);
+            tree.items.before(old, update.key);
             tree.delete_item(old);
+            // Propagate the new item's flags to the ancestors.
+            tree.mark_dirty(update.key);
         }
 
-        // Propagate to the ancestors outside of the rebuilt subtree.
-        tree.mark_dirty(key);
-        self.pending.push(Task { key, node: root });
+        if update.descend {
+            self.pending.push(Task {
+                key: update.key,
+                node: root,
+                force: update.force,
+            });
+        }
 
         while let Some(task) = self.pending.pop() {
             self.reconcile_children(ui, tree, task, &cx);
@@ -110,18 +117,19 @@ impl LayoutInputTreeBuilder {
 
         self.clear();
 
-        Some(key)
+        Some(update.key)
     }
 
-    /// Match the item's children to the source children, in order, and rebuild them.
+    /// Match the item's children to the source children, in order.
     fn reconcile_children(
         &mut self,
         ui: &Ui,
         tree: &mut LayoutInputTree,
-        Task { key, node }: Task,
+        Task { key, node, force }: Task,
         cx: &UnitResolveContext,
     ) {
         let mut next = tree.items.first_child(key);
+        let mut changed = false;
 
         if tree.items[key].child_layout != ChildLayout::None {
             let parent_style = tree.items[key].text_style.clone();
@@ -130,27 +138,53 @@ impl LayoutInputTreeBuilder {
                 let existing = tree
                     .item_for_node(child)
                     .filter(|&item| tree.items.parent(item) == Some(key));
-                let child_key = self.update(ui, tree, child, existing, &parent_style, cx);
 
-                if next == Some(child_key) {
-                    next = tree.items.next_sibling(child_key);
-                } else if let Some(next) = next {
-                    tree.items.before(next, child_key);
+                let update = match existing {
+                    // Clean items keep their entire subtree.
+                    Some(item) if !force && tree.items[item].flags.is_empty() => Update {
+                        key: item,
+                        descend: false,
+                        force: false,
+                    },
+
+                    _ => self.update(ui, tree, child, existing, &parent_style, cx),
+                };
+
+                if next == Some(update.key) {
+                    next = tree.items.next_sibling(update.key);
                 } else {
-                    tree.items.append(key, child_key);
+                    if let Some(next) = next {
+                        tree.items.before(next, update.key);
+                    } else {
+                        tree.items.append(key, update.key);
+                    }
+
+                    changed = true;
                 }
 
-                tree.mark_dirty(child_key);
-                self.pending.push(Task {
-                    key: child_key,
-                    node: child,
-                });
+                if existing.is_none() {
+                    // Propagate the new item's flags to the ancestors.
+                    tree.mark_dirty(update.key);
+                }
+
+                if update.descend {
+                    self.pending.push(Task {
+                        key: update.key,
+                        node: child,
+                        force: update.force,
+                    });
+                }
             }
         }
 
         while let Some(item) = next {
             next = tree.items.next_sibling(item);
             tree.delete_item(item);
+            changed = true;
+        }
+
+        if changed {
+            tree.mark_dirty(key);
         }
     }
 
@@ -163,26 +197,46 @@ impl LayoutInputTreeBuilder {
         existing: Option<LayoutInputKey>,
         parent_style: &Arc<TextStyle>,
         cx: &UnitResolveContext,
-    ) -> LayoutInputKey {
+    ) -> Update {
         let (kind, child_layout) = classify(ui, node);
         let text_style = conv::resolve_text_style(ui, node, cx, parent_style);
 
         let Some(key) = existing else {
-            return tree.add_item(LayoutInputItem {
+            let key = tree.add_item(LayoutInputItem {
                 kind,
                 node,
                 text_style,
                 child_layout,
                 flags: LayoutFlags::all(),
             });
+
+            return Update {
+                key,
+                descend: true,
+                force: false,
+            };
         };
 
         let item = &mut tree.items[key];
-        item.kind = kind;
+        let style_changed =
+            !Arc::ptr_eq(&item.text_style, &text_style) && item.text_style != text_style;
+        let changed = style_changed || item.kind != kind || item.child_layout != child_layout;
+        let descend = changed || !item.flags.is_empty();
+
+        // Always take the new allocation so equal styles keep sharing it.
         item.text_style = text_style;
+        item.kind = kind;
         item.child_layout = child_layout;
 
-        key
+        if changed {
+            tree.mark_dirty(key);
+        }
+
+        Update {
+            key,
+            descend,
+            force: style_changed,
+        }
     }
 
     fn clear(&mut self) {
@@ -193,6 +247,14 @@ impl LayoutInputTreeBuilder {
 struct Task {
     key: LayoutInputKey,
     node: NodeKey,
+    /// The text style changed, so descendants must be resolved again.
+    force: bool,
+}
+
+struct Update {
+    key: LayoutInputKey,
+    descend: bool,
+    force: bool,
 }
 
 /// Derive the item kind and child layout from the node's own display.

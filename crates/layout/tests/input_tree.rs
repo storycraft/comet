@@ -203,7 +203,7 @@ fn mark_dirty_propagates_to_ancestors() {
 }
 
 #[test]
-fn partial_update_reconciles_children_and_marks_subtree_dirty() {
+fn partial_update_reconciles_children_and_reuses_clean_subtrees() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let a = ui.create(Node::Box, ());
@@ -238,10 +238,13 @@ fn partial_update_reconciles_children_and_marks_subtree_dirty() {
     ui.append(root, d);
     tree.mark_dirty(key);
 
+    // A mutable property borrow would panic if the builder inspected this branch.
+    let borrowed = ui.prop_mut::<DisplayInner>(inner);
     assert_eq!(
         build(&mut builder, &ui, root, &mut tree, Some(key)),
         Some(key)
     );
+    drop(borrowed);
 
     let children: Vec<_> = tree.items.children(key).collect();
     let d_key = tree.item_for_node(d).unwrap();
@@ -251,18 +254,13 @@ fn partial_update_reconciles_children_and_marks_subtree_dirty() {
     assert_eq!(tree.item_for_node(inner), Some(inner_key));
     assert_eq!(tree.items[d_key].flags, LayoutFlags::all());
 
-    // Every rebuilt item is marked dirty, including unchanged descendants.
-    for item in [key, a_key, b_key, inner_key] {
-        assert!(
-            tree.items[item].flags.contains(LayoutFlags::DIRTY),
-            "{item:?}"
-        );
-    }
-    assert!(tree.items[key].flags.contains(LayoutFlags::CHILDREN_DIRTY));
-    assert!(
-        tree.items[b_key]
-            .flags
-            .contains(LayoutFlags::CHILDREN_DIRTY)
+    // Clean children are kept without being marked; only the reordered parent is.
+    assert!(tree.items[a_key].flags.is_empty());
+    assert!(tree.items[b_key].flags.is_empty());
+    assert!(tree.items[inner_key].flags.is_empty());
+    assert_eq!(
+        tree.items[key].flags,
+        LayoutFlags::DIRTY | LayoutFlags::CHILDREN_DIRTY
     );
 }
 
@@ -295,8 +293,9 @@ fn changed_text_style_updates_descendants() {
         item(child).flags,
         LayoutFlags::DIRTY | LayoutFlags::CHILDREN_DIRTY
     );
+    // Its own font size wins, so the resolved style is unchanged and it stays clean.
     assert_eq!(item(fixed).text_style.font_size, 10.0);
-    assert_eq!(item(fixed).flags, LayoutFlags::DIRTY);
+    assert!(item(fixed).flags.is_empty());
 
     let mut fresh = LayoutInputTree::new();
     let fresh_key = build(&mut builder, &ui, root, &mut fresh, None).unwrap();
