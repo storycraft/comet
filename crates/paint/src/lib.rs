@@ -27,12 +27,17 @@ impl CometPainter {
 
     /// Paint the fragments under `root`. `inputs` is the input tree the
     /// fragments were built from.
+    ///
+    /// Fragments painting entirely outside `viewport`, in scene coordinates,
+    /// are skipped. Fragments touching its edges are painted. Their descendants are still visited, since overflow is not
+    /// clipped and children may paint outside their parents.
     pub fn draw(
         &mut self,
         ui: &Ui,
         inputs: &LayoutInputTree,
         tree: &FragmentTree,
         root: FragmentKey,
+        viewport: Rect,
         scene: &mut impl PaintScene,
     ) {
         self.pending.clear();
@@ -44,6 +49,11 @@ impl CometPainter {
             };
 
             let origin = parent_origin + (fragment.layout.location.x, fragment.layout.location.y);
+            let rect = Rect::from_origin_size(
+                origin,
+                (fragment.layout.size.width, fragment.layout.size.height),
+            );
+            let box_visible = || box_bounds(fragment, rect).overlaps(viewport);
 
             match fragment.item {
                 FragmentItem::Box => {
@@ -53,27 +63,34 @@ impl CometPainter {
                         .items
                         .get(fragment.source)
                         .is_some_and(|item| item.kind == LayoutInputKind::Text)
+                        && box_visible()
                     {
-                        draw_box(ui, inputs, tree, key, origin, scene);
+                        draw_box(ui, inputs, tree, key, rect, scene);
                     }
                 }
                 FragmentItem::Inline { .. } => {
-                    draw_box(ui, inputs, tree, key, origin, scene);
+                    if box_visible() {
+                        draw_box(ui, inputs, tree, key, rect, scene);
+                    }
                 }
                 // Anonymous blocks only position their lines.
                 FragmentItem::AnonymousBlock => {}
                 FragmentItem::Line { .. } => inline_owner = Some(key),
                 FragmentItem::GlyphRun { line, item } => {
-                    draw_box(ui, inputs, tree, key, origin, scene);
+                    if box_visible() {
+                        draw_box(ui, inputs, tree, key, rect, scene);
+                    }
 
                     if let Some(owner) = inline_owner {
                         draw_glyph_run(
+                            ui,
+                            inputs,
                             tree,
                             fragment,
-                            text_color(ui, node(inputs, fragment)),
                             owner,
                             (line, item),
-                            origin,
+                            rect,
+                            viewport,
                             scene,
                         );
                     }
@@ -90,6 +107,25 @@ impl CometPainter {
     }
 }
 
+/// Bounds of the background and border painted for a fragment's border box.
+/// The border is stroked outside the box, up to its widest side.
+fn box_bounds(fragment: &Fragment, rect: Rect) -> Rect {
+    let width = border_width(fragment);
+
+    rect.inflate(width, width)
+}
+
+fn border_width(fragment: &Fragment) -> f64 {
+    let border = fragment.layout.border;
+
+    border
+        .left_top
+        .x
+        .max(border.left_top.y)
+        .max(border.right_bottom.x)
+        .max(border.right_bottom.y)
+}
+
 /// The source node of a fragment.
 fn node(inputs: &LayoutInputTree, fragment: &Fragment) -> Option<NodeKey> {
     inputs.items.get(fragment.source).map(|item| item.node)
@@ -100,7 +136,7 @@ fn draw_box(
     inputs: &LayoutInputTree,
     tree: &FragmentTree,
     key: FragmentKey,
-    origin: Point,
+    rect: Rect,
     scene: &mut impl PaintScene,
 ) {
     let fragment = &tree.items[key];
@@ -109,10 +145,6 @@ fn draw_box(
         return;
     };
 
-    let rect = Rect::from_origin_size(
-        origin,
-        (fragment.layout.size.width, fragment.layout.size.height),
-    );
     let mut radii = RoundedRectRadii::default();
 
     if let Some(radius) = props.get::<BorderRadius>()
@@ -158,13 +190,7 @@ fn draw_box(
         );
     }
 
-    let border = fragment.layout.border;
-    let width = border
-        .left_top
-        .x
-        .max(border.left_top.y)
-        .max(border.right_bottom.x)
-        .max(border.right_bottom.y);
+    let width = border_width(fragment);
 
     if width > 0.0
         && let Some(fill) = props.get::<BorderFill>()
@@ -179,13 +205,16 @@ fn draw_box(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_glyph_run(
+    ui: &Ui,
+    inputs: &LayoutInputTree,
     tree: &FragmentTree,
     fragment: &Fragment,
-    paint: anyrender::Paint,
     owner_line: FragmentKey,
     (line, item): (usize, usize),
-    origin: Point,
+    rect: Rect,
+    viewport: Rect,
     scene: &mut impl PaintScene,
 ) {
     let Some(line) = tree
@@ -200,6 +229,16 @@ fn draw_glyph_run(
     };
 
     let run = glyph_run.run();
+
+    // Glyph ink can extend past the run's line box, such as accents above a
+    // tight line height or italic overhangs. One em on each side bounds it.
+    let overhang = run.font_size() as f64;
+
+    if !rect.inflate(overhang, overhang).overlaps(viewport) {
+        return;
+    }
+
+    let origin = rect.origin();
     // Parley's coordinates wrap the raw `i16` bits Anyrender takes.
     let normalized_coords: &[i16] = TransparentWrapper::peel_slice(run.normalized_coords());
 
@@ -216,7 +255,7 @@ fn draw_glyph_run(
         normalized_coords,
         Vec2::ZERO,
         peniko::StyleRef::Fill(peniko::Fill::NonZero),
-        &paint,
+        &text_color(ui, node(inputs, fragment)),
         1.0,
         Affine::IDENTITY,
         None,

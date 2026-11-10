@@ -84,6 +84,7 @@ fn assert_path_close(actual: &BezPath, expected: &BezPath) {
 }
 
 const VIEWPORT: Size<f64> = Size::new(120.0, 400.0);
+const SCENE_VIEWPORT: Rect = Rect::new(0.0, 0.0, 120.0, 400.0);
 
 fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, FragmentKey) {
     let mut inputs = LayoutInputTree::new();
@@ -136,7 +137,7 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
     let mut renderer = CometPainter::new();
     let mut scene = Scene::new();
 
-    renderer.draw(&ui, &inputs, &tree, root, &mut scene);
+    renderer.draw(&ui, &inputs, &tree, root, SCENE_VIEWPORT, &mut scene);
 
     let mut pending = vec![(root, 0.0, 0.0)];
     let mut expected_fills = Vec::new();
@@ -198,7 +199,7 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
 
     let mut shifted = Scene::new();
 
-    renderer.draw(&ui, &inputs, &tree, root, &mut shifted);
+    renderer.draw(&ui, &inputs, &tree, root, SCENE_VIEWPORT, &mut shifted);
 
     let shifted_glyphs = glyphs(&shifted);
 
@@ -241,7 +242,7 @@ fn paints_atomic_inline_subtree_border_and_text_override_without_double_offsets(
     let (inputs, tree, root) = build(&ui, root_node);
     let mut scene = Scene::new();
 
-    CometPainter::new().draw(&ui, &inputs, &tree, root, &mut scene);
+    CometPainter::new().draw(&ui, &inputs, &tree, root, SCENE_VIEWPORT, &mut scene);
 
     let scene_fills = fills(&scene);
     let scene_strokes = strokes(&scene);
@@ -283,7 +284,7 @@ fn standalone_text_paints_its_background_only_once() {
     let (inputs, tree, root) = build(&ui, node);
     let mut scene = Scene::new();
 
-    CometPainter::new().draw(&ui, &inputs, &tree, root, &mut scene);
+    CometPainter::new().draw(&ui, &inputs, &tree, root, SCENE_VIEWPORT, &mut scene);
 
     assert_eq!(fills(&scene).len(), 1);
     assert!(!glyphs(&scene).is_empty());
@@ -314,7 +315,7 @@ fn rounds_background_and_border_corners() {
     let (inputs, tree, root) = build(&ui, node);
     let mut scene = Scene::new();
 
-    CometPainter::new().draw(&ui, &inputs, &tree, root, &mut scene);
+    CometPainter::new().draw(&ui, &inputs, &tree, root, SCENE_VIEWPORT, &mut scene);
 
     let [RenderCommand::Fill(fill), RenderCommand::Stroke(stroke)] = scene.commands.as_slice()
     else {
@@ -377,7 +378,7 @@ fn rounds_only_outer_edges_of_wrapped_fragments() {
         let (inputs, tree, root) = build(&ui, root_node);
         let mut scene = Scene::new();
 
-        CometPainter::new().draw(&ui, &inputs, &tree, root, &mut scene);
+        CometPainter::new().draw(&ui, &inputs, &tree, root, SCENE_VIEWPORT, &mut scene);
 
         let fills: Vec<_> = scene
             .commands
@@ -436,7 +437,7 @@ fn anonymous_blocks_paint_nothing_and_offset_their_lines() {
     let (inputs, tree, root) = build(&ui, root_node);
     let mut scene = Scene::new();
 
-    CometPainter::new().draw(&ui, &inputs, &tree, root, &mut scene);
+    CometPainter::new().draw(&ui, &inputs, &tree, root, SCENE_VIEWPORT, &mut scene);
 
     let scene_fills = fills(&scene);
     let block_rect = scene_fills
@@ -475,4 +476,67 @@ fn anonymous_blocks_paint_nothing_and_offset_their_lines() {
             .iter()
             .all(|(glyph, _)| glyph.y as f64 > block_rect.y1)
     );
+}
+
+#[test]
+fn skips_fragments_outside_viewport_but_paints_their_overflowing_children() {
+    let mut ui = Ui::new();
+    let red = Color::from_rgb8(200, 20, 20);
+    let green = Color::from_rgb8(20, 200, 20);
+    let blue = Color::from_rgb8(20, 20, 200);
+    let height = |px: f64| {
+        bx::Size(Size::new(
+            AutoValue::Auto,
+            AutoValue::Value(StyleUnit::Px(px)),
+        ))
+    };
+
+    let root_node = ui.create(Node::Box, ());
+    // Empty box at the top edge, overflowed by its child.
+    let empty = ui.create(Node::Box, (height(0.0), Fill(Paint::Solid(red))));
+    let overflow = ui.create(Node::Box, (height(40.0), Fill(Paint::Solid(blue))));
+    // Below the overflowing child.
+    let below = ui.create(
+        Node::Box,
+        (
+            height(40.0),
+            bx::Margin(LayoutRect::new_invidiual(
+                AutoValue::Value(StyleUnit::Px(40.0)),
+                AutoValue::Value(StyleUnit::Px(0.0)),
+                AutoValue::Value(StyleUnit::Px(0.0)),
+                AutoValue::Value(StyleUnit::Px(0.0)),
+            )),
+            Fill(Paint::Solid(green)),
+        ),
+    );
+
+    ui.append(root_node, empty);
+    ui.append(empty, overflow);
+    ui.append(root_node, below);
+
+    let (inputs, tree, root) = build(&ui, root_node);
+
+    let mut all = Scene::new();
+    CometPainter::new().draw(&ui, &inputs, &tree, root, SCENE_VIEWPORT, &mut all);
+
+    assert_eq!(
+        fills(&all)
+            .iter()
+            .map(|(_, color)| *color)
+            .collect::<Vec<_>>(),
+        [red, blue, green]
+    );
+
+    let mut culled = Scene::new();
+    CometPainter::new().draw(
+        &ui,
+        &inputs,
+        &tree,
+        root,
+        // Below the empty box and above the box after it.
+        Rect::new(0.0, 1.0, 120.0, 39.0),
+        &mut culled,
+    );
+
+    assert_eq!(fills(&culled), [(Rect::new(0.0, 0.0, 120.0, 40.0), blue)]);
 }

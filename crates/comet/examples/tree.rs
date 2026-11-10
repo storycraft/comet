@@ -65,7 +65,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None,
                 &kurbo::Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
             );
-            renderer.draw(&ui, &inputs, &fragments, root, scene);
+            renderer.draw(
+                &ui,
+                &inputs,
+                &fragments,
+                root,
+                kurbo::Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
+                scene,
+            );
         },
         &mut data,
     );

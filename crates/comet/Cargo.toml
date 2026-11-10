@@ -12,11 +12,11 @@ comet-layout-flex = { workspace = true }
 comet-paint = { workspace = true }
 
 anyrender = "0.14.0"
+kurbo = "0.13.1"
 anyrender_vello_cpu = { version = "0.18.0", features = ["softbuffer_window_renderer"] }
 
 winit = { version = "0.30.12", features = ["rwh_06"] }
 
 [dev-dependencies]
 peniko = "0.6.0"
-kurbo = "0.13.1"
 image = "0.25.8"

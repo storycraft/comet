@@ -149,6 +149,7 @@ impl ApplicationHandler for App {
                         &self.inputs,
                         &self.fragments,
                         fragment_root,
+                        kurbo::Rect::new(0.0, 0.0, viewport.width, viewport.height),
                         painter,
                     );
                 });
