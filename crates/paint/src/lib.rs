@@ -2,6 +2,7 @@ pub mod prelude;
 pub mod style;
 
 use anyrender::PaintScene;
+use bytemuck::TransparentWrapper;
 use comet_layout::{
     fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
     input::{LayoutInputKind, tree::LayoutInputTree},
@@ -199,11 +200,8 @@ fn draw_glyph_run(
     };
 
     let run = glyph_run.run();
-    let normalized_coords: Vec<_> = run
-        .normalized_coords()
-        .iter()
-        .map(|coord| coord.to_bits())
-        .collect();
+    // Parley's coordinates wrap the raw `i16` bits Anyrender takes.
+    let normalized_coords: &[i16] = TransparentWrapper::peel_slice(run.normalized_coords());
 
     // Parley's glyphs are positioned within the inline context. The fragment
     // origin already includes its line and enclosing inline spans.
@@ -215,7 +213,7 @@ fn draw_glyph_run(
         run.font(),
         run.font_size(),
         true,
-        &normalized_coords,
+        normalized_coords,
         Vec2::ZERO,
         peniko::StyleRef::Fill(peniko::Fill::NonZero),
         &paint,

@@ -9,7 +9,8 @@ license = { workspace = true }
 comet-tree = { workspace = true }
 comet-layout = { workspace = true }
 
-parley = "0.12.0"
+bytemuck = "1.25.2"
+parley = { version = "0.12.0", features = ["bytemuck"] }
 peniko = "0.6.0"
 kurbo = "0.13.1"
 anyrender = "0.14.0"

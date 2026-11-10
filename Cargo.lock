@@ -440,6 +440,7 @@ name = "comet-paint"
 version = "0.1.0"
 dependencies = [
  "anyrender",
+ "bytemuck",
  "comet-layout",
  "comet-tree",
  "kurbo",
@@ -1845,6 +1846,9 @@ name = "parlance"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73072a9470554c8e794778acece2312661218aaabb635600957d952cf01c716e"
+dependencies = [
+ "bytemuck",
+]
 
 [[package]]
 name = "parley"
