@@ -5,7 +5,7 @@ use std::{fs, io::BufWriter};
 use anyrender::{ImageRenderer, PaintScene};
 use anyrender_vello_cpu::VelloCpuImageRenderer;
 use comet_layout::{
-    fragment::{FragmentTree, FragmentTreeBuilder},
+    fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,

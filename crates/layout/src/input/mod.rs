@@ -7,7 +7,7 @@ use bitflags::bitflags;
 use comet_tree::node::NodeKey;
 use slotmap::new_key_type;
 
-pub type TextStyle = parley::TextStyle<'static, 'static, Option<NodeKey>>;
+use crate::parley::TextStyle;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutInputItem {

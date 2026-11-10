@@ -1,7 +1,9 @@
 use std::ops::Deref;
 
 use comet_layout::{
-    fragment::{FragmentBox, FragmentItem, FragmentKey, FragmentTree, FragmentTreeBuilder},
+    fragment::{
+        FragmentBox, FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree,
+    },
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},

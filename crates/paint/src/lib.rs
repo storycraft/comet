@@ -3,7 +3,7 @@ pub mod style;
 
 use anyrender::PaintScene;
 use comet_layout::{
-    fragment::{Fragment, FragmentItem, FragmentKey, FragmentTree},
+    fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
 };
 use comet_tree::{node::NodeKey, ui::Ui};

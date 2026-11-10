@@ -7,10 +7,10 @@ use comet_tree::{
 
 use crate::{
     input::{
-        ChildLayout, LayoutFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind, TextStyle,
+        ChildLayout, LayoutFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind,
         tree::LayoutInputTree,
     },
-    parley::{conv, style},
+    parley::{TextStyle, conv, style},
     style::{
         bx::{DisplayInner, DisplayOuter},
         geometry::{Size, UnitResolveContext},

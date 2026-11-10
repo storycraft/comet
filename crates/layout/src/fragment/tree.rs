@@ -1,6 +1,6 @@
 use slotmap::{SecondaryMap, SparseSecondaryMap};
 
-use super::{Fragment, FragmentKey, InlineLayout, iterator::Fragments, state::NodeState};
+use super::{Fragment, FragmentKey, InlineLayout, iter::Fragments, state::NodeState};
 use crate::{input::LayoutInputKey, slot_tree::SlotTree, style::LayoutConstraint};
 
 #[derive(Default)]

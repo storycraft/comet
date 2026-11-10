@@ -5,7 +5,7 @@ use std::sync::{
 
 use comet_layout::{
     container::{ContainerContext, ContainerLayout},
-    fragment::{FragmentItem, FragmentKey, FragmentTree, FragmentTreeBuilder},
+    fragment::{FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,

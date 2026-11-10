@@ -10,7 +10,7 @@ pub(crate) mod engine;
 mod state;
 
 pub mod builder;
-pub mod iterator;
+pub mod iter;
 pub mod tree;
 
 use comet_tree::node::NodeKey;
@@ -20,11 +20,6 @@ use crate::{
     input::LayoutInputKey,
     style::geometry::{Point, Rect, Size},
 };
-
-pub use crate::parley::{TextStyle, default_text_style};
-pub use builder::FragmentTreeBuilder;
-pub use iterator::Fragments;
-pub use tree::FragmentTree;
 
 new_key_type! { pub struct FragmentKey; }
 

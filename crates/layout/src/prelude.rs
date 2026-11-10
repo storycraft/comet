@@ -2,7 +2,8 @@
 
 pub use crate::container::{ContainerContext, ContainerLayout};
 pub use crate::fragment::{
-    Fragment, FragmentBox, FragmentItem, FragmentKey, FragmentTree, FragmentTreeBuilder,
+    Fragment, FragmentBox, FragmentItem, FragmentKey, builder::FragmentTreeBuilder,
+    tree::FragmentTree,
 };
 pub use crate::input::{
     ChildLayout, LayoutFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind,
