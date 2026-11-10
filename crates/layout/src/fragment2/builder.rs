@@ -61,6 +61,8 @@ impl FragmentTreeBuilder {
         };
 
         if tree.items.get(root).is_none() {
+            engine.fragments.constraints.remove(root);
+
             if let Some(state) = engine.fragments.states.remove(root) {
                 engine.fragments.inline_layouts.remove(root);
                 engine.release(state.fragment);
@@ -78,6 +80,10 @@ impl FragmentTreeBuilder {
             }),
         );
         engine.sweep();
+        engine
+            .fragments
+            .constraints
+            .insert(root, constraint.clone());
 
         engine.fragments.box_fragment(root)
     }

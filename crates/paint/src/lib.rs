@@ -3,13 +3,10 @@ pub mod style;
 
 use anyrender::PaintScene;
 use comet_layout::{
-    fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
-    tree::LayoutItemKey,
+    fragment2::{Fragment, FragmentItem, FragmentKey, FragmentTree},
+    input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
 };
-use comet_tree::{
-    node::{Node, NodeKey},
-    ui::Ui,
-};
+use comet_tree::{node::NodeKey, ui::Ui};
 use kurbo::{Affine, Point, Rect, RoundedRectRadii, Stroke, Vec2};
 use parley::PositionedLayoutItem;
 
@@ -18,7 +15,7 @@ use crate::style::{BorderFill, BorderRadius, Fill, TextColor};
 /// Paints final fragments in tree order, with coordinates relative to their parents.
 #[derive(Default)]
 pub struct CometPainter {
-    pending: Vec<(FragmentKey, Point, Option<LayoutItemKey>)>,
+    pending: Vec<(FragmentKey, Point, Option<LayoutInputKey>)>,
 }
 
 impl CometPainter {
@@ -26,9 +23,12 @@ impl CometPainter {
         Self::default()
     }
 
+    /// Paint the fragments under `root`. `inputs` is the input tree the
+    /// fragments were built from.
     pub fn draw(
         &mut self,
         ui: &Ui,
+        inputs: &LayoutInputTree,
         tree: &FragmentTree,
         root: FragmentKey,
         scene: &mut impl PaintScene,
@@ -47,23 +47,31 @@ impl CometPainter {
                 FragmentItem::Box => {
                     // A standalone text root also owns a layout box. Its paint
                     // belongs to its glyph fragments, not to both representations.
-                    if !fragment
-                        .node
-                        .and_then(|node| ui.kind(node))
-                        .is_some_and(|node| node == Node::Text)
+                    if !inputs
+                        .items
+                        .get(fragment.source)
+                        .is_some_and(|item| item.kind == LayoutInputKind::Text)
                     {
-                        draw_box(ui, tree, key, origin, scene);
+                        draw_box(ui, inputs, tree, key, origin, scene);
                     }
                 }
                 FragmentItem::Inline { .. } => {
-                    draw_box(ui, tree, key, origin, scene);
+                    draw_box(ui, inputs, tree, key, origin, scene);
                 }
                 FragmentItem::Line { .. } => inline_owner = Some(fragment.source),
                 FragmentItem::GlyphRun { line, item } => {
-                    draw_box(ui, tree, key, origin, scene);
+                    draw_box(ui, inputs, tree, key, origin, scene);
 
                     if let Some(owner) = inline_owner {
-                        draw_glyph_run(ui, tree, fragment, owner, (line, item), origin, scene);
+                        draw_glyph_run(
+                            tree,
+                            fragment,
+                            text_color(ui, node(inputs, fragment)),
+                            owner,
+                            (line, item),
+                            origin,
+                            scene,
+                        );
                     }
                 }
             }
@@ -78,8 +86,14 @@ impl CometPainter {
     }
 }
 
+/// The source node of a fragment.
+fn node(inputs: &LayoutInputTree, fragment: &Fragment) -> Option<NodeKey> {
+    inputs.items.get(fragment.source).map(|item| item.node)
+}
+
 fn draw_box(
     ui: &Ui,
+    inputs: &LayoutInputTree,
     tree: &FragmentTree,
     key: FragmentKey,
     origin: Point,
@@ -87,7 +101,7 @@ fn draw_box(
 ) {
     let fragment = &tree.items[key];
 
-    let Some(props) = fragment.node.and_then(|node| ui.props(node)) else {
+    let Some(props) = node(inputs, fragment).and_then(|node| ui.props(node)) else {
         return;
     };
 
@@ -102,8 +116,8 @@ fn draw_box(
     {
         let mut constraint = constraint.clone();
 
-        if let Some(style) = fragment.node.and_then(|node| tree.text_styles.get(&node)) {
-            constraint.font_size = style.font_size as f64;
+        if let Some(item) = inputs.items.get(fragment.source) {
+            constraint.font_size = item.text_style.font_size as f64;
         }
 
         let resolve = |value: comet_layout::style::geometry::StyleUnit| {
@@ -120,18 +134,7 @@ fn draw_box(
         );
     }
 
-    // The standalone text box is linked but does not paint a background.
-    let has_previous = fragment.link.prev.is_some_and(|prev| {
-        let previous = &tree.items[prev];
-
-        !matches!(previous.item, FragmentItem::Box)
-            || !previous
-                .node
-                .and_then(|node| ui.kind(node))
-                .is_some_and(|node| node == Node::Text)
-    });
-
-    if has_previous {
+    if fragment.link.prev.is_some() {
         radii.top_left = 0.0;
         radii.bottom_left = 0.0;
     }
@@ -173,10 +176,10 @@ fn draw_box(
 }
 
 fn draw_glyph_run(
-    ui: &Ui,
     tree: &FragmentTree,
     fragment: &Fragment,
-    owner: LayoutItemKey,
+    paint: anyrender::Paint,
+    owner: LayoutInputKey,
     (line, item): (usize, usize),
     origin: Point,
     scene: &mut impl PaintScene,
@@ -194,7 +197,6 @@ fn draw_glyph_run(
     };
 
     let run = glyph_run.run();
-    let paint = text_color(ui, fragment.node);
     let normalized_coords: Vec<_> = run
         .normalized_coords()
         .iter()

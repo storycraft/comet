@@ -1,11 +1,14 @@
 use anyrender::{Glyph, Paint, Scene, recording::RenderCommand};
 use comet_layout::{
-    fragment::{FragmentItem, FragmentKey, builder::FragmentBuilder, tree::FragmentTree},
+    fragment2::{FragmentItem, FragmentKey, FragmentTree, FragmentTreeBuilder},
+    input::{
+        builder::{BuildRequest, LayoutInputTreeBuilder},
+        tree::LayoutInputTree,
+    },
     style::{
         LayoutConstraint, bx,
         geometry::{AutoValue, Rect as LayoutRect, Size, StyleUnit},
     },
-    tree::{LayoutTree, builder::LayoutTreeBuilder},
 };
 use comet_paint::{
     CometPainter,
@@ -80,25 +83,27 @@ fn assert_path_close(actual: &BezPath, expected: &BezPath) {
     }
 }
 
-fn build(ui: &Ui, node: NodeKey) -> (FragmentTree, FragmentKey) {
-    let mut layout = LayoutTree::new();
-    let root = LayoutTreeBuilder::new()
-        .build(ui, node, &mut layout, None)
+const VIEWPORT: Size<f64> = Size::new(120.0, 400.0);
+
+fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, FragmentKey) {
+    let mut inputs = LayoutInputTree::new();
+    let root = LayoutInputTreeBuilder::new()
+        .build(ui, &mut inputs, BuildRequest::new(node, 16.0, VIEWPORT))
         .unwrap();
 
     let mut fragments = FragmentTree::new();
-    let root = FragmentBuilder::new()
+    let fragment = FragmentTreeBuilder::new()
         .build(
-            &LayoutConstraint::new_root(Size::new(120.0, 400.0), 16.0),
             ui,
-            &layout,
+            &inputs,
             root,
             &mut fragments,
-            None,
+            &LayoutConstraint::new_root(VIEWPORT, 16.0),
         )
         .unwrap();
+    inputs.clear_flags(root);
 
-    (fragments, root)
+    (inputs, fragments, fragment)
 }
 
 #[test]
@@ -127,11 +132,11 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
     ui.append(root_node, span);
     ui.append(span, text);
 
-    let (mut tree, root) = build(&ui, root_node);
+    let (inputs, mut tree, root) = build(&ui, root_node);
     let mut renderer = CometPainter::new();
     let mut scene = Scene::new();
 
-    renderer.draw(&ui, &tree, root, &mut scene);
+    renderer.draw(&ui, &inputs, &tree, root, &mut scene);
 
     let mut pending = vec![(root, 0.0, 0.0)];
     let mut expected_fills = Vec::new();
@@ -142,7 +147,9 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
         let x = parent_x + fragment.layout.location.x;
         let y = parent_y + fragment.layout.location.y;
 
-        if fragment.node == Some(span) {
+        if inputs.items[fragment.source].node == span
+            && matches!(fragment.item, FragmentItem::Inline { .. })
+        {
             expected_fills.push((
                 Rect::new(
                     x,
@@ -189,7 +196,7 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
 
     let mut shifted = Scene::new();
 
-    renderer.draw(&ui, &tree, root, &mut shifted);
+    renderer.draw(&ui, &inputs, &tree, root, &mut shifted);
 
     let shifted_glyphs = glyphs(&shifted);
 
@@ -229,10 +236,10 @@ fn paints_atomic_inline_subtree_border_and_text_override_without_double_offsets(
     ui.append(root_node, atomic);
     ui.append(atomic, text);
 
-    let (tree, root) = build(&ui, root_node);
+    let (inputs, tree, root) = build(&ui, root_node);
     let mut scene = Scene::new();
 
-    CometPainter::new().draw(&ui, &tree, root, &mut scene);
+    CometPainter::new().draw(&ui, &inputs, &tree, root, &mut scene);
 
     let scene_fills = fills(&scene);
     let scene_strokes = strokes(&scene);
@@ -271,10 +278,10 @@ fn standalone_text_paints_its_background_only_once() {
         (Text("text".into()), Fill(Paint::Solid(Color::WHITE))),
     );
 
-    let (tree, root) = build(&ui, node);
+    let (inputs, tree, root) = build(&ui, node);
     let mut scene = Scene::new();
 
-    CometPainter::new().draw(&ui, &tree, root, &mut scene);
+    CometPainter::new().draw(&ui, &inputs, &tree, root, &mut scene);
 
     assert_eq!(fills(&scene).len(), 1);
     assert!(!glyphs(&scene).is_empty());
@@ -302,10 +309,10 @@ fn rounds_background_and_border_corners() {
         ),
     );
 
-    let (tree, root) = build(&ui, node);
+    let (inputs, tree, root) = build(&ui, node);
     let mut scene = Scene::new();
 
-    CometPainter::new().draw(&ui, &tree, root, &mut scene);
+    CometPainter::new().draw(&ui, &inputs, &tree, root, &mut scene);
 
     let [RenderCommand::Fill(fill), RenderCommand::Stroke(stroke)] = scene.commands.as_slice()
     else {
@@ -365,10 +372,10 @@ fn rounds_only_outer_edges_of_wrapped_fragments() {
 
             root
         };
-        let (tree, root) = build(&ui, root_node);
+        let (inputs, tree, root) = build(&ui, root_node);
         let mut scene = Scene::new();
 
-        CometPainter::new().draw(&ui, &tree, root, &mut scene);
+        CometPainter::new().draw(&ui, &inputs, &tree, root, &mut scene);
 
         let fills: Vec<_> = scene
             .commands

@@ -5,9 +5,12 @@ use std::{fs, io::BufWriter};
 use anyrender::{ImageRenderer, PaintScene};
 use anyrender_vello_cpu::VelloCpuImageRenderer;
 use comet_layout::{
-    fragment::{builder::FragmentBuilder, tree::FragmentTree},
+    fragment2::{FragmentTree, FragmentTreeBuilder},
+    input::{
+        builder::{BuildRequest, LayoutInputTreeBuilder},
+        tree::LayoutInputTree,
+    },
     style::{LayoutConstraint, geometry::Size},
-    tree::{LayoutTree, builder::LayoutTreeBuilder},
 };
 use comet_paint::CometPainter;
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
@@ -18,15 +21,17 @@ const HEIGHT: u32 = 920;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (ui, root) = common::sample_ui();
-    let mut layout = LayoutTree::new();
-    let root = LayoutTreeBuilder::new()
-        .build(&ui, root, &mut layout, None)
-        .ok_or("could not build layout tree")?;
+    let viewport = Size::new(WIDTH as f64, HEIGHT as f64);
+    let mut inputs = LayoutInputTree::new();
+    let input_root = LayoutInputTreeBuilder::new()
+        .build(&ui, &mut inputs, BuildRequest::new(root, 16.0, viewport))
+        .ok_or("could not build layout input tree")?;
     let mut fragments = FragmentTree::new();
-    let constraint = LayoutConstraint::new_root(Size::new(WIDTH as f64, HEIGHT as f64), 16.0);
-    let root = FragmentBuilder::new()
-        .build(&constraint, &ui, &layout, root, &mut fragments, None)
+    let constraint = LayoutConstraint::new_root(viewport, 16.0);
+    let root = FragmentTreeBuilder::new()
+        .build(&ui, &inputs, input_root, &mut fragments, &constraint)
         .ok_or("could not build fragment tree")?;
+    inputs.clear_flags(input_root);
 
     let mut pending = vec![(root, 0)];
 
@@ -60,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None,
                 &kurbo::Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
             );
-            renderer.draw(&ui, &fragments, root, scene);
+            renderer.draw(&ui, &inputs, &fragments, root, scene);
         },
         &mut data,
     );

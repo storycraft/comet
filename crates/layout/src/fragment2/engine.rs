@@ -748,6 +748,7 @@ impl Engine<'_> {
             inline_layouts,
             states,
             first,
+            ..
         } = &mut *self.fragments;
         let layout = &inline_layouts[key].layout;
 
@@ -932,6 +933,11 @@ impl SpanContext<'_> {
     /// The fragment containing `source` on this line, creating span fragments
     /// for its inline ancestors.
     fn parent(&mut self, source: LayoutInputKey) -> FragmentKey {
+        // A text root's own runs belong to its line, even if it has a parent.
+        if source == self.root {
+            return self.line_key;
+        }
+
         let Some(key) = self
             .tree
             .items

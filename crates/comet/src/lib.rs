@@ -4,9 +4,12 @@ use std::sync::Arc;
 use anyrender::WindowRenderer;
 use anyrender_vello_cpu::VelloCpuWindowRenderer;
 use comet_layout::{
-    fragment::{FragmentKey, builder::FragmentBuilder, tree::FragmentTree},
+    fragment2::{FragmentTree, FragmentTreeBuilder},
+    input::{
+        builder::{BuildRequest, LayoutInputTreeBuilder},
+        tree::LayoutInputTree,
+    },
     style::{LayoutConstraint, geometry::Size},
-    tree::{LayoutItemKey, LayoutTree, builder::LayoutTreeBuilder},
 };
 use comet_paint::CometPainter;
 use comet_tree::{node::NodeKey, ui::Ui};
@@ -17,23 +20,24 @@ use winit::{
     window::{Window, WindowAttributes, WindowId},
 };
 
+/// Font size of the root element, used for `rem`.
+const ROOT_FONT_SIZE: f64 = 16.0;
+
 pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
-    let mut layout_tree = LayoutTree::new();
-    let mut layout_builder = LayoutTreeBuilder::new();
-    let layout_root = layout_builder
-        .build(&ui, root, &mut layout_tree, None)
-        .ok_or("invalid UI root")?;
+    if ui.kind(root).is_none() {
+        return Err("invalid UI root".into());
+    }
+
     let event_loop = EventLoop::new()?;
 
     Ok(event_loop.run_app(&mut App {
         ui,
         ui_root: root,
-        layout_builder,
-        fragment_builder: FragmentBuilder::new(),
-        layout_tree,
-        layout_root,
+        input_builder: LayoutInputTreeBuilder::new(),
+        fragment_builder: FragmentTreeBuilder::new(),
+        inputs: LayoutInputTree::new(),
         fragments: FragmentTree::new(),
-        fragment_root: None,
+        viewport: None,
         win: None,
         vello: VelloCpuWindowRenderer::new(),
         ui_renderer: CometPainter::new(),
@@ -43,12 +47,12 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
 struct App {
     ui: Ui,
     ui_root: NodeKey,
-    layout_builder: LayoutTreeBuilder,
-    fragment_builder: FragmentBuilder,
-    layout_tree: LayoutTree,
-    layout_root: LayoutItemKey,
+    input_builder: LayoutInputTreeBuilder,
+    fragment_builder: FragmentTreeBuilder,
+    inputs: LayoutInputTree,
     fragments: FragmentTree,
-    fragment_root: Option<FragmentKey>,
+    /// Viewport of the latest input build.
+    viewport: Option<Size<f64>>,
     win: Option<Arc<Window>>,
     vello: VelloCpuWindowRenderer,
     ui_renderer: CometPainter,
@@ -111,35 +115,42 @@ impl ApplicationHandler for App {
                     return;
                 }
 
-                let Some(root) = self.layout_builder.build(
+                let viewport = Size::new(size.width as f64, size.height as f64);
+                // Viewport units may depend on the viewport, so a resize
+                // resolves every item again.
+                let force = self.viewport != Some(viewport);
+                let Some(input_root) = self.input_builder.build(
                     &self.ui,
-                    self.ui_root,
-                    &mut self.layout_tree,
-                    Some(self.layout_root),
+                    &mut self.inputs,
+                    BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport).with_force(force),
                 ) else {
                     return;
                 };
-                self.layout_root = root;
-                let constraint = LayoutConstraint::new_root(
-                    Size::new(size.width as f64, size.height as f64),
-                    16.0,
-                );
-                let Some(root) = self.fragment_builder.build(
-                    &constraint,
-                    &self.ui,
-                    &self.layout_tree,
-                    root,
-                    &mut self.fragments,
-                    self.fragment_root,
-                ) else {
-                    return;
-                };
+                self.viewport = Some(viewport);
 
-                self.fragment_root = Some(root);
+                let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE);
+                let fragment_root = self.fragment_builder.build(
+                    &self.ui,
+                    &self.inputs,
+                    input_root,
+                    &mut self.fragments,
+                    &constraint,
+                );
+                // Flags were consumed by the fragment build.
+                self.inputs.clear_flags(input_root);
+
+                let Some(fragment_root) = fragment_root else {
+                    return;
+                };
 
                 self.vello.render(|painter| {
-                    self.ui_renderer
-                        .draw(&self.ui, &self.fragments, root, painter);
+                    self.ui_renderer.draw(
+                        &self.ui,
+                        &self.inputs,
+                        &self.fragments,
+                        fragment_root,
+                        painter,
+                    );
                 });
             }
             WindowEvent::CloseRequested => event_loop.exit(),
