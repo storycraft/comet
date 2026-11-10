@@ -37,18 +37,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Initial layout input tree (every item is flagged):");
     print_tree(&ui, &tree, layout_root);
 
-    // Partial rebuilds only re-resolve the target item's subtree and keep the
-    // returned key in place. Targets are rebuilt while they are flagged.
+    // Building a node that already has an item updates it in place, keeping its
+    // key. Only flagged items and their changed descendants are re-resolved.
 
     // Text stays in the UI; rebuilding the text item keeps its key.
     ui.set_props(greeting, (Text("Updated greeting! ".into()),));
 
-    let greeting_item = tree.item_for_node(greeting);
     let greeting_item = builder
         .build(
             &ui,
             &mut tree,
-            BuildRequest::new(greeting, ROOT_FONT_SIZE, VIEWPORT).with_target(greeting_item),
+            BuildRequest::new(greeting, ROOT_FONT_SIZE, VIEWPORT),
         )
         .ok_or("could not rebuild the greeting")?;
 
@@ -59,13 +58,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // describe their own node, so rebuilding the changed node is enough.
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
 
-    let interruption_item = tree.item_for_node(interruption);
     let interruption_item = builder
         .build(
             &ui,
             &mut tree,
-            BuildRequest::new(interruption, ROOT_FONT_SIZE, VIEWPORT)
-                .with_target(interruption_item),
+            BuildRequest::new(interruption, ROOT_FONT_SIZE, VIEWPORT),
         )
         .ok_or("could not rebuild the interruption")?;
 
@@ -80,8 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(
             &ui,
             &mut tree,
-            BuildRequest::new(interruption, ROOT_FONT_SIZE, VIEWPORT)
-                .with_target(Some(interruption_item)),
+            BuildRequest::new(interruption, ROOT_FONT_SIZE, VIEWPORT),
         )
         .ok_or("could not restore the block")?;
 
@@ -96,9 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(
             &ui,
             &mut tree,
-            BuildRequest::new(root, 20.0, Size::new(1024.0, 768.0))
-                .with_target(Some(layout_root))
-                .with_force(true),
+            BuildRequest::new(root, 20.0, Size::new(1024.0, 768.0)).with_force(true),
         )
         .ok_or("could not re-resolve the tree")?;
 

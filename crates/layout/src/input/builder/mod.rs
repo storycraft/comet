@@ -20,37 +20,29 @@ use crate::{
 /// What [`LayoutInputTreeBuilder::build`] builds, and how.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BuildRequest {
-    /// Source node to build.
-    pub root: NodeKey,
+    /// Source node to build. Its existing item in the tree is updated; without
+    /// one, a new tree is built.
+    pub source: NodeKey,
     /// Font size of the root element, used for `rem` and as the initial font size.
     pub root_font_size: f64,
     /// Viewport size, used for `vw` and `vh`.
     pub viewport: Size<f64>,
-    /// `None` builds a new tree; `Some(key)` updates the item generated for `root`.
-    pub target: Option<LayoutInputKey>,
-    /// Re-resolve the whole target subtree and flag every item as if it were
-    /// newly generated, even when the target is clean. Keys are still reused.
+    /// Re-resolve the whole subtree of `source` and flag every item as if it were
+    /// newly generated, even when its item is clean. Keys are still reused.
     /// Use it when the root font size or the viewport changes, since every item
     /// may depend on them.
     pub force: bool,
 }
 
 impl BuildRequest {
-    /// Request a fresh build of `root`.
-    pub const fn new(root: NodeKey, root_font_size: f64, viewport: Size<f64>) -> Self {
+    /// Request a fresh build of `source`.
+    pub const fn new(source: NodeKey, root_font_size: f64, viewport: Size<f64>) -> Self {
         Self {
-            root,
+            source,
             root_font_size,
             viewport,
-            target: None,
             force: false,
         }
-    }
-
-    /// Update `target` instead of building a new tree when it is `Some`.
-    pub const fn with_target(mut self, target: Option<LayoutInputKey>) -> Self {
-        self.target = target;
-        self
     }
 
     pub const fn with_force(mut self, force: bool) -> Self {
@@ -72,14 +64,13 @@ impl LayoutInputTreeBuilder {
         Self::default()
     }
 
-    /// Build a new tree for `request.root`, or update `request.target`. Clean
-    /// targets return immediately unless forced; mark changed nodes before
-    /// updating.
+    /// Update the item generated for `request.source`, or build a new tree for it
+    /// when the node has no item. Clean items return immediately unless forced;
+    /// mark changed nodes before updating. To insert a new node under an existing
+    /// item, update its parent.
     ///
-    /// Returns `target` when it is updated in place, or the newly created key.
-    /// A target generated for a different node is replaced by a new item at its
-    /// position. Returns `None` and deletes `target` if `root` is not in the UI,
-    /// even when `target` is clean.
+    /// Returns the item generated for `source`. Returns `None` and deletes its item
+    /// if `source` is not in the UI, even when the item is clean.
     ///
     /// Generated items have every [`LayoutFlags`] set. Updating visits flagged
     /// items and keeps clean subtrees as they are, unless an inherited text style
@@ -95,15 +86,14 @@ impl LayoutInputTreeBuilder {
         request: BuildRequest,
     ) -> Option<LayoutInputKey> {
         let BuildRequest {
-            root,
+            source,
             root_font_size,
             viewport,
-            target,
             force,
         } = request;
-        let target = target.filter(|&key| tree.items.get(key).is_some());
+        let target = tree.item_for_node(source);
 
-        if ui.kind(root).is_none() {
+        if ui.kind(source).is_none() {
             if let Some(key) = target {
                 let parent = tree.items.parent(key);
 
@@ -136,30 +126,23 @@ impl LayoutInputTreeBuilder {
 
         let parent_style = match target.and_then(|key| tree.items.parent(key)) {
             Some(parent) => tree.items[parent].text_style.clone(),
-            None => match ui.parent(root) {
+            None => match ui.parent(source) {
                 Some(parent) => style::resolve_inherited(ui, parent, &cx),
                 None => Arc::new(style::root_text_style(root_font_size)),
             },
         };
 
-        let existing = target.filter(|&key| tree.items[key].node == root);
-        let update = self.update(ui, tree, root, existing, &parent_style, &cx);
+        let update = self.update(ui, tree, source, target, &parent_style, &cx);
 
-        if existing.is_none()
-            && let Some(old) = target
-        {
-            tree.items.before(old, update.key);
-            tree.delete_item(old);
-            // Propagate the new item's flags to the ancestors.
-            tree.mark_dirty(update.key);
-        } else if force {
+        if force {
+            // Propagate the reset flags to the ancestors.
             tree.mark_dirty(update.key);
         }
 
         if update.descend {
             self.pending.push(Task {
                 key: update.key,
-                node: root,
+                node: source,
                 force: update.force,
             });
         }

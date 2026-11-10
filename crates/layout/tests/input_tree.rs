@@ -20,13 +20,8 @@ fn build(
     ui: &Ui,
     root: comet_tree::node::NodeKey,
     tree: &mut LayoutInputTree,
-    target: Option<LayoutInputKey>,
 ) -> Option<LayoutInputKey> {
-    builder.build(
-        ui,
-        tree,
-        BuildRequest::new(root, 16.0, VIEWPORT).with_target(target),
-    )
+    builder.build(ui, tree, BuildRequest::new(root, 16.0, VIEWPORT))
 }
 
 fn clean(tree: &mut LayoutInputTree, root: LayoutInputKey) {
@@ -76,14 +71,7 @@ fn fresh_tree_mirrors_ui_with_all_flags() {
     ui.append(atomic, atomic_text);
 
     let mut tree = LayoutInputTree::new();
-    let key = build(
-        &mut LayoutInputTreeBuilder::new(),
-        &ui,
-        root,
-        &mut tree,
-        None,
-    )
-    .unwrap();
+    let key = build(&mut LayoutInputTreeBuilder::new(), &ui, root, &mut tree).unwrap();
 
     assert_eq!(
         shape(&tree, key),
@@ -133,14 +121,7 @@ fn text_styles_resolve_units_and_share_allocations() {
     ui.append(changed, vw);
 
     let mut tree = LayoutInputTree::new();
-    let key = build(
-        &mut LayoutInputTreeBuilder::new(),
-        &ui,
-        root,
-        &mut tree,
-        None,
-    )
-    .unwrap();
+    let key = build(&mut LayoutInputTreeBuilder::new(), &ui, root, &mut tree).unwrap();
     let style = |node| {
         tree.items[tree.item_for_node(node).unwrap()]
             .text_style
@@ -171,14 +152,7 @@ fn mark_dirty_propagates_to_ancestors() {
     ui.append(left, leaf);
 
     let mut tree = LayoutInputTree::new();
-    let key = build(
-        &mut LayoutInputTreeBuilder::new(),
-        &ui,
-        root,
-        &mut tree,
-        None,
-    )
-    .unwrap();
+    let key = build(&mut LayoutInputTreeBuilder::new(), &ui, root, &mut tree).unwrap();
     clean(&mut tree, key);
 
     let leaf_key = tree.item_for_node(leaf).unwrap();
@@ -223,14 +197,11 @@ fn partial_update_reconciles_children_and_reuses_clean_subtrees() {
 
     let mut tree = LayoutInputTree::new();
     let mut builder = LayoutInputTreeBuilder::new();
-    let key = build(&mut builder, &ui, root, &mut tree, None).unwrap();
+    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
     clean(&mut tree, key);
 
     // Clean targets return without reading the UI.
-    assert_eq!(
-        build(&mut builder, &ui, root, &mut tree, Some(key)),
-        Some(key)
-    );
+    assert_eq!(build(&mut builder, &ui, root, &mut tree), Some(key));
 
     let a_key = tree.item_for_node(a).unwrap();
     let b_key = tree.item_for_node(b).unwrap();
@@ -245,10 +216,7 @@ fn partial_update_reconciles_children_and_reuses_clean_subtrees() {
 
     // A mutable property borrow would panic if the builder inspected this branch.
     let borrowed = ui.prop_mut::<DisplayInner>(inner);
-    assert_eq!(
-        build(&mut builder, &ui, root, &mut tree, Some(key)),
-        Some(key)
-    );
+    assert_eq!(build(&mut builder, &ui, root, &mut tree), Some(key));
     drop(borrowed);
 
     let children: Vec<_> = tree.items.children(key).collect();
@@ -283,12 +251,12 @@ fn changed_text_style_updates_descendants() {
 
     let mut tree = LayoutInputTree::new();
     let mut builder = LayoutInputTreeBuilder::new();
-    let key = build(&mut builder, &ui, root, &mut tree, None).unwrap();
+    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
     clean(&mut tree, key);
 
     ui.set_props(root, (bx::FontSize(StyleUnit::Px(24.0)),));
     tree.mark_dirty(key);
-    build(&mut builder, &ui, root, &mut tree, Some(key)).unwrap();
+    build(&mut builder, &ui, root, &mut tree).unwrap();
 
     let item = |node| &tree.items[tree.item_for_node(node).unwrap()];
 
@@ -303,7 +271,7 @@ fn changed_text_style_updates_descendants() {
     assert!(item(fixed).flags.is_empty());
 
     let mut fresh = LayoutInputTree::new();
-    let fresh_key = build(&mut builder, &ui, root, &mut fresh, None).unwrap();
+    let fresh_key = build(&mut builder, &ui, root, &mut fresh).unwrap();
     assert_eq!(shape(&tree, key), shape(&fresh, fresh_key));
 }
 
@@ -316,33 +284,32 @@ fn partial_update_of_descendant_uses_parent_style() {
 
     let mut tree = LayoutInputTree::new();
     let mut builder = LayoutInputTreeBuilder::new();
-    let key = build(&mut builder, &ui, root, &mut tree, None).unwrap();
+    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
     clean(&mut tree, key);
 
     let child_key = tree.item_for_node(child).unwrap();
     ui.set_props(child, (bx::FontSize(StyleUnit::Em(2.0)),));
     tree.mark_dirty(child_key);
 
-    assert_eq!(
-        build(&mut builder, &ui, child, &mut tree, Some(child_key)),
-        Some(child_key)
-    );
+    assert_eq!(build(&mut builder, &ui, child, &mut tree), Some(child_key));
     assert_eq!(tree.items[child_key].text_style.font_size, 40.0);
 
-    // A target generated for another node is replaced by a new item in place.
+    // A new node is inserted by updating the item of its parent.
+    clean(&mut tree, key);
     let other_child = ui.create(Node::Text, ());
     ui.append(root, other_child);
-    let replaced = build(&mut builder, &ui, other_child, &mut tree, Some(child_key)).unwrap();
-    assert_ne!(replaced, child_key);
-    assert!(tree.items.get(child_key).is_none());
-    assert_eq!(tree.items.parent(replaced), Some(key));
-    assert_eq!(tree.item_for_node(child), None);
-    assert_eq!(tree.item_for_node(other_child), Some(replaced));
-    assert_eq!(tree.items[replaced].flags, LayoutFlags::all());
+    tree.mark_node_dirty(root);
+    assert_eq!(build(&mut builder, &ui, root, &mut tree), Some(key));
+
+    let inserted = tree.item_for_node(other_child).unwrap();
+    assert_eq!(tree.items.parent(inserted), Some(key));
+    assert_eq!(tree.items[inserted].flags, LayoutFlags::all());
+    assert_eq!(tree.item_for_node(child), Some(child_key));
+    assert!(tree.items[child_key].flags.is_empty());
 
     // A descendant root without a parent item resolves its UI ancestors.
     let mut other = LayoutInputTree::new();
-    let other_key = build(&mut builder, &ui, child, &mut other, None).unwrap();
+    let other_key = build(&mut builder, &ui, child, &mut other).unwrap();
     assert_eq!(other.items[other_key].text_style.font_size, 40.0);
 }
 
@@ -362,7 +329,7 @@ fn rebuilding_a_node_only_updates_its_own_item() {
 
     let mut tree = LayoutInputTree::new();
     let mut builder = LayoutInputTreeBuilder::new();
-    let key = build(&mut builder, &ui, root, &mut tree, None).unwrap();
+    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
     let paragraph_key = tree.item_for_node(paragraph).unwrap();
     let span_key = tree.item_for_node(span).unwrap();
     let interruption_key = tree.item_for_node(interruption).unwrap();
@@ -375,13 +342,7 @@ fn rebuilding_a_node_only_updates_its_own_item() {
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
     tree.mark_node_dirty(interruption);
     assert_eq!(
-        build(
-            &mut builder,
-            &ui,
-            interruption,
-            &mut tree,
-            Some(interruption_key)
-        ),
+        build(&mut builder, &ui, interruption, &mut tree),
         Some(interruption_key)
     );
 
@@ -401,16 +362,7 @@ fn rebuilding_a_node_only_updates_its_own_item() {
     // Deleting a node flags its parent's child list.
     clean(&mut tree, key);
     ui.delete(interruption);
-    assert_eq!(
-        build(
-            &mut builder,
-            &ui,
-            interruption,
-            &mut tree,
-            Some(interruption_key)
-        ),
-        None
-    );
+    assert_eq!(build(&mut builder, &ui, interruption, &mut tree), None);
     assert_eq!(tree.item_for_node(interruption), None);
     assert_eq!(tree.items[span_key].flags, LayoutFlags::DIRTY);
     assert_eq!(tree.items[paragraph_key].flags, LayoutFlags::CHILDREN_DIRTY);
@@ -424,14 +376,7 @@ fn assert_fresh(
     key: LayoutInputKey,
 ) {
     let mut fresh = LayoutInputTree::new();
-    let fresh_key = build(
-        &mut LayoutInputTreeBuilder::new(),
-        ui,
-        root,
-        &mut fresh,
-        None,
-    )
-    .unwrap();
+    let fresh_key = build(&mut LayoutInputTreeBuilder::new(), ui, root, &mut fresh).unwrap();
     assert_eq!(shape(tree, key), shape(&fresh, fresh_key));
 }
 
@@ -447,7 +392,7 @@ fn force_re_resolves_and_flags_clean_subtrees() {
 
     let mut tree = LayoutInputTree::new();
     let mut builder = LayoutInputTreeBuilder::new();
-    let key = build(&mut builder, &ui, root, &mut tree, None).unwrap();
+    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
     let child_key = tree.item_for_node(child).unwrap();
     let text_key = tree.item_for_node(text).unwrap();
     clean(&mut tree, key);
@@ -455,11 +400,7 @@ fn force_re_resolves_and_flags_clean_subtrees() {
     // Without force, a clean target ignores the new root font size and viewport.
     let viewport = Size::new(1000.0, 600.0);
     assert_eq!(
-        builder.build(
-            &ui,
-            &mut tree,
-            BuildRequest::new(root, 20.0, viewport).with_target(Some(key))
-        ),
+        builder.build(&ui, &mut tree, BuildRequest::new(root, 20.0, viewport)),
         Some(key)
     );
     assert_eq!(tree.items[child_key].text_style.font_size, 32.0);
@@ -469,9 +410,7 @@ fn force_re_resolves_and_flags_clean_subtrees() {
         builder.build(
             &ui,
             &mut tree,
-            BuildRequest::new(root, 20.0, viewport)
-                .with_target(Some(key))
-                .with_force(true),
+            BuildRequest::new(root, 20.0, viewport).with_force(true),
         ),
         Some(key)
     );
@@ -487,10 +426,6 @@ fn force_re_resolves_and_flags_clean_subtrees() {
 
     // Force does not leak into the next build.
     clean(&mut tree, key);
-    builder.build(
-        &ui,
-        &mut tree,
-        BuildRequest::new(root, 20.0, viewport).with_target(Some(key)),
-    );
+    builder.build(&ui, &mut tree, BuildRequest::new(root, 20.0, viewport));
     assert!(tree.items[key].flags.is_empty());
 }
