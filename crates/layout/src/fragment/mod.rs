@@ -7,7 +7,6 @@
 
 mod adapter;
 pub(crate) mod engine;
-mod inline;
 mod state;
 
 pub mod builder;
