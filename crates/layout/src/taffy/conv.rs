@@ -1,15 +1,5 @@
 //! Geometry conversion, separate from the engine-independent geometry types.
 use crate::style::{LayoutConstraint, geometry as g};
-use crate::tree::LayoutItemKey;
-use slotmap::{Key, KeyData};
-
-pub fn to_taffy_key(key: LayoutItemKey) -> taffy::NodeId {
-    taffy::NodeId::new(key.data().as_ffi())
-}
-
-pub fn from_taffy_key(key: taffy::NodeId) -> LayoutItemKey {
-    KeyData::from_ffi(key.into()).into()
-}
 
 pub fn to_size<T, U>(v: g::Size<T>, mut f: impl FnMut(T) -> U) -> taffy::Size<U> {
     taffy::Size {

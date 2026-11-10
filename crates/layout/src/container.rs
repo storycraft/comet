@@ -4,9 +4,10 @@ use comet_tree::{node::NodeKey, style::StyleProp};
 use taffy::LayoutPartialTree;
 
 use crate::{
+    fragment::engine::{Engine, to_taffy_key},
+    input::LayoutInputKey,
     style::geometry::StyleUnit,
-    taffy::{TaffyLayout, style::Style, to_taffy_key},
-    tree::LayoutItemKey,
+    taffy::{conv, style::Style},
 };
 
 /// A custom layout algorithm for one box and its direct children.
@@ -27,26 +28,29 @@ pub trait ContainerLayout: Send + Sync {
 }
 
 /// Restricted access to the current box and its direct children only.
-/// Child indices follow layout-tree order; out-of-range indices panic.
+///
+/// Every child of a container generates its own box, including text and
+/// inline children, which establish their own inline formatting contexts.
+/// Child indices follow input tree order; out-of-range indices panic.
 pub struct ContainerContext<'a, 'ui> {
-    pub(crate) engine: &'a mut TaffyLayout<'ui>,
-    pub(crate) root: LayoutItemKey,
-    pub(crate) children: Vec<LayoutItemKey>,
+    pub(crate) engine: &'a mut Engine<'ui>,
+    pub(crate) root: LayoutInputKey,
+    pub(crate) children: Vec<LayoutInputKey>,
 }
 
 impl ContainerContext<'_, '_> {
     /// The source node of this container.
-    pub fn node(&self) -> Option<NodeKey> {
-        self.engine.tree.items[self.root].ty.node()
+    pub fn node(&self) -> NodeKey {
+        self.engine.tree.items[self.root].node
     }
 
     /// Read a custom property on the container without inheritance or defaults.
     pub fn prop<T: StyleProp>(&self) -> Option<impl Deref<Target = T> + '_> {
-        self.engine.ui.prop::<T>(self.node()?)
+        self.engine.ui.prop::<T>(self.node())
     }
 
     pub fn style(&self) -> &Style {
-        &self.engine.nodes[self.root].style
+        &self.engine.fragments.states[self.root].style
     }
 
     pub fn child_count(&self) -> usize {
@@ -54,49 +58,40 @@ impl ContainerContext<'_, '_> {
     }
 
     pub fn child_style(&self, index: usize) -> &Style {
-        &self.engine.nodes[self.children[index]].style
+        &self.engine.fragments.states[self.children[index]].style
     }
 
-    /// The source node represented by a direct child box. For an anonymous
-    /// wrapper, this is the wrapped inline element or text, including when
-    /// block interruptions split that element into several fragments.
-    pub fn child_node(&self, index: usize) -> Option<NodeKey> {
-        self.engine
-            .tree
-            .items
-            .descendants(self.children[index])
-            .find_map(|key| self.engine.tree.items[key].ty.node())
+    /// The source node of a direct child box.
+    pub fn child_node(&self, index: usize) -> NodeKey {
+        self.engine.tree.items[self.children[index]].node
     }
 
-    /// Read a property on the child's source node, including wrapped children.
-    /// This does not inherit properties from the container.
+    /// Read a property on the child's source node. This does not inherit
+    /// properties from the container.
     pub fn child_prop<T: StyleProp>(&self, index: usize) -> Option<impl Deref<Target = T> + '_> {
-        self.engine.ui.prop::<T>(self.child_node(index)?)
+        self.engine.ui.prop::<T>(self.child_node(index))
     }
 
     /// Resolve font and viewport units for the container, keeping percentages
     /// symbolic so the layout algorithm can select their reference size.
     pub fn resolve_length(&self, value: StyleUnit) -> taffy::LengthPercentage {
-        self.resolve_node_length(self.node(), value)
+        self.resolve_item_length(self.root, value)
     }
 
-    /// Resolve an item's custom length using its source node's computed font.
+    /// Resolve an item's custom length using its computed font size.
     pub fn resolve_child_length(&self, index: usize, value: StyleUnit) -> taffy::LengthPercentage {
-        self.resolve_node_length(self.child_node(index), value)
+        self.resolve_item_length(self.children[index], value)
     }
 
-    fn resolve_node_length(
+    fn resolve_item_length(
         &self,
-        node: Option<NodeKey>,
+        key: LayoutInputKey,
         value: StyleUnit,
     ) -> taffy::LengthPercentage {
         let mut constraint = self.engine.constraint.clone();
+        constraint.font_size = f64::from(self.engine.tree.items[key].text_style.font_size);
 
-        if let Some(style) = node.and_then(|node| self.engine.fragments.text_styles.get(&node)) {
-            constraint.font_size = f64::from(style.font_size);
-        }
-
-        crate::taffy::conv::length(value, &constraint)
+        conv::length(value, &constraint)
     }
 
     /// Lay out a child's contents without exposing its descendants for mutation.
@@ -120,10 +115,7 @@ impl ContainerContext<'_, '_> {
     /// Set the direct child's box, including padding, border and margin metrics.
     /// Measure it with matching known dimensions first so its contents fit.
     pub fn set_child_layout(&mut self, index: usize, layout: taffy::Layout) {
-        self.engine
-            .nodes
-            .get_mut(self.children[index])
-            .unwrap()
-            .layout = layout;
+        let key = to_taffy_key(self.children[index]);
+        self.engine.set_unrounded_layout(key, &layout);
     }
 }

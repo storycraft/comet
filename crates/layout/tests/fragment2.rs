@@ -1,5 +1,5 @@
 use comet_layout::{
-    fragment2::{FragmentItem, FragmentKey, FragmentTree, FragmentTreeBuilder},
+    fragment::{FragmentItem, FragmentKey, FragmentTree, FragmentTreeBuilder},
     input::{
         LayoutFlags, LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},

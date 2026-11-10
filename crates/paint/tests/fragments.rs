@@ -1,6 +1,6 @@
 use anyrender::{Glyph, Paint, Scene, recording::RenderCommand};
 use comet_layout::{
-    fragment2::{FragmentItem, FragmentKey, FragmentTree, FragmentTreeBuilder},
+    fragment::{FragmentItem, FragmentKey, FragmentTree, FragmentTreeBuilder},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,

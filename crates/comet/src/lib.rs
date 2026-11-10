@@ -4,7 +4,7 @@ use std::sync::Arc;
 use anyrender::WindowRenderer;
 use anyrender_vello_cpu::VelloCpuWindowRenderer;
 use comet_layout::{
-    fragment2::{FragmentTree, FragmentTreeBuilder},
+    fragment::{FragmentTree, FragmentTreeBuilder},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,

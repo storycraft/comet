@@ -1,86 +1,90 @@
 use comet_tree::{node::NodeKey, ui::Ui};
 
-use super::{FragmentKey, emit, reconcile::Reconciler, snapshot::Snapshot, tree::FragmentTree};
+use super::{
+    FragmentKey,
+    engine::{Engine, Scratch},
+    tree::FragmentTree,
+};
 use crate::{
+    input::{LayoutInputKey, tree::LayoutInputTree},
     style::LayoutConstraint,
-    taffy::{TaffyLayout, conv},
-    tree::{LayoutItemKey, LayoutTree},
+    taffy::conv,
 };
 
-/// Reconciles a layout subtree into stable fragment slots. Unchanged inputs skip
-/// shaping and layout; changed inputs reuse matching box, line, and run slots.
+/// Builds a [`FragmentTree`] from a [`LayoutInputTree`], updating retained
+/// fragments of clean subtrees in place.
 #[derive(Default)]
-pub struct FragmentBuilder {
+pub struct FragmentTreeBuilder {
     pub fonts: parley::FontContext,
     parley: parley::LayoutContext<Option<NodeKey>>,
-    reconciliation: Reconciler,
-    desired: emit::Desired,
+    scratch: Scratch,
 }
 
-impl FragmentBuilder {
+impl FragmentTreeBuilder {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Call after updating `LayoutTree`. `root` identifies an independent layout root.
-    /// Build new fragments with `None`, or update the supplied root with `Some(key)`.
-    /// The target must belong to this layout root; descendant targets are not
-    /// resolved to an owning root. A missing layout root deletes the target.
+    /// Lay out `root` and update its fragments, or build them when `fragments`
+    /// has none. Returns the box fragment of `root`.
+    ///
+    /// Starting from `root`, flagged items are visited and laid out again.
+    /// Clean subtrees reuse their cached layouts and fragments. Flags are not
+    /// cleared; call [`LayoutInputTree::clear_flags`] after building.
+    ///
+    /// `constraint` supplies the viewport and root font size used to resolve
+    /// box styles, and the space available to `root`. Mark the input tree dirty
+    /// (for example with a forced input build) when the viewport or root font
+    /// size changes. Returns `None` and deletes the retained fragments if `root`
+    /// is no longer in the input tree.
+    ///
+    /// Box fragments of block level and atomic inline items keep their keys
+    /// across builds. Line, inline and glyph run fragments of a laid out inline
+    /// formatting context are replaced.
     pub fn build(
         &mut self,
-        constraint: &LayoutConstraint,
         ui: &Ui,
-        layout: &LayoutTree,
-        root: LayoutItemKey,
+        tree: &LayoutInputTree,
+        root: LayoutInputKey,
         fragments: &mut FragmentTree,
-        target: Option<FragmentKey>,
+        constraint: &LayoutConstraint,
     ) -> Option<FragmentKey> {
-        let old_root = target.filter(|&key| fragments.items.get(key).is_some());
-        if layout.items.get(root).is_none() {
-            if let Some(key) = old_root {
-                fragments.remove_root(key);
+        let mut engine = Engine {
+            ui,
+            tree,
+            fragments,
+            fonts: &mut self.fonts,
+            parley: &mut self.parley,
+            constraint,
+            root,
+            scratch: &mut self.scratch,
+        };
+
+        if tree.items.get(root).is_none() {
+            engine.fragments.constraints.remove(root);
+
+            if let Some(state) = engine.fragments.states.remove(root) {
+                engine.fragments.inline_layouts.remove(root);
+                engine.release(state.fragment);
+                engine.sweep();
             }
 
             return None;
         }
 
-        let snapshot = Snapshot::capture(constraint, ui, layout, root, fragments);
-
-        if old_root.is_some() && fragments.snapshots.get(root) == Some(&snapshot) {
-            return old_root;
-        }
-
-        let nodes = snapshot.prepare(layout, root, fragments);
-        let mut engine = TaffyLayout {
-            constraint: constraint.clone(),
-            ui,
-            tree: layout,
-            fragments,
-            fonts: &mut self.fonts,
-            parley: &mut self.parley,
-            nodes,
-        };
-
+        engine.invalidate();
         engine.compute(
             root,
             conv::to_size(constraint.available_size, |v| {
                 taffy::AvailableSpace::Definite(v as f32)
             }),
         );
+        engine.sweep();
+        engine
+            .fragments
+            .constraints
+            .insert(root, constraint.clone());
 
-        emit::emit_box(&engine, root, None, None, &mut self.desired);
-        self.desired.finish();
-        engine.fragments.layout_cache = engine.nodes;
-
-        let fragments = engine.fragments;
-        let result = self
-            .reconciliation
-            .apply(fragments, old_root, &mut self.desired, &snapshot);
-        fragments.snapshots.insert(root, snapshot);
-        fragments
-            .text_styles
-            .retain(|node, _| ui.kind(*node).is_some());
-
-        Some(result)
+        engine.fragments.box_fragment(root)
     }
 }

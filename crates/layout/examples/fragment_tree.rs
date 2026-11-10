@@ -1,7 +1,7 @@
 mod common;
 
 use comet_layout::{
-    fragment2::{FragmentKey, FragmentTree, FragmentTreeBuilder},
+    fragment::{FragmentKey, FragmentTree, FragmentTreeBuilder},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,

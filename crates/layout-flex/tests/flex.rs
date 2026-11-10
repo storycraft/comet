@@ -1,16 +1,24 @@
+use std::ops::Deref;
+
 use comet_layout::{
-    fragment::{FragmentBox, FragmentItem, FragmentKey, FragmentTree, builder::FragmentBuilder},
+    fragment::{FragmentBox, FragmentItem, FragmentKey, FragmentTree, FragmentTreeBuilder},
+    input::{
+        LayoutInputKey,
+        builder::{BuildRequest, LayoutInputTreeBuilder},
+        tree::LayoutInputTree,
+    },
     style::{
         LayoutConstraint, bx,
         geometry::{AutoValue, Rect, Size, StyleUnit},
     },
-    tree::{LayoutTree, builder::LayoutTreeBuilder},
 };
 use comet_layout_flex::{Flex, styles as flex};
 use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,
 };
+
+const VIEWPORT: Size<f64> = Size::new(800.0, 600.0);
 
 fn size(width: f64, height: f64) -> bx::Size {
     bx::Size(Size::new(
@@ -19,28 +27,73 @@ fn size(width: f64, height: f64) -> bx::Size {
     ))
 }
 
-fn layout(ui: &Ui, root: NodeKey) -> (FragmentTree, FragmentKey) {
-    let mut tree = LayoutTree::new();
-    let key = LayoutTreeBuilder::new()
-        .build(ui, root, &mut tree, None)
-        .unwrap();
-    let mut fragments = FragmentTree::new();
-    let cx = LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0);
-    let root = FragmentBuilder::new()
-        .build(&cx, ui, &tree, key, &mut fragments, None)
-        .unwrap();
-
-    (fragments, root)
+/// Input and fragment trees of one root, built together.
+#[derive(Default)]
+struct Layout {
+    inputs: LayoutInputTree,
+    fragments: FragmentTree,
+    input_builder: LayoutInputTreeBuilder,
+    builder: FragmentTreeBuilder,
 }
 
-fn box_for(tree: &FragmentTree, root: FragmentKey, node: NodeKey) -> FragmentBox {
-    let key = tree
-        .items
-        .descendants(root)
-        .find(|&key| {
-            tree.items[key].node == Some(node) && tree.items[key].item == FragmentItem::Box
-        })
-        .unwrap();
+impl Deref for Layout {
+    type Target = FragmentTree;
+
+    fn deref(&self) -> &FragmentTree {
+        &self.fragments
+    }
+}
+
+impl Layout {
+    /// Build or update the trees of `root`, then clear the input flags.
+    fn build(&mut self, ui: &Ui, root: NodeKey) -> FragmentKey {
+        let key = self
+            .input_builder
+            .build(
+                ui,
+                &mut self.inputs,
+                BuildRequest::new(root, 16.0, VIEWPORT),
+            )
+            .unwrap();
+        let fragment = self
+            .builder
+            .build(
+                ui,
+                &self.inputs,
+                key,
+                &mut self.fragments,
+                &LayoutConstraint::new_root(VIEWPORT, 16.0),
+            )
+            .unwrap();
+        self.inputs.clear_flags(key);
+
+        fragment
+    }
+
+    fn item(&self, node: NodeKey) -> LayoutInputKey {
+        self.inputs.item_for_node(node).unwrap()
+    }
+
+    fn node(&self, key: FragmentKey) -> Option<NodeKey> {
+        self.inputs
+            .items
+            .get(self.fragments.items[key].source)
+            .map(|item| item.node)
+    }
+}
+
+fn layout(ui: &Ui, root: NodeKey) -> (Layout, FragmentKey) {
+    let mut layout = Layout::default();
+    let key = layout.build(ui, root);
+
+    (layout, key)
+}
+
+fn box_for(tree: &Layout, root: FragmentKey, node: NodeKey) -> FragmentBox {
+    let key = tree.box_fragment(tree.item(node)).unwrap();
+
+    assert!(tree.items.descendants(root).any(|other| other == key));
+    assert_eq!(tree.items[key].item, FragmentItem::Box);
 
     tree.items[key].layout
 }
@@ -287,7 +340,7 @@ fn wrapped_text_and_inline_children_use_source_flex_properties() {
 
     for source in [text, inside] {
         assert!(tree.items.descendants(key).any(|key| {
-            tree.items[key].node == Some(source)
+            tree.node(key) == Some(source)
                 && matches!(tree.items[key].item, FragmentItem::GlyphRun { .. })
         }));
     }
@@ -319,15 +372,7 @@ fn nested_flex_and_incremental_style_changes_match_fresh_layout() {
     ui.append(nested, a);
     ui.append(nested, b);
 
-    let mut layout_tree = LayoutTree::new();
-    let mut layout_builder = LayoutTreeBuilder::new();
-    let key = layout_builder
-        .build(&ui, root, &mut layout_tree, None)
-        .unwrap();
-    let mut fragments = FragmentTree::new();
-    let mut previous = None;
-    let mut builder = FragmentBuilder::new();
-    let cx = LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0);
+    let mut retained = Layout::default();
 
     for step in 0..3 {
         if step == 1 {
@@ -336,36 +381,32 @@ fn nested_flex_and_incremental_style_changes_match_fresh_layout() {
                 (flex::Gap(Size::new(StyleUnit::Px(10.0), StyleUnit::ZERO)),),
             );
             ui.set_props(b, (flex::FlexGrow(2.0),));
-            fragments.invalidate(key);
+            let (nested, b) = (retained.item(nested), retained.item(b));
+            retained.inputs.mark_dirty(nested);
+            retained.inputs.mark_dirty(b);
         } else if step == 2 {
             ui.prepend(nested, b);
-            layout_tree.mark_dirty(key);
-
-            layout_builder
-                .build(&ui, root, &mut layout_tree, Some(key))
-                .unwrap();
+            let nested = retained.item(nested);
+            retained.inputs.mark_dirty(nested);
         }
 
-        let current = builder
-            .build(&cx, &ui, &layout_tree, key, &mut fragments, previous)
-            .unwrap();
-        previous = Some(current);
+        let current = retained.build(&ui, root);
         let (fresh, fresh_root) = layout(&ui, root);
 
         for node in [root, nested, a, b, sibling] {
             assert_eq!(
-                box_for(&fragments, current, node),
+                box_for(&retained, current, node),
                 box_for(&fresh, fresh_root, node)
             );
         }
 
-        close(box_for(&fragments, current, nested).size.width, 250.0);
+        close(box_for(&retained, current, nested).size.width, 250.0);
 
         if step == 0 {
-            close(box_for(&fragments, current, a).size.width, 125.0);
+            close(box_for(&retained, current, a).size.width, 125.0);
         } else {
-            close(box_for(&fragments, current, a).size.width, 80.0);
-            close(box_for(&fragments, current, b).size.width, 160.0);
+            close(box_for(&retained, current, a).size.width, 80.0);
+            close(box_for(&retained, current, b).size.width, 160.0);
         }
     }
 }
@@ -445,7 +486,7 @@ fn text_items_align_by_their_first_baseline() {
             .items
             .descendants(key)
             .find(|&key| {
-                tree.items[key].node == Some(node)
+                tree.node(key) == Some(node)
                     && matches!(tree.items[key].item, FragmentItem::GlyphRun { .. })
             })
             .unwrap();

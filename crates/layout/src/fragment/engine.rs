@@ -13,15 +13,17 @@ use super::{
     tree::FragmentTree,
 };
 use crate::{
+    container::ContainerContext,
     input::{ChildLayout, LayoutFlags, LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     style::{
         LayoutConstraint,
+        bx::DisplayInner,
         geometry::{Point, Size},
     },
     taffy::style::{self, Style},
 };
 
-pub(super) fn to_taffy_key(key: LayoutInputKey) -> taffy::NodeId {
+pub(crate) fn to_taffy_key(key: LayoutInputKey) -> taffy::NodeId {
     taffy::NodeId::new(key.data().as_ffi())
 }
 
@@ -53,7 +55,7 @@ pub(super) fn is_inline_root(tree: &LayoutInputTree, key: LayoutInputKey) -> boo
 
 /// Buffers retained by the builder between builds.
 #[derive(Default)]
-pub(super) struct Scratch {
+pub(crate) struct Scratch {
     stack: Vec<LayoutInputKey>,
     events: Vec<Placed>,
     spans: Vec<FragmentKey>,
@@ -79,7 +81,7 @@ struct Flow {
     height: f32,
 }
 
-pub(super) struct Engine<'a> {
+pub(crate) struct Engine<'a> {
     pub ui: &'a Ui,
     pub tree: &'a LayoutInputTree,
     pub fragments: &'a mut FragmentTree,
@@ -91,12 +93,17 @@ pub(super) struct Engine<'a> {
 }
 
 impl Engine<'_> {
+    /// Block level and atomic inline items, the root, and every child of a
+    /// container generate a box.
     fn is_box(&self, key: LayoutInputKey) -> bool {
         key == self.root
             || matches!(
                 self.tree.items[key].kind,
                 LayoutInputKind::Block | LayoutInputKind::AtomicInline
             )
+            || self.tree.items.parent(key).is_some_and(|parent| {
+                self.tree.items[parent].child_layout == ChildLayout::Container
+            })
     }
 
     fn resolve_style(&self, key: LayoutInputKey) -> Style {
@@ -176,7 +183,7 @@ impl Engine<'_> {
                 // Inline content is attached again when the inline layout is emitted.
                 self.release_children(fragment);
 
-                if !inline && child_layout == ChildLayout::Block {
+                if !inline && matches!(child_layout, ChildLayout::Block | ChildLayout::Container) {
                     for child in self.tree.items.children(key) {
                         self.ensure_state(child);
 
@@ -191,7 +198,7 @@ impl Engine<'_> {
             }
 
             if (force || flags.contains(LayoutFlags::CHILDREN_DIRTY))
-                && matches!(child_layout, ChildLayout::Block | ChildLayout::Inline)
+                && child_layout != ChildLayout::None
             {
                 stack.extend(self.tree.items.children(key));
             }
@@ -361,15 +368,39 @@ impl Engine<'_> {
 
         match self.tree.items[key].child_layout {
             ChildLayout::Block => taffy::compute_block_layout(self, id, input, block_ctx),
-            // TODO: Custom container layout. `ContainerContext` is bound to the
-            // old layout tree; it is laid out as an empty leaf until it is
-            // generalized over both trees.
-            ChildLayout::Container | ChildLayout::None | ChildLayout::Inline => {
+            ChildLayout::Container => self.layout_container(key, input),
+            ChildLayout::None | ChildLayout::Inline => {
                 let style = self.fragments.states[key].style.clone();
 
                 taffy::compute_leaf_layout(input, &style, |_, _| 0.0, |_, _| taffy::Size::ZERO)
             }
         }
+    }
+
+    /// Lay out a container with its custom algorithm. Containers without an
+    /// algorithm are empty leaves.
+    fn layout_container(
+        &mut self,
+        key: LayoutInputKey,
+        input: taffy::LayoutInput,
+    ) -> taffy::LayoutOutput {
+        let ui = self.ui;
+        let inner = ui.prop::<DisplayInner>(self.tree.items[key].node);
+
+        let Some(DisplayInner::Container(algorithm)) = inner.as_deref() else {
+            let style = self.fragments.states[key].style.clone();
+
+            return taffy::compute_leaf_layout(input, &style, |_, _| 0.0, |_, _| taffy::Size::ZERO);
+        };
+
+        let children = self.tree.items.children(key).collect();
+        let mut context = ContainerContext {
+            engine: self,
+            root: key,
+            children,
+        };
+
+        algorithm.layout(&mut context, input)
     }
 
     fn layout_inline(
