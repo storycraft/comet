@@ -17,7 +17,7 @@ use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use kurbo::Affine;
 
 const WIDTH: u32 = 640;
-const HEIGHT: u32 = 920;
+const HEIGHT: u32 = 1220;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (ui, root) = common::sample_ui();

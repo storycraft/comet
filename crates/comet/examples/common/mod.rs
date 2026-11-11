@@ -1,3 +1,4 @@
+mod absolute;
 mod flex;
 
 use anyrender::Paint;
@@ -44,6 +45,7 @@ pub fn sample_ui() -> (Ui, NodeKey) {
     block_inline_sample(&mut ui, root);
     rich_text_sample(&mut ui, root);
     typography_sample(&mut ui, root);
+    absolute::showcase(&mut ui, root);
 
     (ui, root)
 }
