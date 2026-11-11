@@ -15,8 +15,6 @@ pub struct FragmentTree {
     /// First fragment of each item: its box, or its first inline or glyph
     /// run fragment.
     pub(crate) first: SecondaryMap<LayoutInputKey, FragmentKey>,
-    /// Style used where a fragment unexpectedly has no state.
-    pub(crate) fallback_style: Style,
 }
 
 impl FragmentTree {
@@ -86,10 +84,15 @@ impl FragmentTree {
         self.states.get_mut(self.items.get(fragment)?.item.state()?)
     }
 
-    /// The style of a box or anonymous block fragment, or the default style.
+    /// The style of a box or anonymous block fragment.
+    ///
+    /// # Panics
+    /// If the fragment has no state.
     pub(crate) fn style(&self, fragment: FragmentKey) -> &Style {
-        self.get_state(fragment)
-            .map_or(&self.fallback_style, |state| &state.style)
+        &self
+            .get_state(fragment)
+            .expect("fragment without layout state")
+            .style
     }
 
     /// The inline layout owned by a box or anonymous block fragment.
