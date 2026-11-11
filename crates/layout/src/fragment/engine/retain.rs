@@ -42,7 +42,22 @@ impl Engine<'_> {
     /// Delete the descendants of a fragment. Retained fragments are detached
     /// and kept for reuse; the state of other fragments is dropped.
     pub fn release_children(&mut self, fragment: FragmentKey) {
-        let mut pending: Vec<FragmentKey> = self.fragments.items.children(fragment).collect();
+        self.release_after(fragment, None);
+    }
+
+    /// Delete the children of a fragment following `after`, or all of them
+    /// when `after` is `None`, like [`Self::release_children`]. Children up to
+    /// `after` are kept in place.
+    pub fn release_after(&mut self, fragment: FragmentKey, after: Option<FragmentKey>) {
+        let tail = |items: &crate::slot_tree::SlotTree<FragmentKey, _>| match after {
+            Some(key) => items.next_sibling(key),
+            None => items.first_child(fragment),
+        };
+        let mut pending: Vec<FragmentKey> = self
+            .fragments
+            .items
+            .cursor(tail(&self.fragments.items))
+            .collect();
 
         while let Some(key) = pending.pop() {
             if self.is_retained(key) {
@@ -55,7 +70,8 @@ impl Engine<'_> {
             pending.extend(self.fragments.items.children(key));
         }
 
-        while let Some(child) = self.fragments.items.first_child(fragment) {
+        // Retained fragments left the sibling chain, so the rest is deleted.
+        while let Some(child) = tail(&self.fragments.items) {
             self.fragments.items.delete_node(child);
         }
     }

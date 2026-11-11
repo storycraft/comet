@@ -413,6 +413,79 @@ fn updates_reuse_box_fragments_and_layouts() {
 }
 
 #[test]
+fn block_child_list_changes_reuse_box_fragments_in_order() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let list = ui.create(Node::Box, ());
+    let other = ui.create(Node::Box, ());
+    let nodes: Vec<_> = (0..4).map(|_| sized_block(&mut ui, 10.0)).collect();
+    ui.append(root, list);
+    ui.append(root, other);
+    for &node in &nodes {
+        ui.append(list, node);
+    }
+
+    let mut f = Fixture::new();
+    let (input_root, _) = f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+
+    let fragment = |f: &Fixture, node| {
+        f.fragments
+            .box_fragment(f.tree.item_for_node(node).unwrap())
+            .unwrap()
+    };
+    let keys: Vec<_> = nodes.iter().map(|&node| fragment(&f, node)).collect();
+    let list_fragment = fragment(&f, list);
+    let other_fragment = fragment(&f, other);
+    let tops = |f: &Fixture, parent| {
+        f.children(parent)
+            .into_iter()
+            .map(|key| f.fragments.items[key].layout.location.y)
+            .collect::<Vec<_>>()
+    };
+
+    // Insert in the middle.
+    let inserted = sized_block(&mut ui, 10.0);
+    ui.before(nodes[2], inserted);
+    f.tree.mark_node_dirty(list);
+    f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+
+    let inserted_key = fragment(&f, inserted);
+    assert_eq!(
+        f.children(list_fragment),
+        vec![keys[0], keys[1], inserted_key, keys[2], keys[3]]
+    );
+    assert_eq!(tops(&f, list_fragment), vec![0.0, 10.0, 20.0, 30.0, 40.0]);
+
+    // Reorder, and move the last child to another parent.
+    ui.prepend(list, nodes[1]);
+    ui.append(other, nodes[3]);
+    f.tree.mark_node_dirty(list);
+    f.tree.mark_node_dirty(other);
+    f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+
+    assert_eq!(
+        f.children(list_fragment),
+        vec![keys[1], keys[0], inserted_key, keys[2]]
+    );
+    assert_eq!(tops(&f, list_fragment), vec![0.0, 10.0, 20.0, 30.0]);
+    // Moving to another parent creates a new input item, and so a new box.
+    assert_eq!(f.children(other_fragment), vec![fragment(&f, nodes[3])]);
+    assert!(f.fragments.items.get(keys[3]).is_none());
+
+    // Remove from the middle.
+    ui.delete(inserted);
+    f.tree.mark_node_dirty(list);
+    f.build(&ui, root);
+
+    assert_eq!(f.children(list_fragment), vec![keys[1], keys[0], keys[2]]);
+    assert_eq!(tops(&f, list_fragment), vec![0.0, 10.0, 20.0]);
+    assert!(f.fragments.items.get(inserted_key).is_none());
+}
+
+#[test]
 fn removed_items_drop_their_fragments() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());

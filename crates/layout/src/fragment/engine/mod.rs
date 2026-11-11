@@ -225,9 +225,30 @@ impl Engine<'_> {
                     return;
                 }
 
-                self.release_children(fragment);
+                // Children whose boxes are already attached in order stay in
+                // place. The rest are released from the first mismatch and
+                // attached again.
+                let tree = self.tree;
+                let mut inputs = tree.items.children(key).peekable();
+                let mut kept = None;
 
-                for child in self.tree.items.children(key) {
+                while let Some(&child) = inputs.peek() {
+                    let attached = match kept {
+                        Some(kept) => self.fragments.items.next_sibling(kept),
+                        None => self.fragments.items.first_child(fragment),
+                    };
+
+                    if attached.is_none() || self.fragments.box_fragment(child) != attached {
+                        break;
+                    }
+
+                    kept = attached;
+                    inputs.next();
+                }
+
+                self.release_after(fragment, kept);
+
+                for child in inputs {
                     let child = self.ensure_box(child);
                     self.fragments.items.append(fragment, child);
                 }
