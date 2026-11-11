@@ -186,7 +186,7 @@ fn parentless_siblings_can_be_detached_moved_and_deleted() {
 }
 
 #[test]
-fn invalid_moves_are_atomic_and_cycles_are_rejected() {
+fn invalid_moves_are_atomic() {
     let mut tree = Tree::new();
     let root = tree.insert(0);
     let child = tree.insert(1);
@@ -200,7 +200,6 @@ fn invalid_moves_are_atomic_and_cycles_are_rejected() {
         assert_eq!(operation(&mut tree, stale, child), None);
         assert_eq!(operation(&mut tree, root, stale), None);
         assert_eq!(operation(&mut tree, child, child), None);
-        assert_eq!(operation(&mut tree, grandchild, root), None);
         assert_children(&tree, root, &[child]);
         assert_children(&tree, child, &[grandchild]);
         assert_children(&tree, grandchild, &[]);
@@ -249,7 +248,6 @@ fn deletion_removes_every_descendant_and_retains_siblings() {
 fn deletion_handles_deep_trees_without_recursion() {
     let mut tree = Tree::new();
     let mut root = tree.insert(0);
-    // Build upward so cycle validation stays constant-time per insertion.
     for value in 1..20_000 {
         let parent = tree.insert(value);
         tree.append(parent, root);

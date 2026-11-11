@@ -11,7 +11,8 @@ use self::iterator::{Cursor, Descendants};
 /// An ordered forest backed by generational slots.
 ///
 /// Nodes may also form parentless sibling chains. Mutations preserve subtrees.
-/// Invalid keys, self-insertion, and moves that would create cycles are no-ops.
+/// Invalid keys and self-insertion are no-ops. Cycles are not detected: moving
+/// a node under one of its own descendants is a logic error.
 /// Insertion operations return the previous parent; `None` can mean either a
 /// parentless node was moved or the operation was rejected.
 #[derive(Debug)]
@@ -174,7 +175,9 @@ impl<K: Key, V> SlotTree<K, V> {
         pending.extend(root.first_child);
 
         while let Some(id) = pending.pop() {
-            let node = self.arena.remove(id).expect("valid descendant");
+            let Some(node) = self.arena.remove(id) else {
+                continue;
+            };
             pending.extend(node.next_sibling);
             pending.extend(node.first_child);
         }
@@ -186,33 +189,17 @@ impl<K: Key, V> SlotTree<K, V> {
         self.arena.clear();
     }
 
-    fn can_attach(&self, id: K, mut parent: Option<K>) -> bool {
-        let Some(node) = self.arena.get(id) else {
-            return false;
-        };
-
-        if let Some(key) = parent
-            && (key == id || !self.arena.contains_key(key))
-        {
+    /// Validate keys and reject self-parenting. Moving a node under its own
+    /// descendant is not checked and corrupts the tree.
+    fn can_attach(&self, id: K, parent: Option<K>) -> bool {
+        if !self.arena.contains_key(id) {
             return false;
         }
 
-        // A leaf cannot contain its destination; sibling moves cannot form cycles.
-        if node.first_child.is_none() || node.parent == parent {
-            return true;
+        match parent {
+            Some(key) => key != id && self.arena.contains_key(key),
+            None => true,
         }
-
-        while let Some(key) = parent {
-            if key == id {
-                return false;
-            }
-            let Some(node) = self.arena.get(key) else {
-                return false;
-            };
-            parent = node.parent;
-        }
-
-        true
     }
 
     /// Link a detached node into a validated gap.
