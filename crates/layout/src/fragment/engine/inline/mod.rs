@@ -65,7 +65,7 @@ impl Engine<'_> {
             input,
             &style,
             |_, _| 0.0,
-            |known, available| self.measure_lines(fragment, known, available),
+            |_, available| self.measure_lines(fragment, available),
         );
 
         if input.run_mode == taffy::RunMode::PerformLayout {
@@ -105,18 +105,9 @@ impl Engine<'_> {
     fn measure_lines(
         &mut self,
         fragment: FragmentKey,
-        known: taffy::Size<Option<f32>>,
         available: taffy::Size<taffy::AvailableSpace>,
     ) -> taffy::Size<f32> {
         self.invalidate_final(fragment);
-
-        let available = taffy::Size {
-            width: known
-                .width
-                .map(taffy::AvailableSpace::Definite)
-                .unwrap_or(available.width),
-            height: available.height,
-        };
 
         self.prepare(fragment, available);
 
