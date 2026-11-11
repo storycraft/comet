@@ -4,8 +4,13 @@
 
 use taffy::style::CoreStyle;
 
-use super::{Engine, FragmentEngine, FragmentKey, Mode, node_id};
-use crate::{container::ContainerContext, input::LayoutInputKind, style::bx::DisplayInner};
+use super::{Engine, FragmentEngine, FragmentKey, Mode, fragment_of, node_id};
+use crate::{
+    container::ContainerContext,
+    fragment::tree::FragmentTree,
+    input::LayoutInputKind,
+    style::{bx::DisplayInner, geometry::Point},
+};
 
 impl Engine<'_> {
     /// Lay out a box as an independent root of the available space.
@@ -19,6 +24,9 @@ impl Engine<'_> {
             node_id(fragment),
             available,
         );
+        // The root positioning pass places the remaining out-of-flow boxes
+        // again, even when the root layout is cached.
+        self.place_hoisted(fragment);
 
         let source = self.fragments.items[fragment].source;
 
@@ -27,6 +35,66 @@ impl Engine<'_> {
 
             self.fragments.states[fragment].baseline = baseline;
             self.fragments.items[fragment].layout.baseline = Some(baseline as f64);
+        }
+    }
+
+    /// Lay out a block container with Taffy's block algorithm, then position
+    /// the out-of-flow boxes it contains.
+    ///
+    /// Taffy bubbles out-of-flow boxes up to their containing block and leaves
+    /// their positioning to the caller. Boxes no block claims bubble up to the
+    /// root, or to the container laying out this box.
+    pub(super) fn layout_block(
+        &mut self,
+        fragment: FragmentKey,
+        input: taffy::LayoutInput,
+        block_ctx: Option<&mut taffy::BlockContext<'_>>,
+    ) -> taffy::LayoutOutput {
+        let id = node_id(fragment);
+        let mut engine = FragmentEngine::new(self, fragment);
+        let mut output = taffy::compute_block_layout(&mut engine, id, input, block_ctx);
+
+        if input.run_mode == taffy::RunMode::PerformLayout {
+            taffy::compute_oof_layout(&mut engine, id, &mut output);
+            drop(engine);
+            self.place_hoisted(fragment);
+        }
+
+        output
+    }
+
+    /// Make the out-of-flow boxes positioned by `containing` relative to their
+    /// parent fragments again.
+    ///
+    /// Taffy places them relative to their containing block, which can be an
+    /// ancestor of their parent when the boxes in between are not positioned.
+    /// Their retained Taffy layouts keep containing block coordinates, so this
+    /// can run again after every positioning pass.
+    fn place_hoisted(&mut self, containing: FragmentKey) {
+        let FragmentTree { items, states, .. } = &mut *self.fragments;
+
+        for &id in &states[containing].hoisted {
+            let hoisted = fragment_of(id);
+            let (mut x, mut y) = (0.0, 0.0);
+            let mut ancestor = items.parent(hoisted);
+
+            while let Some(key) = ancestor
+                && key != containing
+            {
+                let location = items[key].layout.location;
+                x += location.x;
+                y += location.y;
+                ancestor = items.parent(key);
+            }
+
+            // Not attached below its containing block.
+            if ancestor.is_none() {
+                continue;
+            }
+
+            let location = states[hoisted].layout.location;
+            items[hoisted].layout.location =
+                Point::new(f64::from(location.x) - x, f64::from(location.y) - y);
         }
     }
 

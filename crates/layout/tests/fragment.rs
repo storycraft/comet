@@ -7,7 +7,8 @@ use comet_layout::{
     },
     style::{
         LayoutConstraint, bx,
-        geometry::{AutoValue, Rect, Size, StyleUnit},
+        geometry::{AutoValue, Point, Rect, Size, StyleUnit},
+        taffy::Position,
         parley::Alignment as TextAlign,
     },
 };
@@ -683,4 +684,114 @@ fn text_align_is_inherited_and_updates_descendants() {
     };
     close(aligned_right, VIEWPORT.width);
     close(aligned_right - aligned_left, right - left);
+}
+
+fn px(value: f64) -> AutoValue<StyleUnit> {
+    AutoValue::Value(StyleUnit::Px(value))
+}
+
+fn fixed_size(width: f64, height: f64) -> bx::Size {
+    bx::Size(Size::new(px(width), px(height)))
+}
+
+#[test]
+fn absolute_boxes_are_positioned_by_their_positioned_parent() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let wrapper = ui.create(Node::Box, (fixed_size(100.0, 50.0),));
+    let abs = ui.create(
+        Node::Box,
+        (
+            bx::Position(Position::Absolute),
+            bx::Inset(Rect::new_invidiual(
+                px(5.0),
+                px(0.0),
+                AutoValue::Auto,
+                AutoValue::Auto,
+            )),
+            fixed_size(10.0, 10.0),
+        ),
+    );
+    ui.append(root, wrapper);
+    ui.append(wrapper, abs);
+
+    let mut f = Fixture::new();
+    f.build(&ui, root);
+
+    let wrapper_fragment = f
+        .fragments
+        .box_fragment(f.tree.item_for_node(wrapper).unwrap())
+        .unwrap();
+    let abs_fragment = f
+        .fragments
+        .box_fragment(f.tree.item_for_node(abs).unwrap())
+        .unwrap();
+    let layout = f.fragments.items[abs_fragment].layout;
+
+    assert_eq!(f.fragments.items.parent(abs_fragment), Some(wrapper_fragment));
+    // `right: 0` resolves against the 100px wrapper, not the 400px root.
+    assert_eq!(layout.location, Point::new(90.0, 5.0));
+    assert_eq!(layout.size, Size::new(10.0, 10.0));
+}
+
+#[test]
+fn absolute_boxes_hoisted_past_static_parents_stay_parent_relative() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let wrapper = ui.create(
+        Node::Box,
+        (
+            bx::Position(Position::Static),
+            margin(30.0, 0.0),
+            fixed_size(100.0, 50.0),
+        ),
+    );
+    let abs = ui.create(
+        Node::Box,
+        (
+            bx::Position(Position::Absolute),
+            bx::Inset(Rect::new_invidiual(
+                px(5.0),
+                AutoValue::Auto,
+                AutoValue::Auto,
+                px(7.0),
+            )),
+            fixed_size(10.0, 10.0),
+        ),
+    );
+    ui.append(root, wrapper);
+    ui.append(wrapper, abs);
+
+    let mut f = Fixture::new();
+    let (root_key, _) = f.build(&ui, root);
+    f.tree.clear_flags(root_key);
+
+    let wrapper_fragment = f
+        .fragments
+        .box_fragment(f.tree.item_for_node(wrapper).unwrap())
+        .unwrap();
+    let abs_fragment = f
+        .fragments
+        .box_fragment(f.tree.item_for_node(abs).unwrap())
+        .unwrap();
+
+    assert_eq!(f.fragments.items.parent(abs_fragment), Some(wrapper_fragment));
+    assert_eq!(
+        f.fragments.items[wrapper_fragment].layout.location,
+        Point::new(0.0, 30.0)
+    );
+    // The root contains the box at (7, 5); fragments stay relative to their
+    // parent, the static wrapper 30px down.
+    assert_eq!(
+        f.fragments.items[abs_fragment].layout.location,
+        Point::new(7.0, -25.0)
+    );
+
+    // A cached root layout still runs the root positioning pass.
+    f.build(&ui, root);
+
+    assert_eq!(
+        f.fragments.items[abs_fragment].layout.location,
+        Point::new(7.0, -25.0)
+    );
 }

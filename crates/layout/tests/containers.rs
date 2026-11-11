@@ -12,8 +12,8 @@ use comet_layout::{
     },
     style::{
         LayoutConstraint,
-        bx::{DisplayInner, DisplayOuter},
-        geometry::Size,
+        bx::{self, DisplayInner, DisplayOuter},
+        geometry::{AutoValue, Size, StyleUnit},
     },
 };
 use comet_tree::{
@@ -283,4 +283,99 @@ fn container_children_follow_reorders_and_removals() {
     assert_eq!(f.fragments.items[keys[2]].layout.location.x, 0.0);
     assert_eq!(f.fragments.items[keys[1]].layout.location.x, 50.0);
     assert!(f.fragments.items.get(keys[0]).is_none());
+}
+
+/// Probes its only child's size at a width read from `probe`, then lays it
+/// out at a fixed 300px.
+struct Probe {
+    probe: Arc<AtomicU32>,
+}
+
+impl ContainerLayout for Probe {
+    fn layout(
+        &self,
+        context: &mut ContainerContext<'_, '_>,
+        input: taffy::LayoutInput,
+    ) -> taffy::LayoutOutput {
+        let at = |width: f32, run_mode| taffy::LayoutInput {
+            run_mode,
+            known_dimensions: taffy::Size {
+                width: Some(width),
+                height: None,
+            },
+            available_space: taffy::Size {
+                width: taffy::AvailableSpace::Definite(width),
+                height: taffy::AvailableSpace::MaxContent,
+            },
+            parent_size: taffy::Size {
+                width: Some(width),
+                height: None,
+            },
+            ..input
+        };
+
+        let probe = self.probe.load(Ordering::Relaxed) as f32;
+        context.measure_child(0, at(probe, taffy::RunMode::ComputeSize));
+        let output = context.measure_child(0, at(300.0, input.run_mode));
+
+        if input.run_mode == taffy::RunMode::PerformLayout {
+            context.set_child_layout(
+                0,
+                taffy::Layout {
+                    size: output.size,
+                    ..Default::default()
+                },
+            );
+        }
+
+        taffy::LayoutOutput::from_outer_size(taffy::Size {
+            width: input.known_dimensions.width.unwrap_or(300.0),
+            height: input.known_dimensions.height.unwrap_or(output.size.height),
+        })
+    }
+}
+
+#[test]
+fn size_probes_do_not_leave_probe_geometry_in_cached_final_layouts() {
+    let probe = Arc::new(AtomicU32::new(40));
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let custom = ui.create(
+        Node::Box,
+        (DisplayInner::Container(Box::new(Probe {
+            probe: probe.clone(),
+        })),),
+    );
+    // Block container whose size query lays out its children in full.
+    let wrapper = ui.create(Node::Box, ());
+    let inner = ui.create(Node::Box, ());
+    // Stretches to the width `inner` is laid out at.
+    let leaf = ui.create(
+        Node::Box,
+        (bx::Size(Size::new(
+            AutoValue::Auto,
+            AutoValue::Value(StyleUnit::Px(20.0)),
+        )),),
+    );
+
+    ui.append(root, custom);
+    ui.append(custom, wrapper);
+    ui.append(wrapper, inner);
+    ui.append(inner, leaf);
+
+    let mut f = Fixture::default();
+    let width = |f: &Fixture, node| f.fragments.items[f.box_fragment(node)].layout.size.width;
+
+    f.build(&ui, root, 400.0);
+    assert_eq!(width(&f, leaf), 300.0);
+
+    // A new probe width misses the wrapper's size cache, while its final
+    // layout input is unchanged.
+    probe.store(50, Ordering::Relaxed);
+    f.inputs.mark_node_dirty(custom);
+    f.build(&ui, root, 400.0);
+
+    assert_eq!(width(&f, wrapper), 300.0);
+    assert_eq!(width(&f, inner), 300.0);
+    assert_eq!(width(&f, leaf), 300.0);
 }

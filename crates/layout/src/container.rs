@@ -118,16 +118,11 @@ impl ContainerContext<'_, '_> {
     ) -> taffy::LayoutOutput {
         input.vertical_margins_are_collapsible = taffy::Line::FALSE;
 
+        // Block children position the out-of-flow boxes they contain while
+        // laying out, since their IDs belong to Comet's tree rather than the
+        // custom algorithm's local adapter.
         let key = node_id(self.child(index));
-        let mut output = self.engine.compute_child_layout(key, input);
-
-        // Descendant IDs belong to Comet's tree, not the custom algorithm's
-        // local adapter. Resolve their positioning before returning the child.
-        // Out-of-flow layout never traverses children, so the container's
-        // scoped engine serves it.
-        taffy::compute_oof_layout(&mut self.engine, key, &mut output);
-
-        output
+        self.engine.compute_child_layout(key, input)
     }
 
     /// Set the direct child's box, including padding, border and margin metrics.

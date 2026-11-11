@@ -270,19 +270,9 @@ impl Engine<'_> {
 
         match self.fragments.states[fragment].mode {
             Mode::Inline | Mode::Run { .. } => self.layout_lines(fragment, input),
-            Mode::Block => taffy::compute_block_layout(
-                &mut FragmentEngine::new(self, fragment),
-                id,
-                input,
-                block_ctx,
-            ),
+            Mode::Block => self.layout_block(fragment, input, block_ctx),
             Mode::MixedInline => {
-                let output = taffy::compute_block_layout(
-                    &mut FragmentEngine::new(self, fragment),
-                    id,
-                    input,
-                    block_ctx,
-                );
+                let output = self.layout_block(fragment, input, block_ctx);
 
                 if input.run_mode == taffy::RunMode::PerformLayout {
                     self.link_inline(fragment);
