@@ -96,12 +96,7 @@ fn card(ui: &mut Ui, parent: NodeKey, label: &str, color: Color) -> NodeKey {
                 AutoValue::Auto,
             )),
             Padding(Rect::new_all(StyleUnit::Px(10.0))),
-            Margin(Rect::new_invidiual(
-                px(12.0),
-                px(0.0),
-                px(0.0),
-                px(0.0),
-            )),
+            Margin(Rect::new_invidiual(px(12.0), px(0.0), px(0.0), px(0.0))),
             Fill(Paint::Solid(color)),
             BorderRadius(Rect::new_all(StyleUnit::Px(8.0))),
             FontWeight(parley::FontWeight::SEMI_BOLD),

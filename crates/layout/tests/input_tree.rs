@@ -140,7 +140,7 @@ fn text_styles_resolve_units_and_share_allocations() {
 }
 
 #[test]
-fn mark_dirty_propagates_to_ancestors() {
+fn mark_propagates_to_ancestors() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let left = ui.create(Node::Box, ());
@@ -156,7 +156,7 @@ fn mark_dirty_propagates_to_ancestors() {
     clean(&mut tree, key);
 
     let leaf_key = tree.item_for_node(leaf).unwrap();
-    tree.mark_dirty(leaf_key);
+    tree.mark(leaf_key, LayoutFlags::DIRTY);
 
     assert_eq!(tree.items[leaf_key].flags, LayoutFlags::DIRTY);
     assert_eq!(
@@ -170,7 +170,7 @@ fn mark_dirty_propagates_to_ancestors() {
             .is_empty()
     );
 
-    tree.mark_node_dirty(right);
+    tree.mark_node(right, LayoutFlags::DIRTY);
     assert_eq!(
         tree.items[tree.item_for_node(right).unwrap()].flags,
         LayoutFlags::DIRTY
@@ -178,7 +178,7 @@ fn mark_dirty_propagates_to_ancestors() {
 
     // Box style changes flag only the box, and propagate the same way.
     clean(&mut tree, key);
-    tree.mark_node_box_dirty(leaf);
+    tree.mark_node(leaf, LayoutFlags::BOX_DIRTY);
 
     assert_eq!(tree.items[leaf_key].flags, LayoutFlags::BOX_DIRTY);
     assert_eq!(
@@ -188,13 +188,13 @@ fn mark_dirty_propagates_to_ancestors() {
     assert_eq!(tree.items[key].flags, LayoutFlags::CHILDREN_DIRTY);
 
     // A full change includes the box change.
-    tree.mark_dirty(leaf_key);
+    tree.mark(leaf_key, LayoutFlags::DIRTY);
     assert_eq!(tree.items[leaf_key].flags, LayoutFlags::DIRTY);
     assert!(LayoutFlags::DIRTY.contains(LayoutFlags::BOX_DIRTY));
 
     // Unmapped nodes are ignored.
     let unmapped = ui.create(Node::Box, ());
-    tree.mark_node_dirty(unmapped);
+    tree.mark_node(unmapped, LayoutFlags::DIRTY);
 }
 
 #[test]
@@ -228,7 +228,7 @@ fn partial_update_reconciles_children_and_reuses_clean_subtrees() {
     ui.before(a, b);
     ui.delete(c);
     ui.append(root, d);
-    tree.mark_dirty(key);
+    tree.mark(key, LayoutFlags::DIRTY);
 
     // A mutable property borrow would panic if the builder inspected this branch.
     let borrowed = ui.prop_mut::<DisplayInner>(inner);
@@ -271,7 +271,7 @@ fn changed_text_style_updates_descendants() {
     clean(&mut tree, key);
 
     ui.set_props(root, (bx::FontSize(StyleUnit::Px(24.0)),));
-    tree.mark_dirty(key);
+    tree.mark(key, LayoutFlags::DIRTY);
     build(&mut builder, &ui, root, &mut tree).unwrap();
 
     let item = |node| &tree.items[tree.item_for_node(node).unwrap()];
@@ -305,7 +305,7 @@ fn partial_update_of_descendant_uses_parent_style() {
 
     let child_key = tree.item_for_node(child).unwrap();
     ui.set_props(child, (bx::FontSize(StyleUnit::Em(2.0)),));
-    tree.mark_dirty(child_key);
+    tree.mark(child_key, LayoutFlags::DIRTY);
 
     assert_eq!(build(&mut builder, &ui, child, &mut tree), Some(child_key));
     assert_eq!(tree.items[child_key].text_style.span.font_size, 40.0);
@@ -314,7 +314,7 @@ fn partial_update_of_descendant_uses_parent_style() {
     clean(&mut tree, key);
     let other_child = ui.create(Node::Text, ());
     ui.append(root, other_child);
-    tree.mark_node_dirty(root);
+    tree.mark_node(root, LayoutFlags::DIRTY);
     assert_eq!(build(&mut builder, &ui, root, &mut tree), Some(key));
 
     let inserted = tree.item_for_node(other_child).unwrap();
@@ -356,7 +356,7 @@ fn rebuilding_a_node_only_updates_its_own_item() {
     clean(&mut tree, key);
 
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
-    tree.mark_node_dirty(interruption);
+    tree.mark_node(interruption, LayoutFlags::DIRTY);
     assert_eq!(
         build(&mut builder, &ui, interruption, &mut tree),
         Some(interruption_key)
