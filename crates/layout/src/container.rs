@@ -4,7 +4,11 @@ use comet_tree::{node::NodeKey, style::StyleProp};
 use taffy::LayoutPartialTree;
 
 use crate::{
-    fragment::{FragmentKey, adapter::FragmentEngine, engine::node_id},
+    fragment::{
+        FragmentKey,
+        adapter::{Child, FragmentEngine},
+        engine::node_id,
+    },
     input::LayoutInputKey,
     style::geometry::StyleUnit,
     taffy::{conv, style::Style},
@@ -44,8 +48,8 @@ impl ContainerContext<'_, '_> {
         self.engine.fragment()
     }
 
-    /// Box fragment of a direct child.
-    fn child(&self, index: usize) -> FragmentKey {
+    /// Box fragment and state of a direct child.
+    fn child(&self, index: usize) -> Child {
         self.engine.children()[index]
     }
 
@@ -73,12 +77,12 @@ impl ContainerContext<'_, '_> {
     }
 
     pub fn child_style(&self, index: usize) -> &Style {
-        self.engine.fragments.style(self.child(index))
+        &self.engine.fragments.states[self.child(index).state].style
     }
 
     /// The source node of a direct child box.
     pub fn child_node(&self, index: usize) -> NodeKey {
-        self.engine.tree.items[self.item(self.child(index))].node
+        self.engine.tree.items[self.item(self.child(index).fragment)].node
     }
 
     /// Read a property on the child's source node. This does not inherit
@@ -95,7 +99,7 @@ impl ContainerContext<'_, '_> {
 
     /// Resolve an item's custom length using its computed font size.
     pub fn resolve_child_length(&self, index: usize, value: StyleUnit) -> taffy::LengthPercentage {
-        self.resolve_item_length(self.item(self.child(index)), value)
+        self.resolve_item_length(self.item(self.child(index).fragment), value)
     }
 
     fn resolve_item_length(
@@ -121,14 +125,14 @@ impl ContainerContext<'_, '_> {
         // Block children position the out-of-flow boxes they contain while
         // laying out, since their IDs belong to Comet's tree rather than the
         // custom algorithm's local adapter.
-        let key = node_id(self.child(index));
+        let key = node_id(self.child(index).state);
         self.engine.compute_child_layout(key, input)
     }
 
     /// Set the direct child's box, including padding, border and margin metrics.
     /// Measure it with matching known dimensions first so its contents fit.
     pub fn set_child_layout(&mut self, index: usize, layout: taffy::Layout) {
-        let key = node_id(self.child(index));
+        let key = node_id(self.child(index).state);
         self.engine.set_unrounded_layout(key, &layout);
     }
 }

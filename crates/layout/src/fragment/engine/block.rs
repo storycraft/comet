@@ -4,7 +4,7 @@
 
 use taffy::style::CoreStyle;
 
-use super::{Engine, FragmentEngine, FragmentKey, Mode, fragment_of, node_id};
+use super::{Engine, FragmentEngine, FragmentKey, Mode, StateKey, node_id, state_of};
 use crate::{
     container::ContainerContext,
     fragment::tree::FragmentTree,
@@ -19,9 +19,13 @@ impl Engine<'_> {
         fragment: FragmentKey,
         available: taffy::Size<taffy::AvailableSpace>,
     ) {
+        let Some(state) = self.fragments.items[fragment].item.state() else {
+            return;
+        };
+
         taffy::compute_root_layout(
-            &mut FragmentEngine::new(self, fragment),
-            node_id(fragment),
+            &mut FragmentEngine::new(self, fragment, state),
+            node_id(state),
             available,
         );
         // The root positioning pass places the remaining out-of-flow boxes
@@ -51,11 +55,12 @@ impl Engine<'_> {
     pub(super) fn layout_block(
         &mut self,
         fragment: FragmentKey,
+        state: StateKey,
         input: taffy::LayoutInput,
         block_ctx: Option<&mut taffy::BlockContext<'_>>,
     ) -> taffy::LayoutOutput {
-        let id = node_id(fragment);
-        let mut engine = FragmentEngine::new(self, fragment);
+        let id = node_id(state);
+        let mut engine = FragmentEngine::new(self, fragment, state);
         let mut output = taffy::compute_block_layout(&mut engine, id, input, block_ctx);
 
         if input.run_mode == taffy::RunMode::PerformLayout {
@@ -85,7 +90,10 @@ impl Engine<'_> {
         };
 
         for &id in &containing_state.hoisted {
-            let hoisted = fragment_of(id);
+            let Some(hoisted_state) = states.get(state_of(id)) else {
+                continue;
+            };
+            let hoisted = hoisted_state.fragment;
             let (mut x, mut y) = (0.0, 0.0);
             let mut ancestor = items.parent(hoisted);
 
@@ -103,10 +111,7 @@ impl Engine<'_> {
                 continue;
             }
 
-            let Some(state) = items[hoisted].item.state().and_then(|key| states.get(key)) else {
-                continue;
-            };
-            let location = state.layout.location;
+            let location = hoisted_state.layout.location;
             items[hoisted].layout.location =
                 Point::new(f64::from(location.x) - x, f64::from(location.y) - y);
         }
@@ -128,6 +133,7 @@ impl Engine<'_> {
     pub(super) fn layout_container(
         &mut self,
         fragment: FragmentKey,
+        state: StateKey,
         input: taffy::LayoutInput,
     ) -> taffy::LayoutOutput {
         let ui = self.ui;
@@ -139,7 +145,7 @@ impl Engine<'_> {
         };
 
         let mut context = ContainerContext {
-            engine: FragmentEngine::new(self, fragment),
+            engine: FragmentEngine::new(self, fragment, state),
         };
 
         algorithm.layout(&mut context, input)

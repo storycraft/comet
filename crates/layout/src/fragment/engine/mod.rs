@@ -17,8 +17,8 @@ use rustc_hash::FxHashSet;
 use slotmap::{Key, KeyData};
 
 use super::{
-    FragmentItem, FragmentKey,
-    adapter::FragmentEngine,
+    FragmentItem, FragmentKey, StateKey,
+    adapter::{Child, FragmentEngine},
     state::{Mode, NodeState},
     tree::FragmentTree,
 };
@@ -28,13 +28,13 @@ use crate::{
     taffy::style::{self, Style},
 };
 
-/// The Taffy node of a retained fragment.
-pub(crate) fn node_id(fragment: FragmentKey) -> taffy::NodeId {
-    taffy::NodeId::new(fragment.data().as_ffi())
+/// The Taffy node of a box or anonymous block, identified by its state.
+pub(crate) fn node_id(state: StateKey) -> taffy::NodeId {
+    taffy::NodeId::new(state.data().as_ffi())
 }
 
-/// The retained fragment of a Taffy node.
-pub(crate) fn fragment_of(id: taffy::NodeId) -> FragmentKey {
+/// The layout state of a Taffy node.
+pub(crate) fn state_of(id: taffy::NodeId) -> StateKey {
     KeyData::from_ffi(id.into()).into()
 }
 
@@ -50,7 +50,7 @@ pub(crate) struct Scratch {
     created: FxHashSet<FragmentKey>,
     /// Stack of the direct children of fragments being laid out, shared by
     /// nested [`FragmentEngine`]s.
-    pub(super) children: Vec<FragmentKey>,
+    pub(super) children: Vec<Child>,
     inline: inline::Scratch,
 }
 
@@ -290,17 +290,22 @@ impl Engine<'_> {
         input: taffy::LayoutInput,
         block_ctx: Option<&mut taffy::BlockContext<'_>>,
     ) -> taffy::LayoutOutput {
-        let fragment = fragment_of(id);
+        let state = state_of(id);
 
-        let Some(mode) = self.fragments.get_state(fragment).map(|state| state.mode) else {
+        let Some((fragment, mode)) = self
+            .fragments
+            .states
+            .get(state)
+            .map(|state| (state.fragment, state.mode))
+        else {
             return taffy::LayoutOutput::HIDDEN;
         };
 
         match mode {
             Mode::Inline | Mode::Run { .. } => self.layout_lines(fragment, input),
-            Mode::Block => self.layout_block(fragment, input, block_ctx),
+            Mode::Block => self.layout_block(fragment, state, input, block_ctx),
             Mode::MixedInline => {
-                let output = self.layout_block(fragment, input, block_ctx);
+                let output = self.layout_block(fragment, state, input, block_ctx);
 
                 if input.run_mode == taffy::RunMode::PerformLayout {
                     self.link_inline(fragment);
@@ -308,7 +313,7 @@ impl Engine<'_> {
 
                 output
             }
-            Mode::Container => self.layout_container(fragment, input),
+            Mode::Container => self.layout_container(fragment, state, input),
             Mode::Leaf => self.layout_leaf(fragment, input),
         }
     }
