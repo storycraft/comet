@@ -176,6 +176,22 @@ fn mark_dirty_propagates_to_ancestors() {
         LayoutFlags::DIRTY
     );
 
+    // Box style changes flag only the box, and propagate the same way.
+    clean(&mut tree, key);
+    tree.mark_node_box_dirty(leaf);
+
+    assert_eq!(tree.items[leaf_key].flags, LayoutFlags::BOX_DIRTY);
+    assert_eq!(
+        tree.items[tree.item_for_node(left).unwrap()].flags,
+        LayoutFlags::CHILDREN_DIRTY
+    );
+    assert_eq!(tree.items[key].flags, LayoutFlags::CHILDREN_DIRTY);
+
+    // A full change includes the box change.
+    tree.mark_dirty(leaf_key);
+    assert_eq!(tree.items[leaf_key].flags, LayoutFlags::DIRTY);
+    assert!(LayoutFlags::DIRTY.contains(LayoutFlags::BOX_DIRTY));
+
     // Unmapped nodes are ignored.
     let unmapped = ui.create(Node::Box, ());
     tree.mark_node_dirty(unmapped);
@@ -423,6 +439,45 @@ fn force_re_resolves_and_flags_clean_subtrees() {
     for item in tree.items.descendants(key) {
         assert_eq!(tree.items[item].flags, LayoutFlags::all());
     }
+
+    // Forcing again with the same root font size and viewport resolves equal
+    // items, so only their boxes are laid out again.
+    clean(&mut tree, key);
+    builder.build(
+        &ui,
+        &mut tree,
+        BuildRequest::new(root, 20.0, viewport).with_force(true),
+    );
+
+    for item in tree.items.descendants(key) {
+        assert_eq!(
+            tree.items[item].flags,
+            LayoutFlags::BOX_DIRTY | LayoutFlags::CHILDREN_DIRTY
+        );
+    }
+
+    // Only items whose text style resolves differently are fully dirty.
+    clean(&mut tree, key);
+    let wider = Size::new(500.0, 600.0);
+    builder.build(
+        &ui,
+        &mut tree,
+        BuildRequest::new(root, 20.0, wider).with_force(true),
+    );
+
+    assert_eq!(
+        tree.items[key].flags,
+        LayoutFlags::BOX_DIRTY | LayoutFlags::CHILDREN_DIRTY
+    );
+    assert_eq!(
+        tree.items[child_key].flags,
+        LayoutFlags::BOX_DIRTY | LayoutFlags::CHILDREN_DIRTY
+    );
+    assert_eq!(
+        tree.items[text_key].flags,
+        LayoutFlags::DIRTY | LayoutFlags::CHILDREN_DIRTY
+    );
+    assert_eq!(tree.items[text_key].text_style.span.letter_spacing, 5.0);
 
     // Force does not leak into the next build.
     clean(&mut tree, key);

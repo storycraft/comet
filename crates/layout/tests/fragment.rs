@@ -8,8 +8,8 @@ use comet_layout::{
     style::{
         LayoutConstraint, bx,
         geometry::{AutoValue, Point, Rect, Size, StyleUnit},
-        taffy::Position,
         parley::Alignment as TextAlign,
+        taffy::Position,
     },
 };
 use comet_tree::{
@@ -37,9 +37,23 @@ impl Fixture {
     }
 
     fn build(&mut self, ui: &Ui, node: NodeKey) -> (LayoutInputKey, FragmentKey) {
+        self.build_with(ui, node, VIEWPORT, false)
+    }
+
+    fn build_with(
+        &mut self,
+        ui: &Ui,
+        node: NodeKey,
+        viewport: Size<f64>,
+        force: bool,
+    ) -> (LayoutInputKey, FragmentKey) {
         let root = self
             .inputs
-            .build(ui, &mut self.tree, BuildRequest::new(node, 16.0, VIEWPORT))
+            .build(
+                ui,
+                &mut self.tree,
+                BuildRequest::new(node, 16.0, viewport).with_force(force),
+            )
             .unwrap();
         let fragment = self
             .builder
@@ -48,11 +62,22 @@ impl Fixture {
                 &self.tree,
                 root,
                 &mut self.fragments,
-                &LayoutConstraint::new_root(VIEWPORT, 16.0),
+                &LayoutConstraint::new_root(viewport, 16.0),
             )
             .unwrap();
 
         (root, fragment)
+    }
+
+    fn box_of(&self, node: NodeKey) -> FragmentKey {
+        self.fragments
+            .box_fragment(self.tree.item_for_node(node).unwrap())
+            .unwrap()
+    }
+
+    /// The source text of the inline layout owned by a fragment.
+    fn shaped_text(&self, key: FragmentKey) -> String {
+        self.fragments.inline_layout(key).unwrap().text.clone()
     }
 
     fn children(&self, key: FragmentKey) -> Vec<FragmentKey> {
@@ -801,7 +826,10 @@ fn absolute_boxes_are_positioned_by_their_positioned_parent() {
         .unwrap();
     let layout = f.fragments.items[abs_fragment].layout;
 
-    assert_eq!(f.fragments.items.parent(abs_fragment), Some(wrapper_fragment));
+    assert_eq!(
+        f.fragments.items.parent(abs_fragment),
+        Some(wrapper_fragment)
+    );
     // `right: 0` resolves against the 100px wrapper, not the 400px root.
     assert_eq!(layout.location, Point::new(90.0, 5.0));
     assert_eq!(layout.size, Size::new(10.0, 10.0));
@@ -848,7 +876,10 @@ fn absolute_boxes_hoisted_past_static_parents_stay_parent_relative() {
         .box_fragment(f.tree.item_for_node(abs).unwrap())
         .unwrap();
 
-    assert_eq!(f.fragments.items.parent(abs_fragment), Some(wrapper_fragment));
+    assert_eq!(
+        f.fragments.items.parent(abs_fragment),
+        Some(wrapper_fragment)
+    );
     assert_eq!(
         f.fragments.items[wrapper_fragment].layout.location,
         Point::new(0.0, 30.0)
@@ -867,4 +898,151 @@ fn absolute_boxes_hoisted_past_static_parents_stay_parent_relative() {
         f.fragments.items[abs_fragment].layout.location,
         Point::new(7.0, -25.0)
     );
+}
+
+fn atomic(ui: &mut Ui, width: f64) -> NodeKey {
+    ui.create(
+        Node::Box,
+        (
+            bx::DisplayOuter::Inline,
+            bx::DisplayInner::FlowRoot,
+            fixed_size(width, 10.0),
+        ),
+    )
+}
+
+// Box dirty tests edit text without marking it: stale shaped text shows that
+// the content was not shaped again, while geometry still follows the box.
+
+#[test]
+fn box_style_changes_keep_shaped_text() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let paragraph = ui.create(Node::Box, ());
+    let content = text(&mut ui, "hello");
+    ui.append(root, paragraph);
+    ui.append(paragraph, content);
+
+    let mut f = Fixture::new();
+    let (input_root, _) = f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+
+    ui.set_props(content, (Text("changed".into()),));
+    ui.set_props(
+        paragraph,
+        (bx::Padding(Rect::new_all(StyleUnit::Px(10.0))),),
+    );
+    f.tree.mark_node_box_dirty(paragraph);
+    f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+
+    let paragraph_fragment = f.box_of(paragraph);
+    let line = f.children(paragraph_fragment)[0];
+
+    assert_eq!(f.shaped_text(paragraph_fragment), "hello");
+    assert_eq!(
+        f.fragments.items[line].layout.location,
+        Point::new(10.0, 10.0)
+    );
+
+    // Content changes shape the text again.
+    f.tree.mark_node_dirty(content);
+    f.build(&ui, root);
+
+    assert_eq!(f.shaped_text(paragraph_fragment), "changed");
+}
+
+#[test]
+fn atomic_inline_box_changes_keep_the_paragraph_shaped() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let before = text(&mut ui, "before ");
+    let badge = atomic(&mut ui, 10.0);
+    let after = text(&mut ui, " after");
+    ui.append(root, before);
+    ui.append(root, badge);
+    ui.append(root, after);
+
+    let mut f = Fixture::new();
+    let (input_root, root_fragment) = f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+    let shaped = f.shaped_text(root_fragment);
+
+    ui.set_props(before, (Text("edited ".into()),));
+    ui.set_props(badge, (fixed_size(30.0, 10.0),));
+    f.tree.mark_node_box_dirty(badge);
+    f.build(&ui, root);
+
+    assert_eq!(f.shaped_text(root_fragment), shaped);
+    assert_eq!(
+        f.fragments.items[f.box_of(badge)].layout.size,
+        Size::new(30.0, 10.0)
+    );
+    assert_eq!(
+        f.fragments
+            .items
+            .parent(f.box_of(badge))
+            .map(|key| f.fragments.items[key].item.clone()),
+        Some(FragmentItem::Line { line: 0 })
+    );
+}
+
+#[test]
+fn atomic_inline_box_changes_lay_out_only_their_run() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let first = text(&mut ui, "first");
+    let block = sized_block(&mut ui, 20.0);
+    let second = text(&mut ui, "second ");
+    let badge = atomic(&mut ui, 10.0);
+    ui.append(root, first);
+    ui.append(root, block);
+    ui.append(root, second);
+    ui.append(root, badge);
+
+    let mut f = Fixture::new();
+    let (input_root, root_fragment) = f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+
+    let runs = f.children(root_fragment);
+    let first_lines = f.children(runs[0]);
+    let shaped = f.shaped_text(runs[2]);
+
+    ui.set_props(second, (Text("edited ".into()),));
+    ui.set_props(badge, (fixed_size(30.0, 10.0),));
+    f.tree.mark_node_box_dirty(badge);
+    f.build(&ui, root);
+
+    // The run is laid out again without shaping; the other run is untouched.
+    assert_eq!(f.children(root_fragment), runs);
+    assert_eq!(f.children(runs[0]), first_lines);
+    assert_eq!(f.shaped_text(runs[2]), shaped);
+    assert_eq!(
+        f.fragments.items[f.box_of(badge)].layout.size,
+        Size::new(30.0, 10.0)
+    );
+}
+
+#[test]
+fn forced_builds_break_lines_again_without_shaping() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let content = text(&mut ui, "several words that wrap at narrow widths");
+    ui.append(root, content);
+
+    let mut f = Fixture::new();
+    let (input_root, root_fragment) = f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+    let shaped = f.shaped_text(root_fragment);
+    assert_eq!(f.children(root_fragment).len(), 1);
+
+    // A viewport change re-resolves every item, but equal text styles keep
+    // the shaped text while lines follow the new width.
+    ui.set_props(content, (Text("edited".into()),));
+    f.build_with(&ui, root, Size::new(80.0, 600.0), true);
+    f.tree.clear_flags(input_root);
+
+    assert_eq!(f.shaped_text(root_fragment), shaped);
+    assert!(f.children(root_fragment).len() > 1);
+    assert_eq!(f.fragments.items[root_fragment].layout.size.width, 80.0);
 }

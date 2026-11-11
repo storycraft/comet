@@ -17,6 +17,19 @@ impl Engine<'_> {
         InlineEvents::new(self.tree, key).any(|op| matches!(op, Op::Block(_)))
     }
 
+    /// Whether an item in the inline content of an item changed in a way that
+    /// requires shaping again. Box style changes of atomic inlines and flags
+    /// only propagated from descendants keep the shaped text: atomic inline
+    /// metrics are updated without shaping.
+    pub(in crate::fragment::engine) fn inline_content_dirty(&self, key: LayoutInputKey) -> bool {
+        InlineEvents::new(self.tree, key).any(|op| match op {
+            Op::Push(key) | Op::Text(key) | Op::Box(key) | Op::Empty(key) => {
+                self.tree.items[key].flags.contains(LayoutFlags::DIRTY)
+            }
+            Op::Block(_) | Op::Pop => false,
+        })
+    }
+
     /// Attach the anonymous blocks and block boxes of mixed inline content to
     /// the owner's box, in flow order.
     ///
@@ -31,6 +44,10 @@ impl Engine<'_> {
     ) {
         let tree = self.tree;
         let ui = self.ui;
+        // Content changes shape a run again; other flags, such as box style
+        // changes of atomic inlines, only lay it out again.
+        let dirty =
+            |key: LayoutInputKey| force || tree.items[key].flags.contains(LayoutFlags::DIRTY);
         let flagged = |key: LayoutInputKey| force || !tree.items[key].flags.is_empty();
 
         let mut runs: Vec<FragmentKey> = self
@@ -49,12 +66,13 @@ impl Engine<'_> {
             after: None,
             content: false,
             dirty: owner_dirty,
+            flagged: owner_dirty,
         };
 
         for op in InlineEvents::new(tree, owner) {
             match op {
                 Op::Push(key) => {
-                    run.dirty |= flagged(key);
+                    run.mark(dirty(key), flagged(key));
                     open.push(key);
                 }
                 Op::Pop => {
@@ -64,11 +82,11 @@ impl Engine<'_> {
                     run.content |= ui
                         .prop::<Text>(tree.items[key].node)
                         .is_some_and(|text| !text.0.is_empty());
-                    run.dirty |= flagged(key);
+                    run.mark(dirty(key), flagged(key));
                 }
                 Op::Box(key) | Op::Empty(key) => {
                     run.content = true;
-                    run.dirty |= flagged(key);
+                    run.mark(dirty(key), flagged(key));
                 }
                 Op::Block(key) => {
                     if run.content {
@@ -78,10 +96,12 @@ impl Engine<'_> {
                     let block = self.ensure_box(key);
                     self.fragments.items.append(fragment, block);
 
+                    let dirty = owner_dirty || open.iter().any(|&key| dirty(key));
                     run = Run {
                         after: Some(key),
                         content: false,
-                        dirty: owner_dirty || open.iter().any(|&key| flagged(key)),
+                        dirty,
+                        flagged: dirty,
                     };
                 }
             }
@@ -113,6 +133,10 @@ impl Engine<'_> {
                     if let Some(inline) = self.fragments.inline_layouts.get_mut(anonymous) {
                         inline.shaped = false;
                     }
+                } else if run.flagged {
+                    // Atomic inline sizes may change; their metrics are
+                    // updated when the run is laid out again.
+                    state.invalidate();
                 }
 
                 anonymous
@@ -145,4 +169,13 @@ struct Run {
     content: bool,
     /// Whether the run must be shaped again.
     dirty: bool,
+    /// Whether the run must be laid out again.
+    flagged: bool,
+}
+
+impl Run {
+    fn mark(&mut self, dirty: bool, flagged: bool) {
+        self.dirty |= dirty;
+        self.flagged |= dirty || flagged;
+    }
 }

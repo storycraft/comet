@@ -182,15 +182,19 @@ impl Engine<'_> {
     /// Boxes created in this build are already resolved. The style of a box
     /// is kept when only its descendants are flagged, but its mode is not:
     /// children changing kind only flag their parent's descendants.
+    ///
+    /// Box style changes alone keep shaped text and child fragments. Inline
+    /// content is shaped again only when an item in it is [`LayoutFlags::DIRTY`].
     fn invalidate_box(&mut self, key: LayoutInputKey, flags: LayoutFlags, force: bool) {
         let fragment = self.ensure_box(key);
         let created = self.scratch.created.contains(&fragment);
+        let box_dirty = force || flags.contains(LayoutFlags::BOX_DIRTY);
         let dirty = force || flags.contains(LayoutFlags::DIRTY);
         let previous = self.fragments.states[fragment].mode;
 
         if !created {
             let mode = self.mode(key);
-            let style = dirty.then(|| self.resolve_style(key));
+            let style = box_dirty.then(|| self.resolve_style(key));
 
             let state = &mut self.fragments.states[fragment];
             state.mode = mode;
@@ -208,7 +212,9 @@ impl Engine<'_> {
             Mode::Inline => {
                 self.release_children(fragment);
 
-                if let Some(inline) = self.fragments.inline_layouts.get_mut(fragment) {
+                if (dirty || self.inline_content_dirty(key))
+                    && let Some(inline) = self.fragments.inline_layouts.get_mut(fragment)
+                {
                     inline.shaped = false;
                 }
             }

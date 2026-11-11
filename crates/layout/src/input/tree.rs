@@ -34,11 +34,24 @@ impl LayoutInputTree {
     /// Mark the parent for insertions, and both parents when moving a source node.
     /// Stale keys are ignored.
     pub fn mark_dirty(&mut self, key: LayoutInputKey) {
+        self.mark(key, LayoutFlags::DIRTY);
+    }
+
+    /// Flag only the box style of this item as changed, and propagate
+    /// descendant dirtiness to its ancestors. Its shaped text and child
+    /// fragments are kept; use [`Self::mark_dirty`] when its content, child
+    /// list or text style changed. Stale keys are ignored.
+    pub fn mark_box_dirty(&mut self, key: LayoutInputKey) {
+        self.mark(key, LayoutFlags::BOX_DIRTY);
+    }
+
+    /// Insert `flags` into an item and flag its ancestors' descendants.
+    pub(crate) fn mark(&mut self, key: LayoutInputKey, flags: LayoutFlags) {
         let Some(item) = self.items.get_mut(key) else {
             return;
         };
 
-        item.flags.insert(LayoutFlags::DIRTY);
+        item.flags.insert(flags);
 
         let mut ancestor = self.items.parent(key);
 
@@ -82,6 +95,14 @@ impl LayoutInputTree {
     pub fn mark_node_dirty(&mut self, node: NodeKey) {
         if let Some(key) = self.item_for_node(node) {
             self.mark_dirty(key);
+        }
+    }
+
+    /// Flag only the box style of the item generated for a source node, as
+    /// [`Self::mark_box_dirty`]. Unmapped nodes are ignored.
+    pub fn mark_node_box_dirty(&mut self, node: NodeKey) {
+        if let Some(key) = self.item_for_node(node) {
+            self.mark_box_dirty(key);
         }
     }
 

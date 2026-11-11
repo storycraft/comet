@@ -27,10 +27,13 @@ pub struct BuildRequest {
     pub root_font_size: f64,
     /// Viewport size, used for `vw` and `vh`.
     pub viewport: Size<f64>,
-    /// Re-resolve the whole subtree of `source` and flag every item as if it were
-    /// newly generated, even when its item is clean. Keys are still reused.
-    /// Use it when the root font size or the viewport changes, since every item
-    /// may depend on them.
+    /// Re-resolve the whole subtree of `source`, even when its item is clean.
+    /// Keys are still reused. Use it when the root font size or the viewport
+    /// changes, since every item may depend on them.
+    ///
+    /// Every box is laid out again, but only items whose resolved text style,
+    /// kind or child layout changed are refragmented. Mark content changes,
+    /// such as edited text, as usual.
     pub force: bool,
 }
 
@@ -75,7 +78,9 @@ impl LayoutInputTreeBuilder {
     /// parent item, since the tree no longer mirrors the UI. Build from the UI
     /// root first.
     ///
-    /// Generated items have every [`LayoutFlags`] set. Updating visits flagged
+    /// Generated items have every [`LayoutFlags`] set. Forced builds flag every
+    /// item [`LayoutFlags::BOX_DIRTY`], or [`LayoutFlags::DIRTY`] when its
+    /// resolved text style, kind or child layout changed. Updating visits flagged
     /// items and keeps clean subtrees as they are, unless an inherited text style
     /// changed. Existing items are only marked dirty when their contents or child
     /// lists change. Flags are left for the consumer of the input tree to clear.
@@ -138,7 +143,7 @@ impl LayoutInputTreeBuilder {
 
         if force {
             // Propagate the reset flags to the ancestors.
-            tree.mark_dirty(update.key);
+            tree.mark(update.key, LayoutFlags::empty());
         }
 
         if update.descend {
@@ -258,20 +263,6 @@ impl LayoutInputTreeBuilder {
         };
 
         let item = &mut tree.items[key];
-
-        if self.force {
-            item.kind = kind;
-            item.text_style = text_style;
-            item.child_layout = child_layout;
-            item.flags = LayoutFlags::all();
-
-            return Update {
-                key,
-                descend: true,
-                force: true,
-            };
-        }
-
         let style_changed =
             !Arc::ptr_eq(&item.text_style, &text_style) && item.text_style != text_style;
         let changed = style_changed || item.kind != kind || item.child_layout != child_layout;
@@ -281,6 +272,24 @@ impl LayoutInputTreeBuilder {
         item.text_style = text_style;
         item.kind = kind;
         item.child_layout = child_layout;
+
+        if self.force {
+            // Box styles may depend on the viewport or root font size, so
+            // every box is laid out again. Content is only refragmented when
+            // the resolved item changed.
+            let dirty = if changed {
+                LayoutFlags::DIRTY
+            } else {
+                LayoutFlags::BOX_DIRTY
+            };
+            item.flags = dirty | LayoutFlags::CHILDREN_DIRTY;
+
+            return Update {
+                key,
+                descend: true,
+                force: true,
+            };
+        }
 
         if changed {
             tree.mark_dirty(key);
