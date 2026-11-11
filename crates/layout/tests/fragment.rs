@@ -363,7 +363,7 @@ fn editing_one_run_keeps_the_fragments_of_other_runs() {
     let second_lines = f.children(children[2]);
 
     ui.set_props(after, (Text("after, but longer".into()),));
-    f.tree.mark_node(after, LayoutFlags::DIRTY);
+    f.tree.mark_node(after, LayoutFlags::FULL_DIRTY);
     f.build(&ui, root);
     f.tree.clear_flags(input_root);
 
@@ -374,7 +374,7 @@ fn editing_one_run_keeps_the_fragments_of_other_runs() {
 
     // Removing the block merges the runs into one inline formatting context.
     ui.delete(block);
-    f.tree.mark_node(root, LayoutFlags::DIRTY);
+    f.tree.mark_node(root, LayoutFlags::FULL_DIRTY);
     f.build(&ui, root);
 
     assert_eq!(f.items(root_fragment), vec![FragmentItem::Line { line: 0 }]);
@@ -416,7 +416,7 @@ fn updates_reuse_box_fragments_and_layouts() {
         content,
         (Text("a much longer text that has to wrap over several lines because the viewport is only four hundred pixels wide".into()),),
     );
-    f.tree.mark_node(content, LayoutFlags::DIRTY);
+    f.tree.mark_node(content, LayoutFlags::FULL_DIRTY);
 
     assert_eq!(f.build(&ui, root), (input_root, root_fragment));
     assert_eq!(
@@ -472,7 +472,7 @@ fn block_child_list_changes_reuse_box_fragments_in_order() {
     // Insert in the middle.
     let inserted = sized_block(&mut ui, 10.0);
     ui.before(nodes[2], inserted);
-    f.tree.mark_node(list, LayoutFlags::DIRTY);
+    f.tree.mark_node(list, LayoutFlags::FULL_DIRTY);
     f.build(&ui, root);
     f.tree.clear_flags(input_root);
 
@@ -486,8 +486,8 @@ fn block_child_list_changes_reuse_box_fragments_in_order() {
     // Reorder, and move the last child to another parent.
     ui.prepend(list, nodes[1]);
     ui.append(other, nodes[3]);
-    f.tree.mark_node(list, LayoutFlags::DIRTY);
-    f.tree.mark_node(other, LayoutFlags::DIRTY);
+    f.tree.mark_node(list, LayoutFlags::FULL_DIRTY);
+    f.tree.mark_node(other, LayoutFlags::FULL_DIRTY);
     f.build(&ui, root);
     f.tree.clear_flags(input_root);
 
@@ -502,7 +502,7 @@ fn block_child_list_changes_reuse_box_fragments_in_order() {
 
     // Remove from the middle.
     ui.delete(inserted);
-    f.tree.mark_node(list, LayoutFlags::DIRTY);
+    f.tree.mark_node(list, LayoutFlags::FULL_DIRTY);
     f.build(&ui, root);
 
     assert_eq!(f.children(list_fragment), vec![keys[1], keys[0], keys[2]]);
@@ -524,7 +524,7 @@ fn removed_items_drop_their_fragments() {
     f.tree.clear_flags(input_root);
 
     ui.delete(block);
-    f.tree.mark_node(root, LayoutFlags::DIRTY);
+    f.tree.mark_node(root, LayoutFlags::FULL_DIRTY);
     f.build(&ui, root);
 
     assert!(f.children(root_fragment).is_empty());
@@ -637,7 +637,7 @@ fn fragments_iterate_linked_fragments_of_an_item() {
 
     // Removed items yield nothing.
     ui.delete(span);
-    f.tree.mark_node(root, LayoutFlags::DIRTY);
+    f.tree.mark_node(root, LayoutFlags::FULL_DIRTY);
     f.build(&ui, root);
 
     assert_eq!(f.fragments.fragments(span_key).count(), 0);
@@ -768,7 +768,7 @@ fn text_align_is_inherited_and_updates_descendants() {
 
     // Only the ancestor is marked; the change reaches the inline layout below.
     ui.set_props(root, (bx::TextAlign(TextAlign::Right),));
-    f.tree.mark_node(root, LayoutFlags::DIRTY);
+    f.tree.mark_node(root, LayoutFlags::FULL_DIRTY);
     f.build(&ui, root);
 
     let paragraph_key = f.tree.item_for_node(paragraph).unwrap();
@@ -946,7 +946,7 @@ fn box_style_changes_keep_shaped_text() {
     );
 
     // Content changes shape the text again.
-    f.tree.mark_node(content, LayoutFlags::DIRTY);
+    f.tree.mark_node(content, LayoutFlags::FULL_DIRTY);
     f.build(&ui, root);
 
     assert_eq!(f.shaped_text(paragraph_fragment), "changed");

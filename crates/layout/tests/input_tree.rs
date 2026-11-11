@@ -156,9 +156,9 @@ fn mark_propagates_to_ancestors() {
     clean(&mut tree, key);
 
     let leaf_key = tree.item_for_node(leaf).unwrap();
-    tree.mark(leaf_key, LayoutFlags::DIRTY);
+    tree.mark(leaf_key, LayoutFlags::FULL_DIRTY);
 
-    assert_eq!(tree.items[leaf_key].flags, LayoutFlags::DIRTY);
+    assert_eq!(tree.items[leaf_key].flags, LayoutFlags::FULL_DIRTY);
     assert_eq!(
         tree.items[tree.item_for_node(left).unwrap()].flags,
         LayoutFlags::CHILDREN_DIRTY
@@ -170,10 +170,10 @@ fn mark_propagates_to_ancestors() {
             .is_empty()
     );
 
-    tree.mark_node(right, LayoutFlags::DIRTY);
+    tree.mark_node(right, LayoutFlags::FULL_DIRTY);
     assert_eq!(
         tree.items[tree.item_for_node(right).unwrap()].flags,
-        LayoutFlags::DIRTY
+        LayoutFlags::FULL_DIRTY
     );
 
     // Box style changes flag only the box, and propagate the same way.
@@ -188,13 +188,13 @@ fn mark_propagates_to_ancestors() {
     assert_eq!(tree.items[key].flags, LayoutFlags::CHILDREN_DIRTY);
 
     // A full change includes the box change.
-    tree.mark(leaf_key, LayoutFlags::DIRTY);
-    assert_eq!(tree.items[leaf_key].flags, LayoutFlags::DIRTY);
-    assert!(LayoutFlags::DIRTY.contains(LayoutFlags::BOX_DIRTY));
+    tree.mark(leaf_key, LayoutFlags::FULL_DIRTY);
+    assert_eq!(tree.items[leaf_key].flags, LayoutFlags::FULL_DIRTY);
+    assert!(LayoutFlags::FULL_DIRTY.contains(LayoutFlags::BOX_DIRTY));
 
     // Unmapped nodes are ignored.
     let unmapped = ui.create(Node::Box, ());
-    tree.mark_node(unmapped, LayoutFlags::DIRTY);
+    tree.mark_node(unmapped, LayoutFlags::FULL_DIRTY);
 }
 
 #[test]
@@ -228,7 +228,7 @@ fn partial_update_reconciles_children_and_reuses_clean_subtrees() {
     ui.before(a, b);
     ui.delete(c);
     ui.append(root, d);
-    tree.mark(key, LayoutFlags::DIRTY);
+    tree.mark(key, LayoutFlags::FULL_DIRTY);
 
     // A mutable property borrow would panic if the builder inspected this branch.
     let borrowed = ui.prop_mut::<DisplayInner>(inner);
@@ -249,7 +249,7 @@ fn partial_update_reconciles_children_and_reuses_clean_subtrees() {
     assert!(tree.items[inner_key].flags.is_empty());
     assert_eq!(
         tree.items[key].flags,
-        LayoutFlags::DIRTY | LayoutFlags::CHILDREN_DIRTY
+        LayoutFlags::FULL_DIRTY | LayoutFlags::CHILDREN_DIRTY
     );
 }
 
@@ -271,16 +271,16 @@ fn changed_text_style_updates_descendants() {
     clean(&mut tree, key);
 
     ui.set_props(root, (bx::FontSize(StyleUnit::Px(24.0)),));
-    tree.mark(key, LayoutFlags::DIRTY);
+    tree.mark(key, LayoutFlags::FULL_DIRTY);
     build(&mut builder, &ui, root, &mut tree).unwrap();
 
     let item = |node| &tree.items[tree.item_for_node(node).unwrap()];
 
     assert_eq!(item(text).text_style.span.font_size, 24.0);
-    assert_eq!(item(text).flags, LayoutFlags::DIRTY);
+    assert_eq!(item(text).flags, LayoutFlags::FULL_DIRTY);
     assert_eq!(
         item(child).flags,
-        LayoutFlags::DIRTY | LayoutFlags::CHILDREN_DIRTY
+        LayoutFlags::FULL_DIRTY | LayoutFlags::CHILDREN_DIRTY
     );
     // Its own font size wins, so the resolved style is unchanged and it stays clean.
     assert_eq!(item(fixed).text_style.span.font_size, 10.0);
@@ -305,7 +305,7 @@ fn partial_update_of_descendant_uses_parent_style() {
 
     let child_key = tree.item_for_node(child).unwrap();
     ui.set_props(child, (bx::FontSize(StyleUnit::Em(2.0)),));
-    tree.mark(child_key, LayoutFlags::DIRTY);
+    tree.mark(child_key, LayoutFlags::FULL_DIRTY);
 
     assert_eq!(build(&mut builder, &ui, child, &mut tree), Some(child_key));
     assert_eq!(tree.items[child_key].text_style.span.font_size, 40.0);
@@ -314,7 +314,7 @@ fn partial_update_of_descendant_uses_parent_style() {
     clean(&mut tree, key);
     let other_child = ui.create(Node::Text, ());
     ui.append(root, other_child);
-    tree.mark_node(root, LayoutFlags::DIRTY);
+    tree.mark_node(root, LayoutFlags::FULL_DIRTY);
     assert_eq!(build(&mut builder, &ui, root, &mut tree), Some(key));
 
     let inserted = tree.item_for_node(other_child).unwrap();
@@ -356,7 +356,7 @@ fn rebuilding_a_node_only_updates_its_own_item() {
     clean(&mut tree, key);
 
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
-    tree.mark_node(interruption, LayoutFlags::DIRTY);
+    tree.mark_node(interruption, LayoutFlags::FULL_DIRTY);
     assert_eq!(
         build(&mut builder, &ui, interruption, &mut tree),
         Some(interruption_key)
@@ -380,7 +380,7 @@ fn rebuilding_a_node_only_updates_its_own_item() {
     ui.delete(interruption);
     assert_eq!(build(&mut builder, &ui, interruption, &mut tree), None);
     assert_eq!(tree.item_for_node(interruption), None);
-    assert_eq!(tree.items[span_key].flags, LayoutFlags::DIRTY);
+    assert_eq!(tree.items[span_key].flags, LayoutFlags::FULL_DIRTY);
     assert_eq!(tree.items[paragraph_key].flags, LayoutFlags::CHILDREN_DIRTY);
     assert_fresh(&ui, root, &tree, key);
 }
@@ -475,7 +475,7 @@ fn force_re_resolves_and_flags_clean_subtrees() {
     );
     assert_eq!(
         tree.items[text_key].flags,
-        LayoutFlags::DIRTY | LayoutFlags::CHILDREN_DIRTY
+        LayoutFlags::FULL_DIRTY | LayoutFlags::CHILDREN_DIRTY
     );
     assert_eq!(tree.items[text_key].text_style.span.letter_spacing, 5.0);
 

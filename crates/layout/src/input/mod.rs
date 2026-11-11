@@ -53,7 +53,7 @@ bitflags! {
         /// This item needs refragmentation: its content, child list, kind or
         /// text style changed. Includes [`Self::BOX_DIRTY`], so check
         /// `contains(BOX_DIRTY)` for any change of the box.
-        const DIRTY = 1 << 2 | Self::BOX_DIRTY.bits();
+        const FULL_DIRTY = 1 << 2 | Self::BOX_DIRTY.bits();
     }
 }
 

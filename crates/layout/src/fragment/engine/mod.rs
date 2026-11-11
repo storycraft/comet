@@ -189,7 +189,7 @@ impl Engine<'_> {
         let fragment = self.ensure_box(key);
         let created = self.scratch.created.contains(&fragment);
         let box_dirty = force || flags.contains(LayoutFlags::BOX_DIRTY);
-        let dirty = force || flags.contains(LayoutFlags::DIRTY);
+        let dirty = force || flags.contains(LayoutFlags::FULL_DIRTY);
         let previous = self.fragments.states[fragment].mode;
 
         if !created {

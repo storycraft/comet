@@ -108,7 +108,7 @@ impl LayoutInputTreeBuilder {
                 tree.delete_item(key);
 
                 if let Some(parent) = parent {
-                    tree.mark(parent, LayoutFlags::DIRTY);
+                    tree.mark(parent, LayoutFlags::FULL_DIRTY);
                 }
             }
 
@@ -209,7 +209,7 @@ impl LayoutInputTreeBuilder {
 
                 if existing.is_none() {
                     // Propagate the new item's flags to the ancestors.
-                    tree.mark(update.key, LayoutFlags::DIRTY);
+                    tree.mark(update.key, LayoutFlags::FULL_DIRTY);
                 }
 
                 if update.descend {
@@ -229,7 +229,7 @@ impl LayoutInputTreeBuilder {
         }
 
         if changed {
-            tree.mark(key, LayoutFlags::DIRTY);
+            tree.mark(key, LayoutFlags::FULL_DIRTY);
         }
     }
 
@@ -278,7 +278,7 @@ impl LayoutInputTreeBuilder {
             // every box is laid out again. Content is only refragmented when
             // the resolved item changed.
             let dirty = if changed {
-                LayoutFlags::DIRTY
+                LayoutFlags::FULL_DIRTY
             } else {
                 LayoutFlags::BOX_DIRTY
             };
@@ -292,7 +292,7 @@ impl LayoutInputTreeBuilder {
         }
 
         if changed {
-            tree.mark(key, LayoutFlags::DIRTY);
+            tree.mark(key, LayoutFlags::FULL_DIRTY);
         }
 
         Update {

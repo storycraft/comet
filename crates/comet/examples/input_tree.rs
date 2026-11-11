@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     ui.prop::<Text>(text).ok_or("missing sample text")?;
     ui.set_props(text, (Text("Updated text".into()),));
-    tree.mark_node(text, LayoutFlags::DIRTY);
+    tree.mark_node(text, LayoutFlags::FULL_DIRTY);
 
     let updated = builder
         .build(&ui, &mut tree, request)

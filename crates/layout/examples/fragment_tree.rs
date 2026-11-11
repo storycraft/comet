@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Updated greeting with enough text to wrap over several lines. ".into(),
         ),),
     );
-    inputs.mark_node(greeting, LayoutFlags::DIRTY);
+    inputs.mark_node(greeting, LayoutFlags::FULL_DIRTY);
 
     let updated = fragment_builder
         .build(&ui, &inputs, input_root, &mut fragments, &constraint)
@@ -83,7 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     print_tree(&inputs, &fragments, resized);
 
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
-    inputs.mark_node(interruption, LayoutFlags::DIRTY);
+    inputs.mark_node(interruption, LayoutFlags::FULL_DIRTY);
 
     input_builder
         .build(
