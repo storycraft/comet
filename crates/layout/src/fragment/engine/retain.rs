@@ -10,29 +10,31 @@ impl Engine<'_> {
     /// Whether a fragment is retained: the current box of a live box generating
     /// item, or an anonymous block of a live owner.
     fn is_retained(&self, fragment: FragmentKey) -> bool {
-        if !self.fragments.states.contains_key(fragment) {
+        if self.fragments.get_state(fragment).is_none() {
             return false;
         }
 
         let item = &self.fragments.items[fragment];
 
         match item.item {
-            FragmentItem::Box => {
+            FragmentItem::Box { .. } => {
                 self.tree.items.get(item.source).is_some()
                     && self.is_box(item.source)
                     && self.fragments.first.get(item.source) == Some(&fragment)
             }
-            FragmentItem::AnonymousBlock => self.tree.items.get(item.source).is_some(),
+            FragmentItem::AnonymousBlock { .. } => self.tree.items.get(item.source).is_some(),
             _ => false,
         }
     }
 
     /// Drop the state, inline layout and lookups of a fragment.
     pub fn drop_state(&mut self, fragment: FragmentKey) {
-        self.fragments.states.remove(fragment);
-        self.fragments.inline_layouts.remove(fragment);
+        let item = &self.fragments.items[fragment];
+        let source = item.source;
 
-        let source = self.fragments.items[fragment].source;
+        if let Some(state) = item.item.state() {
+            self.fragments.states.remove(state);
+        }
 
         if self.fragments.first.get(source) == Some(&fragment) {
             self.fragments.first.remove(source);
@@ -86,33 +88,27 @@ impl Engine<'_> {
         self.fragments.items.delete_node(fragment);
     }
 
-    /// Check that retained state matches the fragment tree: every state and
-    /// inline layout belongs to a live retained fragment, and every retained
-    /// fragment below the root has state.
+    /// Check that retained state matches the fragment tree: every state
+    /// belongs to the live fragment it points to, and every retained fragment
+    /// below the root has state.
     #[cfg(debug_assertions)]
     pub fn check(&self) {
-        for (fragment, _) in &self.fragments.states {
-            assert!(
-                self.fragments.items.get(fragment).is_some(),
+        for (key, state) in &self.fragments.states {
+            assert_eq!(
+                self.fragments
+                    .items
+                    .get(state.fragment)
+                    .and_then(|fragment| fragment.item.state()),
+                Some(key),
                 "state of a deleted fragment"
-            );
-        }
-
-        for (fragment, _) in &self.fragments.inline_layouts {
-            assert!(
-                self.fragments.states.contains_key(fragment),
-                "inline layout without state"
             );
         }
 
         if let Some(root) = self.fragments.box_fragment(self.root) {
             for key in self.fragments.items.descendants(root) {
-                if matches!(
-                    self.fragments.items[key].item,
-                    FragmentItem::Box | FragmentItem::AnonymousBlock
-                ) {
+                if self.fragments.items[key].item.state().is_some() {
                     assert!(
-                        self.fragments.states.contains_key(key),
+                        self.fragments.get_state(key).is_some(),
                         "retained fragment without state"
                     );
                 }

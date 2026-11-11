@@ -31,9 +31,13 @@ impl Engine<'_> {
         let source = self.fragments.items[fragment].source;
 
         if source == self.root || self.tree.items[source].kind == LayoutInputKind::AtomicInline {
-            let baseline = self.inline_baseline(fragment);
+            let Some(baseline) = self.inline_baseline(fragment) else {
+                return;
+            };
 
-            self.fragments.states[fragment].baseline = baseline;
+            if let Some(state) = self.fragments.get_state_mut(fragment) {
+                state.baseline = baseline;
+            }
             self.fragments.items[fragment].layout.baseline = Some(baseline as f64);
         }
     }
@@ -72,8 +76,15 @@ impl Engine<'_> {
     /// can run again after every positioning pass.
     fn place_hoisted(&mut self, containing: FragmentKey) {
         let FragmentTree { items, states, .. } = &mut *self.fragments;
+        let Some(containing_state) = items[containing]
+            .item
+            .state()
+            .and_then(|key| states.get(key))
+        else {
+            return;
+        };
 
-        for &id in &states[containing].hoisted {
+        for &id in &containing_state.hoisted {
             let hoisted = fragment_of(id);
             let (mut x, mut y) = (0.0, 0.0);
             let mut ancestor = items.parent(hoisted);
@@ -92,7 +103,10 @@ impl Engine<'_> {
                 continue;
             }
 
-            let location = states[hoisted].layout.location;
+            let Some(state) = items[hoisted].item.state().and_then(|key| states.get(key)) else {
+                continue;
+            };
+            let location = state.layout.location;
             items[hoisted].layout.location =
                 Point::new(f64::from(location.x) - x, f64::from(location.y) - y);
         }
@@ -104,9 +118,9 @@ impl Engine<'_> {
         fragment: FragmentKey,
         input: taffy::LayoutInput,
     ) -> taffy::LayoutOutput {
-        let style = self.fragments.states[fragment].style.clone();
+        let style = self.fragments.style(fragment);
 
-        taffy::compute_leaf_layout(input, &style, |_, _| 0.0, |_, _| taffy::Size::ZERO)
+        taffy::compute_leaf_layout(input, style, |_, _| 0.0, |_, _| taffy::Size::ZERO)
     }
 
     /// Lay out a container with its custom algorithm. Containers without an
@@ -133,10 +147,10 @@ impl Engine<'_> {
 
     /// Last in-flow line baseline, measured from the border-box top.
     fn last_baseline(&self, fragment: FragmentKey) -> Option<f32> {
-        let state = &self.fragments.states[fragment];
+        let state = self.fragments.get_state(fragment)?;
         let bx = state.layout;
 
-        if let Some(inline) = self.fragments.inline_layouts.get(fragment) {
+        if let Some(inline) = state.inline.as_deref() {
             return inline
                 .last_baseline
                 .map(|baseline| bx.border.top + bx.padding.top + baseline);
@@ -151,7 +165,7 @@ impl Engine<'_> {
             .children(fragment)
             .rev()
             .find_map(|child| {
-                let state = self.fragments.states.get(child)?;
+                let state = self.fragments.get_state(child)?;
 
                 if state.style.position() == taffy::Position::Absolute {
                     return None;
@@ -164,16 +178,16 @@ impl Engine<'_> {
 
     /// Baseline relative to the border-box top. The fallback is the bottom
     /// margin edge, which can lie outside the border box.
-    fn inline_baseline(&self, fragment: FragmentKey) -> f32 {
-        let state = &self.fragments.states[fragment];
+    fn inline_baseline(&self, fragment: FragmentKey) -> Option<f32> {
+        let state = self.fragments.get_state(fragment)?;
 
         if state.style.overflow().x == taffy::Overflow::Visible
             && state.style.overflow().y == taffy::Overflow::Visible
             && let Some(baseline) = self.last_baseline(fragment)
         {
-            return baseline;
+            return Some(baseline);
         }
 
-        state.layout.size.height + state.layout.margin.bottom
+        Some(state.layout.size.height + state.layout.margin.bottom)
     }
 }

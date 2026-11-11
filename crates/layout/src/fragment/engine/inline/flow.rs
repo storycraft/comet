@@ -3,7 +3,7 @@
 use comet_tree::node::Text;
 
 use super::{
-    super::{Engine, Fragment, FragmentBox, FragmentItem, FragmentKey, Mode, NodeState},
+    super::{Engine, FragmentItem, FragmentKey, Mode, NodeState},
     events::{InlineEvents, Op},
 };
 use crate::{
@@ -54,7 +54,7 @@ impl Engine<'_> {
             .fragments
             .items
             .children(fragment)
-            .filter(|&child| self.fragments.items[child].item == FragmentItem::AnonymousBlock)
+            .filter(|&child| self.fragments.items[child].item.is_anonymous_block())
             .collect();
         runs.reverse();
         self.release_children(fragment);
@@ -122,15 +122,19 @@ impl Engine<'_> {
     ) {
         let mode = Mode::Run { after: run.after };
 
-        let anonymous = match existing {
+        let reused = existing.filter(|&anonymous| self.fragments.get_state(anonymous).is_some());
+
+        let anonymous = match reused {
             Some(anonymous) => {
-                let state = &mut self.fragments.states[anonymous];
+                let Some(state) = self.fragments.get_state_mut(anonymous) else {
+                    return;
+                };
 
                 if run.dirty || state.mode != mode {
                     state.mode = mode;
                     state.invalidate();
 
-                    if let Some(inline) = self.fragments.inline_layouts.get_mut(anonymous) {
+                    if let Some(inline) = state.inline.as_deref_mut() {
                         inline.shaped = false;
                     }
                 } else if run.flagged {
@@ -143,17 +147,11 @@ impl Engine<'_> {
             }
             None => {
                 let style = style::resolve(self.ui, None, &self.style_constraint(owner));
-                let anonymous = self.fragments.items.insert(Fragment::new(
+                self.fragments.insert_with_state(
                     owner,
-                    FragmentItem::AnonymousBlock,
-                    FragmentBox::default(),
-                ));
-
-                self.fragments
-                    .states
-                    .insert(anonymous, NodeState::new(mode, style));
-
-                anonymous
+                    |state| FragmentItem::AnonymousBlock { state },
+                    NodeState::new(mode, style),
+                )
             }
         };
 

@@ -1,12 +1,12 @@
 //! Converting lines into fragments.
 
 use rustc_hash::FxHashMap;
-use slotmap::{SecondaryMap, SparseSecondaryMap};
+use slotmap::{SecondaryMap, SlotMap};
 
 use super::{super::Engine, Scratch};
 use crate::{
     fragment::{
-        Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, state::NodeState,
+        Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, StateKey, state::NodeState,
         tree::FragmentTree,
     },
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
@@ -27,12 +27,17 @@ impl Engine<'_> {
         } = &mut self.scratch.inline;
         let FragmentTree {
             items,
-            inline_layouts,
             states,
             first,
             ..
         } = &mut *self.fragments;
-        let InlineLayout { layout, boxes, .. } = &inline_layouts[fragment];
+        let Some(InlineLayout { layout, boxes, .. }) = items[fragment]
+            .item
+            .state()
+            .and_then(|key| states.get(key)?.inline.as_deref())
+        else {
+            return;
+        };
 
         let mut emitter = Emitter {
             tree: self.tree,
@@ -73,8 +78,8 @@ impl Engine<'_> {
 
         while let Some(key) = pending.pop() {
             match items[key].item {
-                FragmentItem::Box => continue,
-                FragmentItem::AnonymousBlock | FragmentItem::Line { .. } => {}
+                FragmentItem::Box { .. } => continue,
+                FragmentItem::AnonymousBlock { .. } | FragmentItem::Line { .. } => {}
                 FragmentItem::Inline { .. } | FragmentItem::GlyphRun { .. } => {
                     let source = items[key].source;
                     items[key].link = Default::default();
@@ -84,7 +89,9 @@ impl Engine<'_> {
                         items[key].link.prev = Some(prev);
                     } else if !first.get(source).is_some_and(|&first| {
                         // A text item generating a box keeps its box first.
-                        states.contains_key(first) && items[first].item == FragmentItem::Box
+                        items.get(first).is_some_and(|first| {
+                            matches!(first.item, FragmentItem::Box { state } if states.contains_key(state))
+                        })
                     }) {
                         first.insert(source, key);
                     }
@@ -108,7 +115,7 @@ struct Emitter<'a> {
     /// Content box offset from the border box.
     origin: taffy::Point<f32>,
     items: &'a mut SlotTree<FragmentKey, Fragment>,
-    states: &'a SparseSecondaryMap<FragmentKey, NodeState>,
+    states: &'a SlotMap<StateKey, NodeState>,
     first: &'a SecondaryMap<LayoutInputKey, FragmentKey>,
     /// Items of the inline boxes, by inline box id.
     boxes: &'a [LayoutInputKey],
@@ -207,7 +214,11 @@ impl Emitter<'_> {
 
         let parent = self.parent(child);
         let atomic = self.first[child];
-        let margin = self.states[atomic].layout.margin;
+        let margin = self.items[atomic]
+            .item
+            .state()
+            .and_then(|key| self.states.get(key))
+            .map_or(taffy::Rect::ZERO, |state| state.layout.margin);
 
         self.items[atomic].layout.location = Point::new(
             (bx.x + margin.left - left) as f64,

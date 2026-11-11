@@ -1,3 +1,4 @@
+use super::{FragmentKey, InlineLayout};
 use crate::{input::LayoutInputKey, taffy::style::Style};
 
 /// How a box lays out its content.
@@ -21,6 +22,8 @@ pub(crate) enum Mode {
 
 /// Retained layout state of a box or anonymous block fragment.
 pub(crate) struct NodeState {
+    /// Fragment owning this state, set when the fragment is inserted.
+    pub fragment: FragmentKey,
     pub mode: Mode,
     pub style: Style,
     /// Unrounded layout of the latest final layout pass.
@@ -31,11 +34,15 @@ pub(crate) struct NodeState {
     /// Baseline relative to the border box top, for atomic inlines and roots.
     pub baseline: f32,
     pub hoisted: Vec<taffy::NodeId>,
+    /// Shaped text of a fragment owning lines: the box of an inline
+    /// formatting context, or an anonymous block.
+    pub inline: Option<Box<InlineLayout>>,
 }
 
 impl NodeState {
     pub fn new(mode: Mode, style: Style) -> Self {
         Self {
+            fragment: FragmentKey::default(),
             mode,
             style,
             layout: Default::default(),
@@ -43,6 +50,7 @@ impl NodeState {
             final_layout_valid: false,
             baseline: 0.0,
             hoisted: Vec::new(),
+            inline: None,
         }
     }
 

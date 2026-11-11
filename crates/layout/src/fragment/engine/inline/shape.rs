@@ -19,15 +19,15 @@ impl Engine<'_> {
         let tree = self.tree;
         let ui = self.ui;
         let owner = self.fragments.items[fragment].source;
-        let after = match self.fragments.states[fragment].mode {
-            Mode::Run { after } => after,
-            _ => None,
+        let after = match self.fragments.get_state(fragment).map(|state| state.mode) {
+            Some(Mode::Run { after }) => after,
+            Some(_) => None,
+            None => return,
         };
 
         let mut boxes = self
             .fragments
-            .inline_layouts
-            .get_mut(fragment)
+            .get_inline_mut(fragment)
             .map(|inline| std::mem::take(&mut inline.boxes))
             .unwrap_or_default();
         boxes.clear();
@@ -103,24 +103,25 @@ impl Engine<'_> {
             builder.pop_style_span();
         }
 
-        if let Some(inline) = self.fragments.inline_layouts.get_mut(fragment) {
+        let Some(state) = self.fragments.get_state_mut(fragment) else {
+            return;
+        };
+
+        if let Some(inline) = state.inline.as_deref_mut() {
             inline.text = builder.build_into(&mut inline.layout);
             inline.boxes = boxes;
             inline.shaped = true;
         } else {
             let (layout, text) = builder.build();
 
-            self.fragments.inline_layouts.insert(
-                fragment,
-                InlineLayout {
-                    text,
-                    layout,
-                    boxes,
-                    shaped: true,
-                    first_baseline: None,
-                    last_baseline: None,
-                },
-            );
+            state.inline = Some(Box::new(InlineLayout {
+                text,
+                layout,
+                boxes,
+                shaped: true,
+                first_baseline: None,
+                last_baseline: None,
+            }));
         }
     }
 }

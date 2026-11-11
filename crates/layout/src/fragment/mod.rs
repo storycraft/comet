@@ -21,7 +21,12 @@ use crate::{
     style::geometry::{Point, Rect, Size},
 };
 
-new_key_type! { pub struct FragmentKey; }
+new_key_type! {
+    pub struct FragmentKey;
+    /// Retained layout state of a box or anonymous block fragment, stored in
+    /// its [`FragmentTree`](tree::FragmentTree).
+    pub struct StateKey;
+}
 
 /// Source text and its shaped layout, retained together for rendering.
 ///
@@ -53,16 +58,34 @@ pub struct FragmentLink {
 pub enum FragmentItem {
     /// Box of a block level or atomic inline item. Box fragments keep their keys
     /// across rebuilds.
-    Box,
+    Box { state: StateKey },
     /// Block containing one run of inline content of `source`, between the
     /// block boxes interrupting it. It holds the run's line boxes.
-    AnonymousBlock,
+    AnonymousBlock { state: StateKey },
     /// Line box of the inline layout owned by its parent fragment.
     Line { line: usize },
     /// Index into the owning inline layout's positioned line items.
     GlyphRun { line: usize, item: usize },
     /// Part of an inline element placed on one line.
     Inline { line: usize },
+}
+
+impl FragmentItem {
+    /// The layout state of a box or anonymous block.
+    pub const fn state(&self) -> Option<StateKey> {
+        match *self {
+            Self::Box { state } | Self::AnonymousBlock { state } => Some(state),
+            _ => None,
+        }
+    }
+
+    pub const fn is_box(&self) -> bool {
+        matches!(self, Self::Box { .. })
+    }
+
+    pub const fn is_anonymous_block(&self) -> bool {
+        matches!(self, Self::AnonymousBlock { .. })
+    }
 }
 
 #[derive(Debug, Clone)]

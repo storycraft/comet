@@ -62,7 +62,7 @@ impl CometPainter {
             let box_visible = || box_bounds(fragment, rect).overlaps(viewport);
 
             match fragment.item {
-                FragmentItem::Box => {
+                FragmentItem::Box { .. } => {
                     // A standalone text root also owns a layout box. Its paint
                     // belongs to its glyph fragments, not to both representations.
                     if !inputs
@@ -80,7 +80,7 @@ impl CometPainter {
                     }
                 }
                 // Anonymous blocks only position their lines.
-                FragmentItem::AnonymousBlock => {}
+                FragmentItem::AnonymousBlock { .. } => {}
                 FragmentItem::Line { .. } => inline_owner = Some(key),
                 FragmentItem::GlyphRun { line, item } => {
                     if box_visible() {

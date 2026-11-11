@@ -130,14 +130,14 @@ fn block_children_split_inline_content_into_anonymous_blocks() {
     let mut f = Fixture::new();
     let (_, root_fragment) = f.build(&ui, root);
 
-    assert_eq!(
-        f.items(root_fragment),
-        vec![
-            FragmentItem::AnonymousBlock,
-            FragmentItem::Box,
-            FragmentItem::AnonymousBlock,
+    assert!(matches!(
+        f.items(root_fragment).as_slice(),
+        [
+            FragmentItem::AnonymousBlock { .. },
+            FragmentItem::Box { .. },
+            FragmentItem::AnonymousBlock { .. },
         ]
-    );
+    ));
 
     let children = f.children(root_fragment);
     let first = f.fragments.items[children[0]].layout;
@@ -182,14 +182,14 @@ fn leading_and_trailing_blocks_add_no_anonymous_blocks() {
     let mut f = Fixture::new();
     let (_, root_fragment) = f.build(&ui, root);
 
-    assert_eq!(
-        f.items(root_fragment),
-        vec![
-            FragmentItem::Box,
-            FragmentItem::AnonymousBlock,
-            FragmentItem::Box,
+    assert!(matches!(
+        f.items(root_fragment).as_slice(),
+        [
+            FragmentItem::Box { .. },
+            FragmentItem::AnonymousBlock { .. },
+            FragmentItem::Box { .. },
         ]
-    );
+    ));
 
     let children = f.children(root_fragment);
     let anonymous = f.fragments.items[children[1]].layout;
@@ -260,15 +260,15 @@ fn margins_of_adjacent_blocks_in_inline_content_collapse() {
     let mut f = Fixture::new();
     let (_, root_fragment) = f.build(&ui, root);
 
-    assert_eq!(
-        f.items(root_fragment),
-        vec![
-            FragmentItem::AnonymousBlock,
-            FragmentItem::Box,
-            FragmentItem::Box,
-            FragmentItem::AnonymousBlock,
+    assert!(matches!(
+        f.items(root_fragment).as_slice(),
+        [
+            FragmentItem::AnonymousBlock { .. },
+            FragmentItem::Box { .. },
+            FragmentItem::Box { .. },
+            FragmentItem::AnonymousBlock { .. },
         ]
-    );
+    ));
 
     let children = f.children(root_fragment);
     let first = f.fragments.items[children[1]].layout;

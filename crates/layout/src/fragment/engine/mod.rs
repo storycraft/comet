@@ -17,7 +17,7 @@ use rustc_hash::FxHashSet;
 use slotmap::{Key, KeyData};
 
 use super::{
-    Fragment, FragmentBox, FragmentItem, FragmentKey,
+    FragmentItem, FragmentKey,
     adapter::FragmentEngine,
     state::{Mode, NodeState},
     tree::FragmentTree,
@@ -127,13 +127,10 @@ impl Engine<'_> {
         }
 
         let state = NodeState::new(self.mode(key), self.resolve_style(key));
-        let fragment = self.fragments.items.insert(Fragment::new(
-            key,
-            FragmentItem::Box,
-            FragmentBox::default(),
-        ));
+        let fragment =
+            self.fragments
+                .insert_with_state(key, |state| FragmentItem::Box { state }, state);
 
-        self.fragments.states.insert(fragment, state);
         self.fragments.first.insert(key, fragment);
         self.scratch.created.insert(fragment);
 
@@ -184,19 +181,20 @@ impl Engine<'_> {
     /// children changing kind only flag their parent's descendants.
     ///
     /// Box style changes alone keep shaped text and child fragments. Inline
-    /// content is shaped again only when an item in it is [`LayoutFlags::DIRTY`].
+    /// content is shaped again only when an item in it is [`LayoutFlags::FULL_DIRTY`].
     fn invalidate_box(&mut self, key: LayoutInputKey, flags: LayoutFlags, force: bool) {
         let fragment = self.ensure_box(key);
         let created = self.scratch.created.contains(&fragment);
         let box_dirty = force || flags.contains(LayoutFlags::BOX_DIRTY);
         let dirty = force || flags.contains(LayoutFlags::FULL_DIRTY);
-        let previous = self.fragments.states[fragment].mode;
+        let update =
+            (!created).then(|| (self.mode(key), box_dirty.then(|| self.resolve_style(key))));
+        let Some(state) = self.fragments.get_state_mut(fragment) else {
+            return;
+        };
+        let previous = state.mode;
 
-        if !created {
-            let mode = self.mode(key);
-            let style = box_dirty.then(|| self.resolve_style(key));
-
-            let state = &mut self.fragments.states[fragment];
+        if let Some((mode, style)) = update {
             state.mode = mode;
 
             if let Some(style) = style {
@@ -204,7 +202,6 @@ impl Engine<'_> {
             }
         }
 
-        let state = &mut self.fragments.states[fragment];
         let mode = state.mode;
         state.invalidate();
 
@@ -213,17 +210,17 @@ impl Engine<'_> {
                 self.release_children(fragment);
 
                 if (dirty || self.inline_content_dirty(key))
-                    && let Some(inline) = self.fragments.inline_layouts.get_mut(fragment)
+                    && let Some(inline) = self.fragments.get_inline_mut(fragment)
                 {
                     inline.shaped = false;
                 }
             }
             Mode::MixedInline => {
-                self.fragments.inline_layouts.remove(fragment);
+                self.fragments.take_inline(fragment);
                 self.rebuild_runs(key, fragment, force);
             }
             Mode::Block | Mode::Container => {
-                self.fragments.inline_layouts.remove(fragment);
+                self.fragments.take_inline(fragment);
 
                 // Child list changes flag the box itself, so its children are
                 // still attached unless it is new or changed mode.
@@ -260,7 +257,7 @@ impl Engine<'_> {
                 }
             }
             Mode::Leaf | Mode::Run { .. } => {
-                self.fragments.inline_layouts.remove(fragment);
+                self.fragments.take_inline(fragment);
                 self.release_children(fragment);
             }
         }
@@ -274,7 +271,7 @@ impl Engine<'_> {
         let mut ancestor = Some(fragment);
 
         while let Some(key) = ancestor {
-            if let Some(state) = self.fragments.states.get_mut(key) {
+            if let Some(state) = self.fragments.get_state_mut(key) {
                 state.final_layout_valid = false;
             }
 
@@ -295,7 +292,11 @@ impl Engine<'_> {
     ) -> taffy::LayoutOutput {
         let fragment = fragment_of(id);
 
-        match self.fragments.states[fragment].mode {
+        let Some(mode) = self.fragments.get_state(fragment).map(|state| state.mode) else {
+            return taffy::LayoutOutput::HIDDEN;
+        };
+
+        match mode {
             Mode::Inline | Mode::Run { .. } => self.layout_lines(fragment, input),
             Mode::Block => self.layout_block(fragment, input, block_ctx),
             Mode::MixedInline => {

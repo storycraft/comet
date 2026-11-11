@@ -52,7 +52,13 @@ impl Engine<'_> {
         fragment: FragmentKey,
         input: taffy::LayoutInput,
     ) -> taffy::LayoutOutput {
-        let style = self.fragments.states[fragment].style.clone();
+        let Some(style) = self
+            .fragments
+            .get_state(fragment)
+            .map(|state| state.style.clone())
+        else {
+            return taffy::LayoutOutput::HIDDEN;
+        };
         let padding = style
             .padding()
             .resolve_or_zero(input.parent_size.width, |_, _| 0.0);
@@ -87,12 +93,16 @@ impl Engine<'_> {
             );
 
             // Fragments of runs are linked once the owner's runs are emitted.
-            if self.fragments.states[fragment].mode == Mode::Inline {
+            if self
+                .fragments
+                .get_state(fragment)
+                .is_some_and(|state| state.mode == Mode::Inline)
+            {
                 self.link_inline(fragment);
             }
         }
 
-        if let Some(inline) = self.fragments.inline_layouts.get(fragment) {
+        if let Some(inline) = self.fragments.get_inline(fragment) {
             output.baselines = taffy::Baselines {
                 first: inline.first_baseline.map(|baseline| inset.top + baseline),
                 last: inline.last_baseline.map(|baseline| inset.top + baseline),
@@ -133,18 +143,20 @@ impl Engine<'_> {
     fn prepare(&mut self, fragment: FragmentKey, available: taffy::Size<taffy::AvailableSpace>) {
         if !self
             .fragments
-            .inline_layouts
-            .get(fragment)
+            .get_inline(fragment)
             .is_some_and(|inline| inline.shaped)
         {
             self.shape(fragment);
         }
 
         let tree = self.tree;
+        let Some(inline) = self.fragments.get_inline(fragment) else {
+            return;
+        };
         let mut atomics = std::mem::take(&mut self.scratch.inline.atomics);
         atomics.clear();
         atomics.extend(
-            self.fragments.inline_layouts[fragment]
+            inline
                 .boxes
                 .iter()
                 .copied()
@@ -164,13 +176,17 @@ impl Engine<'_> {
     /// inline boxes, so lines can be broken again without reshaping.
     fn update_inline_boxes(&mut self, fragment: FragmentKey) {
         let tree = self.tree;
+        // Taken out while reading the states of the atomic inlines.
+        let Some(mut inline) = self.fragments.take_inline(fragment) else {
+            return;
+        };
         let FragmentTree {
-            inline_layouts,
+            items,
             states,
             first,
             ..
-        } = &mut *self.fragments;
-        let InlineLayout { layout, boxes, .. } = &mut inline_layouts[fragment];
+        } = &*self.fragments;
+        let InlineLayout { layout, boxes, .. } = &mut *inline;
 
         for inline_box in layout.inline_boxes_mut() {
             let key = boxes[inline_box.id as usize];
@@ -179,7 +195,13 @@ impl Engine<'_> {
                 continue;
             }
 
-            let state = &states[first[key]];
+            let Some(state) = first
+                .get(key)
+                .and_then(|&atomic| items.get(atomic)?.item.state())
+                .and_then(|key| states.get(key))
+            else {
+                continue;
+            };
             let layout = state.layout;
 
             // Parley places the margin box; fragments retain border-box
@@ -188,11 +210,20 @@ impl Engine<'_> {
             inline_box.height = layout.size.height + layout.margin.top + layout.margin.bottom;
             inline_box.baseline = Some(layout.margin.top + state.baseline);
         }
+
+        if let Some(state) = self.fragments.get_state_mut(fragment) {
+            state.inline = Some(inline);
+        }
     }
 
     /// Break the lines at `max_advance`, measuring their extent and baselines.
     fn break_lines(&mut self, fragment: FragmentKey, max_advance: f32) -> Flow {
-        let inline = &mut self.fragments.inline_layouts[fragment];
+        let Some(inline) = self.fragments.get_inline_mut(fragment) else {
+            return Flow {
+                width: 0.0,
+                height: 0.0,
+            };
+        };
         inline.layout.break_all_lines(Some(max_advance));
 
         let mut width = 0.0f32;
@@ -219,10 +250,12 @@ impl Engine<'_> {
     /// within lines, so measuring skips it.
     fn align_lines(&mut self, fragment: FragmentKey) {
         let owner = self.fragments.items[fragment].source;
+        let align = self.tree.items[owner].text_style.align;
 
-        self.fragments.inline_layouts[fragment].layout.align(
-            self.tree.items[owner].text_style.align,
-            parley::AlignmentOptions::default(),
-        );
+        if let Some(inline) = self.fragments.get_inline_mut(fragment) {
+            inline
+                .layout
+                .align(align, parley::AlignmentOptions::default());
+        }
     }
 }

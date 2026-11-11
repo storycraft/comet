@@ -60,7 +60,7 @@ impl ContainerContext<'_, '_> {
     }
 
     pub fn style(&self) -> &Style {
-        &self.engine.fragments.states[self.root()].style
+        self.engine.fragments.style(self.root())
     }
 
     /// The input item of a box fragment.
@@ -73,7 +73,7 @@ impl ContainerContext<'_, '_> {
     }
 
     pub fn child_style(&self, index: usize) -> &Style {
-        &self.engine.fragments.states[self.child(index)].style
+        self.engine.fragments.style(self.child(index))
     }
 
     /// The source node of a direct child box.

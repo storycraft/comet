@@ -32,10 +32,12 @@ impl<'e, 'a> FragmentEngine<'e, 'a> {
     pub fn new(engine: &'e mut Engine<'a>, fragment: FragmentKey) -> Self {
         let start = engine.scratch.children.len();
 
-        if matches!(
-            engine.fragments.states[fragment].mode,
-            Mode::Block | Mode::MixedInline | Mode::Container
-        ) {
+        if engine.fragments.get_state(fragment).is_some_and(|state| {
+            matches!(
+                state.mode,
+                Mode::Block | Mode::MixedInline | Mode::Container
+            )
+        }) {
             engine
                 .scratch
                 .children
@@ -118,7 +120,7 @@ impl LayoutPartialTree for FragmentEngine<'_, '_> {
     type CustomIdent = String;
 
     fn get_core_container_style(&self, id: taffy::NodeId) -> Self::CoreContainerStyle<'_> {
-        &self.engine.fragments.states[fragment_of(id)].style
+        self.engine.fragments.style(fragment_of(id))
     }
 
     fn set_unrounded_layout(&mut self, id: taffy::NodeId, layout: &taffy::Layout) {
@@ -177,15 +179,15 @@ impl taffy::LayoutContainingBlock for FragmentEngine<'_, '_> {
     }
 
     fn clear_hoisted_children(&mut self, id: taffy::NodeId) {
-        self.engine.fragments.states[fragment_of(id)]
-            .hoisted
-            .clear();
+        if let Some(state) = self.engine.fragments.get_state_mut(fragment_of(id)) {
+            state.hoisted.clear();
+        }
     }
 
     fn add_hoisted_children(&mut self, id: taffy::NodeId, children: &[taffy::NodeId]) {
-        self.engine.fragments.states[fragment_of(id)]
-            .hoisted
-            .extend_from_slice(children);
+        if let Some(state) = self.engine.fragments.get_state_mut(fragment_of(id)) {
+            state.hoisted.extend_from_slice(children);
+        }
     }
 }
 
@@ -217,7 +219,10 @@ impl Engine<'_> {
     /// fragments in place.
     pub fn set_unrounded_layout(&mut self, id: taffy::NodeId, layout: &taffy::Layout) {
         let key = fragment_of(id);
-        self.fragments.states[key].layout = *layout;
+        let Some(state) = self.fragments.get_state_mut(key) else {
+            return;
+        };
+        state.layout = *layout;
 
         let fragment = &mut self.fragments.items[key].layout;
         fragment.location = Point::new(layout.location.x as f64, layout.location.y as f64);
@@ -233,7 +238,7 @@ impl CacheTree for Engine<'_> {
         id: taffy::NodeId,
         input: &taffy::LayoutInput,
     ) -> Option<taffy::LayoutOutput> {
-        let state = &mut self.fragments.states[fragment_of(id)];
+        let state = self.fragments.get_state_mut(fragment_of(id))?;
 
         if input.run_mode == taffy::RunMode::PerformLayout && !state.final_layout_valid {
             return None;
@@ -248,7 +253,9 @@ impl CacheTree for Engine<'_> {
         input: &taffy::LayoutInput,
         output: taffy::LayoutOutput,
     ) {
-        let state = &mut self.fragments.states[fragment_of(id)];
+        let Some(state) = self.fragments.get_state_mut(fragment_of(id)) else {
+            return;
+        };
         state.cache.store(input, output);
 
         if input.run_mode == taffy::RunMode::PerformLayout {
@@ -257,6 +264,8 @@ impl CacheTree for Engine<'_> {
     }
 
     fn cache_clear(&mut self, id: taffy::NodeId) {
-        self.fragments.states[fragment_of(id)].cache.clear();
+        if let Some(state) = self.fragments.get_state_mut(fragment_of(id)) {
+            state.cache.clear();
+        }
     }
 }

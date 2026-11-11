@@ -95,7 +95,7 @@ fn box_for(tree: &Layout, root: FragmentKey, node: NodeKey) -> FragmentBox {
     let key = tree.box_fragment(tree.item(node)).unwrap();
 
     assert!(tree.items.descendants(root).any(|other| other == key));
-    assert_eq!(tree.items[key].item, FragmentItem::Box);
+    assert!(tree.items[key].item.is_box());
 
     tree.items[key].layout
 }

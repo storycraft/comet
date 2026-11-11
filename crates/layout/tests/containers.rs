@@ -233,7 +233,7 @@ fn nested_inline_containers_measure_and_emit_their_own_descendants() {
     for fragment in [outer_fragment, inner_fragment] {
         let layout = f.fragments.items[fragment].layout;
 
-        assert_eq!(f.fragments.items[fragment].item, FragmentItem::Box);
+        assert!(f.fragments.items[fragment].item.is_box());
         assert!(layout.size.width > 0.0);
         assert!(layout.size.height > 0.0);
     }

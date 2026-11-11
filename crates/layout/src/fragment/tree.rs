@@ -1,19 +1,22 @@
-use slotmap::{SecondaryMap, SparseSecondaryMap};
+use slotmap::{SecondaryMap, SlotMap};
 
-use super::{Fragment, FragmentItem, FragmentKey, InlineLayout, iter::Fragments, state::NodeState};
-use crate::{input::LayoutInputKey, slot_tree::SlotTree};
+use super::{
+    Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, StateKey, iter::Fragments,
+    state::NodeState,
+};
+use crate::{input::LayoutInputKey, slot_tree::SlotTree, taffy::style::Style};
 
 #[derive(Default)]
 pub struct FragmentTree {
     pub items: SlotTree<FragmentKey, Fragment>,
-    /// Layout state of each box and anonymous block fragment.
-    pub(crate) states: SparseSecondaryMap<FragmentKey, NodeState>,
-    /// Shaped text of each fragment owning lines: the box of an inline
-    /// formatting context, or an anonymous block.
-    pub(crate) inline_layouts: SparseSecondaryMap<FragmentKey, InlineLayout>,
+    /// Layout state of each box and anonymous block fragment, keyed by the
+    /// state key in its [`FragmentItem`].
+    pub(crate) states: SlotMap<StateKey, NodeState>,
     /// First fragment of each item: its box, or its first inline or glyph
     /// run fragment.
     pub(crate) first: SecondaryMap<LayoutInputKey, FragmentKey>,
+    /// Style used where a fragment unexpectedly has no state.
+    pub(crate) fallback_style: Style,
 }
 
 impl FragmentTree {
@@ -25,11 +28,10 @@ impl FragmentTree {
     /// a child of a container, or a root item.
     pub fn box_fragment(&self, key: LayoutInputKey) -> Option<FragmentKey> {
         self.first.get(key).copied().filter(|&fragment| {
-            self.states.contains_key(fragment)
-                && self
-                    .items
-                    .get(fragment)
-                    .is_some_and(|item| item.item == FragmentItem::Box && item.source == key)
+            self.items.get(fragment).is_some_and(|item| {
+                matches!(item.item, FragmentItem::Box { state } if self.states.contains_key(state))
+                    && item.source == key
+            })
         })
     }
 
@@ -46,15 +48,61 @@ impl FragmentTree {
     /// The inline layout a line belongs to, given the line fragment or the
     /// fragment owning its lines.
     pub fn inline_layout(&self, key: FragmentKey) -> Option<&InlineLayout> {
-        self.inline_layouts
-            .get(key)
-            .or_else(|| self.inline_layouts.get(self.items.parent(key)?))
+        self.get_inline(key)
+            .or_else(|| self.get_inline(self.items.parent(key)?))
     }
 
     pub fn clear(&mut self) {
         self.items.clear();
-        self.inline_layouts.clear();
         self.states.clear();
         self.first.clear();
+    }
+
+    /// Insert a box or anonymous block fragment with its layout state, linking
+    /// the two. `item` builds the fragment's item from the new state key.
+    pub(crate) fn insert_with_state(
+        &mut self,
+        source: LayoutInputKey,
+        item: impl FnOnce(StateKey) -> FragmentItem,
+        state: NodeState,
+    ) -> FragmentKey {
+        let key = self.states.insert(state);
+        let fragment = self
+            .items
+            .insert(Fragment::new(source, item(key), FragmentBox::default()));
+        if let Some(state) = self.states.get_mut(key) {
+            state.fragment = fragment;
+        }
+
+        fragment
+    }
+
+    /// The layout state of a box or anonymous block fragment.
+    pub(crate) fn get_state(&self, fragment: FragmentKey) -> Option<&NodeState> {
+        self.states.get(self.items.get(fragment)?.item.state()?)
+    }
+
+    pub(crate) fn get_state_mut(&mut self, fragment: FragmentKey) -> Option<&mut NodeState> {
+        self.states.get_mut(self.items.get(fragment)?.item.state()?)
+    }
+
+    /// The style of a box or anonymous block fragment, or the default style.
+    pub(crate) fn style(&self, fragment: FragmentKey) -> &Style {
+        self.get_state(fragment)
+            .map_or(&self.fallback_style, |state| &state.style)
+    }
+
+    /// The inline layout owned by a box or anonymous block fragment.
+    pub(crate) fn get_inline(&self, fragment: FragmentKey) -> Option<&InlineLayout> {
+        self.get_state(fragment)?.inline.as_deref()
+    }
+
+    pub(crate) fn get_inline_mut(&mut self, fragment: FragmentKey) -> Option<&mut InlineLayout> {
+        self.get_state_mut(fragment)?.inline.as_deref_mut()
+    }
+
+    /// Remove the inline layout owned by a fragment.
+    pub(crate) fn take_inline(&mut self, fragment: FragmentKey) -> Option<Box<InlineLayout>> {
+        self.get_state_mut(fragment)?.inline.take()
     }
 }
