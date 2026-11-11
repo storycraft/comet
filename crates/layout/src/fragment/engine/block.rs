@@ -4,7 +4,7 @@
 
 use taffy::style::CoreStyle;
 
-use super::{Engine, FragmentKey, Mode, node_id};
+use super::{Engine, FragmentEngine, FragmentKey, Mode, node_id};
 use crate::{container::ContainerContext, input::LayoutInputKind, style::bx::DisplayInner};
 
 impl Engine<'_> {
@@ -14,7 +14,11 @@ impl Engine<'_> {
         fragment: FragmentKey,
         available: taffy::Size<taffy::AvailableSpace>,
     ) {
-        taffy::compute_root_layout(self, node_id(fragment), available);
+        taffy::compute_root_layout(
+            &mut FragmentEngine::new(self, fragment),
+            node_id(fragment),
+            available,
+        );
 
         let source = self.fragments.items[fragment].source;
 
@@ -52,11 +56,8 @@ impl Engine<'_> {
             return self.layout_leaf(fragment, input);
         };
 
-        let children = self.fragments.items.children(fragment).collect();
         let mut context = ContainerContext {
-            engine: self,
-            root: fragment,
-            children,
+            engine: FragmentEngine::new(self, fragment),
         };
 
         algorithm.layout(&mut context, input)

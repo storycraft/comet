@@ -1,56 +1,116 @@
+use std::ops::{Deref, DerefMut, Range};
+
 use taffy::{CacheTree, LayoutPartialTree, TraversePartialTree};
 
 use super::{
-    Fragment, FragmentKey,
+    FragmentKey,
     engine::{Engine, fragment_of, node_id},
     state::Mode,
 };
 use crate::{
-    slot_tree::iterator::Cursor,
     style::geometry::{Point, Size},
     taffy::{conv, style::Style},
 };
 
-/// Borrowed child traversal for Taffy; nodes without block children have no
-/// iterator.
-pub struct Children<'a>(Option<Cursor<'a, FragmentKey, Fragment>>);
+/// Taffy tree for laying out one fragment: the fragment and its direct
+/// children, buffered for constant time indexed access.
+///
+/// Children live in a stack buffer shared by nested layouts. Layouts of
+/// descendants push their children after this range and truncate back to it
+/// when done, so the buffer is reused across the whole build.
+pub(crate) struct FragmentEngine<'e, 'a> {
+    engine: &'e mut Engine<'a>,
+    fragment: FragmentKey,
+    /// Range of the direct children in `scratch.children`.
+    children: Range<usize>,
+}
 
-impl Iterator for Children<'_> {
-    type Item = taffy::NodeId;
+impl<'e, 'a> FragmentEngine<'e, 'a> {
+    /// Block containers expose their fragment children: block boxes, and the
+    /// anonymous blocks of mixed inline content. Lines are measured by Parley.
+    /// Custom containers expose their child boxes.
+    pub fn new(engine: &'e mut Engine<'a>, fragment: FragmentKey) -> Self {
+        let start = engine.scratch.children.len();
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.as_mut()?.next().map(node_id)
+        if matches!(
+            engine.fragments.states[fragment].mode,
+            Mode::Block | Mode::MixedInline | Mode::Container
+        ) {
+            engine
+                .scratch
+                .children
+                .extend(engine.fragments.items.children(fragment));
+        }
+
+        let end = engine.scratch.children.len();
+
+        Self {
+            engine,
+            fragment,
+            children: start..end,
+        }
+    }
+
+    pub fn fragment(&self) -> FragmentKey {
+        self.fragment
+    }
+
+    /// Direct children of the fragment, in tree order.
+    pub fn children(&self) -> &[FragmentKey] {
+        &self.engine.scratch.children[self.children.clone()]
+    }
+
+    fn children_of(&self, id: taffy::NodeId) -> &[FragmentKey] {
+        debug_assert_eq!(
+            fragment_of(id),
+            self.fragment,
+            "only the laid out fragment is traversed"
+        );
+
+        self.children()
     }
 }
 
-impl TraversePartialTree for Engine<'_> {
+impl Drop for FragmentEngine<'_, '_> {
+    fn drop(&mut self) {
+        self.engine.scratch.children.truncate(self.children.start);
+    }
+}
+
+impl<'a> Deref for FragmentEngine<'_, 'a> {
+    type Target = Engine<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        self.engine
+    }
+}
+
+impl DerefMut for FragmentEngine<'_, '_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.engine
+    }
+}
+
+impl TraversePartialTree for FragmentEngine<'_, '_> {
     type ChildIter<'a>
-        = Children<'a>
+        = std::iter::Map<std::slice::Iter<'a, FragmentKey>, fn(&FragmentKey) -> taffy::NodeId>
     where
         Self: 'a;
 
-    /// Block containers expose their fragment children: block boxes, and the
-    /// anonymous blocks of mixed inline content. Lines are measured by Parley.
     fn child_ids(&self, id: taffy::NodeId) -> Self::ChildIter<'_> {
-        let fragment = fragment_of(id);
-        let block = matches!(
-            self.fragments.states[fragment].mode,
-            Mode::Block | Mode::MixedInline
-        );
-
-        Children(block.then(|| self.fragments.items.children(fragment)))
+        self.children_of(id).iter().map(|&child| node_id(child))
     }
 
     fn child_count(&self, id: taffy::NodeId) -> usize {
-        self.child_ids(id).count()
+        self.children_of(id).len()
     }
 
     fn get_child_id(&self, id: taffy::NodeId, index: usize) -> taffy::NodeId {
-        self.child_ids(id).nth(index).unwrap()
+        node_id(self.children_of(id)[index])
     }
 }
 
-impl LayoutPartialTree for Engine<'_> {
+impl LayoutPartialTree for FragmentEngine<'_, '_> {
     type CoreContainerStyle<'a>
         = &'a Style
     where
@@ -58,20 +118,11 @@ impl LayoutPartialTree for Engine<'_> {
     type CustomIdent = String;
 
     fn get_core_container_style(&self, id: taffy::NodeId) -> Self::CoreContainerStyle<'_> {
-        &self.fragments.states[fragment_of(id)].style
+        &self.engine.fragments.states[fragment_of(id)].style
     }
 
-    /// Block layouts need no inheritance, so they are converted into their
-    /// fragments in place.
     fn set_unrounded_layout(&mut self, id: taffy::NodeId, layout: &taffy::Layout) {
-        let key = fragment_of(id);
-        self.fragments.states[key].layout = *layout;
-
-        let fragment = &mut self.fragments.items[key].layout;
-        fragment.location = Point::new(layout.location.x as f64, layout.location.y as f64);
-        fragment.size = Size::new(layout.size.width as f64, layout.size.height as f64);
-        fragment.padding = conv::from_rect(layout.padding, f64::from);
-        fragment.border = conv::from_rect(layout.border, f64::from);
+        self.engine.set_unrounded_layout(id, layout);
     }
 
     fn compute_child_layout(
@@ -79,13 +130,13 @@ impl LayoutPartialTree for Engine<'_> {
         id: taffy::NodeId,
         input: taffy::LayoutInput,
     ) -> taffy::LayoutOutput {
-        taffy::compute_cached_layout(self, id, input, |this, id, input| {
-            this.layout_child(id, input, None)
+        taffy::compute_cached_layout(self.engine, id, input, |engine, id, input| {
+            engine.layout_child(id, input, None)
         })
     }
 }
 
-impl taffy::LayoutBlockContainer for Engine<'_> {
+impl taffy::LayoutBlockContainer for FragmentEngine<'_, '_> {
     type BlockContainerStyle<'a>
         = &'a Style
     where
@@ -109,13 +160,13 @@ impl taffy::LayoutBlockContainer for Engine<'_> {
         input: taffy::LayoutInput,
         block_ctx: Option<&mut taffy::BlockContext<'_>>,
     ) -> taffy::LayoutOutput {
-        taffy::compute_cached_layout(self, id, input, |this, id, input| {
-            this.layout_child(id, input, block_ctx)
+        taffy::compute_cached_layout(self.engine, id, input, |engine, id, input| {
+            engine.layout_child(id, input, block_ctx)
         })
     }
 }
 
-impl taffy::LayoutContainingBlock for Engine<'_> {
+impl taffy::LayoutContainingBlock for FragmentEngine<'_, '_> {
     type OofItemStyle<'a>
         = &'a Style
     where
@@ -126,13 +177,53 @@ impl taffy::LayoutContainingBlock for Engine<'_> {
     }
 
     fn clear_hoisted_children(&mut self, id: taffy::NodeId) {
-        self.fragments.states[fragment_of(id)].hoisted.clear();
+        self.engine.fragments.states[fragment_of(id)]
+            .hoisted
+            .clear();
     }
 
     fn add_hoisted_children(&mut self, id: taffy::NodeId, children: &[taffy::NodeId]) {
-        self.fragments.states[fragment_of(id)]
+        self.engine.fragments.states[fragment_of(id)]
             .hoisted
             .extend_from_slice(children);
+    }
+}
+
+impl CacheTree for FragmentEngine<'_, '_> {
+    fn cache_get(
+        &mut self,
+        id: taffy::NodeId,
+        input: &taffy::LayoutInput,
+    ) -> Option<taffy::LayoutOutput> {
+        self.engine.cache_get(id, input)
+    }
+
+    fn cache_store(
+        &mut self,
+        id: taffy::NodeId,
+        input: &taffy::LayoutInput,
+        output: taffy::LayoutOutput,
+    ) {
+        self.engine.cache_store(id, input, output);
+    }
+
+    fn cache_clear(&mut self, id: taffy::NodeId) {
+        self.engine.cache_clear(id);
+    }
+}
+
+impl Engine<'_> {
+    /// Block layouts need no inheritance, so they are converted into their
+    /// fragments in place.
+    pub fn set_unrounded_layout(&mut self, id: taffy::NodeId, layout: &taffy::Layout) {
+        let key = fragment_of(id);
+        self.fragments.states[key].layout = *layout;
+
+        let fragment = &mut self.fragments.items[key].layout;
+        fragment.location = Point::new(layout.location.x as f64, layout.location.y as f64);
+        fragment.size = Size::new(layout.size.width as f64, layout.size.height as f64);
+        fragment.padding = conv::from_rect(layout.padding, f64::from);
+        fragment.border = conv::from_rect(layout.border, f64::from);
     }
 }
 

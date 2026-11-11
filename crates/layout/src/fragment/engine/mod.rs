@@ -18,6 +18,7 @@ use slotmap::{Key, KeyData};
 
 use super::{
     Fragment, FragmentBox, FragmentItem, FragmentKey,
+    adapter::FragmentEngine,
     state::{Mode, NodeState},
     tree::FragmentTree,
 };
@@ -47,6 +48,9 @@ pub(crate) struct Scratch {
     /// Box fragments created during this build, whose mode and style are
     /// already resolved.
     created: FxHashSet<FragmentKey>,
+    /// Stack of the direct children of fragments being laid out, shared by
+    /// nested [`FragmentEngine`]s.
+    pub(super) children: Vec<FragmentKey>,
     inline: inline::Scratch,
 }
 
@@ -266,9 +270,19 @@ impl Engine<'_> {
 
         match self.fragments.states[fragment].mode {
             Mode::Inline | Mode::Run { .. } => self.layout_lines(fragment, input),
-            Mode::Block => taffy::compute_block_layout(self, id, input, block_ctx),
+            Mode::Block => taffy::compute_block_layout(
+                &mut FragmentEngine::new(self, fragment),
+                id,
+                input,
+                block_ctx,
+            ),
             Mode::MixedInline => {
-                let output = taffy::compute_block_layout(self, id, input, block_ctx);
+                let output = taffy::compute_block_layout(
+                    &mut FragmentEngine::new(self, fragment),
+                    id,
+                    input,
+                    block_ctx,
+                );
 
                 if input.run_mode == taffy::RunMode::PerformLayout {
                     self.link_inline(fragment);

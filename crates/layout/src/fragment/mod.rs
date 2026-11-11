@@ -6,7 +6,7 @@
 //! block boxes is split into anonymous blocks, laid out between the block boxes
 //! by Taffy's block algorithm so their margins collapse.
 
-mod adapter;
+pub(crate) mod adapter;
 pub(crate) mod engine;
 mod state;
 
