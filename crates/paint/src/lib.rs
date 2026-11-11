@@ -6,6 +6,7 @@ use bytemuck::TransparentWrapper;
 use comet_layout::{
     fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
     input::{LayoutInputKind, tree::LayoutInputTree},
+    style::geometry::UnitResolveContext,
 };
 use comet_tree::{node::NodeKey, ui::Ui};
 use kurbo::{Affine, Point, Rect, RoundedRectRadii, Stroke, Vec2};
@@ -28,6 +29,10 @@ impl CometPainter {
     /// Paint the fragments under `root`. `inputs` is the input tree the
     /// fragments were built from.
     ///
+    /// `units` supplies the root font size and viewport resolving paint
+    /// styles, matching those the input tree was built with. Its `font_size`
+    /// is replaced by each item's computed font size.
+    ///
     /// Fragments painting entirely outside `viewport`, in scene coordinates,
     /// are skipped. Fragments touching its edges are painted. Their descendants are still visited, since overflow is not
     /// clipped and children may paint outside their parents.
@@ -37,6 +42,7 @@ impl CometPainter {
         inputs: &LayoutInputTree,
         tree: &FragmentTree,
         root: FragmentKey,
+        units: &UnitResolveContext,
         viewport: Rect,
         scene: &mut impl PaintScene,
     ) {
@@ -65,12 +71,12 @@ impl CometPainter {
                         .is_some_and(|item| item.kind == LayoutInputKind::Text)
                         && box_visible()
                     {
-                        draw_box(ui, inputs, tree, key, rect, scene);
+                        draw_box(ui, inputs, tree, key, units, rect, scene);
                     }
                 }
                 FragmentItem::Inline { .. } => {
                     if box_visible() {
-                        draw_box(ui, inputs, tree, key, rect, scene);
+                        draw_box(ui, inputs, tree, key, units, rect, scene);
                     }
                 }
                 // Anonymous blocks only position their lines.
@@ -78,7 +84,7 @@ impl CometPainter {
                 FragmentItem::Line { .. } => inline_owner = Some(key),
                 FragmentItem::GlyphRun { line, item } => {
                     if box_visible() {
-                        draw_box(ui, inputs, tree, key, rect, scene);
+                        draw_box(ui, inputs, tree, key, units, rect, scene);
                     }
 
                     if let Some(owner) = inline_owner {
@@ -136,6 +142,7 @@ fn draw_box(
     inputs: &LayoutInputTree,
     tree: &FragmentTree,
     key: FragmentKey,
+    units: &UnitResolveContext,
     rect: Rect,
     scene: &mut impl PaintScene,
 ) {
@@ -147,10 +154,8 @@ fn draw_box(
 
     let mut radii = RoundedRectRadii::default();
 
-    if let Some(radius) = props.get::<BorderRadius>()
-        && let Some(constraint) = tree.layout_constraint(key)
-    {
-        let mut units = constraint.units.clone();
+    if let Some(radius) = props.get::<BorderRadius>() {
+        let mut units = units.clone();
 
         if let Some(item) = inputs.items.get(fragment.source) {
             units.font_size = item.text_style.span.font_size as f64;

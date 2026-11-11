@@ -70,6 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &inputs,
                 &fragments,
                 root,
+                &constraint.units,
                 kurbo::Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
                 scene,
             );

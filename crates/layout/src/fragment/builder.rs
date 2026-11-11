@@ -82,10 +82,6 @@ impl FragmentTreeBuilder {
             }),
         );
         engine.sweep();
-        engine
-            .fragments
-            .constraints
-            .insert(fragment, constraint.clone());
 
         #[cfg(debug_assertions)]
         engine.check();

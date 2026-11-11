@@ -31,7 +31,6 @@ impl Engine<'_> {
     pub fn drop_state(&mut self, fragment: FragmentKey) {
         self.fragments.states.remove(fragment);
         self.fragments.inline_layouts.remove(fragment);
-        self.fragments.constraints.remove(fragment);
 
         let source = self.fragments.items[fragment].source;
 

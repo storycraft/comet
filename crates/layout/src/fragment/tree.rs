@@ -1,7 +1,7 @@
 use slotmap::{SecondaryMap, SparseSecondaryMap};
 
 use super::{Fragment, FragmentItem, FragmentKey, InlineLayout, iter::Fragments, state::NodeState};
-use crate::{input::LayoutInputKey, slot_tree::SlotTree, style::LayoutConstraint};
+use crate::{input::LayoutInputKey, slot_tree::SlotTree};
 
 #[derive(Default)]
 pub struct FragmentTree {
@@ -14,8 +14,6 @@ pub struct FragmentTree {
     /// First fragment of each item: its box, or its first inline or glyph
     /// run fragment.
     pub(crate) first: SecondaryMap<LayoutInputKey, FragmentKey>,
-    /// Constraint of the latest build, by root fragment.
-    pub(crate) constraints: SparseSecondaryMap<FragmentKey, LayoutConstraint>,
 }
 
 impl FragmentTree {
@@ -53,20 +51,10 @@ impl FragmentTree {
             .or_else(|| self.inline_layouts.get(self.items.parent(key)?))
     }
 
-    /// The constraint used to build the root containing this fragment.
-    pub fn layout_constraint(&self, mut key: FragmentKey) -> Option<&LayoutConstraint> {
-        while let Some(parent) = self.items.parent(key) {
-            key = parent;
-        }
-
-        self.constraints.get(key)
-    }
-
     pub fn clear(&mut self) {
         self.items.clear();
         self.inline_layouts.clear();
         self.states.clear();
         self.first.clear();
-        self.constraints.clear();
     }
 }
