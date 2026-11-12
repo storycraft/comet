@@ -1,5 +1,6 @@
 //! Converting lines into fragments.
 
+use comet_slotmap_tree::SlotTree;
 use rustc_hash::FxHashMap;
 use slotmap::{SecondaryMap, SlotMap};
 
@@ -10,7 +11,6 @@ use crate::{
         tree::FragmentTree,
     },
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
-    slot_tree::SlotTree,
     style::geometry::{Point, Size},
 };
 

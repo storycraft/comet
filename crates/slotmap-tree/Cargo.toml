@@ -1,0 +1,9 @@
+[package]
+name = "comet-slotmap-tree"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+slotmap = "1.1.1"

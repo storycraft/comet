@@ -4,7 +4,8 @@ use super::{
     Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, StateKey, iter::Fragments,
     state::NodeState,
 };
-use crate::{input::LayoutInputKey, slot_tree::SlotTree, taffy::style::Style};
+use crate::{input::LayoutInputKey, taffy::style::Style};
+use comet_slotmap_tree::SlotTree;
 
 #[derive(Default)]
 pub struct FragmentTree {

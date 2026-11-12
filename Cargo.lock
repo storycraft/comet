@@ -416,6 +416,7 @@ name = "comet-layout"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.10.0",
+ "comet-slotmap-tree",
  "comet-tree",
  "derive_more",
  "kurbo",
@@ -446,6 +447,13 @@ dependencies = [
  "kurbo",
  "parley",
  "peniko",
+]
+
+[[package]]
+name = "comet-slotmap-tree"
+version = "0.1.0"
+dependencies = [
+ "slotmap",
 ]
 
 [[package]]

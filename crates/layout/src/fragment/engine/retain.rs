@@ -51,7 +51,7 @@ impl Engine<'_> {
     /// when `after` is `None`, like [`Self::release_children`]. Children up to
     /// `after` are kept in place.
     pub fn release_after(&mut self, fragment: FragmentKey, after: Option<FragmentKey>) {
-        let tail = |items: &crate::slot_tree::SlotTree<FragmentKey, _>| match after {
+        let tail = |items: &comet_slotmap_tree::SlotTree<FragmentKey, _>| match after {
             Some(key) => items.next_sibling(key),
             None => items.first_child(fragment),
         };

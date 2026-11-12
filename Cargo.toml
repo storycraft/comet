@@ -10,6 +10,7 @@ license = "Apache-2.0"
 
 [workspace.dependencies]
 comet-tree = { path = "./crates/tree" }
+comet-slotmap-tree = { path = "./crates/slotmap-tree" }
 comet-layout = { path = "./crates/layout" }
 comet-paint = { path = "./crates/paint" }
 comet-accesskit = { path = "./crates/accesskit" }

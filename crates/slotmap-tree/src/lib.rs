@@ -1,4 +1,4 @@
-pub mod iterator;
+pub mod iter;
 
 #[cfg(test)]
 mod tests;
@@ -6,7 +6,7 @@ mod tests;
 use core::ops::{Index, IndexMut};
 use slotmap::{Key, SlotMap};
 
-use self::iterator::{Cursor, Descendants};
+use self::iter::{Cursor, Descendants};
 
 /// An ordered forest backed by generational slots.
 ///

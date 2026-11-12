@@ -1,10 +1,8 @@
+use comet_slotmap_tree::SlotTree;
 use comet_tree::node::NodeKey;
 use rustc_hash::FxHashMap;
 
-use crate::{
-    input::{LayoutFlags, LayoutInputItem, LayoutInputKey},
-    slot_tree::SlotTree,
-};
+use crate::input::{LayoutFlags, LayoutInputItem, LayoutInputKey};
 
 pub struct LayoutInputTree {
     /// Raw tree storage. Use the tree mutation methods and builder to keep
