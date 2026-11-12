@@ -7,6 +7,7 @@ use comet_layout::style::{
     geometry::{AutoValue, Rect, Size as LayoutSize, StyleUnit},
     parley::{self, Alignment},
 };
+use comet_layout_flex::{Flex, styles as flex_style};
 use comet_paint::style::{BorderRadius, Fill, TextColor};
 use comet_tree::{
     node::{Node, NodeKey, Text},
@@ -41,11 +42,28 @@ pub fn sample_ui() -> (Ui, NodeKey) {
     ui.append(root, title);
     text(&mut ui, title, "Comet / layout & text");
 
-    flex::showcase(&mut ui, root);
-    block_inline_sample(&mut ui, root);
-    rich_text_sample(&mut ui, root);
-    typography_sample(&mut ui, root);
-    absolute::showcase(&mut ui, root);
+    // Sections wrap into as many columns as fit, each at least 420px wide.
+    let sections = ui.create(
+        Node::Box,
+        (
+            DisplayInner::Container(Box::new(Flex)),
+            flex_style::FlexWrap(flex_style::taffy::FlexWrap::Wrap),
+            flex_style::Gap(LayoutSize::new(StyleUnit::Px(16.0), StyleUnit::Px(16.0))),
+            Margin(Rect::new_invidiual(
+                AutoValue::Value(StyleUnit::Px(16.0)),
+                AutoValue::Value(StyleUnit::ZERO),
+                AutoValue::Value(StyleUnit::ZERO),
+                AutoValue::Value(StyleUnit::ZERO),
+            )),
+        ),
+    );
+    ui.append(root, sections);
+
+    flex::showcase(&mut ui, sections);
+    block_inline_sample(&mut ui, sections);
+    rich_text_sample(&mut ui, sections);
+    typography_sample(&mut ui, sections);
+    absolute::showcase(&mut ui, sections);
 
     (ui, root)
 }
@@ -213,9 +231,11 @@ fn panel(ui: &mut Ui, root: NodeKey, label: &str, color: Color) -> NodeKey {
             Fill(Paint::Solid(color)),
             BorderRadius(Rect::new_all(StyleUnit::Px(12.0))),
             Padding(Rect::new_all(StyleUnit::Px(16.0))),
-            Margin(Rect::new_axis(
-                AutoValue::Value(StyleUnit::Px(16.0)),
+            flex_style::FlexBasis(AutoValue::Value(StyleUnit::Px(420.0))),
+            flex_style::FlexGrow(1.0),
+            MinSize(LayoutSize::new(
                 AutoValue::Value(StyleUnit::ZERO),
+                AutoValue::Auto,
             )),
         ),
     );
