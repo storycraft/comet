@@ -24,7 +24,7 @@ impl PaintPropertyTree {
         fragments: &FragmentTree,
         key: FragmentKey,
         forced: bool,
-    ) -> PropertyKey {
+    ) -> FragmentData {
         todo!()
     }
 

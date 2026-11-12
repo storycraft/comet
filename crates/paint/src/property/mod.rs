@@ -10,6 +10,7 @@ pub struct PaintProperties {
     pub clip: Option<Rect>,
 }
 
+#[derive(Clone, Copy)]
 pub struct FragmentData {
     pub property: PropertyKey,
 
