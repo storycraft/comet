@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use comet_tree::{
     node::{Node, NodeKey},
-    ui::Ui,
+    ui::{Props, Ui},
 };
 
 use crate::{
@@ -139,7 +139,7 @@ impl LayoutInputTreeBuilder {
             viewport,
         };
 
-        let update = self.update(ui, tree, source, target, &parent_style, &cx);
+        let update = self.update(ui, tree, source, target, &parent_style, &cx)?;
 
         if force {
             // Propagate the reset flags to the ancestors.
@@ -192,7 +192,10 @@ impl LayoutInputTreeBuilder {
                         }
                     }
 
-                    _ => self.update(ui, tree, child, existing, &parent_style, cx),
+                    _ => match self.update(ui, tree, child, existing, &parent_style, cx) {
+                        Some(update) => update,
+                        None => continue,
+                    },
                 };
 
                 if next == Some(update.key) {
@@ -242,9 +245,10 @@ impl LayoutInputTreeBuilder {
         existing: Option<LayoutInputKey>,
         parent_style: &Arc<TextStyle>,
         cx: &UnitResolveContext,
-    ) -> Update {
-        let (kind, child_layout) = classify(ui, node);
-        let text_style = resolve_text_style(ui, node, cx, parent_style);
+    ) -> Option<Update> {
+        let props = ui.props(node)?;
+        let (kind, child_layout) = classify(ui.kind(node)?, props);
+        let text_style = resolve_text_style(props, cx, parent_style);
 
         let Some(key) = existing else {
             let key = tree.add_item(LayoutInputItem {
@@ -255,11 +259,11 @@ impl LayoutInputTreeBuilder {
                 flags: LayoutFlags::all(),
             });
 
-            return Update {
+            return Some(Update {
                 key,
                 descend: true,
                 force: false,
-            };
+            });
         };
 
         let item = &mut tree.items[key];
@@ -284,22 +288,22 @@ impl LayoutInputTreeBuilder {
             };
             item.flags = dirty | LayoutFlags::CHILDREN_DIRTY;
 
-            return Update {
+            return Some(Update {
                 key,
                 descend: true,
                 force: true,
-            };
+            });
         }
 
         if changed {
             tree.mark(key, LayoutFlags::FULL_DIRTY);
         }
 
-        Update {
+        Some(Update {
             key,
             descend,
             force: style_changed,
-        }
+        })
     }
 
     fn clear(&mut self) {
@@ -323,13 +327,13 @@ struct Update {
 
 /// Derive the item kind and child layout from the node's own display.
 /// Splitting inline content around blocks is left to later stages.
-fn classify(ui: &Ui, node: NodeKey) -> (LayoutInputKind, ChildLayout) {
-    if ui.kind(node) == Some(Node::Text) {
+fn classify(node: Node, props: Props) -> (LayoutInputKind, ChildLayout) {
+    if node == Node::Text {
         return (LayoutInputKind::Text, ChildLayout::None);
     }
 
-    let outer = display_outer(ui, node);
-    let inner = ui.prop::<DisplayInner>(node);
+    let outer = props.get::<DisplayOuter>().map(|v| *v).unwrap_or_default();
+    let inner = props.get::<DisplayInner>();
     let inner = inner.as_deref();
 
     let kind = match (outer, inner) {
@@ -348,14 +352,4 @@ fn classify(ui: &Ui, node: NodeKey) -> (LayoutInputKind, ChildLayout) {
     };
 
     (kind, child_layout)
-}
-
-fn display_outer(ui: &Ui, node: NodeKey) -> DisplayOuter {
-    if ui.kind(node).is_some_and(|node| node == Node::Text) {
-        return DisplayOuter::Inline;
-    }
-
-    ui.prop::<DisplayOuter>(node)
-        .map(|v| *v)
-        .unwrap_or_default()
 }

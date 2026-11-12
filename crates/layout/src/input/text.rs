@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use comet_tree::{node::NodeKey, ui::Ui};
+use comet_tree::ui::Props;
 
 use super::LayoutInputKey;
 use crate::style::{
@@ -47,8 +47,7 @@ fn resolve_length(value: StyleUnit, cx: &UnitResolveContext, percentage_basis: f
 /// font size, while every other length resolves against the resolved font size.
 /// The parent allocation is shared when no property changes the style.
 pub fn resolve_text_style(
-    ui: &Ui,
-    node: NodeKey,
+    props: Props,
     cx: &UnitResolveContext,
     parent: &Arc<TextStyle>,
 ) -> Arc<TextStyle> {
@@ -68,7 +67,7 @@ pub fn resolve_text_style(
     }
 
     // `font-size` percentages use the parent's font size.
-    if let Some(value) = ui.prop::<bx::FontSize>(node) {
+    if let Some(value) = props.get::<bx::FontSize>() {
         set!(span.font_size, resolve_length(value.0, &cx, cx.font_size));
     }
 
@@ -78,19 +77,19 @@ pub fn resolve_text_style(
 
     macro_rules! inherit {
         ($prop:ident, $field:ident) => {
-            if let Some(value) = ui.prop::<bx::$prop>(node) {
+            if let Some(value) = props.get::<bx::$prop>() {
                 if style.span.$field != value.0 {
                     Arc::make_mut(&mut style).span.$field = value.0.clone();
                 }
             }
         };
         ($prop:ident, $field:ident, length) => {
-            if let Some(value) = ui.prop::<bx::$prop>(node) {
+            if let Some(value) = props.get::<bx::$prop>() {
                 set!(span.$field, resolve_length(value.0, &cx, percentage_basis));
             }
         };
         ($prop:ident, $field:ident, optional) => {
-            if let Some(value) = ui.prop::<bx::$prop>(node) {
+            if let Some(value) = props.get::<bx::$prop>() {
                 set!(
                     span.$field,
                     Some(resolve_length(value.0, &cx, percentage_basis))
@@ -112,16 +111,16 @@ pub fn resolve_text_style(
     inherit!(StrikethroughOffset, strikethrough_offset, optional);
     inherit!(StrikethroughSize, strikethrough_size, optional);
 
-    if let Some(value) = ui.prop::<bx::Locale>(node) {
+    if let Some(value) = props.get::<bx::Locale>() {
         set!(span.locale, Some(value.0));
     }
-    if let Some(value) = ui.prop::<bx::LineHeight>(node) {
+    if let Some(value) = props.get::<bx::LineHeight>() {
         set!(
             span.line_height,
             parley::LineHeight::Absolute(resolve_length(value.0, &cx, percentage_basis))
         );
     }
-    if let Some(value) = ui.prop::<bx::TextAlign>(node) {
+    if let Some(value) = props.get::<bx::TextAlign>() {
         set!(align, value.0);
     }
 

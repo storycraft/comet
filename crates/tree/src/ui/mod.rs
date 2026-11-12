@@ -287,6 +287,7 @@ impl Ui {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct Props<'a>(EntityRef<'a>);
 
 impl<'a> Props<'a> {
