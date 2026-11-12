@@ -142,7 +142,7 @@ impl Fixture {
 }
 
 #[test]
-fn custom_layout_reuses_cache_until_marked_dirty_or_constraints_change() {
+fn custom_layout_runs_again_on_every_build() {
     let width = Arc::new(AtomicU32::new(80));
     let calls = Arc::new(AtomicU32::new(0));
     let mut ui = Ui::new();
@@ -164,8 +164,9 @@ fn custom_layout_reuses_cache_until_marked_dirty_or_constraints_change() {
 
     for (state_width, child_width, dirty, viewport_width, relayout) in [
         (80, 80, false, 400.0, true),
-        // Clean trees keep the cached layout, even if external state changed.
-        (40, 80, false, 400.0, false),
+        // Every build lays out every box again, so external state is picked
+        // up without marking.
+        (40, 40, false, 400.0, true),
         (40, 40, true, 400.0, true),
         (100, 100, false, 500.0, true),
     ] {

@@ -37,7 +37,6 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
         fragment_builder: FragmentTreeBuilder::new(),
         inputs: LayoutInputTree::new(),
         fragments: FragmentTree::new(),
-        viewport: None,
         win: None,
         vello: VelloCpuWindowRenderer::new(),
         ui_renderer: CometPainter::new(),
@@ -51,8 +50,6 @@ struct App {
     fragment_builder: FragmentTreeBuilder,
     inputs: LayoutInputTree,
     fragments: FragmentTree,
-    /// Viewport of the latest input build.
-    viewport: Option<Size<f64>>,
     win: Option<Arc<Window>>,
     vello: VelloCpuWindowRenderer,
     ui_renderer: CometPainter,
@@ -116,17 +113,13 @@ impl ApplicationHandler for App {
                 }
 
                 let viewport = Size::new(size.width as f64, size.height as f64);
-                // Viewport units may depend on the viewport, so a resize
-                // resolves every item again.
-                let force = self.viewport != Some(viewport);
                 let Some(input_root) = self.input_builder.build(
                     &self.ui,
                     &mut self.inputs,
-                    BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport).with_force(force),
+                    BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport),
                 ) else {
                     return;
                 };
-                self.viewport = Some(viewport);
 
                 let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE);
                 let fragment_root = self.fragment_builder.build(

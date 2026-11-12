@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(
             &ui,
             &mut inputs,
-            BuildRequest::new(root, ROOT_FONT_SIZE, viewport).with_force(true),
+            BuildRequest::new(root, ROOT_FONT_SIZE, viewport),
         )
         .ok_or("could not rebuild sample UI")?;
     let resized = fragment_builder

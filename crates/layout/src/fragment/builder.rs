@@ -33,9 +33,8 @@ impl FragmentTreeBuilder {
     /// cleared; call [`LayoutInputTree::clear_flags`] after building.
     ///
     /// `constraint` supplies the viewport and root font size used to resolve
-    /// box styles, and the space available to `root`. Mark the input tree dirty
-    /// (for example with a forced input build) when the viewport or root font
-    /// size changes. Returns `None` and deletes the retained fragments if `root`
+    /// box styles, and the space available to `root`. Build the input tree again
+    /// when the viewport or root font size changes. Returns `None` and deletes the retained fragments if `root`
     /// is no longer in the input tree.
     ///
     /// Box fragments of block level and atomic inline items, and anonymous

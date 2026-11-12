@@ -17,7 +17,7 @@ use crate::{
     },
 };
 
-/// What [`LayoutInputTreeBuilder::build`] builds, and how.
+/// What [`LayoutInputTreeBuilder::build`] builds.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BuildRequest {
     /// Source node to build. Its existing item in the tree is updated; without
@@ -27,30 +27,16 @@ pub struct BuildRequest {
     pub root_font_size: f64,
     /// Viewport size, used for `vw` and `vh`.
     pub viewport: Size<f64>,
-    /// Re-resolve the whole subtree of `source`, even when its item is clean.
-    /// Keys are still reused. Use it when the root font size or the viewport
-    /// changes, since every item may depend on them.
-    ///
-    /// Every box is laid out again, but only items whose resolved text style,
-    /// kind or child layout changed are refragmented. Mark content changes,
-    /// such as edited text, as usual.
-    pub force: bool,
 }
 
 impl BuildRequest {
-    /// Request a fresh build of `source`.
+    /// Request a build of `source`.
     pub const fn new(source: NodeKey, root_font_size: f64, viewport: Size<f64>) -> Self {
         Self {
             source,
             root_font_size,
             viewport,
-            force: false,
         }
-    }
-
-    pub const fn with_force(mut self, force: bool) -> Self {
-        self.force = force;
-        self
     }
 }
 
@@ -58,8 +44,6 @@ impl BuildRequest {
 #[derive(Default)]
 pub struct LayoutInputTreeBuilder {
     pending: Vec<Task>,
-    /// Re-resolve every item in the current build, as if it were generated.
-    force: bool,
 }
 
 impl LayoutInputTreeBuilder {
@@ -68,25 +52,23 @@ impl LayoutInputTreeBuilder {
     }
 
     /// Update the item generated for `request.source`, or build a new tree for it
-    /// when the node has no item. Clean items return immediately unless forced;
-    /// mark changed nodes before updating. To insert a new node under an existing
-    /// item, update its parent.
+    /// when the node has no item. The whole subtree of `source` is resolved
+    /// again, since every item may depend on the root font size or the viewport.
+    /// Keys are reused. To insert a new node under an existing item, update its
+    /// parent.
     ///
     /// Returns the item generated for `source`. Returns `None` and deletes its item
-    /// if `source` is not in the UI, even when the item is clean. Also returns
-    /// `None` without changes when `source` has a UI parent but its item has no
-    /// parent item, since the tree no longer mirrors the UI. Build from the UI
-    /// root first.
+    /// if `source` is not in the UI. Also returns `None` without changes when
+    /// `source` has a UI parent but its item has no parent item, since the tree
+    /// no longer mirrors the UI. Build from the UI root first.
     ///
-    /// Generated items have every [`LayoutFlags`] set. Forced builds flag every
-    /// item [`LayoutFlags::BOX_DIRTY`], or [`LayoutFlags::DIRTY`] when its
-    /// resolved text style, kind or child layout changed. Updating visits flagged
-    /// items and keeps clean subtrees as they are, unless an inherited text style
-    /// changed. Existing items are only marked dirty when their contents or child
-    /// lists change. Flags are left for the consumer of the input tree to clear.
-    /// Items only describe their own node, so any changed node can be updated on
-    /// its own. See [`BuildRequest::force`] for forced builds. Use
-    /// `item_for_node` for child results.
+    /// Generated items have every [`LayoutFlags`] set. Existing items are
+    /// marked [`LayoutFlags::BOX_DIRTY`], or [`LayoutFlags::FULL_DIRTY`] when
+    /// their resolved text style, kind or child list changed, so every box is
+    /// laid out again but only changed content is refragmented. Mark content
+    /// changes the builder cannot see, such as edited text, as usual. Flags are
+    /// left for the consumer of the input tree to clear. Use `item_for_node`
+    /// for child results.
     pub fn build(
         &mut self,
         ui: &Ui,
@@ -97,7 +79,6 @@ impl LayoutInputTreeBuilder {
             source,
             root_font_size,
             viewport,
-            force,
         } = request;
         let target = tree.item_for_node(source);
 
@@ -115,13 +96,6 @@ impl LayoutInputTreeBuilder {
             return None;
         };
 
-        if !force
-            && let Some(key) = target
-            && tree.items[key].flags.is_empty()
-        {
-            return Some(key);
-        }
-
         let parent_style = match target.and_then(|key| tree.items.parent(key)) {
             Some(parent) => tree.items[parent].text_style.clone(),
             // A source with a UI parent always has a parent item, so the tree
@@ -130,8 +104,7 @@ impl LayoutInputTreeBuilder {
             None => Arc::new(root_text_style(root_font_size)),
         };
 
-        self.clear();
-        self.force = force;
+        self.pending.clear();
 
         let cx = UnitResolveContext {
             root_font_size,
@@ -139,28 +112,15 @@ impl LayoutInputTreeBuilder {
             viewport,
         };
 
-        let update = self.update(ui, tree, source, target, &parent_style, &cx)?;
+        let key = self.update(ui, tree, source, target, &parent_style, &cx)?;
 
-        if force {
-            // Propagate the reset flags to the ancestors.
-            tree.mark(update.key, LayoutFlags::empty());
-        }
-
-        if update.descend {
-            self.pending.push(Task {
-                key: update.key,
-                node: source,
-                force: update.force,
-            });
-        }
+        self.pending.push(Task { key, node: source });
 
         while let Some(task) = self.pending.pop() {
             self.reconcile_children(ui, tree, task, &cx);
         }
 
-        self.clear();
-
-        Some(update.key)
+        Some(key)
     }
 
     /// Match the item's children to the source children, in order.
@@ -168,7 +128,7 @@ impl LayoutInputTreeBuilder {
         &mut self,
         ui: &Ui,
         tree: &mut LayoutInputTree,
-        Task { key, node, force }: Task,
+        Task { key, node }: Task,
         cx: &UnitResolveContext,
     ) {
         let mut next = tree.items.first_child(key);
@@ -182,29 +142,17 @@ impl LayoutInputTreeBuilder {
                     .item_for_node(child)
                     .filter(|&item| tree.items.parent(item) == Some(key));
 
-                let update = match existing {
-                    // Clean items keep their entire subtree.
-                    Some(item) if !force && !self.force && tree.items[item].flags.is_empty() => {
-                        Update {
-                            key: item,
-                            descend: false,
-                            force: false,
-                        }
-                    }
-
-                    _ => match self.update(ui, tree, child, existing, &parent_style, cx) {
-                        Some(update) => update,
-                        None => continue,
-                    },
+                let Some(item) = self.update(ui, tree, child, existing, &parent_style, cx) else {
+                    continue;
                 };
 
-                if next == Some(update.key) {
-                    next = tree.items.next_sibling(update.key);
+                if next == Some(item) {
+                    next = tree.items.next_sibling(item);
                 } else {
                     if let Some(next) = next {
-                        tree.items.before(next, update.key);
+                        tree.items.before(next, item);
                     } else {
-                        tree.items.append(key, update.key);
+                        tree.items.append(key, item);
                     }
 
                     changed = true;
@@ -212,16 +160,13 @@ impl LayoutInputTreeBuilder {
 
                 if existing.is_none() {
                     // Propagate the new item's flags to the ancestors.
-                    tree.mark(update.key, LayoutFlags::FULL_DIRTY);
+                    tree.mark(item, LayoutFlags::FULL_DIRTY);
                 }
 
-                if update.descend {
-                    self.pending.push(Task {
-                        key: update.key,
-                        node: child,
-                        force: update.force,
-                    });
-                }
+                self.pending.push(Task {
+                    key: item,
+                    node: child,
+                });
             }
         }
 
@@ -245,84 +190,51 @@ impl LayoutInputTreeBuilder {
         existing: Option<LayoutInputKey>,
         parent_style: &Arc<TextStyle>,
         cx: &UnitResolveContext,
-    ) -> Option<Update> {
+    ) -> Option<LayoutInputKey> {
         let props = ui.props(node)?;
         let (kind, child_layout) = classify(props.kind(), props);
         let text_style = resolve_text_style(props, cx, parent_style);
 
         let Some(key) = existing else {
-            let key = tree.add_item(LayoutInputItem {
+            return Some(tree.add_item(LayoutInputItem {
                 kind,
                 node,
                 text_style,
                 child_layout,
                 flags: LayoutFlags::all(),
-            });
-
-            return Some(Update {
-                key,
-                descend: true,
-                force: false,
-            });
+            }));
         };
 
         let item = &mut tree.items[key];
-        let style_changed =
-            !Arc::ptr_eq(&item.text_style, &text_style) && item.text_style != text_style;
-        let changed = style_changed || item.kind != kind || item.child_layout != child_layout;
-        let descend = changed || !item.flags.is_empty();
+        let changed = (!Arc::ptr_eq(&item.text_style, &text_style)
+            && item.text_style != text_style)
+            || item.kind != kind
+            || item.child_layout != child_layout;
 
         // Always take the new allocation so equal styles keep sharing it.
         item.text_style = text_style;
         item.kind = kind;
         item.child_layout = child_layout;
 
-        if self.force {
-            // Box styles may depend on the viewport or root font size, so
-            // every box is laid out again. Content is only refragmented when
-            // the resolved item changed.
-            let dirty = if changed {
+        // Box styles may depend on the viewport or root font size, so every
+        // box is laid out again. Content is only refragmented when the
+        // resolved item changed.
+        tree.mark(
+            key,
+            if changed {
                 LayoutFlags::FULL_DIRTY
             } else {
                 LayoutFlags::BOX_DIRTY
-            };
-            item.flags = dirty | LayoutFlags::CHILDREN_DIRTY;
+            },
+        );
 
-            return Some(Update {
-                key,
-                descend: true,
-                force: true,
-            });
-        }
-
-        if changed {
-            tree.mark(key, LayoutFlags::FULL_DIRTY);
-        }
-
-        Some(Update {
-            key,
-            descend,
-            force: style_changed,
-        })
-    }
-
-    fn clear(&mut self) {
-        self.pending.clear();
-        self.force = false;
+        Some(key)
     }
 }
 
 struct Task {
     key: LayoutInputKey,
     node: NodeKey,
-    /// The text style changed, so descendants must be resolved again.
-    force: bool,
-}
-
-struct Update {
-    key: LayoutInputKey,
-    descend: bool,
-    force: bool,
 }
 
 /// Derive the item kind and child layout from the node's own display.

@@ -37,7 +37,7 @@ impl Fixture {
     }
 
     fn build(&mut self, ui: &Ui, node: NodeKey) -> (LayoutInputKey, FragmentKey) {
-        self.build_with(ui, node, VIEWPORT, false)
+        self.build_with(ui, node, VIEWPORT)
     }
 
     fn build_with(
@@ -45,18 +45,23 @@ impl Fixture {
         ui: &Ui,
         node: NodeKey,
         viewport: Size<f64>,
-        force: bool,
     ) -> (LayoutInputKey, FragmentKey) {
         let root = self
             .inputs
-            .build(
-                ui,
-                &mut self.tree,
-                BuildRequest::new(node, 16.0, viewport).with_force(force),
-            )
+            .build(ui, &mut self.tree, BuildRequest::new(node, 16.0, viewport))
             .unwrap();
-        let fragment = self
-            .builder
+
+        (root, self.layout_with(ui, root, viewport))
+    }
+
+    /// Lay out the input tree as marked, without building it again. Every
+    /// input build flags every box, so only this keeps clean subtrees.
+    fn layout(&mut self, ui: &Ui, root: LayoutInputKey) -> FragmentKey {
+        self.layout_with(ui, root, VIEWPORT)
+    }
+
+    fn layout_with(&mut self, ui: &Ui, root: LayoutInputKey, viewport: Size<f64>) -> FragmentKey {
+        self.builder
             .build(
                 ui,
                 &self.tree,
@@ -64,9 +69,7 @@ impl Fixture {
                 &mut self.fragments,
                 &LayoutConstraint::new_root(viewport, 16.0),
             )
-            .unwrap();
-
-        (root, fragment)
+            .unwrap()
     }
 
     fn box_of(&self, node: NodeKey) -> FragmentKey {
@@ -364,7 +367,7 @@ fn editing_one_run_keeps_the_fragments_of_other_runs() {
 
     ui.set_props(after, (Text("after, but longer".into()),));
     f.tree.mark_node(after, LayoutFlags::FULL_DIRTY);
-    f.build(&ui, root);
+    f.layout(&ui, input_root);
     f.tree.clear_flags(input_root);
 
     // Anonymous blocks are reused, and only the edited run is emitted again.
@@ -406,7 +409,7 @@ fn updates_reuse_box_fragments_and_layouts() {
     let count = f.fragments.items.len();
 
     // Clean trees keep every fragment.
-    assert_eq!(f.build(&ui, root), (input_root, root_fragment));
+    assert_eq!(f.layout(&ui, input_root), root_fragment);
     assert_eq!(f.children(body_fragment), lines);
     assert_eq!(f.fragments.items.len(), count);
 
@@ -1011,7 +1014,7 @@ fn atomic_inline_box_changes_lay_out_only_their_run() {
     ui.set_props(second, (Text("edited ".into()),));
     ui.set_props(badge, (fixed_size(30.0, 10.0),));
     f.tree.mark_node(badge, LayoutFlags::BOX_DIRTY);
-    f.build(&ui, root);
+    f.layout(&ui, input_root);
 
     // The run is laid out again without shaping; the other run is untouched.
     assert_eq!(f.children(root_fragment), runs);
@@ -1024,7 +1027,7 @@ fn atomic_inline_box_changes_lay_out_only_their_run() {
 }
 
 #[test]
-fn forced_builds_break_lines_again_without_shaping() {
+fn rebuilds_break_lines_again_without_shaping() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let content = text(&mut ui, "several words that wrap at narrow widths");
@@ -1039,7 +1042,7 @@ fn forced_builds_break_lines_again_without_shaping() {
     // A viewport change re-resolves every item, but equal text styles keep
     // the shaped text while lines follow the new width.
     ui.set_props(content, (Text("edited".into()),));
-    f.build_with(&ui, root, Size::new(80.0, 600.0), true);
+    f.build_with(&ui, root, Size::new(80.0, 600.0));
     f.tree.clear_flags(input_root);
 
     assert_eq!(f.shaped_text(root_fragment), shaped);
