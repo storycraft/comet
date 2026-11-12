@@ -4,7 +4,7 @@ use anyrender::Paint;
 use kurbo::{Affine, Point, Rect};
 use slotmap::new_key_type;
 
-pub struct PaintProperties {
+pub struct PaintProperty {
     pub transform: Affine,
     pub text_color: Paint,
     pub clip: Option<Rect>,
