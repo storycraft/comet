@@ -247,7 +247,7 @@ impl LayoutInputTreeBuilder {
         cx: &UnitResolveContext,
     ) -> Option<Update> {
         let props = ui.props(node)?;
-        let (kind, child_layout) = classify(ui.kind(node)?, props);
+        let (kind, child_layout) = classify(props.kind(), props);
         let text_style = resolve_text_style(props, cx, parent_style);
 
         let Some(key) = existing else {

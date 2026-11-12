@@ -40,7 +40,7 @@ impl Ui {
     }
 
     pub fn kind(&self, key: NodeKey) -> Option<Node> {
-        Some(self.world.get::<&UiNode>(key.0).ok()?.kind)
+        Some(self.props(key)?.kind())
     }
 
     pub fn props(&self, key: NodeKey) -> Option<Props<'_>> {
@@ -77,23 +77,23 @@ impl Ui {
     }
 
     pub fn parent(&self, id: NodeKey) -> Option<NodeKey> {
-        self.ui_node(id.0)?.parent.map(NodeKey)
+        self.props(id)?.parent()
     }
 
     pub fn first_child(&self, id: NodeKey) -> Option<NodeKey> {
-        self.ui_node(id.0)?.first_child.map(NodeKey)
+        self.props(id)?.first_child()
     }
 
     pub fn last_child(&self, id: NodeKey) -> Option<NodeKey> {
-        self.ui_node(id.0)?.last_child.map(NodeKey)
+        self.props(id)?.last_child()
     }
 
     pub fn next_sibling(&self, id: NodeKey) -> Option<NodeKey> {
-        self.ui_node(id.0)?.next_sibling.map(NodeKey)
+        self.props(id)?.next_sibling()
     }
 
     pub fn prev_sibling(&self, id: NodeKey) -> Option<NodeKey> {
-        self.ui_node(id.0)?.prev_sibling.map(NodeKey)
+        self.props(id)?.prev_sibling()
     }
 
     fn can_attach(&self, parent: Entity, id: Entity) -> bool {
@@ -297,6 +297,35 @@ impl<'a> Props<'a> {
 
     pub fn get_mut<T: StyleProp>(&self) -> Option<RefMut<'a, T>> {
         self.0.get::<&mut T>()
+    }
+
+    pub fn kind(self) -> Node {
+        self.ui_node().kind
+    }
+
+    pub fn parent(self) -> Option<NodeKey> {
+        self.ui_node().parent.map(NodeKey)
+    }
+
+    pub fn first_child(self) -> Option<NodeKey> {
+        self.ui_node().first_child.map(NodeKey)
+    }
+
+    pub fn last_child(self) -> Option<NodeKey> {
+        self.ui_node().last_child.map(NodeKey)
+    }
+
+    pub fn next_sibling(self) -> Option<NodeKey> {
+        self.ui_node().next_sibling.map(NodeKey)
+    }
+
+    pub fn prev_sibling(self) -> Option<NodeKey> {
+        self.ui_node().prev_sibling.map(NodeKey)
+    }
+
+    fn ui_node(self) -> UiNode {
+        // Every element is spawned by `Ui::create` with a `UiNode`.
+        *self.0.get::<&UiNode>().expect("element without UiNode")
     }
 }
 
