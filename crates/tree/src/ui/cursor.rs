@@ -13,10 +13,11 @@ pub struct Cursor<'a> {
 
 impl<'a> Cursor<'a> {
     pub(super) fn new(ui: &'a Ui, start: Option<NodeKey>) -> Self {
-        let front = start.filter(|key| ui.ui_node(key.0).is_some());
-        let back = front.and_then(|key| match ui.parent(key) {
+        let props = start.and_then(|key| ui.props(key));
+        let front = props.and(start);
+        let back = props.and_then(|props| match props.parent() {
             Some(parent) => ui.last_child(parent),
-            None => Some(key),
+            None => start,
         });
 
         Self { ui, front, back }

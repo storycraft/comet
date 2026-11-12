@@ -19,7 +19,7 @@ fn display_semantics_do_not_depend_on_taffy_display_defaults() {
         (bx::DisplayInner::Content, false, true),
     ] {
         let node = ui.create(Node::Box, (inner,));
-        let style = resolve(&ui, Some(node), &cx);
+        let style = resolve(ui.props(node), &cx);
 
         assert_eq!(style.is_block(), block);
         assert_eq!(style.is_replaced(), replaced);
@@ -28,9 +28,8 @@ fn display_semantics_do_not_depend_on_taffy_display_defaults() {
 
 #[test]
 fn anonymous_boxes_use_comet_defaults() {
-    let ui = Ui::new();
     let cx = LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0);
-    let style = resolve(&ui, None, &cx);
+    let style = resolve(None, &cx);
 
     assert!(style.is_block());
     assert!(!style.is_replaced());
@@ -64,7 +63,7 @@ fn adapter_resolves_constraint_units_and_preserves_percentages() {
     let mut cx = LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0);
     cx.units.font_size = 24.0;
 
-    let style = resolve(&ui, Some(node), &cx);
+    let style = resolve(ui.props(node), &cx);
 
     assert_eq!(style.size().width, taffy::Dimension::length(48.0));
     assert_eq!(style.size().height, taffy::Dimension::percent(0.5));
@@ -78,7 +77,7 @@ fn adapter_resolves_constraint_units_and_preserves_percentages() {
 
     cx.units.font_size = 12.0;
 
-    let updated = resolve(&ui, Some(node), &cx);
+    let updated = resolve(ui.props(node), &cx);
 
     assert_ne!(style, updated);
     assert_eq!(updated.size().width, taffy::Dimension::length(24.0));

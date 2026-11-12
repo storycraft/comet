@@ -101,7 +101,7 @@ impl LayoutInputTreeBuilder {
         } = request;
         let target = tree.item_for_node(source);
 
-        if ui.kind(source).is_none() {
+        let Some(props) = ui.props(source) else {
             if let Some(key) = target {
                 let parent = tree.items.parent(key);
 
@@ -113,7 +113,7 @@ impl LayoutInputTreeBuilder {
             }
 
             return None;
-        }
+        };
 
         if !force
             && let Some(key) = target
@@ -126,7 +126,7 @@ impl LayoutInputTreeBuilder {
             Some(parent) => tree.items[parent].text_style.clone(),
             // A source with a UI parent always has a parent item, so the tree
             // does not mirror the UI.
-            None if ui.parent(source).is_some() => return None,
+            None if props.parent().is_some() => return None,
             None => Arc::new(root_text_style(root_font_size)),
         };
 

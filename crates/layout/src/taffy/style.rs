@@ -1,4 +1,4 @@
-use comet_tree::{node::NodeKey, ui::Ui};
+use comet_tree::ui::Props;
 use taffy::style::{BlockContainerStyle, BlockItemStyle, CoreStyle, OofItemStyle};
 
 use super::conv;
@@ -30,16 +30,17 @@ pub struct Style {
 }
 
 /// Box properties never inherit. Anonymous boxes use the declared defaults.
-pub fn resolve(ui: &Ui, node: Option<NodeKey>, cx: &LayoutConstraint) -> Style {
+pub fn resolve(props: Option<Props>, cx: &LayoutConstraint) -> Style {
     macro_rules! value {
         ($prop:ident) => {
-            node.and_then(|node| ui.prop::<bx::$prop>(node))
+            props
+                .and_then(|props| props.get::<bx::$prop>())
                 .map(|v| v.0)
                 .unwrap_or_else(|| bx::$prop::default().0)
         };
     }
 
-    let inner = node.and_then(|node| ui.prop::<DisplayInner>(node));
+    let inner = props.and_then(|props| props.get::<DisplayInner>());
 
     Style {
         block: matches!(inner.as_deref(), None | Some(DisplayInner::Flow)),
@@ -51,8 +52,8 @@ pub fn resolve(ui: &Ui, node: Option<NodeKey>, cx: &LayoutConstraint) -> Style {
         size: conv::to_size(value!(Size), |v| conv::dimension(v, cx)),
         min_size: conv::to_size(value!(MinSize), |v| conv::length_auto(v, cx)),
         max_size: conv::to_size(value!(MaxSize), |v| conv::length_auto(v, cx)),
-        aspect_ratio: node
-            .and_then(|node| ui.prop::<bx::AspectRatio>(node))
+        aspect_ratio: props
+            .and_then(|props| props.get::<bx::AspectRatio>())
             .map(|v| v.0),
         margin: conv::to_rect(value!(Margin), |v| conv::length_auto(v, cx)),
         padding: conv::to_rect(value!(Padding), |v| conv::length(v, cx)),

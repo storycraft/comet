@@ -273,12 +273,12 @@ fn draw_glyph_run(
 }
 
 fn text_color(ui: &Ui, mut node: Option<NodeKey>) -> anyrender::Paint {
-    while let Some(key) = node {
-        if let Some(color) = ui.prop::<TextColor>(key) {
+    while let Some(props) = node.and_then(|key| ui.props(key)) {
+        if let Some(color) = props.get::<TextColor>() {
             return color.0.clone();
         }
 
-        node = ui.parent(key);
+        node = props.parent();
     }
 
     TextColor::default().0

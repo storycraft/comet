@@ -113,8 +113,7 @@ impl Engine<'_> {
 
     fn resolve_style(&self, key: LayoutInputKey) -> Style {
         style::resolve(
-            self.ui,
-            Some(self.tree.items[key].node),
+            self.ui.props(self.tree.items[key].node),
             &self.style_constraint(key),
         )
     }

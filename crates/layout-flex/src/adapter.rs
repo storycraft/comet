@@ -123,10 +123,12 @@ struct Style {
 
 impl Style {
     fn container(context: &ContainerContext<'_, '_>) -> Self {
+        let props = context.props();
+
         macro_rules! prop {
             ($name:ident) => {
-                context
-                    .prop::<styles::$name>()
+                props
+                    .and_then(|props| props.get::<styles::$name>())
                     .map(|v| v.0)
                     .unwrap_or_else(|| styles::$name::default().0)
             };
@@ -153,10 +155,12 @@ impl Style {
     }
 
     fn child(context: &ContainerContext<'_, '_>, index: usize) -> Self {
+        let props = context.child_props(index);
+
         macro_rules! prop {
             ($name:ident) => {
-                context
-                    .child_prop::<styles::$name>(index)
+                props
+                    .and_then(|props| props.get::<styles::$name>())
                     .map(|v| v.0)
                     .unwrap_or_else(|| styles::$name::default().0)
             };

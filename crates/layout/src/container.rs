@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use comet_tree::{node::NodeKey, style::StyleProp};
+use comet_tree::{node::NodeKey, style::StyleProp, ui::Props};
 use taffy::LayoutPartialTree;
 
 use crate::{
@@ -59,6 +59,12 @@ impl ContainerContext<'_, '_> {
     }
 
     /// Read a custom property on the container without inheritance or defaults.
+    /// Properties of the container. Prefer this over [`Self::prop`] when
+    /// reading several properties.
+    pub fn props(&self) -> Option<Props<'_>> {
+        self.engine.ui.props(self.node())
+    }
+
     pub fn prop<T: StyleProp>(&self) -> Option<impl Deref<Target = T> + '_> {
         self.engine.ui.prop::<T>(self.node())
     }
@@ -89,6 +95,12 @@ impl ContainerContext<'_, '_> {
     /// properties from the container.
     pub fn child_prop<T: StyleProp>(&self, index: usize) -> Option<impl Deref<Target = T> + '_> {
         self.engine.ui.prop::<T>(self.child_node(index))
+    }
+
+    /// Properties of the child's source node. Prefer this over
+    /// [`Self::child_prop`] when reading several properties.
+    pub fn child_props(&self, index: usize) -> Option<Props<'_>> {
+        self.engine.ui.props(self.child_node(index))
     }
 
     /// Resolve font and viewport units for the container, keeping percentages

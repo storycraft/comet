@@ -146,7 +146,7 @@ impl Engine<'_> {
                 anonymous
             }
             None => {
-                let style = style::resolve(self.ui, None, &self.style_constraint(owner));
+                let style = style::resolve(None, &self.style_constraint(owner));
                 self.fragments.insert_with_state(
                     owner,
                     |state| FragmentItem::AnonymousBlock { state },
