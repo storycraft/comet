@@ -14,7 +14,7 @@ define_style_props!(
 
     /// Transform of a box and its contents, applied around
     /// [`TransformOrigin`].
-    pub Transform: Affine = Affine::default();
+    pub Transform: Affine = Affine::IDENTITY;
     /// Point of the border box the [`Transform`] is applied around.
     /// Percentages use the border box width and height. Defaults to the centre.
     pub TransformOrigin: Point<StyleUnit> = Point::new(StyleUnit::Percent(0.5), StyleUnit::Percent(0.5));
