@@ -1,5 +1,6 @@
 pub mod prelude;
 pub mod style;
+pub mod property;
 
 use anyrender::PaintScene;
 use bytemuck::TransparentWrapper;
