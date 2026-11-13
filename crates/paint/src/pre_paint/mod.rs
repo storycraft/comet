@@ -1,10 +1,11 @@
 //! Paint data resolved for a fragment tree before painting.
 //!
 //! A [`PrePaintTree`](tree::PrePaintTree) holds the [`FragmentData`] of every
-//! fragment, such as its absolute position and transform, and the
-//! [`LayoutInputData`] of every layout input item. Fragments inherit
-//! transforms from their parent fragments, and items inherit text colors from
-//! their parent items.
+//! fragment, such as its transform relative to its parent fragment, and the
+//! [`LayoutInputData`] of every layout input item. Fragment data only depends
+//! on the fragment itself and its item, so any fragment subtree can be
+//! resolved again on its own. Items inherit text colors from their parent
+//! items.
 
 pub mod resolver;
 pub mod tree;
@@ -29,23 +30,25 @@ pub struct LayoutInputData {
 /// Paint data of a fragment.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FragmentData {
-    /// Absolute position of fragment box, in layout coordinates before
-    /// transforms.
-    pub position: Point,
-
-    /// Maps absolute layout coordinates to scene coordinates. Includes the
-    /// transforms of all ancestor fragments.
+    /// Maps the fragment's local coordinates, with its border box's top-left
+    /// corner at the origin, to the local coordinates of its parent fragment.
+    /// Applies its own [`Transform`](crate::style::Transform) around
+    /// [`Self::transform_origin`], then places the fragment at its layout
+    /// location: `translate(location + origin) * transform *
+    /// translate(-origin)`. Ancestor transforms are not included: multiply
+    /// them from the root down to map into scene coordinates.
     pub transform: Affine,
 
-    /// Inverse of [`Self::transform`], mapping scene coordinates back to
-    /// absolute layout coordinates, such as for hit testing. `None` when the
-    /// transform is not invertible, such as when it scales an axis to zero:
-    /// the fragment then covers no area in the scene.
+    /// Inverse of [`Self::transform`], mapping the parent fragment's local
+    /// coordinates back to the fragment's, such as for hit testing. `None`
+    /// when the transform is not invertible, such as when it scales an axis
+    /// to zero: the fragment and its contents then cover no area in the
+    /// scene.
     pub inverse_transform: Option<Affine>,
 
-    /// Absolute point of the fragment's border box its own transform is
-    /// applied around, in layout coordinates. Its centre, unless a box sets
-    /// [`TransformOrigin`](crate::style::TransformOrigin).
+    /// Point the fragment's own transform is applied around, relative to its
+    /// border box's top-left corner. The centre of its border box, unless a
+    /// box sets [`TransformOrigin`](crate::style::TransformOrigin).
     pub transform_origin: Point,
 
     /// Corner radii of the fragment's border box, resolved from its item's

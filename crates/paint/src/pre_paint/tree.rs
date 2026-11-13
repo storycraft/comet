@@ -1,17 +1,18 @@
 use std::ops::Index;
 
-use comet_layout::{
-    fragment::{FragmentKey, tree::FragmentTree},
-    input::{LayoutInputKey, tree::LayoutInputTree},
-};
+use comet_layout::{fragment::FragmentKey, input::LayoutInputKey};
 use slotmap::SecondaryMap;
 
 use crate::pre_paint::{FragmentData, LayoutInputData};
 
-/// Paint data of the fragments of a fragment tree, such as their absolute
-/// positions, and of the layout input items they were built from.
+/// Paint data of the fragments of a fragment tree, such as their transforms
+/// relative to their parents, and of the layout input items they were built
+/// from.
 ///
 /// Filled by a [`PrePaintTreeResolver`](super::resolver::PrePaintTreeResolver).
+/// Keys are generational, so data left behind by deleted fragments and items
+/// is never returned for the fragments and items reusing their slots, and is
+/// overwritten when those are resolved.
 #[derive(Default)]
 pub struct PrePaintTree {
     pub(super) fragment_mapping: SecondaryMap<FragmentKey, FragmentData>,
@@ -31,18 +32,6 @@ impl PrePaintTree {
     /// The paint data a layout input item was resolved to.
     pub fn get(&self, key: LayoutInputKey) -> Option<&LayoutInputData> {
         self.layout_mapping.get(key)
-    }
-
-    /// Drop the data of fragments deleted from `fragments`.
-    pub(super) fn retain_fragments(&mut self, fragments: &FragmentTree) {
-        self.fragment_mapping
-            .retain(|fragment, _| fragments.items.get(fragment).is_some());
-    }
-
-    /// Drop the data of items deleted from `inputs`.
-    pub(super) fn retain_items(&mut self, inputs: &LayoutInputTree) {
-        self.layout_mapping
-            .retain(|item, _| inputs.items.get(item).is_some());
     }
 
     pub fn clear(&mut self) {

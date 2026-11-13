@@ -124,22 +124,24 @@ impl Fixture {
         self.pre_paint.fragment(key).unwrap().clip
     }
 
-    fn position(&self, key: FragmentKey) -> Point {
-        self.pre_paint.fragment(key).unwrap().position
+    /// The transform of a fragment relative to its parent.
+    fn transform(&self, key: FragmentKey) -> Affine {
+        self.fragment(key).transform
     }
 
     fn text_color(&self, node: NodeKey) -> Color {
         solid(&self.data(node).text_color)
     }
 
-    /// Absolute rects of the fragments an item links together.
+    /// Border boxes of the fragments an item links together, each in its own
+    /// local coordinates.
     fn linked_rects(&self, node: NodeKey) -> Vec<Rect> {
         self.fragments
             .fragments(self.item(node))
             .map(|key| {
                 let size = self.fragments.items[key].layout.size;
 
-                Rect::from_origin_size(self.position(key), (size.width, size.height))
+                Rect::from_origin_size(Point::ORIGIN, (size.width, size.height))
             })
             .collect()
     }
@@ -199,10 +201,15 @@ fn commands(scene: &Scene) -> Vec<String> {
         .commands
         .iter()
         .map(|command| match command {
-            RenderCommand::Fill(fill) => format!("fill {:?}", fill.shape.bounding_box()),
-            RenderCommand::PushClipLayer(clip) => {
-                format!("clip {:?}", clip.clip.bounding_box())
-            }
+            RenderCommand::Fill(fill) => format!(
+                "fill {:?}",
+                fill.transform
+                    .transform_rect_bbox(fill.shape.bounding_box())
+            ),
+            RenderCommand::PushClipLayer(clip) => format!(
+                "clip {:?}",
+                clip.transform.transform_rect_bbox(clip.clip.bounding_box())
+            ),
             RenderCommand::PopLayer => "pop".into(),
             _ => "other".into(),
         })
@@ -210,7 +217,7 @@ fn commands(scene: &Scene) -> Vec<String> {
 }
 
 #[test]
-fn fragments_resolve_absolute_positions_and_origins() {
+fn fragments_resolve_transforms_relative_to_their_parents() {
     let mut ui = Ui::new();
     let root = ui.create(
         Node::Box,
@@ -223,13 +230,16 @@ fn fragments_resolve_absolute_positions_and_origins() {
     let mut f = Fixture::default();
     let root_fragment = f.build(&ui, root);
 
-    assert_eq!(f.position(root_fragment), Point::ORIGIN);
-    assert_eq!(f.position(f.box_of(block)), Point::new(5.0, 5.0));
+    assert_eq!(f.transform(root_fragment), Affine::IDENTITY);
+    assert_eq!(f.transform(f.box_of(block)), Affine::translate((5.0, 5.0)));
 
     // Boxes stitch their own fragment: lines owned by the block do not count.
     let block_fragment = f.fragment(f.box_of(block));
-    assert_eq!(block_fragment.transform_origin, Point::new(25.0, 15.0));
-    assert_eq!(block_fragment.transform, Affine::IDENTITY);
+    assert_eq!(block_fragment.transform_origin, Point::new(20.0, 10.0));
+    assert_eq!(
+        block_fragment.inverse_transform,
+        Some(Affine::translate((-5.0, -5.0)))
+    );
     assert_eq!(block_fragment.clip, (false, false));
     assert_eq!(f.data(block).stitched_size, kurbo::Size::new(40.0, 20.0));
     assert_eq!(f.data(root).stitched_size, kurbo::Size::new(120.0, 30.0));
@@ -447,23 +457,19 @@ fn transforms_multiply_around_their_origins() {
 
     assert_eq!(f.boxed(outer).transform_origin, Point::new(50.0, 20.0));
     assert_affine(f.boxed(outer).transform, outer_transform);
-    // A translation is the same around any origin.
-    assert_affine(
-        f.boxed(inner).transform,
-        outer_transform * Affine::translate((5.0, 0.0)),
-    );
+    // A translation is the same around any origin. Ancestor transforms are
+    // not included.
+    assert_affine(f.boxed(inner).transform, Affine::translate((5.0, 0.0)));
 
-    assert_eq!(f.position(f.box_of(corner)), Point::new(0.0, 10.0));
-    assert_eq!(f.boxed(corner).transform_origin, Point::new(0.0, 10.0));
+    // Placed at its location in the outer box, then scaled around its corner.
+    assert_eq!(f.boxed(corner).transform_origin, Point::ORIGIN);
     assert_affine(
         f.boxed(corner).transform,
-        outer_transform
-            * Affine::translate((0.0, 10.0))
-            * Affine::scale(3.0)
-            * Affine::translate((0.0, -10.0)),
+        Affine::translate((0.0, 10.0)) * Affine::scale(3.0),
     );
 
-    // The painter draws in absolute layout coordinates under the transform.
+    // The painter draws in local coordinates, multiplying transforms down the
+    // tree.
     let scene = f.draw(&ui);
     let fill = scene
         .commands
@@ -474,7 +480,10 @@ fn transforms_multiply_around_their_origins() {
         })
         .unwrap();
 
-    assert_affine(fill.transform, f.boxed(inner).transform);
+    assert_affine(
+        fill.transform,
+        outer_transform * Affine::translate((5.0, 0.0)),
+    );
     assert_eq!(fill.shape.bounding_box(), Rect::new(0.0, 0.0, 20.0, 10.0));
 }
 
@@ -664,14 +673,19 @@ fn resolving_a_subtree_follows_the_layout() {
     f.layout(&ui, root);
 
     // Resolved data is kept until it is resolved again.
-    assert_eq!(f.position(clipper_fragment), Point::new(0.0, 10.0));
+    assert_affine(
+        f.transform(clipper_fragment),
+        Affine::translate((3.0, 10.0)),
+    );
 
-    // Resolving the subtree leaves resolved ancestors as they are.
+    // Resolving the subtree leaves its ancestors as they are.
     f.resolve(&ui, clipper_fragment);
 
-    assert_eq!(f.position(clipper_fragment), Point::new(0.0, 30.0));
-    assert_eq!(f.boxed(clipper).transform_origin, Point::new(25.0, 40.0));
-    assert_affine(f.boxed(clipper).transform, Affine::translate((3.0, 0.0)));
+    assert_eq!(f.boxed(clipper).transform_origin, Point::new(25.0, 10.0));
+    assert_affine(
+        f.transform(clipper_fragment),
+        Affine::translate((3.0, 30.0)),
+    );
     assert_eq!(f.boxed(root), &root_data);
 }
 
@@ -701,7 +715,7 @@ fn resolving_a_subtree_looks_up_its_paint_styles_again() {
 }
 
 #[test]
-fn resolving_a_fragment_resolves_its_unresolved_ancestors() {
+fn resolving_a_fragment_resolves_only_its_unresolved_ancestor_items() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, (TextColor(Paint::Solid(RED)),));
     let block = ui.create(Node::Box, ());
@@ -712,35 +726,15 @@ fn resolving_a_fragment_resolves_its_unresolved_ancestors() {
     let root_fragment = f.layout(&ui, root);
     f.resolve(&ui, f.box_of(block));
 
-    assert_eq!(f.position(root_fragment), Point::ORIGIN);
-    assert_eq!(f.position(f.box_of(block)), Point::ORIGIN);
+    // Fragments do not depend on their ancestors, items inherit from theirs.
+    assert!(f.pre_paint.fragment(root_fragment).is_none());
+    assert_eq!(f.transform(f.box_of(block)), Affine::IDENTITY);
     assert_eq!(f.text_color(root), RED);
     assert_eq!(f.text_color(content), RED);
 }
 
 #[test]
-fn deleted_items_drop_their_data() {
-    let mut ui = Ui::new();
-    let root = ui.create(Node::Box, ());
-    let colored = ui.create(Node::Box, (TextColor(Paint::Solid(RED)),));
-    ui.append(root, colored);
-    text(&mut ui, colored, "text");
-
-    let mut f = Fixture::default();
-    f.build(&ui, root);
-    let item = f.item(colored);
-    let fragment = f.box_of(colored);
-
-    ui.delete(colored);
-    f.inputs.mark_node(root, LayoutFlags::FULL_DIRTY);
-    f.build(&ui, root);
-
-    assert!(f.pre_paint.get(item).is_none());
-    assert!(f.pre_paint.fragment(fragment).is_none());
-}
-
-#[test]
-fn inverse_transforms_map_scene_coordinates_back() {
+fn inverse_transforms_map_parent_coordinates_back() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let outer = ui.create(
@@ -791,8 +785,9 @@ fn collapsed_fragments_have_no_inverse_transform() {
     let mut f = Fixture::default();
     f.build(&ui, root);
 
+    // Its contents keep their own inverse, relative to the collapsed box.
     assert_eq!(f.boxed(collapsed).inverse_transform, None);
-    assert_eq!(f.boxed(content).inverse_transform, None);
+    assert_eq!(f.boxed(content).inverse_transform, Some(Affine::IDENTITY));
 
     // No clip layer is pushed for a box that covers no area.
     assert!(

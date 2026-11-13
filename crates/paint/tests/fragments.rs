@@ -19,7 +19,7 @@ use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,
 };
-use kurbo::{BezPath, PathEl, Rect, Shape};
+use kurbo::{BezPath, PathEl, Point, Rect, Shape};
 use peniko::Color;
 
 fn fills(scene: &Scene) -> Vec<(Rect, Color)> {
@@ -27,7 +27,11 @@ fn fills(scene: &Scene) -> Vec<(Rect, Color)> {
         .commands
         .iter()
         .filter_map(|command| match command {
-            RenderCommand::Fill(fill) => Some((fill.shape.bounding_box(), solid(&fill.brush))),
+            RenderCommand::Fill(fill) => Some((
+                fill.transform
+                    .transform_rect_bbox(fill.shape.bounding_box()),
+                solid(&fill.brush),
+            )),
             _ => None,
         })
         .collect()
@@ -38,15 +42,19 @@ fn strokes(scene: &Scene) -> Vec<(Rect, f64)> {
         .commands
         .iter()
         .filter_map(|command| match command {
-            RenderCommand::Stroke(stroke) => {
-                Some((stroke.shape.bounding_box(), stroke.style.width))
-            }
+            RenderCommand::Stroke(stroke) => Some((
+                stroke
+                    .transform
+                    .transform_rect_bbox(stroke.shape.bounding_box()),
+                stroke.style.width,
+            )),
             _ => None,
         })
         .collect()
 }
 
-fn glyphs(scene: &Scene) -> Vec<(&Glyph, Color)> {
+/// Glyphs in scene coordinates, with their colors.
+fn glyphs(scene: &Scene) -> Vec<(Glyph, Color)> {
     scene
         .commands
         .iter()
@@ -54,7 +62,18 @@ fn glyphs(scene: &Scene) -> Vec<(&Glyph, Color)> {
             RenderCommand::GlyphRun(run) => Some(run),
             _ => None,
         })
-        .flat_map(|run| run.glyphs.iter().map(|glyph| (glyph, solid(&run.brush))))
+        .flat_map(|run| {
+            run.glyphs.iter().map(|glyph| {
+                let point = run.transform * Point::new(glyph.x as f64, glyph.y as f64);
+                let glyph = Glyph {
+                    id: glyph.id,
+                    x: point.x as f32,
+                    y: point.y as f32,
+                };
+
+                (glyph, solid(&run.brush))
+            })
+        })
         .collect()
 }
 

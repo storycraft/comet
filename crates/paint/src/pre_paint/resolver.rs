@@ -9,7 +9,7 @@ use comet_layout::{
     },
 };
 use comet_tree::ui::{Props, Ui};
-use kurbo::{Affine, Point, Rect, RoundedRectRadii, Size, Vec2};
+use kurbo::{Affine, Point, RoundedRectRadii, Size};
 
 use crate::{
     pre_paint::{FragmentData, LayoutInputData, tree::PrePaintTree},
@@ -20,7 +20,7 @@ use crate::{
 /// buffers across resolves.
 #[derive(Default)]
 pub struct PrePaintTreeResolver {
-    /// Fragments to resolve, after their parents.
+    /// Fragments to resolve.
     fragments: Vec<FragmentKey>,
     /// Layout input items to resolve, after their parents.
     items: Vec<LayoutInputKey>,
@@ -41,13 +41,14 @@ impl PrePaintTreeResolver {
     }
 
     /// Resolve the layout input items under the source of `key` into `tree`
-    /// again, then the fragments under `key`. Unresolved ancestors are
-    /// resolved along with them, and resolved ancestors stay as they are.
+    /// again, then the fragments under `key`. Fragment data is relative to
+    /// the parent fragment, so ancestor fragments are neither read nor
+    /// resolved. Items inherit from their parents: unresolved ancestor items
+    /// are resolved along with them, and resolved ones stay as they are.
     ///
     /// Resolve again the subtrees whose layout or paint styles changed, or the
     /// whole tree after a fragment build or when the root font size or
-    /// viewport changes. Resolving from the root also drops the data of
-    /// deleted fragments and items.
+    /// viewport changes.
     ///
     /// `inputs` is the input tree `fragments` were built from, and `tree`
     /// belongs to them. `units` resolves border radii and transform origins,
@@ -73,8 +74,7 @@ impl PrePaintTreeResolver {
         self.resolve_fragments(sources, tree, key);
     }
 
-    /// Resolve the data of the fragments under `key`, each after the parent
-    /// it is positioned in and inherits its transform from.
+    /// Resolve the data of the fragments under `key`.
     fn resolve_fragments(
         &mut self,
         sources: Sources<'_>,
@@ -83,29 +83,15 @@ impl PrePaintTreeResolver {
     ) {
         let fragments = sources.fragments;
 
-        // Start below the nearest resolved ancestor.
-        let mut start = key;
-
-        while let Some(parent) = fragments.items.parent(start)
-            && tree.fragment(parent).is_none()
-        {
-            start = parent;
-        }
-
         let pending = &mut self.fragments;
         pending.clear();
-        pending.push(start);
+        pending.push(key);
 
         while let Some(key) = pending.pop() {
             let data = sources.resolve_fragment(tree, key);
 
             tree.fragment_mapping.insert(key, data);
-            pending.extend(fragments.items.children(key).rev());
-        }
-
-        // Every fragment of the tree was resolved.
-        if fragments.items.parent(start).is_none() {
-            tree.retain_fragments(fragments);
+            pending.extend(fragments.items.children(key));
         }
     }
 
@@ -138,45 +124,30 @@ impl PrePaintTreeResolver {
             tree.layout_mapping.insert(key, data);
             pending.extend(items.children(key).rev());
         }
-
-        // Every item of the tree was resolved.
-        if items.parent(start).is_none() {
-            tree.retain_items(sources.inputs);
-        }
     }
 }
 
 impl Sources<'_> {
-    /// Resolve the data of one fragment from the UI, the data of its item and
-    /// the data of its parent fragment.
+    /// Resolve the data of one fragment from the UI and the data of its item.
     fn resolve_fragment(&self, tree: &PrePaintTree, key: FragmentKey) -> FragmentData {
         let fragment = &self.fragments.items[key];
         let props = self.ui.props(self.inputs.items[fragment.source].node);
         // Transforms and overflow clips only apply to boxes.
         let box_props = props.filter(|_| fragment.item.is_box());
 
-        let (origin, inherited_transform) = match self.fragments.items.parent(key) {
-            Some(parent) => (tree[parent].position, tree[parent].transform),
-            None => (Point::ORIGIN, Affine::IDENTITY),
-        };
-
         let layout = &fragment.layout;
-        let position = origin + Vec2::new(layout.location.x, layout.location.y);
-        let rect = Rect::from_origin_size(position, (layout.size.width, layout.size.height));
-
         let transform_origin = self.transform_origin(
             key,
             box_props.map_or(TransformOrigin::default().0, lookup_transform_origin),
-            rect,
+            Size::new(layout.size.width, layout.size.height),
         );
         let transform = resolve_transform(
-            inherited_transform,
+            Point::new(layout.location.x, layout.location.y),
             box_props.map_or(Transform::default().0, lookup_transform),
             transform_origin,
         );
 
         FragmentData {
-            position,
             transform,
             inverse_transform: invert(transform),
             transform_origin,
@@ -248,20 +219,20 @@ impl Sources<'_> {
         Some(radii)
     }
 
-    /// The absolute point of a fragment's border box `rect` its own transform
-    /// is applied around, resolving `origin` with its item's font size.
+    /// The point a fragment's own transform is applied around, relative to
+    /// its border box of `size`, resolving `origin` with its item's font size.
     fn transform_origin(
         &self,
         key: FragmentKey,
         origin: StylePoint<StyleUnit>,
-        rect: Rect,
+        size: Size,
     ) -> Point {
         let source = self.fragments.items[key].source;
         let mut units = self.units.clone();
         units.font_size = self.inputs.items[source].text_style.span.font_size as f64;
 
-        let origin = origin.resolve(&units, StylePoint::new(rect.width(), rect.height()));
-        rect.origin() + Vec2::new(origin.x, origin.y)
+        let origin = origin.resolve(&units, StylePoint::new(size.width, size.height));
+        Point::new(origin.x, origin.y)
     }
 
     /// Resolve the data of one item from the UI, its fragments and its
@@ -352,14 +323,16 @@ fn invert(transform: Affine) -> Option<Affine> {
     Some(transform.inverse()).filter(Affine::is_finite)
 }
 
-/// Apply a fragment's own `transform` around its absolute `origin`, after the
-/// transforms it inherits.
-fn resolve_transform(inherited: Affine, transform: Affine, origin: Point) -> Affine {
+/// Apply a fragment's own `transform` around `origin`, relative to its border
+/// box, then place it at its `location` in its parent fragment.
+fn resolve_transform(location: Point, transform: Affine, origin: Point) -> Affine {
+    let location = location.to_vec2();
+
     if transform == Affine::IDENTITY {
-        return inherited;
+        return Affine::translate(location);
     }
 
     let origin = origin.to_vec2();
 
-    inherited * Affine::translate(origin) * transform * Affine::translate(-origin)
+    Affine::translate(location + origin) * transform * Affine::translate(-origin)
 }
