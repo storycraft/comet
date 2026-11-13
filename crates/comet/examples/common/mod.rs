@@ -1,5 +1,6 @@
 mod absolute;
 mod flex;
+mod transform;
 
 use anyrender::Paint;
 use comet_layout::style::{
@@ -64,6 +65,7 @@ pub fn sample_ui() -> (Ui, NodeKey) {
     rich_text_sample(&mut ui, sections);
     typography_sample(&mut ui, sections);
     absolute::showcase(&mut ui, sections);
+    transform::showcase(&mut ui, sections);
 
     (ui, root)
 }

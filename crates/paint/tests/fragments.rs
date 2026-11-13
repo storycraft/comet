@@ -12,6 +12,7 @@ use comet_layout::{
 };
 use comet_paint::{
     CometPainter,
+    pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
     style::{BorderFill, BorderRadius, Fill, TextColor},
 };
 use comet_tree::{
@@ -108,6 +109,23 @@ fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, FragmentKey)
     (inputs, fragments, fragment)
 }
 
+/// Resolve the pre-paint tree for the fragments, then paint them.
+#[allow(clippy::too_many_arguments)]
+fn draw(
+    painter: &mut CometPainter,
+    ui: &Ui,
+    inputs: &LayoutInputTree,
+    tree: &FragmentTree,
+    root: FragmentKey,
+    units: &UnitResolveContext,
+    viewport: Rect,
+    scene: &mut Scene,
+) {
+    let mut pre_paint = PrePaintTree::new();
+    PrePaintTreeResolver::new().resolve(ui, inputs, tree, units, &mut pre_paint, root);
+    painter.draw(ui, inputs, tree, &pre_paint, root, units, viewport, scene);
+}
+
 #[test]
 fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
     let mut ui = Ui::new();
@@ -138,7 +156,8 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
     let mut renderer = CometPainter::new();
     let mut scene = Scene::new();
 
-    renderer.draw(
+    draw(
+        &mut renderer,
         &ui,
         &inputs,
         &tree,
@@ -208,7 +227,8 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
 
     let mut shifted = Scene::new();
 
-    renderer.draw(
+    draw(
+        &mut renderer,
         &ui,
         &inputs,
         &tree,
@@ -259,7 +279,8 @@ fn paints_atomic_inline_subtree_border_and_text_override_without_double_offsets(
     let (inputs, tree, root) = build(&ui, root_node);
     let mut scene = Scene::new();
 
-    CometPainter::new().draw(
+    draw(
+        &mut CometPainter::new(),
         &ui,
         &inputs,
         &tree,
@@ -309,7 +330,8 @@ fn standalone_text_paints_its_background_only_once() {
     let (inputs, tree, root) = build(&ui, node);
     let mut scene = Scene::new();
 
-    CometPainter::new().draw(
+    draw(
+        &mut CometPainter::new(),
         &ui,
         &inputs,
         &tree,
@@ -348,7 +370,8 @@ fn rounds_background_and_border_corners() {
     let (inputs, tree, root) = build(&ui, node);
     let mut scene = Scene::new();
 
-    CometPainter::new().draw(
+    draw(
+        &mut CometPainter::new(),
         &ui,
         &inputs,
         &tree,
@@ -419,7 +442,8 @@ fn rounds_only_outer_edges_of_wrapped_fragments() {
         let (inputs, tree, root) = build(&ui, root_node);
         let mut scene = Scene::new();
 
-        CometPainter::new().draw(
+        draw(
+            &mut CometPainter::new(),
             &ui,
             &inputs,
             &tree,
@@ -486,7 +510,8 @@ fn anonymous_blocks_paint_nothing_and_offset_their_lines() {
     let (inputs, tree, root) = build(&ui, root_node);
     let mut scene = Scene::new();
 
-    CometPainter::new().draw(
+    draw(
+        &mut CometPainter::new(),
         &ui,
         &inputs,
         &tree,
@@ -574,7 +599,16 @@ fn skips_fragments_outside_viewport_but_paints_their_overflowing_children() {
     let (inputs, tree, root) = build(&ui, root_node);
 
     let mut all = Scene::new();
-    CometPainter::new().draw(&ui, &inputs, &tree, root, &UNITS, SCENE_VIEWPORT, &mut all);
+    draw(
+        &mut CometPainter::new(),
+        &ui,
+        &inputs,
+        &tree,
+        root,
+        &UNITS,
+        SCENE_VIEWPORT,
+        &mut all,
+    );
 
     assert_eq!(
         fills(&all)
@@ -585,7 +619,8 @@ fn skips_fragments_outside_viewport_but_paints_their_overflowing_children() {
     );
 
     let mut culled = Scene::new();
-    CometPainter::new().draw(
+    draw(
+        &mut CometPainter::new(),
         &ui,
         &inputs,
         &tree,

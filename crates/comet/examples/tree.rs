@@ -12,12 +12,15 @@ use comet_layout::{
     },
     style::{LayoutConstraint, geometry::Size},
 };
-use comet_paint::CometPainter;
+use comet_paint::{
+    CometPainter,
+    pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
+};
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use kurbo::Affine;
 
-const WIDTH: u32 = 640;
-const HEIGHT: u32 = 1220;
+const WIDTH: u32 = 1100;
+const HEIGHT: u32 = 900;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (ui, root) = common::sample_ui();
@@ -32,6 +35,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(&ui, &inputs, input_root, &mut fragments, &constraint)
         .ok_or("could not build fragment tree")?;
     inputs.clear_flags(input_root);
+    let mut pre_paint = PrePaintTree::new();
+    PrePaintTreeResolver::new().resolve(
+        &ui,
+        &inputs,
+        &fragments,
+        &constraint.units,
+        &mut pre_paint,
+        root,
+    );
 
     let mut pending = vec![(root, 0)];
 
@@ -69,6 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &ui,
                 &inputs,
                 &fragments,
+                &pre_paint,
                 root,
                 &constraint.units,
                 kurbo::Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),

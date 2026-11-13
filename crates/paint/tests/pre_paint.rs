@@ -1,0 +1,584 @@
+use anyrender::{Paint, Scene, recording::RenderCommand};
+use comet_layout::{
+    fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
+    input::{
+        LayoutFlags, LayoutInputKey,
+        builder::{BuildRequest, LayoutInputTreeBuilder},
+        tree::LayoutInputTree,
+    },
+    style::{
+        LayoutConstraint, bx,
+        geometry::{
+            AutoValue, Point as LayoutPoint, Rect as LayoutRect, Size, StyleUnit,
+            UnitResolveContext,
+        },
+        taffy::Overflow,
+    },
+};
+use comet_paint::{
+    CometPainter,
+    pre_paint::{LayoutInputData, resolver::PrePaintTreeResolver, tree::PrePaintTree},
+    style::{Fill, TextColor, Transform, TransformOrigin},
+};
+use comet_tree::{
+    node::{Node, NodeKey, Text},
+    ui::Ui,
+};
+use kurbo::{Affine, Point, Rect, Shape};
+use peniko::Color;
+
+const VIEWPORT: Size<f64> = Size::new(120.0, 400.0);
+const SCENE_VIEWPORT: Rect = Rect::new(0.0, 0.0, 120.0, 400.0);
+const UNITS: UnitResolveContext = LayoutConstraint::new_root(VIEWPORT, 16.0).units;
+
+const RED: Color = Color::from_rgb8(200, 20, 20);
+const GREEN: Color = Color::from_rgb8(20, 160, 20);
+const BLUE: Color = Color::from_rgb8(20, 40, 180);
+
+/// Input, fragment and pre-paint trees of one UI root.
+#[derive(Default)]
+struct Fixture {
+    inputs: LayoutInputTree,
+    fragments: FragmentTree,
+    pre_paint: PrePaintTree,
+    resolver: PrePaintTreeResolver,
+    input_builder: LayoutInputTreeBuilder,
+    builder: FragmentTreeBuilder,
+    root: Option<FragmentKey>,
+}
+
+impl Fixture {
+    /// Build the layout and resolve the whole pre-paint tree.
+    fn build(&mut self, ui: &Ui, node: NodeKey) -> FragmentKey {
+        let root = self.layout(ui, node);
+        self.resolve(ui, root);
+
+        root
+    }
+
+    /// Build or update the layout only, keeping the resolved pre-paint tree.
+    fn layout(&mut self, ui: &Ui, node: NodeKey) -> FragmentKey {
+        let input_root = self
+            .input_builder
+            .build(
+                ui,
+                &mut self.inputs,
+                BuildRequest::new(node, 16.0, VIEWPORT),
+            )
+            .unwrap();
+        let root = self
+            .builder
+            .build(
+                ui,
+                &self.inputs,
+                input_root,
+                &mut self.fragments,
+                &LayoutConstraint::new_root(VIEWPORT, 16.0),
+            )
+            .unwrap();
+        self.inputs.clear_flags(input_root);
+        self.root = Some(root);
+
+        root
+    }
+
+    fn resolve(&mut self, ui: &Ui, key: FragmentKey) {
+        self.resolver.resolve(
+            ui,
+            &self.inputs,
+            &self.fragments,
+            &UNITS,
+            &mut self.pre_paint,
+            key,
+        );
+    }
+
+    fn item(&self, node: NodeKey) -> LayoutInputKey {
+        self.inputs.item_for_node(node).unwrap()
+    }
+
+    fn box_of(&self, node: NodeKey) -> FragmentKey {
+        self.fragments.box_fragment(self.item(node)).unwrap()
+    }
+
+    fn data(&self, node: NodeKey) -> &LayoutInputData {
+        self.pre_paint.get(self.item(node)).unwrap()
+    }
+
+    fn position(&self, key: FragmentKey) -> Point {
+        self.pre_paint.position(key).unwrap().position
+    }
+
+    fn text_color(&self, node: NodeKey) -> Color {
+        solid(&self.data(node).text_color)
+    }
+
+    /// Absolute rects of the fragments an item links together.
+    fn linked_rects(&self, node: NodeKey) -> Vec<Rect> {
+        self.fragments
+            .fragments(self.item(node))
+            .map(|key| {
+                let size = self.fragments.items[key].layout.size;
+
+                Rect::from_origin_size(self.position(key), (size.width, size.height))
+            })
+            .collect()
+    }
+
+    fn draw(&self, ui: &Ui) -> Scene {
+        let mut scene = Scene::new();
+        CometPainter::new().draw(
+            ui,
+            &self.inputs,
+            &self.fragments,
+            &self.pre_paint,
+            self.root.unwrap(),
+            &UNITS,
+            SCENE_VIEWPORT,
+            &mut scene,
+        );
+
+        scene
+    }
+}
+
+fn solid(paint: &Paint) -> Color {
+    match paint {
+        Paint::Solid(color) => *color,
+        _ => panic!("test only uses solid paints"),
+    }
+}
+
+fn px(value: f64) -> AutoValue<StyleUnit> {
+    AutoValue::Value(StyleUnit::Px(value))
+}
+
+fn fixed(width: f64, height: f64) -> bx::Size {
+    bx::Size(Size::new(px(width), px(height)))
+}
+
+fn text(ui: &mut Ui, parent: NodeKey, value: &str) -> NodeKey {
+    let node = ui.create(Node::Text, (Text(value.into()),));
+    ui.append(parent, node);
+    node
+}
+
+fn hidden() -> bx::Overflow {
+    bx::Overflow(LayoutPoint::new(Overflow::Hidden, Overflow::Hidden))
+}
+
+fn assert_affine(actual: Affine, expected: Affine) {
+    let (actual, expected) = (actual.as_coeffs(), expected.as_coeffs());
+
+    for (a, b) in actual.iter().zip(expected.iter()) {
+        assert!((a - b).abs() < 1e-9, "{actual:?} != {expected:?}");
+    }
+}
+
+/// Fills, clip layers and pops of a scene, with their bounding boxes.
+fn commands(scene: &Scene) -> Vec<String> {
+    scene
+        .commands
+        .iter()
+        .map(|command| match command {
+            RenderCommand::Fill(fill) => format!("fill {:?}", fill.shape.bounding_box()),
+            RenderCommand::PushClipLayer(clip) => {
+                format!("clip {:?}", clip.clip.bounding_box())
+            }
+            RenderCommand::PopLayer => "pop".into(),
+            _ => "other".into(),
+        })
+        .collect()
+}
+
+#[test]
+fn items_cover_the_absolute_boxes_of_their_linked_fragments() {
+    let mut ui = Ui::new();
+    let root = ui.create(
+        Node::Box,
+        (bx::Padding(LayoutRect::new_all(StyleUnit::Px(5.0))),),
+    );
+    let block = ui.create(Node::Box, (fixed(40.0, 20.0),));
+    ui.append(root, block);
+    let content = text(&mut ui, block, "hi");
+
+    let mut f = Fixture::default();
+    let root_fragment = f.build(&ui, root);
+
+    assert_eq!(f.position(root_fragment), Point::ORIGIN);
+    assert_eq!(f.position(f.box_of(block)), Point::new(5.0, 5.0));
+
+    // Boxes cover their own fragment: lines owned by the block do not count.
+    let data = f.data(block);
+    assert_eq!(data.bounding_box, Rect::new(5.0, 5.0, 45.0, 25.0));
+    assert_eq!(data.transform_origin, Point::new(25.0, 15.0));
+    assert_eq!(data.transform, Affine::IDENTITY);
+    assert_eq!(data.clip, (false, false));
+    assert_eq!(f.data(root).bounding_box, Rect::new(0.0, 0.0, 120.0, 30.0));
+
+    // Text covers its glyph runs.
+    let runs = f.linked_rects(content);
+    assert!(!runs.is_empty());
+    assert_eq!(
+        f.data(content).bounding_box,
+        runs.into_iter().reduce(|a, b| a.union(b)).unwrap()
+    );
+}
+
+#[test]
+fn wrapped_inline_elements_cover_their_fragments_across_lines() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    ui.append(root, span);
+    text(
+        &mut ui,
+        span,
+        "one two three four five six seven eight nine ten",
+    );
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    let rects = f.linked_rects(span);
+    assert!(rects.len() > 1);
+
+    let bounds = rects.into_iter().reduce(|a, b| a.union(b)).unwrap();
+    let data = f.data(span);
+    assert_eq!(data.bounding_box, bounds);
+    assert_eq!(data.transform_origin, bounds.center());
+}
+
+#[test]
+fn text_color_is_inherited_through_the_ui() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, (TextColor(Paint::Solid(BLUE)),));
+    let plain = text(&mut ui, root, "blue ");
+    let span = ui.create(
+        Node::Box,
+        (bx::DisplayOuter::Inline, TextColor(Paint::Solid(RED))),
+    );
+    ui.append(root, span);
+    let before = text(&mut ui, span, "red ");
+    // A block inside the span is a fragment child of the root box, but still
+    // inherits from the span.
+    let block = ui.create(Node::Box, (fixed(10.0, 10.0),));
+    ui.append(span, block);
+    let inside = text(&mut ui, block, "still red");
+    let green = text(&mut ui, span, "green");
+    ui.set_props(green, (TextColor(Paint::Solid(GREEN)),));
+
+    let mut f = Fixture::default();
+    let root_fragment = f.build(&ui, root);
+
+    assert_eq!(
+        f.fragments.items.parent(f.box_of(block)),
+        Some(root_fragment)
+    );
+    assert_eq!(f.text_color(plain), BLUE);
+    assert_eq!(f.text_color(before), RED);
+    assert_eq!(f.text_color(block), RED);
+    assert_eq!(f.text_color(inside), RED);
+    assert_eq!(f.text_color(green), GREEN);
+}
+
+#[test]
+fn transforms_multiply_around_their_origins() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let outer = ui.create(
+        Node::Box,
+        (fixed(100.0, 40.0), Transform(Affine::scale(2.0))),
+    );
+    let inner = ui.create(
+        Node::Box,
+        (
+            fixed(20.0, 10.0),
+            Transform(Affine::translate((5.0, 0.0))),
+            Fill(Paint::Solid(RED)),
+        ),
+    );
+    let corner = ui.create(
+        Node::Box,
+        (
+            fixed(20.0, 10.0),
+            Transform(Affine::scale(3.0)),
+            TransformOrigin(LayoutPoint::new(StyleUnit::Px(0.0), StyleUnit::Px(0.0))),
+        ),
+    );
+    ui.append(root, outer);
+    ui.append(outer, inner);
+    ui.append(outer, corner);
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    let outer_transform =
+        Affine::translate((50.0, 20.0)) * Affine::scale(2.0) * Affine::translate((-50.0, -20.0));
+
+    assert_eq!(f.data(outer).transform_origin, Point::new(50.0, 20.0));
+    assert_affine(f.data(outer).transform, outer_transform);
+    // A translation is the same around any origin.
+    assert_affine(
+        f.data(inner).transform,
+        outer_transform * Affine::translate((5.0, 0.0)),
+    );
+
+    assert_eq!(f.position(f.box_of(corner)), Point::new(0.0, 10.0));
+    assert_eq!(f.data(corner).transform_origin, Point::new(0.0, 10.0));
+    assert_affine(
+        f.data(corner).transform,
+        outer_transform
+            * Affine::translate((0.0, 10.0))
+            * Affine::scale(3.0)
+            * Affine::translate((0.0, -10.0)),
+    );
+
+    // The painter draws in absolute layout coordinates under the transform.
+    let scene = f.draw(&ui);
+    let fill = scene
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            RenderCommand::Fill(fill) => Some(fill),
+            _ => None,
+        })
+        .unwrap();
+
+    assert_affine(fill.transform, f.data(inner).transform);
+    assert_eq!(fill.shape.bounding_box(), Rect::new(0.0, 0.0, 20.0, 10.0));
+}
+
+#[test]
+fn overflow_clips_contents_to_the_bounding_box() {
+    let mut ui = Ui::new();
+    let root = ui.create(
+        Node::Box,
+        (bx::Padding(LayoutRect::new_all(StyleUnit::Px(5.0))),),
+    );
+    let clipper = ui.create(
+        Node::Box,
+        (
+            fixed(50.0, 30.0),
+            bx::Border(LayoutRect::new_all(StyleUnit::Px(2.0))),
+            hidden(),
+            Fill(Paint::Solid(RED)),
+        ),
+    );
+    let colored = ui.create(
+        Node::Box,
+        (
+            fixed(10.0, 4.0),
+            TextColor(Paint::Solid(GREEN)),
+            Fill(Paint::Solid(GREEN)),
+        ),
+    );
+    // Clips horizontally only, inside the clipper.
+    let column = ui.create(
+        Node::Box,
+        (
+            bx::Size(Size::new(px(20.0), AutoValue::Auto)),
+            bx::Overflow(LayoutPoint::new(Overflow::Clip, Overflow::Visible)),
+        ),
+    );
+    ui.append(root, clipper);
+    ui.append(clipper, colored);
+    ui.append(clipper, column);
+    let tall = ui.create(Node::Box, (fixed(40.0, 100.0), Fill(Paint::Solid(BLUE))));
+    ui.append(column, tall);
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    assert_eq!(f.data(clipper).clip, (true, true));
+    assert_eq!(
+        f.data(clipper).bounding_box,
+        Rect::new(5.0, 5.0, 55.0, 35.0)
+    );
+    assert_eq!(f.data(colored).clip, (false, false));
+    assert_eq!(f.data(column).clip, (true, false));
+
+    // A box is painted outside its own clip; its contents inside it. Clip
+    // layers nest, and unclipped axes are bounded by the viewport.
+    assert_eq!(
+        commands(&f.draw(&ui)),
+        [
+            format!("fill {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
+            format!("clip {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
+            format!("fill {:?}", Rect::new(7.0, 7.0, 17.0, 11.0)),
+            format!("clip {:?}", Rect::new(7.0, 0.0, 27.0, 400.0)),
+            format!("fill {:?}", Rect::new(7.0, 11.0, 47.0, 111.0)),
+            "pop".into(),
+            "pop".into(),
+        ]
+    );
+}
+
+#[test]
+fn clips_follow_the_transform_of_their_item() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let clipper = ui.create(
+        Node::Box,
+        (fixed(40.0, 20.0), hidden(), Transform(Affine::rotate(0.3))),
+    );
+    let content = ui.create(Node::Box, (fixed(40.0, 20.0), Fill(Paint::Solid(RED))));
+    ui.append(root, clipper);
+    ui.append(clipper, content);
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    let scene = f.draw(&ui);
+    let clip = scene
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            RenderCommand::PushClipLayer(clip) => Some(clip),
+            _ => None,
+        })
+        .unwrap();
+
+    // The bounding box is clipped exactly, under the item's transform.
+    assert_affine(clip.transform, f.data(clipper).transform);
+    assert_eq!(clip.clip.bounding_box(), Rect::new(0.0, 0.0, 40.0, 20.0));
+}
+
+#[test]
+fn content_outside_its_clip_is_not_painted() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let clipper = ui.create(Node::Box, (fixed(50.0, 20.0), hidden()));
+    let inside = ui.create(Node::Box, (fixed(50.0, 20.0), Fill(Paint::Solid(RED))));
+    // Boxes touching the clip edge are painted, so leave a gap.
+    let gap = ui.create(Node::Box, (fixed(50.0, 5.0),));
+    let outside = ui.create(Node::Box, (fixed(50.0, 20.0), Fill(Paint::Solid(BLUE))));
+    ui.append(root, clipper);
+    ui.append(clipper, inside);
+    ui.append(clipper, gap);
+    ui.append(clipper, outside);
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+    let fills: Vec<_> = f
+        .draw(&ui)
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            RenderCommand::Fill(fill) => Some(solid(&fill.brush)),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(fills, [RED]);
+}
+
+#[test]
+fn resolving_a_subtree_follows_the_layout() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let top = ui.create(Node::Box, (fixed(10.0, 10.0),));
+    let clipper = ui.create(
+        Node::Box,
+        (
+            fixed(50.0, 20.0),
+            hidden(),
+            Transform(Affine::translate((3.0, 0.0))),
+        ),
+    );
+    ui.append(root, top);
+    ui.append(root, clipper);
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+    let clipper_fragment = f.box_of(clipper);
+    let root_data = f.data(root).clone();
+
+    assert_eq!(
+        f.data(clipper).bounding_box,
+        Rect::new(0.0, 10.0, 50.0, 30.0)
+    );
+
+    ui.set_props(top, (fixed(10.0, 30.0),));
+    f.inputs.mark_node(top, LayoutFlags::BOX_DIRTY);
+    f.layout(&ui, root);
+
+    // Resolved data is kept until it is resolved again.
+    assert_eq!(f.position(clipper_fragment), Point::new(0.0, 10.0));
+
+    // Resolving the subtree leaves resolved ancestors as they are.
+    f.resolve(&ui, clipper_fragment);
+
+    assert_eq!(f.position(clipper_fragment), Point::new(0.0, 30.0));
+    assert_eq!(
+        f.data(clipper).bounding_box,
+        Rect::new(0.0, 30.0, 50.0, 50.0)
+    );
+    assert_eq!(f.data(clipper).transform_origin, Point::new(25.0, 40.0));
+    assert_affine(f.data(clipper).transform, Affine::translate((3.0, 0.0)));
+    assert_eq!(f.data(root), &root_data);
+}
+
+#[test]
+fn resolving_a_subtree_looks_up_its_paint_styles_again() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, (TextColor(Paint::Solid(BLUE)),));
+    let colored = ui.create(Node::Box, (TextColor(Paint::Solid(RED)),));
+    let block = ui.create(Node::Box, ());
+    ui.append(root, colored);
+    ui.append(colored, block);
+    let content = text(&mut ui, block, "text");
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    // Paint style changes are only looked up when resolving.
+    ui.set_props(colored, (TextColor(Paint::Solid(GREEN)),));
+    assert_eq!(f.text_color(colored), RED);
+
+    f.resolve(&ui, f.box_of(colored));
+
+    assert_eq!(f.text_color(root), BLUE);
+    assert_eq!(f.text_color(colored), GREEN);
+    assert_eq!(f.text_color(block), GREEN);
+    assert_eq!(f.text_color(content), GREEN);
+}
+
+#[test]
+fn resolving_a_fragment_resolves_its_unresolved_ancestors() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, (TextColor(Paint::Solid(RED)),));
+    let block = ui.create(Node::Box, ());
+    ui.append(root, block);
+    let content = text(&mut ui, block, "text");
+
+    let mut f = Fixture::default();
+    let root_fragment = f.layout(&ui, root);
+    f.resolve(&ui, f.box_of(block));
+
+    assert_eq!(f.position(root_fragment), Point::ORIGIN);
+    assert_eq!(f.position(f.box_of(block)), Point::ORIGIN);
+    assert_eq!(f.text_color(root), RED);
+    assert_eq!(f.text_color(content), RED);
+}
+
+#[test]
+fn deleted_items_drop_their_data() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let colored = ui.create(Node::Box, (TextColor(Paint::Solid(RED)),));
+    ui.append(root, colored);
+    text(&mut ui, colored, "text");
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+    let item = f.item(colored);
+    let fragment = f.box_of(colored);
+
+    ui.delete(colored);
+    f.inputs.mark_node(root, LayoutFlags::FULL_DIRTY);
+    f.build(&ui, root);
+
+    assert!(f.pre_paint.get(item).is_none());
+    assert!(f.pre_paint.position(fragment).is_none());
+}

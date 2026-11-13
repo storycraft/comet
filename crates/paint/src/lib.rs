@@ -1,6 +1,6 @@
+pub mod pre_paint;
 pub mod prelude;
 pub mod style;
-pub mod property;
 
 use anyrender::PaintScene;
 use bytemuck::TransparentWrapper;
@@ -10,16 +10,29 @@ use comet_layout::{
     style::geometry::UnitResolveContext,
 };
 use comet_tree::{node::NodeKey, ui::Ui};
-use kurbo::{Affine, Point, Rect, RoundedRectRadii, Stroke, Vec2};
+use kurbo::{Affine, Rect, RoundedRectRadii, Stroke, Vec2};
 use parley::PositionedLayoutItem;
 
-use crate::style::{BorderFill, BorderRadius, Fill, TextColor};
+use crate::{
+    pre_paint::{LayoutInputData, tree::PrePaintTree},
+    style::{BorderFill, BorderRadius, Fill},
+};
 
-/// Paints final fragments in tree order, with coordinates relative to their parents.
+/// Paints final fragments in tree order, with the [`PrePaintTree`] resolved
+/// for them.
 #[derive(Default)]
 pub struct CometPainter {
-    /// Fragments to paint, with their parent origin and the line containing them.
-    pending: Vec<(FragmentKey, Point, Option<FragmentKey>)>,
+    pending: Vec<Visit>,
+    /// Clips of the pushed clip layers, each intersected with the ones below
+    /// it, to skip fragments painting outside them.
+    clips: Vec<Rect>,
+}
+
+enum Visit {
+    /// Paint a fragment, inside the line containing it.
+    Fragment(FragmentKey, Option<FragmentKey>),
+    /// Pop the clip layer of a fragment's contents.
+    PopClip,
 }
 
 impl CometPainter {
@@ -28,90 +41,176 @@ impl CometPainter {
     }
 
     /// Paint the fragments under `root`. `inputs` is the input tree the
-    /// fragments were built from.
+    /// fragments were built from, and `pre_paint` must be resolved for them.
+    /// Each fragment paints at its resolved position, with the data of its
+    /// source item.
     ///
     /// `units` supplies the root font size and viewport resolving paint
     /// styles, matching those the input tree was built with. Its `font_size`
     /// is replaced by each item's computed font size.
     ///
-    /// Fragments painting entirely outside `viewport`, in scene coordinates,
-    /// are skipped. Fragments touching its edges are painted. Their descendants are still visited, since overflow is not
-    /// clipped and children may paint outside their parents.
+    /// A box clipping its overflow pushes a clip layer of its item's bounding
+    /// box for its contents. Clips of `root`'s ancestors do not apply.
+    ///
+    /// Fragments painting entirely outside `viewport` or their clip, in scene
+    /// coordinates, are skipped. Fragments touching their edges are painted.
+    /// Their descendants are still visited, since children may paint outside
+    /// their parents.
+    #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
         ui: &Ui,
         inputs: &LayoutInputTree,
         tree: &FragmentTree,
+        pre_paint: &PrePaintTree,
         root: FragmentKey,
         units: &UnitResolveContext,
         viewport: Rect,
         scene: &mut impl PaintScene,
     ) {
         self.pending.clear();
-        self.pending.push((root, Point::ORIGIN, None));
+        self.clips.clear();
+        self.pending.push(Visit::Fragment(root, None));
 
-        while let Some((key, parent_origin, mut inline_owner)) = self.pending.pop() {
-            let Some(fragment) = tree.items.get(key) else {
-                continue;
+        while let Some(visit) = self.pending.pop() {
+            let (key, mut inline_owner) = match visit {
+                Visit::Fragment(key, inline_owner) => (key, inline_owner),
+                Visit::PopClip => {
+                    scene.pop_layer();
+                    self.clips.pop();
+                    continue;
+                }
             };
+            let fragment = &tree.items[key];
 
-            let origin = parent_origin + (fragment.layout.location.x, fragment.layout.location.y);
-            let rect = Rect::from_origin_size(
-                origin,
-                (fragment.layout.size.width, fragment.layout.size.height),
+            if matches!(fragment.item, FragmentItem::Line { .. }) {
+                inline_owner = Some(key);
+            }
+
+            let data = &pre_paint[fragment.source];
+            let clip = self.clips.last().copied();
+            self.draw_fragment(
+                ui,
+                inputs,
+                tree,
+                key,
+                inline_owner,
+                pre_paint[key].position,
+                data,
+                units,
+                viewport,
+                clip,
+                scene,
             );
-            let box_visible = || box_bounds(fragment, rect).overlaps(viewport);
 
-            match fragment.item {
-                FragmentItem::Box { .. } => {
-                    // A standalone text root also owns a layout box. Its paint
-                    // belongs to its glyph fragments, not to both representations.
-                    if !inputs
-                        .items
-                        .get(fragment.source)
-                        .is_some_and(|item| item.kind == LayoutInputKind::Text)
-                        && box_visible()
-                    {
-                        draw_box(ui, inputs, tree, key, units, rect, scene);
-                    }
-                }
-                FragmentItem::Inline { .. } => {
-                    if box_visible() {
-                        draw_box(ui, inputs, tree, key, units, rect, scene);
-                    }
-                }
-                // Anonymous blocks only position their lines.
-                FragmentItem::AnonymousBlock { .. } => {}
-                FragmentItem::Line { .. } => inline_owner = Some(key),
-                FragmentItem::GlyphRun { line, item } => {
-                    if box_visible() {
-                        draw_box(ui, inputs, tree, key, units, rect, scene);
-                    }
+            // The box of a clipping item clips the item's contents.
+            if fragment.item.is_box()
+                && let Some(layer) = clip_layer(data, viewport)
+            {
+                scene.push_clip_layer(peniko::Fill::NonZero, data.transform, &layer);
 
-                    if let Some(owner) = inline_owner {
-                        draw_glyph_run(
-                            ui,
-                            inputs,
-                            tree,
-                            fragment,
-                            owner,
-                            (line, item),
-                            rect,
-                            viewport,
-                            scene,
-                        );
-                    }
-                }
+                let bounds = data.transform.transform_rect_bbox(layer);
+                self.clips
+                    .push(clip.map_or(bounds, |clip| clip.intersect(bounds)));
+                self.pending.push(Visit::PopClip);
             }
 
             self.pending.extend(
                 tree.items
                     .children(key)
                     .rev()
-                    .map(|child| (child, origin, inline_owner)),
+                    .map(|child| Visit::Fragment(child, inline_owner)),
             );
         }
     }
+
+    /// Paint one fragment itself, inside `clip`.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_fragment(
+        &self,
+        ui: &Ui,
+        inputs: &LayoutInputTree,
+        tree: &FragmentTree,
+        key: FragmentKey,
+        inline_owner: Option<FragmentKey>,
+        position: kurbo::Point,
+        data: &LayoutInputData,
+        units: &UnitResolveContext,
+        viewport: Rect,
+        clip: Option<Rect>,
+        scene: &mut impl PaintScene,
+    ) {
+        let fragment = &tree.items[key];
+        let rect = Rect::from_origin_size(
+            position,
+            (fragment.layout.size.width, fragment.layout.size.height),
+        );
+        let visible = |bounds: Rect| {
+            let bounds = data.transform.transform_rect_bbox(bounds);
+
+            bounds.overlaps(viewport) && clip.is_none_or(|clip| bounds.overlaps(clip))
+        };
+        let transform = data.transform;
+
+        match fragment.item {
+            FragmentItem::Box { .. } => {
+                // A standalone text root also owns a layout box. Its paint
+                // belongs to its glyph fragments, not to both representations.
+                if inputs.items[fragment.source].kind != LayoutInputKind::Text
+                    && visible(box_bounds(fragment, rect))
+                {
+                    draw_box(ui, inputs, tree, key, units, rect, transform, scene);
+                }
+            }
+            FragmentItem::Inline { .. } => {
+                if visible(box_bounds(fragment, rect)) {
+                    draw_box(ui, inputs, tree, key, units, rect, transform, scene);
+                }
+            }
+            // Anonymous blocks only position their lines.
+            FragmentItem::AnonymousBlock { .. } => {}
+            FragmentItem::Line { .. } => {}
+            FragmentItem::GlyphRun { line, item } => {
+                if visible(box_bounds(fragment, rect)) {
+                    draw_box(ui, inputs, tree, key, units, rect, transform, scene);
+                }
+
+                if let Some(owner) = inline_owner {
+                    draw_glyph_run(
+                        tree,
+                        fragment,
+                        owner,
+                        (line, item),
+                        rect,
+                        data,
+                        &visible,
+                        scene,
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// The clip of an item clipping its contents, in absolute layout coordinates:
+/// its bounding box on the clipped axes. Unclipped axes are bounded by the
+/// viewport, mapped back to layout coordinates.
+fn clip_layer(data: &LayoutInputData, viewport: Rect) -> Option<Rect> {
+    let (x, y) = data.clip;
+
+    if !x && !y {
+        return None;
+    }
+
+    let bounds = data.bounding_box;
+    let visible = data.transform.inverse().transform_rect_bbox(viewport);
+
+    Some(Rect::new(
+        if x { bounds.x0 } else { visible.x0 },
+        if y { bounds.y0 } else { visible.y0 },
+        if x { bounds.x1 } else { visible.x1 },
+        if y { bounds.y1 } else { visible.y1 },
+    ))
 }
 
 /// Bounds of the background and border painted for a fragment's border box.
@@ -134,10 +233,11 @@ fn border_width(fragment: &Fragment) -> f64 {
 }
 
 /// The source node of a fragment.
-fn node(inputs: &LayoutInputTree, fragment: &Fragment) -> Option<NodeKey> {
-    inputs.items.get(fragment.source).map(|item| item.node)
+fn node(inputs: &LayoutInputTree, fragment: &Fragment) -> NodeKey {
+    inputs.items[fragment.source].node
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_box(
     ui: &Ui,
     inputs: &LayoutInputTree,
@@ -145,11 +245,12 @@ fn draw_box(
     key: FragmentKey,
     units: &UnitResolveContext,
     rect: Rect,
+    transform: Affine,
     scene: &mut impl PaintScene,
 ) {
     let fragment = &tree.items[key];
 
-    let Some(props) = node(inputs, fragment).and_then(|node| ui.props(node)) else {
+    let Some(props) = ui.props(node(inputs, fragment)) else {
         return;
     };
 
@@ -158,9 +259,7 @@ fn draw_box(
     if let Some(radius) = props.get::<BorderRadius>() {
         let mut units = units.clone();
 
-        if let Some(item) = inputs.items.get(fragment.source) {
-            units.font_size = item.text_style.span.font_size as f64;
-        }
+        units.font_size = inputs.items[fragment.source].text_style.span.font_size as f64;
 
         let resolve = |value: comet_layout::style::geometry::StyleUnit| {
             value
@@ -189,7 +288,7 @@ fn draw_box(
     if let Some(fill) = props.get::<Fill>() {
         scene.fill(
             peniko::Fill::NonZero,
-            Affine::IDENTITY,
+            transform,
             &fill.0,
             None,
             &rect.to_rounded_rect(radii),
@@ -203,7 +302,7 @@ fn draw_box(
     {
         scene.stroke(
             &Stroke::new(width),
-            Affine::IDENTITY,
+            transform,
             &fill.0,
             None,
             &rect.inset(-width / 2.0).to_rounded_rect(radii),
@@ -213,14 +312,13 @@ fn draw_box(
 
 #[allow(clippy::too_many_arguments)]
 fn draw_glyph_run(
-    ui: &Ui,
-    inputs: &LayoutInputTree,
     tree: &FragmentTree,
     fragment: &Fragment,
     owner_line: FragmentKey,
     (line, item): (usize, usize),
     rect: Rect,
-    viewport: Rect,
+    data: &LayoutInputData,
+    visible: &impl Fn(Rect) -> bool,
     scene: &mut impl PaintScene,
 ) {
     let Some(line) = tree
@@ -240,7 +338,7 @@ fn draw_glyph_run(
     // tight line height or italic overhangs. One em on each side bounds it.
     let overhang = run.font_size() as f64;
 
-    if !rect.inflate(overhang, overhang).overlaps(viewport) {
+    if !visible(rect.inflate(overhang, overhang)) {
         return;
     }
 
@@ -261,9 +359,9 @@ fn draw_glyph_run(
         normalized_coords,
         Vec2::ZERO,
         peniko::StyleRef::Fill(peniko::Fill::NonZero),
-        &text_color(ui, node(inputs, fragment)),
+        &data.text_color,
         1.0,
-        Affine::IDENTITY,
+        data.transform,
         None,
         glyph_run.positioned_glyphs().map(|glyph| anyrender::Glyph {
             id: glyph.id,
@@ -271,16 +369,4 @@ fn draw_glyph_run(
             y: offset_y + glyph.y,
         }),
     );
-}
-
-fn text_color(ui: &Ui, mut node: Option<NodeKey>) -> anyrender::Paint {
-    while let Some(props) = node.and_then(|key| ui.props(key)) {
-        if let Some(color) = props.get::<TextColor>() {
-            return color.0.clone();
-        }
-
-        node = props.parent();
-    }
-
-    TextColor::default().0
 }

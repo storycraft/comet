@@ -11,7 +11,10 @@ use comet_layout::{
     },
     style::{LayoutConstraint, geometry::Size},
 };
-use comet_paint::CometPainter;
+use comet_paint::{
+    CometPainter,
+    pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
+};
 use comet_tree::{node::NodeKey, ui::Ui};
 use winit::{
     application::ApplicationHandler,
@@ -37,6 +40,8 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
         fragment_builder: FragmentTreeBuilder::new(),
         inputs: LayoutInputTree::new(),
         fragments: FragmentTree::new(),
+        pre_paint: PrePaintTree::new(),
+        pre_paint_resolver: PrePaintTreeResolver::new(),
         win: None,
         vello: VelloCpuWindowRenderer::new(),
         ui_renderer: CometPainter::new(),
@@ -50,6 +55,8 @@ struct App {
     fragment_builder: FragmentTreeBuilder,
     inputs: LayoutInputTree,
     fragments: FragmentTree,
+    pre_paint: PrePaintTree,
+    pre_paint_resolver: PrePaintTreeResolver,
     win: Option<Arc<Window>>,
     vello: VelloCpuWindowRenderer,
     ui_renderer: CometPainter,
@@ -136,11 +143,23 @@ impl ApplicationHandler for App {
                     return;
                 };
 
+                // Positions and clips follow the layout, which was just
+                // built, so resolve the whole tree again.
+                self.pre_paint_resolver.resolve(
+                    &self.ui,
+                    &self.inputs,
+                    &self.fragments,
+                    &constraint.units,
+                    &mut self.pre_paint,
+                    fragment_root,
+                );
+
                 self.vello.render(|painter| {
                     self.ui_renderer.draw(
                         &self.ui,
                         &self.inputs,
                         &self.fragments,
+                        &self.pre_paint,
                         fragment_root,
                         &constraint.units,
                         kurbo::Rect::new(0.0, 0.0, viewport.width, viewport.height),
