@@ -45,7 +45,7 @@ impl CometPainter {
     /// border radius, and the data of its source item.
     ///
     /// A box fragment clipping its overflow pushes a clip layer of its border
-    /// box for its contents. Clips of `root`'s ancestors do not apply.
+    /// box for its contents, rounded with its border radius. Clips of `root`'s ancestors do not apply.
     ///
     /// Fragments painting entirely outside `viewport` or their clip, in scene
     /// coordinates, are skipped. Fragments touching their edges are painted.
@@ -99,7 +99,15 @@ impl CometPainter {
 
             // A clipping fragment clips the contents of its item.
             if let Some(layer) = clip_layer(fragment, own, data, viewport) {
-                scene.push_clip_layer(peniko::Fill::NonZero, data.transform, &layer);
+                // Clipping on both axes follows the rounded corners of the box.
+                match own.border_radius.filter(|_| own.clip == (true, true)) {
+                    Some(radii) => scene.push_clip_layer(
+                        peniko::Fill::NonZero,
+                        data.transform,
+                        &layer.to_rounded_rect(radii),
+                    ),
+                    None => scene.push_clip_layer(peniko::Fill::NonZero, data.transform, &layer),
+                }
 
                 let bounds = data.transform.transform_rect_bbox(layer);
                 self.clips
@@ -187,6 +195,10 @@ impl CometPainter {
 /// coordinates: its border box on the clipped axes. Unclipped axes are bounded
 /// by the viewport, mapped back to layout coordinates. Fragments whose item's
 /// transform has no inverse push no clip layer.
+///
+/// Fragments clipping on both axes round the layer with their border radius.
+/// Clipping on one axis keeps it square, as every corner then lies on the
+/// viewport bound of the unclipped axis.
 fn clip_layer(
     fragment: &Fragment,
     own: &FragmentData,

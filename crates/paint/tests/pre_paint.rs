@@ -563,6 +563,46 @@ fn clips_follow_the_transform_of_their_item() {
 }
 
 #[test]
+fn clips_round_with_the_border_radius_on_both_axes() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let radius = || BorderRadius(LayoutRect::new_all(StyleUnit::Px(5.0)));
+    let rounded = ui.create(Node::Box, (fixed(40.0, 20.0), hidden(), radius()));
+    // Clips horizontally only: its corners lie on the viewport bound.
+    let column = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 20.0),
+            bx::Overflow(LayoutPoint::new(Overflow::Clip, Overflow::Visible)),
+            radius(),
+        ),
+    );
+    for parent in [rounded, column] {
+        let content = ui.create(Node::Box, (fixed(40.0, 20.0), Fill(Paint::Solid(RED))));
+        ui.append(root, parent);
+        ui.append(parent, content);
+    }
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    let scene = f.draw(&ui);
+    let areas: Vec<_> = scene
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            RenderCommand::PushClipLayer(clip) => Some(clip.clip.area().abs()),
+            _ => None,
+        })
+        .collect();
+
+    let rounded_area = Rect::new(0.0, 0.0, 40.0, 20.0).to_rounded_rect(5.0).area();
+    assert_eq!(areas.len(), 2);
+    assert!((areas[0] - rounded_area).abs() < 0.1, "{areas:?}");
+    assert_eq!(areas[1], 40.0 * 400.0);
+}
+
+#[test]
 fn content_outside_its_clip_is_not_painted() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
