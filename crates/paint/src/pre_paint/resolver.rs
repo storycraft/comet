@@ -9,7 +9,7 @@ use comet_layout::{
     },
 };
 use comet_tree::ui::{Props, Ui};
-use kurbo::{Affine, Point, Rect, RoundedRectRadii, Vec2};
+use kurbo::{Affine, Point, Rect, RoundedRectRadii, Size, Vec2};
 
 use crate::{
     pre_paint::{FragmentData, LayoutInputData, tree::PrePaintTree},
@@ -22,6 +22,8 @@ use crate::{
 pub struct PrePaintTreeResolver {
     /// Fragments to position, with the absolute position of their parents.
     fragments: Vec<(FragmentKey, Point)>,
+    /// Positioned fragments, to resolve their other data after their items.
+    positioned: Vec<FragmentKey>,
     /// Layout input items to resolve, after their parents.
     items: Vec<LayoutInputKey>,
 }
@@ -68,14 +70,21 @@ impl PrePaintTreeResolver {
             units,
         };
 
-        // Items read the positions of their fragments.
-        self.resolve_fragments(sources, tree, key);
+        // Items read the positions of their fragments, and fragments the
+        // stitched sizes of their items.
+        self.resolve_positions(sources, tree, key);
         self.resolve_items(sources, tree, fragments.items[key].source);
+
+        for &key in &self.positioned {
+            let data = sources.resolve_fragment(tree, key);
+
+            tree.fragment_mapping[key] = data;
+        }
     }
 
-    /// Resolve the data of the fragments under `key`, each after its parent
-    /// it is positioned in.
-    fn resolve_fragments(
+    /// Resolve the positions of the fragments under `key`, each after the
+    /// parent it is positioned in. Their other data is left unresolved.
+    fn resolve_positions(
         &mut self,
         sources: Sources<'_>,
         tree: &mut PrePaintTree,
@@ -99,6 +108,7 @@ impl PrePaintTreeResolver {
         let pending = &mut self.fragments;
         pending.clear();
         pending.push((start, origin));
+        self.positioned.clear();
 
         while let Some((key, origin)) = pending.pop() {
             let location = fragments.items[key].layout.location;
@@ -108,9 +118,11 @@ impl PrePaintTreeResolver {
                 key,
                 FragmentData {
                     position,
-                    border_radius: sources.border_radius(key),
+                    border_radius: None,
+                    clip: (false, false),
                 },
             );
+            self.positioned.push(key);
             pending.extend(
                 fragments
                     .items
@@ -164,10 +176,32 @@ impl PrePaintTreeResolver {
 }
 
 impl Sources<'_> {
+    /// Resolve the data of one positioned fragment from the UI and the data of
+    /// its item.
+    fn resolve_fragment(&self, tree: &PrePaintTree, key: FragmentKey) -> FragmentData {
+        let fragment = &self.fragments.items[key];
+        let props = self.ui.props(self.inputs.items[fragment.source].node);
+
+        FragmentData {
+            position: tree[key].position,
+            border_radius: props.and_then(|props| self.border_radius(tree, key, props)),
+            // Overflow clips only apply to boxes.
+            clip: props
+                .filter(|_| fragment.item.is_box())
+                .map_or((false, false), lookup_clip),
+        }
+    }
+
     /// The corner radii of a fragment's border box, or `None` for fragments
-    /// painting no box or items setting no radius. Corners joining a linked
-    /// fragment are square.
-    fn border_radius(&self, key: FragmentKey) -> Option<RoundedRectRadii> {
+    /// painting no box or items setting no radius. Radii resolve against the
+    /// stitched size of the item, and corners joining a linked fragment are
+    /// square.
+    fn border_radius(
+        &self,
+        tree: &PrePaintTree,
+        key: FragmentKey,
+        props: Props<'_>,
+    ) -> Option<RoundedRectRadii> {
         let fragment = &self.fragments.items[key];
 
         if matches!(
@@ -177,13 +211,12 @@ impl Sources<'_> {
             return None;
         }
 
-        let item = &self.inputs.items[fragment.source];
-        let radius = self.ui.props(item.node)?.get::<BorderRadius>()?.0;
+        let radius = props.get::<BorderRadius>()?.0;
 
         let mut units = self.units.clone();
-        units.font_size = item.text_style.span.font_size as f64;
+        units.font_size = self.inputs.items[fragment.source].text_style.span.font_size as f64;
 
-        let size = fragment.layout.size;
+        let size = tree[fragment.source].stitched_size;
         let basis = size.width.min(size.height);
         let resolve = |value: StyleUnit| value.resolve(&units, basis).max(0.0);
 
@@ -194,14 +227,28 @@ impl Sources<'_> {
             resolve(radius.left_top.x),
         );
 
+        // Box fragments continue below their previous fragment, inline and
+        // glyph run fragments to its right.
+        let vertical = fragment.item.is_box();
+
         if fragment.link.prev.is_some() {
             radii.top_left = 0.0;
-            radii.bottom_left = 0.0;
+
+            if vertical {
+                radii.top_right = 0.0;
+            } else {
+                radii.bottom_left = 0.0;
+            }
         }
 
         if fragment.link.next.is_some() {
-            radii.top_right = 0.0;
             radii.bottom_right = 0.0;
+
+            if vertical {
+                radii.bottom_left = 0.0;
+            } else {
+                radii.top_right = 0.0;
+            }
         }
 
         Some(radii)
@@ -212,7 +259,7 @@ impl Sources<'_> {
     fn resolve_item(&self, tree: &PrePaintTree, key: LayoutInputKey) -> LayoutInputData {
         let item = &self.inputs.items[key];
         let props = self.ui.props(item.node);
-        // Transforms and overflow clips only apply to boxes.
+        // Transforms only apply to boxes.
         let box_props = props.filter(|_| self.fragments.box_fragment(key).is_some());
 
         let (inherited_transform, inherited_color) =
@@ -235,12 +282,36 @@ impl Sources<'_> {
 
         LayoutInputData {
             bounding_box,
+            stitched_size: self.stitched_size(key),
             transform,
             inverse_transform: invert(transform),
             transform_origin,
             text_color: props.and_then(lookup_text_color).unwrap_or(inherited_color),
-            clip: box_props.map_or((false, false), lookup_clip),
         }
+    }
+
+    /// The size of the fragments an item generates and links together, placed
+    /// end to end: box fragments below each other, inline and glyph run
+    /// fragments side by side. Items without fragments have an empty size.
+    fn stitched_size(&self, key: LayoutInputKey) -> Size {
+        self.fragments
+            .fragments(key)
+            .fold(Size::ZERO, |stitched, fragment| {
+                let fragment = &self.fragments.items[fragment];
+                let size = fragment.layout.size;
+
+                if fragment.item.is_box() {
+                    Size::new(
+                        stitched.width.max(size.width),
+                        stitched.height + size.height,
+                    )
+                } else {
+                    Size::new(
+                        stitched.width + size.width,
+                        stitched.height.max(size.height),
+                    )
+                }
+            })
     }
 
     /// The absolute bounding box of the fragments an item generates and links

@@ -44,7 +44,7 @@ impl CometPainter {
     /// Each fragment paints with its resolved data, such as its position and
     /// border radius, and the data of its source item.
     ///
-    /// A box clipping its overflow pushes a clip layer of its item's bounding
+    /// A box fragment clipping its overflow pushes a clip layer of its border
     /// box for its contents. Clips of `root`'s ancestors do not apply.
     ///
     /// Fragments painting entirely outside `viewport` or their clip, in scene
@@ -81,6 +81,7 @@ impl CometPainter {
                 inline_owner = Some(key);
             }
 
+            let own = &pre_paint[key];
             let data = &pre_paint[fragment.source];
             let clip = self.clips.last().copied();
             self.draw_fragment(
@@ -89,17 +90,15 @@ impl CometPainter {
                 tree,
                 key,
                 inline_owner,
-                &pre_paint[key],
+                own,
                 data,
                 viewport,
                 clip,
                 scene,
             );
 
-            // The box of a clipping item clips the item's contents.
-            if fragment.item.is_box()
-                && let Some(layer) = clip_layer(data, viewport)
-            {
+            // A clipping fragment clips the contents of its item.
+            if let Some(layer) = clip_layer(fragment, own, data, viewport) {
                 scene.push_clip_layer(peniko::Fill::NonZero, data.transform, &layer);
 
                 let bounds = data.transform.transform_rect_bbox(layer);
@@ -184,12 +183,17 @@ impl CometPainter {
     }
 }
 
-/// The clip of an item clipping its contents, in absolute layout coordinates:
-/// its bounding box on the clipped axes. Unclipped axes are bounded by the
-/// viewport, mapped back to layout coordinates. Items whose transform has no
-/// inverse push no clip layer.
-fn clip_layer(data: &LayoutInputData, viewport: Rect) -> Option<Rect> {
-    let (x, y) = data.clip;
+/// The clip of a fragment clipping its contents, in absolute layout
+/// coordinates: its border box on the clipped axes. Unclipped axes are bounded
+/// by the viewport, mapped back to layout coordinates. Fragments whose item's
+/// transform has no inverse push no clip layer.
+fn clip_layer(
+    fragment: &Fragment,
+    own: &FragmentData,
+    data: &LayoutInputData,
+    viewport: Rect,
+) -> Option<Rect> {
+    let (x, y) = own.clip;
 
     if !x && !y {
         return None;
@@ -197,7 +201,10 @@ fn clip_layer(data: &LayoutInputData, viewport: Rect) -> Option<Rect> {
 
     // A collapsed box paints its contents collapsed with it.
     let visible = data.inverse_transform?.transform_rect_bbox(viewport);
-    let bounds = data.bounding_box;
+    let bounds = Rect::from_origin_size(
+        own.position,
+        (fragment.layout.size.width, fragment.layout.size.height),
+    );
 
     Some(Rect::new(
         if x { bounds.x0 } else { visible.x0 },

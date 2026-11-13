@@ -109,6 +109,10 @@ impl Fixture {
         self.pre_paint.fragment(key).unwrap().border_radius
     }
 
+    fn clip(&self, key: FragmentKey) -> (bool, bool) {
+        self.pre_paint.fragment(key).unwrap().clip
+    }
+
     fn position(&self, key: FragmentKey) -> Point {
         self.pre_paint.fragment(key).unwrap().position
     }
@@ -216,7 +220,8 @@ fn items_cover_the_absolute_boxes_of_their_linked_fragments() {
     assert_eq!(data.bounding_box, Rect::new(5.0, 5.0, 45.0, 25.0));
     assert_eq!(data.transform_origin, Point::new(25.0, 15.0));
     assert_eq!(data.transform, Affine::IDENTITY);
-    assert_eq!(data.clip, (false, false));
+    assert_eq!(data.stitched_size, kurbo::Size::new(40.0, 20.0));
+    assert_eq!(f.clip(f.box_of(block)), (false, false));
     assert_eq!(f.data(root).bounding_box, Rect::new(0.0, 0.0, 120.0, 30.0));
 
     // Text covers its glyph runs.
@@ -246,10 +251,51 @@ fn wrapped_inline_elements_cover_their_fragments_across_lines() {
     let rects = f.linked_rects(span);
     assert!(rects.len() > 1);
 
+    // Stitched side by side, as if on one line.
+    let stitched = kurbo::Size::new(
+        rects.iter().map(Rect::width).sum(),
+        rects.iter().map(Rect::height).fold(0.0, f64::max),
+    );
+
     let bounds = rects.into_iter().reduce(|a, b| a.union(b)).unwrap();
     let data = f.data(span);
     assert_eq!(data.bounding_box, bounds);
     assert_eq!(data.transform_origin, bounds.center());
+    assert_eq!(data.stitched_size, stitched);
+}
+
+#[test]
+fn wrapped_fragments_resolve_percentage_radii_against_their_stitched_size() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let span = ui.create(
+        Node::Box,
+        (
+            bx::DisplayOuter::Inline,
+            BorderRadius(LayoutRect::new_all(StyleUnit::Percent(0.5))),
+        ),
+    );
+    ui.append(root, span);
+    text(
+        &mut ui,
+        span,
+        "one two three four five six seven eight nine ten",
+    );
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    let fragments: Vec<_> = f.fragments.fragments(f.item(span)).collect();
+    assert!(fragments.len() > 1);
+
+    // The stitched span is wider than tall, so the radius is half its height,
+    // whatever the width of each fragment.
+    let stitched = f.data(span).stitched_size;
+    assert!(stitched.width > stitched.height);
+    let radius = stitched.height / 2.0;
+
+    let first = f.border_radius(fragments[0]).unwrap();
+    assert_eq!(first, RoundedRectRadii::new(radius, 0.0, 0.0, radius));
 }
 
 #[test]
@@ -422,7 +468,7 @@ fn transforms_multiply_around_their_origins() {
 }
 
 #[test]
-fn overflow_clips_contents_to_the_bounding_box() {
+fn overflow_clips_contents_to_the_fragment_box() {
     let mut ui = Ui::new();
     let root = ui.create(
         Node::Box,
@@ -462,13 +508,13 @@ fn overflow_clips_contents_to_the_bounding_box() {
     let mut f = Fixture::default();
     f.build(&ui, root);
 
-    assert_eq!(f.data(clipper).clip, (true, true));
+    assert_eq!(f.clip(f.box_of(clipper)), (true, true));
     assert_eq!(
         f.data(clipper).bounding_box,
         Rect::new(5.0, 5.0, 55.0, 35.0)
     );
-    assert_eq!(f.data(colored).clip, (false, false));
-    assert_eq!(f.data(column).clip, (true, false));
+    assert_eq!(f.clip(f.box_of(colored)), (false, false));
+    assert_eq!(f.clip(f.box_of(column)), (true, false));
 
     // A box is painted outside its own clip; its contents inside it. Clip
     // layers nest, and unclipped axes are bounded by the viewport.

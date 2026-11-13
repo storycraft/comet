@@ -9,7 +9,7 @@ pub mod resolver;
 pub mod tree;
 
 use anyrender::Paint;
-use kurbo::{Affine, Point, Rect, RoundedRectRadii};
+use kurbo::{Affine, Point, Rect, RoundedRectRadii, Size};
 
 /// Paint data of a layout input item, shared by all fragments it generates.
 #[derive(Debug, Clone, PartialEq)]
@@ -19,6 +19,12 @@ pub struct LayoutInputData {
     /// lines. Line boxes and anonymous blocks do not participate. Absolute,
     /// in layout coordinates before transforms.
     pub bounding_box: Rect,
+
+    /// Size of the fragments linked together in [`Self::bounding_box`], placed
+    /// end to end as if the item was not split: box fragments below each
+    /// other, inline and glyph run fragments side by side. Border radii
+    /// resolve against it.
+    pub stitched_size: Size,
 
     /// Maps absolute layout coordinates to scene coordinates. Includes the
     /// transforms of all ancestor items.
@@ -37,9 +43,6 @@ pub struct LayoutInputData {
 
     /// Text color, inherited from the parent item unless the item sets one.
     pub text_color: Paint,
-
-    /// Axes a box clips its contents on, to its bounding box.
-    pub clip: (bool, bool),
 }
 
 /// Paint data of a fragment.
@@ -50,8 +53,13 @@ pub struct FragmentData {
     pub position: Point,
 
     /// Corner radii of the fragment's border box, resolved from its item's
-    /// [`BorderRadius`](crate::style::BorderRadius) against its size. Corners
+    /// [`BorderRadius`](crate::style::BorderRadius) against the
+    /// [stitched size](LayoutInputData::stitched_size) of its item. Corners
     /// joining a linked fragment are square. `None` for fragments painting no
     /// box, such as line boxes, or items setting no radius.
     pub border_radius: Option<RoundedRectRadii>,
+
+    /// Axes a box fragment clips the contents of its item on, to its border
+    /// box.
+    pub clip: (bool, bool),
 }
