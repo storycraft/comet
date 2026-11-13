@@ -21,4 +21,6 @@ define_style_props!(
 
     // Text draw styles
     pub TextColor: Paint = Paint::Solid(Color::BLACK);
+
+    pub ZIndex: i32 = 0;
 );
