@@ -23,4 +23,6 @@ define_style_props!(
     pub TextColor: Paint = Paint::Solid(Color::BLACK);
 
     pub ZIndex: i32 = 0;
+
+    pub Opacity: f64 = 1.0;
 );
