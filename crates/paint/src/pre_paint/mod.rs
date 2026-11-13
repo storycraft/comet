@@ -25,6 +25,10 @@ pub struct LayoutInputData {
 
     /// Text color, inherited from the parent item unless the item sets one.
     pub text_color: Paint,
+
+    /// Axes the item clips its overflow on. Each box fragment of the item
+    /// clips its contents to its own border box; other fragments do not clip.
+    pub clip: (bool, bool),
 }
 
 /// Paint data of a fragment.
@@ -57,8 +61,4 @@ pub struct FragmentData {
     /// joining a linked fragment are square. `None` for fragments painting no
     /// box, such as line boxes, or items setting no radius.
     pub border_radius: Option<RoundedRectRadii>,
-
-    /// Axes a box fragment clips the contents of its item on, to its border
-    /// box.
-    pub clip: (bool, bool),
 }

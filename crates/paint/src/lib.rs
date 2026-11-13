@@ -158,12 +158,12 @@ impl CometPainter {
             );
 
             // A clipping fragment clips the contents of its item.
-            if let Some(layer) = clip_layer(fragment, own, transforms, viewport) {
+            if let Some(layer) = clip_layer(fragment, data.clip, transforms, viewport) {
                 let transform = transforms.transform;
 
                 // Clipping on both axes follows the rounded corners of the box.
                 // TODO:: horizontal, vertical curve clip for round rect.
-                match own.border_radius.filter(|_| own.clip == (true, true)) {
+                match own.border_radius.filter(|_| data.clip == (true, true)) {
                     Some(radii) => scene.push_clip_layer(
                         peniko::Fill::NonZero,
                         transform,
@@ -261,8 +261,9 @@ fn local_rect(fragment: &Fragment) -> Rect {
     )
 }
 
-/// The clip of a fragment clipping its contents, in its local coordinates:
-/// its border box on the clipped axes. Unclipped axes are bounded by the
+/// The clip of a box fragment whose item clips its overflow on the `clip`
+/// axes, in its local coordinates: its border box on the clipped axes. Other
+/// fragments do not clip. Unclipped axes are bounded by the
 /// viewport, mapped back to local coordinates with `transforms`, the
 /// fragment's transforms to the scene. Fragments whose scene transform has no
 /// inverse push no clip layer.
@@ -272,13 +273,11 @@ fn local_rect(fragment: &Fragment) -> Rect {
 /// viewport bound of the unclipped axis.
 fn clip_layer(
     fragment: &Fragment,
-    own: &FragmentData,
+    (x, y): (bool, bool),
     transforms: Transforms,
     viewport: Rect,
 ) -> Option<Rect> {
-    let (x, y) = own.clip;
-
-    if !x && !y {
+    if !fragment.item.is_box() || !x && !y {
         return None;
     }
 

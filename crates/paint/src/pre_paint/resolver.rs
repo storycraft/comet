@@ -132,7 +132,7 @@ impl Sources<'_> {
     fn resolve_fragment(&self, tree: &PrePaintTree, key: FragmentKey) -> FragmentData {
         let fragment = &self.fragments.items[key];
         let props = self.ui.props(self.inputs.items[fragment.source].node);
-        // Transforms and overflow clips only apply to boxes.
+        // Transforms only apply to boxes.
         let box_props = props.filter(|_| fragment.item.is_box());
 
         let layout = &fragment.layout;
@@ -152,7 +152,6 @@ impl Sources<'_> {
             inverse_transform: invert(transform),
             transform_origin,
             border_radius: props.and_then(|props| self.border_radius(tree, key, props)),
-            clip: box_props.map_or((false, false), lookup_clip),
         }
     }
 
@@ -248,6 +247,7 @@ impl Sources<'_> {
         LayoutInputData {
             stitched_size: self.stitched_size(key),
             text_color: props.and_then(lookup_text_color).unwrap_or(inherited_color),
+            clip: props.map_or((false, false), lookup_clip),
         }
     }
 
@@ -295,7 +295,7 @@ fn lookup_transform_origin(props: Props<'_>) -> StylePoint<StyleUnit> {
         .map_or(TransformOrigin::default().0, |origin| origin.0)
 }
 
-/// The axes a box clips its overflow on, or none.
+/// The axes an item clips its overflow on, or none.
 fn lookup_clip(props: Props<'_>) -> (bool, bool) {
     let overflow = props
         .get::<Overflow>()

@@ -120,8 +120,8 @@ impl Fixture {
         self.fragment(self.box_of(node))
     }
 
-    fn clip(&self, key: FragmentKey) -> (bool, bool) {
-        self.pre_paint.fragment(key).unwrap().clip
+    fn clip(&self, node: NodeKey) -> (bool, bool) {
+        self.data(node).clip
     }
 
     /// The transform of a fragment relative to its parent.
@@ -240,7 +240,7 @@ fn fragments_resolve_transforms_relative_to_their_parents() {
         block_fragment.inverse_transform,
         Some(Affine::translate((-5.0, -5.0)))
     );
-    assert_eq!(block_fragment.clip, (false, false));
+    assert_eq!(f.clip(block), (false, false));
     assert_eq!(f.data(block).stitched_size, kurbo::Size::new(40.0, 20.0));
     assert_eq!(f.data(root).stitched_size, kurbo::Size::new(120.0, 30.0));
 
@@ -528,9 +528,9 @@ fn overflow_clips_contents_to_the_fragment_box() {
     let mut f = Fixture::default();
     f.build(&ui, root);
 
-    assert_eq!(f.clip(f.box_of(clipper)), (true, true));
-    assert_eq!(f.clip(f.box_of(colored)), (false, false));
-    assert_eq!(f.clip(f.box_of(column)), (true, false));
+    assert_eq!(f.clip(clipper), (true, true));
+    assert_eq!(f.clip(colored), (false, false));
+    assert_eq!(f.clip(column), (true, false));
 
     // A box is painted outside its own clip; its contents inside it. Clip
     // layers nest, and unclipped axes are bounded by the viewport.
@@ -545,6 +545,26 @@ fn overflow_clips_contents_to_the_fragment_box() {
             "pop".into(),
             "pop".into(),
         ]
+    );
+}
+
+#[test]
+fn only_box_fragments_clip() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline, hidden()));
+    ui.append(root, span);
+    text(&mut ui, span, "inline");
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    // The item clips, but its inline fragments push no clip layer.
+    assert_eq!(f.clip(span), (true, true));
+    assert!(
+        !commands(&f.draw(&ui))
+            .iter()
+            .any(|command| command.starts_with("clip"))
     );
 }
 
