@@ -100,6 +100,7 @@ impl CometPainter {
             // A clipping fragment clips the contents of its item.
             if let Some(layer) = clip_layer(fragment, own, data, viewport) {
                 // Clipping on both axes follows the rounded corners of the box.
+                // TODO:: horizontal, vertical curve clip for round rect.
                 match own.border_radius.filter(|_| own.clip == (true, true)) {
                     Some(radii) => scene.push_clip_layer(
                         peniko::Fill::NonZero,

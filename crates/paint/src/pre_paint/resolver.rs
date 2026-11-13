@@ -217,6 +217,7 @@ impl Sources<'_> {
         units.font_size = self.inputs.items[fragment.source].text_style.span.font_size as f64;
 
         let size = tree[fragment.source].stitched_size;
+        // TODO:: horizontal, vertical curve value for round rect.
         let basis = size.width.min(size.height);
         let resolve = |value: StyleUnit| value.resolve(&units, basis).max(0.0);
 
