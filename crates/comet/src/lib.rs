@@ -161,7 +161,6 @@ impl ApplicationHandler for App {
                         &self.fragments,
                         &self.pre_paint,
                         fragment_root,
-                        &constraint.units,
                         kurbo::Rect::new(0.0, 0.0, viewport.width, viewport.height),
                         painter,
                     );

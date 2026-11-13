@@ -6,15 +6,15 @@ use comet_layout::{
 };
 use slotmap::SecondaryMap;
 
-use crate::pre_paint::{FragmentPosition, LayoutInputData};
+use crate::pre_paint::{FragmentData, LayoutInputData};
 
-/// Absolute positions of the fragments of a fragment tree, and the paint data
-/// of the layout input items they were built from.
+/// Paint data of the fragments of a fragment tree, such as their absolute
+/// positions, and of the layout input items they were built from.
 ///
 /// Filled by a [`PrePaintTreeResolver`](super::resolver::PrePaintTreeResolver).
 #[derive(Default)]
 pub struct PrePaintTree {
-    pub(super) positions: SecondaryMap<FragmentKey, FragmentPosition>,
+    pub(super) fragment_mapping: SecondaryMap<FragmentKey, FragmentData>,
     pub(super) layout_mapping: SecondaryMap<LayoutInputKey, LayoutInputData>,
 }
 
@@ -23,9 +23,9 @@ impl PrePaintTree {
         Self::default()
     }
 
-    /// The absolute position a fragment was resolved to.
-    pub fn position(&self, key: FragmentKey) -> Option<FragmentPosition> {
-        self.positions.get(key).copied()
+    /// The paint data a fragment was resolved to.
+    pub fn fragment(&self, key: FragmentKey) -> Option<&FragmentData> {
+        self.fragment_mapping.get(key)
     }
 
     /// The paint data a layout input item was resolved to.
@@ -33,9 +33,9 @@ impl PrePaintTree {
         self.layout_mapping.get(key)
     }
 
-    /// Drop the positions of fragments deleted from `fragments`.
+    /// Drop the data of fragments deleted from `fragments`.
     pub(super) fn retain_fragments(&mut self, fragments: &FragmentTree) {
-        self.positions
+        self.fragment_mapping
             .retain(|fragment, _| fragments.items.get(fragment).is_some());
     }
 
@@ -46,16 +46,16 @@ impl PrePaintTree {
     }
 
     pub fn clear(&mut self) {
-        self.positions.clear();
+        self.fragment_mapping.clear();
         self.layout_mapping.clear();
     }
 }
 
 impl Index<FragmentKey> for PrePaintTree {
-    type Output = FragmentPosition;
+    type Output = FragmentData;
 
-    fn index(&self, key: FragmentKey) -> &FragmentPosition {
-        &self.positions[key]
+    fn index(&self, key: FragmentKey) -> &FragmentData {
+        &self.fragment_mapping[key]
     }
 }
 

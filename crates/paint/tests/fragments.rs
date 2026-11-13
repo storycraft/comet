@@ -123,7 +123,7 @@ fn draw(
 ) {
     let mut pre_paint = PrePaintTree::new();
     PrePaintTreeResolver::new().resolve(ui, inputs, tree, units, &mut pre_paint, root);
-    painter.draw(ui, inputs, tree, &pre_paint, root, units, viewport, scene);
+    painter.draw(ui, inputs, tree, &pre_paint, root, viewport, scene);
 }
 
 #[test]

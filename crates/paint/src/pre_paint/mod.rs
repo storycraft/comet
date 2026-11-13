@@ -1,7 +1,7 @@
 //! Paint data resolved for a fragment tree before painting.
 //!
-//! A [`PrePaintTree`](tree::PrePaintTree) holds the absolute position of
-//! every fragment, and the [`LayoutInputData`] of every layout input item.
+//! A [`PrePaintTree`](tree::PrePaintTree) holds the [`FragmentData`] of
+//! every fragment, such as its absolute position, and the [`LayoutInputData`] of every layout input item.
 //! Fragments paint with the data of their source item, which follows the UI:
 //! transforms and text colors are inherited from the parent item.
 
@@ -9,7 +9,7 @@ pub mod resolver;
 pub mod tree;
 
 use anyrender::Paint;
-use kurbo::{Affine, Point, Rect};
+use kurbo::{Affine, Point, Rect, RoundedRectRadii};
 
 /// Paint data of a layout input item, shared by all fragments it generates.
 #[derive(Debug, Clone, PartialEq)]
@@ -42,9 +42,16 @@ pub struct LayoutInputData {
     pub clip: (bool, bool),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct FragmentPosition {
+/// Paint data of a fragment.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FragmentData {
     /// Absolute position of fragment box, in layout coordinates before
     /// transforms.
     pub position: Point,
+
+    /// Corner radii of the fragment's border box, resolved from its item's
+    /// [`BorderRadius`](crate::style::BorderRadius) against its size. Corners
+    /// joining a linked fragment are square. `None` for fragments painting no
+    /// box, such as line boxes, or items setting no radius.
+    pub border_radius: Option<RoundedRectRadii>,
 }

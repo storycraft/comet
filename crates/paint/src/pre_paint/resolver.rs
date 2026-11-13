@@ -1,6 +1,6 @@
 use anyrender::Paint;
 use comet_layout::{
-    fragment::{FragmentKey, tree::FragmentTree},
+    fragment::{FragmentItem, FragmentKey, tree::FragmentTree},
     input::{LayoutInputKey, tree::LayoutInputTree},
     style::{
         bx::Overflow,
@@ -9,11 +9,11 @@ use comet_layout::{
     },
 };
 use comet_tree::ui::{Props, Ui};
-use kurbo::{Affine, Point, Rect, Vec2};
+use kurbo::{Affine, Point, Rect, RoundedRectRadii, Vec2};
 
 use crate::{
-    pre_paint::{FragmentPosition, LayoutInputData, tree::PrePaintTree},
-    style::{TextColor, Transform, TransformOrigin},
+    pre_paint::{FragmentData, LayoutInputData, tree::PrePaintTree},
+    style::{BorderRadius, TextColor, Transform, TransformOrigin},
 };
 
 /// Resolves a [`PrePaintTree`] for a fragment tree. Keep it to reuse its
@@ -50,8 +50,8 @@ impl PrePaintTreeResolver {
     /// deleted fragments and items.
     ///
     /// `inputs` is the input tree `fragments` were built from, and `tree`
-    /// belongs to them. `units` resolves transform origins, with each item's
-    /// font size.
+    /// belongs to them. `units` resolves border radii and transform origins,
+    /// with each item's font size.
     pub fn resolve(
         &mut self,
         ui: &Ui,
@@ -61,31 +61,34 @@ impl PrePaintTreeResolver {
         tree: &mut PrePaintTree,
         key: FragmentKey,
     ) {
-        // Items read the positions of their fragments.
-        self.resolve_positions(fragments, tree, key);
-
         let sources = Sources {
             ui,
             inputs,
             fragments,
             units,
         };
+
+        // Items read the positions of their fragments.
+        self.resolve_fragments(sources, tree, key);
         self.resolve_items(sources, tree, fragments.items[key].source);
     }
 
-    /// Resolve the absolute positions of the fragments under `key`.
-    fn resolve_positions(
+    /// Resolve the data of the fragments under `key`, each after its parent
+    /// it is positioned in.
+    fn resolve_fragments(
         &mut self,
-        fragments: &FragmentTree,
+        sources: Sources<'_>,
         tree: &mut PrePaintTree,
         key: FragmentKey,
     ) {
+        let fragments = sources.fragments;
+
         // Start below the nearest positioned ancestor.
         let mut start = key;
         let mut origin = Point::ORIGIN;
 
         while let Some(parent) = fragments.items.parent(start) {
-            if let Some(parent) = tree.position(parent) {
+            if let Some(parent) = tree.fragment(parent) {
                 origin = parent.position;
                 break;
             }
@@ -101,7 +104,13 @@ impl PrePaintTreeResolver {
             let location = fragments.items[key].layout.location;
             let position = origin + Vec2::new(location.x, location.y);
 
-            tree.positions.insert(key, FragmentPosition { position });
+            tree.fragment_mapping.insert(
+                key,
+                FragmentData {
+                    position,
+                    border_radius: sources.border_radius(key),
+                },
+            );
             pending.extend(
                 fragments
                     .items
@@ -155,6 +164,49 @@ impl PrePaintTreeResolver {
 }
 
 impl Sources<'_> {
+    /// The corner radii of a fragment's border box, or `None` for fragments
+    /// painting no box or items setting no radius. Corners joining a linked
+    /// fragment are square.
+    fn border_radius(&self, key: FragmentKey) -> Option<RoundedRectRadii> {
+        let fragment = &self.fragments.items[key];
+
+        if matches!(
+            fragment.item,
+            FragmentItem::Line { .. } | FragmentItem::AnonymousBlock { .. }
+        ) {
+            return None;
+        }
+
+        let item = &self.inputs.items[fragment.source];
+        let radius = self.ui.props(item.node)?.get::<BorderRadius>()?.0;
+
+        let mut units = self.units.clone();
+        units.font_size = item.text_style.span.font_size as f64;
+
+        let size = fragment.layout.size;
+        let basis = size.width.min(size.height);
+        let resolve = |value: StyleUnit| value.resolve(&units, basis).max(0.0);
+
+        let mut radii = RoundedRectRadii::new(
+            resolve(radius.left_top.y),
+            resolve(radius.right_bottom.x),
+            resolve(radius.right_bottom.y),
+            resolve(radius.left_top.x),
+        );
+
+        if fragment.link.prev.is_some() {
+            radii.top_left = 0.0;
+            radii.bottom_left = 0.0;
+        }
+
+        if fragment.link.next.is_some() {
+            radii.top_right = 0.0;
+            radii.bottom_right = 0.0;
+        }
+
+        Some(radii)
+    }
+
     /// Resolve the data of one item from the UI, its fragments and its
     /// parent's data.
     fn resolve_item(&self, tree: &PrePaintTree, key: LayoutInputKey) -> LayoutInputData {

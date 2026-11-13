@@ -7,15 +7,14 @@ use bytemuck::TransparentWrapper;
 use comet_layout::{
     fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
     input::{LayoutInputKind, tree::LayoutInputTree},
-    style::geometry::UnitResolveContext,
 };
 use comet_tree::{node::NodeKey, ui::Ui};
-use kurbo::{Affine, Rect, RoundedRectRadii, Stroke, Vec2};
+use kurbo::{Affine, Rect, Stroke, Vec2};
 use parley::PositionedLayoutItem;
 
 use crate::{
-    pre_paint::{LayoutInputData, tree::PrePaintTree},
-    style::{BorderFill, BorderRadius, Fill},
+    pre_paint::{FragmentData, LayoutInputData, tree::PrePaintTree},
+    style::{BorderFill, Fill},
 };
 
 /// Paints final fragments in tree order, with the [`PrePaintTree`] resolved
@@ -42,12 +41,8 @@ impl CometPainter {
 
     /// Paint the fragments under `root`. `inputs` is the input tree the
     /// fragments were built from, and `pre_paint` must be resolved for them.
-    /// Each fragment paints at its resolved position, with the data of its
-    /// source item.
-    ///
-    /// `units` supplies the root font size and viewport resolving paint
-    /// styles, matching those the input tree was built with. Its `font_size`
-    /// is replaced by each item's computed font size.
+    /// Each fragment paints with its resolved data, such as its position and
+    /// border radius, and the data of its source item.
     ///
     /// A box clipping its overflow pushes a clip layer of its item's bounding
     /// box for its contents. Clips of `root`'s ancestors do not apply.
@@ -64,7 +59,6 @@ impl CometPainter {
         tree: &FragmentTree,
         pre_paint: &PrePaintTree,
         root: FragmentKey,
-        units: &UnitResolveContext,
         viewport: Rect,
         scene: &mut impl PaintScene,
     ) {
@@ -95,9 +89,8 @@ impl CometPainter {
                 tree,
                 key,
                 inline_owner,
-                pre_paint[key].position,
+                &pre_paint[key],
                 data,
-                units,
                 viewport,
                 clip,
                 scene,
@@ -133,16 +126,15 @@ impl CometPainter {
         tree: &FragmentTree,
         key: FragmentKey,
         inline_owner: Option<FragmentKey>,
-        position: kurbo::Point,
+        own: &FragmentData,
         data: &LayoutInputData,
-        units: &UnitResolveContext,
         viewport: Rect,
         clip: Option<Rect>,
         scene: &mut impl PaintScene,
     ) {
         let fragment = &tree.items[key];
         let rect = Rect::from_origin_size(
-            position,
+            own.position,
             (fragment.layout.size.width, fragment.layout.size.height),
         );
         let visible = |bounds: Rect| {
@@ -159,12 +151,12 @@ impl CometPainter {
                 if inputs.items[fragment.source].kind != LayoutInputKind::Text
                     && visible(box_bounds(fragment, rect))
                 {
-                    draw_box(ui, inputs, tree, key, units, rect, transform, scene);
+                    draw_box(ui, inputs, fragment, own, rect, transform, scene);
                 }
             }
             FragmentItem::Inline { .. } => {
                 if visible(box_bounds(fragment, rect)) {
-                    draw_box(ui, inputs, tree, key, units, rect, transform, scene);
+                    draw_box(ui, inputs, fragment, own, rect, transform, scene);
                 }
             }
             // Anonymous blocks only position their lines.
@@ -172,7 +164,7 @@ impl CometPainter {
             FragmentItem::Line { .. } => {}
             FragmentItem::GlyphRun { line, item } => {
                 if visible(box_bounds(fragment, rect)) {
-                    draw_box(ui, inputs, tree, key, units, rect, transform, scene);
+                    draw_box(ui, inputs, fragment, own, rect, transform, scene);
                 }
 
                 if let Some(owner) = inline_owner {
@@ -239,53 +231,22 @@ fn node(inputs: &LayoutInputTree, fragment: &Fragment) -> NodeKey {
     inputs.items[fragment.source].node
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Paint the background and border of a fragment's border box `rect`, with
+/// its resolved corner radii.
 fn draw_box(
     ui: &Ui,
     inputs: &LayoutInputTree,
-    tree: &FragmentTree,
-    key: FragmentKey,
-    units: &UnitResolveContext,
+    fragment: &Fragment,
+    own: &FragmentData,
     rect: Rect,
     transform: Affine,
     scene: &mut impl PaintScene,
 ) {
-    let fragment = &tree.items[key];
-
     let Some(props) = ui.props(node(inputs, fragment)) else {
         return;
     };
 
-    let mut radii = RoundedRectRadii::default();
-
-    if let Some(radius) = props.get::<BorderRadius>() {
-        let mut units = units.clone();
-
-        units.font_size = inputs.items[fragment.source].text_style.span.font_size as f64;
-
-        let resolve = |value: comet_layout::style::geometry::StyleUnit| {
-            value
-                .resolve(&units, rect.width().min(rect.height()))
-                .max(0.0)
-        };
-
-        radii = RoundedRectRadii::new(
-            resolve(radius.0.left_top.y),
-            resolve(radius.0.right_bottom.x),
-            resolve(radius.0.right_bottom.y),
-            resolve(radius.0.left_top.x),
-        );
-    }
-
-    if fragment.link.prev.is_some() {
-        radii.top_left = 0.0;
-        radii.bottom_left = 0.0;
-    }
-
-    if fragment.link.next.is_some() {
-        radii.top_right = 0.0;
-        radii.bottom_right = 0.0;
-    }
+    let radii = own.border_radius.unwrap_or_default();
 
     if let Some(fill) = props.get::<Fill>() {
         scene.fill(

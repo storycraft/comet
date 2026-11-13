@@ -18,13 +18,13 @@ use comet_layout::{
 use comet_paint::{
     CometPainter,
     pre_paint::{LayoutInputData, resolver::PrePaintTreeResolver, tree::PrePaintTree},
-    style::{Fill, TextColor, Transform, TransformOrigin},
+    style::{BorderRadius, Fill, TextColor, Transform, TransformOrigin},
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,
 };
-use kurbo::{Affine, Point, Rect, Shape};
+use kurbo::{Affine, Point, Rect, RoundedRectRadii, Shape};
 use peniko::Color;
 
 const VIEWPORT: Size<f64> = Size::new(120.0, 400.0);
@@ -105,8 +105,12 @@ impl Fixture {
         self.pre_paint.get(self.item(node)).unwrap()
     }
 
+    fn border_radius(&self, key: FragmentKey) -> Option<RoundedRectRadii> {
+        self.pre_paint.fragment(key).unwrap().border_radius
+    }
+
     fn position(&self, key: FragmentKey) -> Point {
-        self.pre_paint.position(key).unwrap().position
+        self.pre_paint.fragment(key).unwrap().position
     }
 
     fn text_color(&self, node: NodeKey) -> Color {
@@ -133,7 +137,6 @@ impl Fixture {
             &self.fragments,
             &self.pre_paint,
             self.root.unwrap(),
-            &UNITS,
             SCENE_VIEWPORT,
             &mut scene,
         );
@@ -247,6 +250,75 @@ fn wrapped_inline_elements_cover_their_fragments_across_lines() {
     let data = f.data(span);
     assert_eq!(data.bounding_box, bounds);
     assert_eq!(data.transform_origin, bounds.center());
+}
+
+#[test]
+fn fragment_boxes_resolve_their_border_radii() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let rounded = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 20.0),
+            BorderRadius(LayoutRect::new_invidiual(
+                StyleUnit::Px(3.0),
+                StyleUnit::Em(0.25),
+                StyleUnit::Rem(0.5),
+                StyleUnit::Percent(0.5),
+            )),
+        ),
+    );
+    ui.append(root, rounded);
+    let span = ui.create(
+        Node::Box,
+        (
+            bx::DisplayOuter::Inline,
+            BorderRadius(LayoutRect::new_all(StyleUnit::Px(3.0))),
+        ),
+    );
+    ui.append(root, span);
+    text(
+        &mut ui,
+        span,
+        "one two three four five six seven eight nine ten",
+    );
+
+    let mut f = Fixture::default();
+    let root_fragment = f.build(&ui, root);
+
+    // Items without a radius, and lines, have none.
+    assert_eq!(f.border_radius(root_fragment), None);
+    for line in f.fragments.items.children(root_fragment) {
+        if f.fragments.items[line].item.is_box() {
+            continue;
+        }
+        assert_eq!(f.border_radius(line), None);
+    }
+
+    // Percentages resolve against the shorter side, units with the item's
+    // font size.
+    assert_eq!(
+        f.border_radius(f.box_of(rounded)),
+        Some(RoundedRectRadii::new(3.0, 4.0, 8.0, 10.0))
+    );
+
+    // Only the outer corners of wrapped fragments are rounded.
+    let fragments: Vec<_> = f.fragments.fragments(f.item(span)).collect();
+    assert!(fragments.len() > 1);
+
+    for (index, &fragment) in fragments.iter().enumerate() {
+        let left = if index == 0 { 3.0 } else { 0.0 };
+        let right = if index == fragments.len() - 1 {
+            3.0
+        } else {
+            0.0
+        };
+
+        assert_eq!(
+            f.border_radius(fragment),
+            Some(RoundedRectRadii::new(left, right, right, left))
+        );
+    }
 }
 
 #[test]
@@ -580,7 +652,7 @@ fn deleted_items_drop_their_data() {
     f.build(&ui, root);
 
     assert!(f.pre_paint.get(item).is_none());
-    assert!(f.pre_paint.position(fragment).is_none());
+    assert!(f.pre_paint.fragment(fragment).is_none());
 }
 
 #[test]
