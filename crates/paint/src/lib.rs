@@ -41,8 +41,8 @@ impl CometPainter {
 
     /// Paint the fragments under `root`. `inputs` is the input tree the
     /// fragments were built from, and `pre_paint` must be resolved for them.
-    /// Each fragment paints with its resolved data, such as its position and
-    /// border radius, and the data of its source item.
+    /// Each fragment paints with its resolved data, such as its position,
+    /// transform and border radius, and the text color of its source item.
     ///
     /// A box fragment clipping its overflow pushes a clip layer of its border
     /// box for its contents, rounded with its border radius. Clips of `root`'s ancestors do not apply.
@@ -98,19 +98,19 @@ impl CometPainter {
             );
 
             // A clipping fragment clips the contents of its item.
-            if let Some(layer) = clip_layer(fragment, own, data, viewport) {
+            if let Some(layer) = clip_layer(fragment, own, viewport) {
                 // Clipping on both axes follows the rounded corners of the box.
                 // TODO:: horizontal, vertical curve clip for round rect.
                 match own.border_radius.filter(|_| own.clip == (true, true)) {
                     Some(radii) => scene.push_clip_layer(
                         peniko::Fill::NonZero,
-                        data.transform,
+                        own.transform,
                         &layer.to_rounded_rect(radii),
                     ),
-                    None => scene.push_clip_layer(peniko::Fill::NonZero, data.transform, &layer),
+                    None => scene.push_clip_layer(peniko::Fill::NonZero, own.transform, &layer),
                 }
 
-                let bounds = data.transform.transform_rect_bbox(layer);
+                let bounds = own.transform.transform_rect_bbox(layer);
                 self.clips
                     .push(clip.map_or(bounds, |clip| clip.intersect(bounds)));
                 self.pending.push(Visit::PopClip);
@@ -146,11 +146,11 @@ impl CometPainter {
             (fragment.layout.size.width, fragment.layout.size.height),
         );
         let visible = |bounds: Rect| {
-            let bounds = data.transform.transform_rect_bbox(bounds);
+            let bounds = own.transform.transform_rect_bbox(bounds);
 
             bounds.overlaps(viewport) && clip.is_none_or(|clip| bounds.overlaps(clip))
         };
-        let transform = data.transform;
+        let transform = own.transform;
 
         match fragment.item {
             FragmentItem::Box { .. } => {
@@ -182,7 +182,8 @@ impl CometPainter {
                         owner,
                         (line, item),
                         rect,
-                        data,
+                        transform,
+                        &data.text_color,
                         &visible,
                         scene,
                     );
@@ -194,18 +195,13 @@ impl CometPainter {
 
 /// The clip of a fragment clipping its contents, in absolute layout
 /// coordinates: its border box on the clipped axes. Unclipped axes are bounded
-/// by the viewport, mapped back to layout coordinates. Fragments whose item's
+/// by the viewport, mapped back to layout coordinates. Fragments whose
 /// transform has no inverse push no clip layer.
 ///
 /// Fragments clipping on both axes round the layer with their border radius.
 /// Clipping on one axis keeps it square, as every corner then lies on the
 /// viewport bound of the unclipped axis.
-fn clip_layer(
-    fragment: &Fragment,
-    own: &FragmentData,
-    data: &LayoutInputData,
-    viewport: Rect,
-) -> Option<Rect> {
+fn clip_layer(fragment: &Fragment, own: &FragmentData, viewport: Rect) -> Option<Rect> {
     let (x, y) = own.clip;
 
     if !x && !y {
@@ -213,7 +209,7 @@ fn clip_layer(
     }
 
     // A collapsed box paints its contents collapsed with it.
-    let visible = data.inverse_transform?.transform_rect_bbox(viewport);
+    let visible = own.inverse_transform?.transform_rect_bbox(viewport);
     let bounds = Rect::from_origin_size(
         own.position,
         (fragment.layout.size.width, fragment.layout.size.height),
@@ -300,7 +296,8 @@ fn draw_glyph_run(
     owner_line: FragmentKey,
     (line, item): (usize, usize),
     rect: Rect,
-    data: &LayoutInputData,
+    transform: Affine,
+    text_color: &anyrender::Paint,
     visible: &impl Fn(Rect) -> bool,
     scene: &mut impl PaintScene,
 ) {
@@ -342,9 +339,9 @@ fn draw_glyph_run(
         normalized_coords,
         Vec2::ZERO,
         peniko::StyleRef::Fill(peniko::Fill::NonZero),
-        &data.text_color,
+        text_color,
         1.0,
-        data.transform,
+        transform,
         None,
         glyph_run.positioned_glyphs().map(|glyph| anyrender::Glyph {
             id: glyph.id,

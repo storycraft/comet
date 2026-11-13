@@ -17,7 +17,9 @@ use comet_layout::{
 };
 use comet_paint::{
     CometPainter,
-    pre_paint::{LayoutInputData, resolver::PrePaintTreeResolver, tree::PrePaintTree},
+    pre_paint::{
+        FragmentData, LayoutInputData, resolver::PrePaintTreeResolver, tree::PrePaintTree,
+    },
     style::{BorderRadius, Fill, TextColor, Transform, TransformOrigin},
 };
 use comet_tree::{
@@ -107,6 +109,15 @@ impl Fixture {
 
     fn border_radius(&self, key: FragmentKey) -> Option<RoundedRectRadii> {
         self.pre_paint.fragment(key).unwrap().border_radius
+    }
+
+    fn fragment(&self, key: FragmentKey) -> &FragmentData {
+        self.pre_paint.fragment(key).unwrap()
+    }
+
+    /// The data of a node's box fragment.
+    fn boxed(&self, node: NodeKey) -> &FragmentData {
+        self.fragment(self.box_of(node))
     }
 
     fn clip(&self, key: FragmentKey) -> (bool, bool) {
@@ -199,7 +210,7 @@ fn commands(scene: &Scene) -> Vec<String> {
 }
 
 #[test]
-fn items_cover_the_absolute_boxes_of_their_linked_fragments() {
+fn fragments_resolve_absolute_positions_and_origins() {
     let mut ui = Ui::new();
     let root = ui.create(
         Node::Box,
@@ -215,26 +226,24 @@ fn items_cover_the_absolute_boxes_of_their_linked_fragments() {
     assert_eq!(f.position(root_fragment), Point::ORIGIN);
     assert_eq!(f.position(f.box_of(block)), Point::new(5.0, 5.0));
 
-    // Boxes cover their own fragment: lines owned by the block do not count.
-    let data = f.data(block);
-    assert_eq!(data.bounding_box, Rect::new(5.0, 5.0, 45.0, 25.0));
-    assert_eq!(data.transform_origin, Point::new(25.0, 15.0));
-    assert_eq!(data.transform, Affine::IDENTITY);
-    assert_eq!(data.stitched_size, kurbo::Size::new(40.0, 20.0));
-    assert_eq!(f.clip(f.box_of(block)), (false, false));
-    assert_eq!(f.data(root).bounding_box, Rect::new(0.0, 0.0, 120.0, 30.0));
+    // Boxes stitch their own fragment: lines owned by the block do not count.
+    let block_fragment = f.fragment(f.box_of(block));
+    assert_eq!(block_fragment.transform_origin, Point::new(25.0, 15.0));
+    assert_eq!(block_fragment.transform, Affine::IDENTITY);
+    assert_eq!(block_fragment.clip, (false, false));
+    assert_eq!(f.data(block).stitched_size, kurbo::Size::new(40.0, 20.0));
+    assert_eq!(f.data(root).stitched_size, kurbo::Size::new(120.0, 30.0));
 
-    // Text covers its glyph runs.
-    let runs = f.linked_rects(content);
+    // Each glyph run has its own origin, at its centre.
+    let runs: Vec<_> = f.fragments.fragments(f.item(content)).collect();
     assert!(!runs.is_empty());
-    assert_eq!(
-        f.data(content).bounding_box,
-        runs.into_iter().reduce(|a, b| a.union(b)).unwrap()
-    );
+    for (key, rect) in runs.into_iter().zip(f.linked_rects(content)) {
+        assert_eq!(f.fragment(key).transform_origin, rect.center());
+    }
 }
 
 #[test]
-fn wrapped_inline_elements_cover_their_fragments_across_lines() {
+fn wrapped_inline_elements_stitch_their_fragments_across_lines() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
@@ -257,11 +266,13 @@ fn wrapped_inline_elements_cover_their_fragments_across_lines() {
         rects.iter().map(Rect::height).fold(0.0, f64::max),
     );
 
-    let bounds = rects.into_iter().reduce(|a, b| a.union(b)).unwrap();
-    let data = f.data(span);
-    assert_eq!(data.bounding_box, bounds);
-    assert_eq!(data.transform_origin, bounds.center());
-    assert_eq!(data.stitched_size, stitched);
+    assert_eq!(f.data(span).stitched_size, stitched);
+
+    // Each fragment is transformed around its own centre.
+    let fragments: Vec<_> = f.fragments.fragments(f.item(span)).collect();
+    for (key, rect) in fragments.into_iter().zip(rects) {
+        assert_eq!(f.fragment(key).transform_origin, rect.center());
+    }
 }
 
 #[test]
@@ -434,18 +445,18 @@ fn transforms_multiply_around_their_origins() {
     let outer_transform =
         Affine::translate((50.0, 20.0)) * Affine::scale(2.0) * Affine::translate((-50.0, -20.0));
 
-    assert_eq!(f.data(outer).transform_origin, Point::new(50.0, 20.0));
-    assert_affine(f.data(outer).transform, outer_transform);
+    assert_eq!(f.boxed(outer).transform_origin, Point::new(50.0, 20.0));
+    assert_affine(f.boxed(outer).transform, outer_transform);
     // A translation is the same around any origin.
     assert_affine(
-        f.data(inner).transform,
+        f.boxed(inner).transform,
         outer_transform * Affine::translate((5.0, 0.0)),
     );
 
     assert_eq!(f.position(f.box_of(corner)), Point::new(0.0, 10.0));
-    assert_eq!(f.data(corner).transform_origin, Point::new(0.0, 10.0));
+    assert_eq!(f.boxed(corner).transform_origin, Point::new(0.0, 10.0));
     assert_affine(
-        f.data(corner).transform,
+        f.boxed(corner).transform,
         outer_transform
             * Affine::translate((0.0, 10.0))
             * Affine::scale(3.0)
@@ -463,7 +474,7 @@ fn transforms_multiply_around_their_origins() {
         })
         .unwrap();
 
-    assert_affine(fill.transform, f.data(inner).transform);
+    assert_affine(fill.transform, f.boxed(inner).transform);
     assert_eq!(fill.shape.bounding_box(), Rect::new(0.0, 0.0, 20.0, 10.0));
 }
 
@@ -509,10 +520,6 @@ fn overflow_clips_contents_to_the_fragment_box() {
     f.build(&ui, root);
 
     assert_eq!(f.clip(f.box_of(clipper)), (true, true));
-    assert_eq!(
-        f.data(clipper).bounding_box,
-        Rect::new(5.0, 5.0, 55.0, 35.0)
-    );
     assert_eq!(f.clip(f.box_of(colored)), (false, false));
     assert_eq!(f.clip(f.box_of(column)), (true, false));
 
@@ -558,7 +565,7 @@ fn clips_follow_the_transform_of_their_item() {
         .unwrap();
 
     // The bounding box is clipped exactly, under the item's transform.
-    assert_affine(clip.transform, f.data(clipper).transform);
+    assert_affine(clip.transform, f.boxed(clipper).transform);
     assert_eq!(clip.clip.bounding_box(), Rect::new(0.0, 0.0, 40.0, 20.0));
 }
 
@@ -650,12 +657,7 @@ fn resolving_a_subtree_follows_the_layout() {
     let mut f = Fixture::default();
     f.build(&ui, root);
     let clipper_fragment = f.box_of(clipper);
-    let root_data = f.data(root).clone();
-
-    assert_eq!(
-        f.data(clipper).bounding_box,
-        Rect::new(0.0, 10.0, 50.0, 30.0)
-    );
+    let root_data = f.boxed(root).clone();
 
     ui.set_props(top, (fixed(10.0, 30.0),));
     f.inputs.mark_node(top, LayoutFlags::BOX_DIRTY);
@@ -668,13 +670,9 @@ fn resolving_a_subtree_follows_the_layout() {
     f.resolve(&ui, clipper_fragment);
 
     assert_eq!(f.position(clipper_fragment), Point::new(0.0, 30.0));
-    assert_eq!(
-        f.data(clipper).bounding_box,
-        Rect::new(0.0, 30.0, 50.0, 50.0)
-    );
-    assert_eq!(f.data(clipper).transform_origin, Point::new(25.0, 40.0));
-    assert_affine(f.data(clipper).transform, Affine::translate((3.0, 0.0)));
-    assert_eq!(f.data(root), &root_data);
+    assert_eq!(f.boxed(clipper).transform_origin, Point::new(25.0, 40.0));
+    assert_affine(f.boxed(clipper).transform, Affine::translate((3.0, 0.0)));
+    assert_eq!(f.boxed(root), &root_data);
 }
 
 #[test]
@@ -762,10 +760,10 @@ fn inverse_transforms_map_scene_coordinates_back() {
     let mut f = Fixture::default();
     f.build(&ui, root);
 
-    assert_eq!(f.data(root).inverse_transform, Some(Affine::IDENTITY));
+    assert_eq!(f.boxed(root).inverse_transform, Some(Affine::IDENTITY));
 
     for node in [outer, inner] {
-        let data = f.data(node);
+        let data = f.boxed(node);
         assert_affine(
             data.inverse_transform.unwrap() * data.transform,
             Affine::IDENTITY,
@@ -774,7 +772,7 @@ fn inverse_transforms_map_scene_coordinates_back() {
 }
 
 #[test]
-fn collapsed_items_have_no_inverse_transform() {
+fn collapsed_fragments_have_no_inverse_transform() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     // Scaled to zero width, and clipping: it collapses with its contents.
@@ -793,8 +791,8 @@ fn collapsed_items_have_no_inverse_transform() {
     let mut f = Fixture::default();
     f.build(&ui, root);
 
-    assert_eq!(f.data(collapsed).inverse_transform, None);
-    assert_eq!(f.data(content).inverse_transform, None);
+    assert_eq!(f.boxed(collapsed).inverse_transform, None);
+    assert_eq!(f.boxed(content).inverse_transform, None);
 
     // No clip layer is pushed for a box that covers no area.
     assert!(
