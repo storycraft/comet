@@ -31,7 +31,7 @@ impl LayoutInputTree {
     /// Insert `flags` into an item and propagate descendant dirtiness to its
     /// ancestors. Stale keys are ignored.
     ///
-    /// Use [`LayoutFlags::DIRTY`] when the item's content, child list or text
+    /// Use [`LayoutFlags::FULL_DIRTY`] when the item's content, child list or text
     /// style changed. Mark the parent for insertions, and both parents when
     /// moving a source node. Use [`LayoutFlags::BOX_DIRTY`] when only its box
     /// style changed, such as its size, padding, margin or insets, to keep its
