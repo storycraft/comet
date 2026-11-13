@@ -184,6 +184,7 @@ impl Sources<'_> {
         LayoutInputData {
             bounding_box,
             transform,
+            inverse_transform: invert(transform),
             transform_origin,
             text_color: props.and_then(lookup_text_color).unwrap_or(inherited_color),
             clip: box_props.map_or((false, false), lookup_clip),
@@ -249,6 +250,22 @@ fn lookup_clip(props: Props<'_>) -> (bool, bool) {
         overflow.x != OverflowMode::Visible,
         overflow.y != OverflowMode::Visible,
     )
+}
+
+/// The inverse of `transform`, or `None` if it collapses an axis and has no
+/// inverse.
+fn invert(transform: Affine) -> Option<Affine> {
+    if transform == Affine::IDENTITY {
+        return Some(Affine::IDENTITY);
+    }
+
+    let determinant = transform.determinant();
+
+    if determinant == 0.0 || !determinant.is_finite() {
+        return None;
+    }
+
+    Some(transform.inverse()).filter(Affine::is_finite)
 }
 
 /// Apply an item's own `transform` around its absolute `origin`, after the

@@ -582,3 +582,66 @@ fn deleted_items_drop_their_data() {
     assert!(f.pre_paint.get(item).is_none());
     assert!(f.pre_paint.position(fragment).is_none());
 }
+
+#[test]
+fn inverse_transforms_map_scene_coordinates_back() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let outer = ui.create(
+        Node::Box,
+        (
+            fixed(100.0, 40.0),
+            Transform(Affine::rotate(0.4) * Affine::scale(2.0)),
+        ),
+    );
+    let inner = ui.create(
+        Node::Box,
+        (fixed(20.0, 10.0), Transform(Affine::translate((5.0, 3.0)))),
+    );
+    ui.append(root, outer);
+    ui.append(outer, inner);
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    assert_eq!(f.data(root).inverse_transform, Some(Affine::IDENTITY));
+
+    for node in [outer, inner] {
+        let data = f.data(node);
+        assert_affine(
+            data.inverse_transform.unwrap() * data.transform,
+            Affine::IDENTITY,
+        );
+    }
+}
+
+#[test]
+fn collapsed_items_have_no_inverse_transform() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    // Scaled to zero width, and clipping: it collapses with its contents.
+    let collapsed = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 20.0),
+            hidden(),
+            Transform(Affine::scale_non_uniform(0.0, 1.0)),
+        ),
+    );
+    let content = ui.create(Node::Box, (fixed(40.0, 20.0), Fill(Paint::Solid(RED))));
+    ui.append(root, collapsed);
+    ui.append(collapsed, content);
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    assert_eq!(f.data(collapsed).inverse_transform, None);
+    assert_eq!(f.data(content).inverse_transform, None);
+
+    // No clip layer is pushed for a box that covers no area.
+    assert!(
+        !commands(&f.draw(&ui))
+            .iter()
+            .any(|command| command.starts_with("clip"))
+    );
+}

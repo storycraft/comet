@@ -194,7 +194,8 @@ impl CometPainter {
 
 /// The clip of an item clipping its contents, in absolute layout coordinates:
 /// its bounding box on the clipped axes. Unclipped axes are bounded by the
-/// viewport, mapped back to layout coordinates.
+/// viewport, mapped back to layout coordinates. Items whose transform has no
+/// inverse push no clip layer.
 fn clip_layer(data: &LayoutInputData, viewport: Rect) -> Option<Rect> {
     let (x, y) = data.clip;
 
@@ -202,8 +203,9 @@ fn clip_layer(data: &LayoutInputData, viewport: Rect) -> Option<Rect> {
         return None;
     }
 
+    // A collapsed box paints its contents collapsed with it.
+    let visible = data.inverse_transform?.transform_rect_bbox(viewport);
     let bounds = data.bounding_box;
-    let visible = data.transform.inverse().transform_rect_bbox(viewport);
 
     Some(Rect::new(
         if x { bounds.x0 } else { visible.x0 },

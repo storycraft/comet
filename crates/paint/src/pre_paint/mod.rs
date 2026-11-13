@@ -24,6 +24,12 @@ pub struct LayoutInputData {
     /// transforms of all ancestor items.
     pub transform: Affine,
 
+    /// Inverse of [`Self::transform`], mapping scene coordinates back to
+    /// absolute layout coordinates, such as for hit testing. `None` when the
+    /// transform is not invertible, such as when it scales an axis to zero:
+    /// the item then covers no area in the scene.
+    pub inverse_transform: Option<Affine>,
+
     /// Absolute point of the bounding box the item's own transform is applied
     /// around, in layout coordinates. Its centre, unless a box sets
     /// [`TransformOrigin`](crate::style::TransformOrigin).
