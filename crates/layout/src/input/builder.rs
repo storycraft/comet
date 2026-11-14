@@ -27,16 +27,29 @@ pub struct BuildRequest {
     pub root_font_size: f64,
     /// Viewport size, used for `vw` and `vh`.
     pub viewport: Size<f64>,
+    /// Whether `root_font_size` or `viewport` may differ from the previous
+    /// build. When set, every existing item in the subtree is marked
+    /// [`LayoutFlags::BOX_DIRTY`], since box styles may depend on them. When
+    /// unset, they are treated as unchanged and only items whose resolved
+    /// kind, text style or child list changed are flagged.
+    pub forced: bool,
 }
 
 impl BuildRequest {
-    /// Request a build of `source`.
+    /// Request a build of `source`, which is not forced.
     pub const fn new(source: NodeKey, root_font_size: f64, viewport: Size<f64>) -> Self {
         Self {
             source,
             root_font_size,
             viewport,
+            forced: false,
         }
+    }
+
+    /// Set [`Self::forced`].
+    pub const fn forced(mut self, forced: bool) -> Self {
+        self.forced = forced;
+        self
     }
 }
 
@@ -44,6 +57,8 @@ impl BuildRequest {
 #[derive(Default)]
 pub struct LayoutInputTreeBuilder {
     pending: Vec<Task>,
+    /// [`BuildRequest::forced`] of the current build.
+    forced: bool,
 }
 
 impl LayoutInputTreeBuilder {
@@ -53,8 +68,7 @@ impl LayoutInputTreeBuilder {
 
     /// Update the item generated for `request.source`, or build a new tree for it
     /// when the node has no item. The whole subtree of `source` is resolved
-    /// again, since every item may depend on the root font size or the viewport.
-    /// Keys are reused. To insert a new node under an existing item, update its
+    /// again to reconcile children and text styles. Keys are reused. To insert a new node under an existing item, update its
     /// parent.
     ///
     /// Returns the item generated for `source`. Returns `None` and deletes its item
@@ -63,9 +77,10 @@ impl LayoutInputTreeBuilder {
     /// no longer mirrors the UI. Build from the UI root first.
     ///
     /// Generated items have every [`LayoutFlags`] set. Existing items are
-    /// marked [`LayoutFlags::BOX_DIRTY`], or [`LayoutFlags::FULL_DIRTY`] when
-    /// their resolved text style, kind or child list changed, so every box is
-    /// laid out again but only changed content is refragmented. Mark content
+    /// marked [`LayoutFlags::FULL_DIRTY`] when their resolved text style, kind
+    /// or child list changed. In a [forced](BuildRequest::forced) build, the
+    /// other existing items are marked [`LayoutFlags::BOX_DIRTY`], so every box
+    /// is laid out again but only changed content is refragmented. Mark content
     /// changes the builder cannot see, such as edited text, as usual. Flags are
     /// left for the consumer of the input tree to clear. Use `item_for_node`
     /// for child results.
@@ -79,6 +94,7 @@ impl LayoutInputTreeBuilder {
             source,
             root_font_size,
             viewport,
+            forced,
         } = request;
         let target = tree.item_for_node(source);
 
@@ -105,6 +121,7 @@ impl LayoutInputTreeBuilder {
         };
 
         self.pending.clear();
+        self.forced = forced;
 
         let cx = UnitResolveContext {
             root_font_size,
@@ -216,17 +233,14 @@ impl LayoutInputTreeBuilder {
         item.kind = kind;
         item.child_layout = child_layout;
 
-        // Box styles may depend on the viewport or root font size, so every
-        // box is laid out again. Content is only refragmented when the
-        // resolved item changed.
-        tree.mark(
-            key,
-            if changed {
-                LayoutFlags::FULL_DIRTY
-            } else {
-                LayoutFlags::BOX_DIRTY
-            },
-        );
+        // Content is only refragmented when the resolved item changed. In a
+        // forced build, box styles may depend on a changed viewport or root
+        // font size, so every box is laid out again.
+        if changed {
+            tree.mark(key, LayoutFlags::FULL_DIRTY);
+        } else if self.forced {
+            tree.mark(key, LayoutFlags::BOX_DIRTY);
+        }
 
         Some(key)
     }

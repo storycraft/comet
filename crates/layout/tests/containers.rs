@@ -97,17 +97,20 @@ struct Fixture {
     fragments: FragmentTree,
     input_builder: LayoutInputTreeBuilder,
     builder: FragmentTreeBuilder,
+    /// Viewport of the last build.
+    viewport: Option<Size<f64>>,
 }
 
 impl Fixture {
     fn build(&mut self, ui: &Ui, node: NodeKey, width: f64) -> FragmentKey {
         let viewport = Size::new(width, 600.0);
+        let forced = self.viewport.replace(viewport) != Some(viewport);
         let root = self
             .input_builder
             .build(
                 ui,
                 &mut self.inputs,
-                BuildRequest::new(node, 16.0, viewport),
+                BuildRequest::new(node, 16.0, viewport).forced(forced),
             )
             .unwrap();
         let fragment = self
@@ -142,7 +145,7 @@ impl Fixture {
 }
 
 #[test]
-fn custom_layout_runs_again_on_every_build() {
+fn custom_layout_runs_again_when_its_box_is_dirty() {
     let width = Arc::new(AtomicU32::new(80));
     let calls = Arc::new(AtomicU32::new(0));
     let mut ui = Ui::new();
@@ -164,10 +167,11 @@ fn custom_layout_runs_again_on_every_build() {
 
     for (state_width, child_width, dirty, viewport_width, relayout) in [
         (80, 80, false, 400.0, true),
-        // Every build lays out every box again, so external state is picked
-        // up without marking.
-        (40, 40, false, 400.0, true),
+        // Without marking or a viewport change, boxes are kept, so external
+        // state is not picked up.
+        (40, 80, false, 400.0, false),
         (40, 40, true, 400.0, true),
+        // A viewport change forces a build that lays out every box again.
         (100, 100, false, 500.0, true),
     ] {
         width.store(state_width, Ordering::Relaxed);

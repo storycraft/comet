@@ -24,6 +24,8 @@ struct Fixture {
     tree: LayoutInputTree,
     builder: FragmentTreeBuilder,
     fragments: FragmentTree,
+    /// Viewport of the last input build.
+    viewport: Option<Size<f64>>,
 }
 
 impl Fixture {
@@ -33,6 +35,7 @@ impl Fixture {
             tree: LayoutInputTree::new(),
             builder: FragmentTreeBuilder::new(),
             fragments: FragmentTree::new(),
+            viewport: None,
         }
     }
 
@@ -46,16 +49,20 @@ impl Fixture {
         node: NodeKey,
         viewport: Size<f64>,
     ) -> (LayoutInputKey, FragmentKey) {
+        let forced = self.viewport.replace(viewport) != Some(viewport);
         let root = self
             .inputs
-            .build(ui, &mut self.tree, BuildRequest::new(node, 16.0, viewport))
+            .build(
+                ui,
+                &mut self.tree,
+                BuildRequest::new(node, 16.0, viewport).forced(forced),
+            )
             .unwrap();
 
         (root, self.layout_with(ui, root, viewport))
     }
 
-    /// Lay out the input tree as marked, without building it again. Every
-    /// input build flags every box, so only this keeps clean subtrees.
+    /// Lay out the input tree as marked, without building it again.
     fn layout(&mut self, ui: &Ui, root: LayoutInputKey) -> FragmentKey {
         self.layout_with(ui, root, VIEWPORT)
     }

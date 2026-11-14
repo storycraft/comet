@@ -47,6 +47,7 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
         layers: PaintLayerTree::new(),
         layer_builder: PaintLayerBuilder::new(),
         layer_root: None,
+        viewport: None,
         hit_tester: PaintHitTester::new(),
         cursor: None,
         win: None,
@@ -68,6 +69,8 @@ struct App {
     layer_builder: PaintLayerBuilder,
     /// Root layer of `layers`, from the last frame.
     layer_root: Option<PaintLayerKey>,
+    /// Viewport of the last input build.
+    viewport: Option<Size<f64>>,
     // TODO: Temporary hit testing, printing the fragment under the cursor on
     // click. Replace with real input handling.
     hit_tester: PaintHitTester,
@@ -136,10 +139,13 @@ impl ApplicationHandler for App {
                 }
 
                 let viewport = Size::new(size.width as f64, size.height as f64);
+                // Boxes may depend on the viewport, so a resize lays out every
+                // box again.
+                let forced = self.viewport.replace(viewport) != Some(viewport);
                 let Some(input_root) = self.input_builder.build(
                     &self.ui,
                     &mut self.inputs,
-                    BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport),
+                    BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport).forced(forced),
                 ) else {
                     return;
                 };
