@@ -249,8 +249,13 @@ impl CometPainter {
         self.draw_fragment(sources, owner, transforms, None, clip, scene);
         let (clip, clipped) = push_clip(sources, fragment, own, transforms, clip, scene);
 
+        // The first child layer with a non-negative z index, where painting
+        // child layers resumes after the contents.
+        let mut non_negative = None;
+
         for child in sources.layers.layers.children(key) {
             if sources.layers.layers[child].z_index >= 0 {
+                non_negative = Some(child);
                 break;
             }
 
@@ -259,10 +264,8 @@ impl CometPainter {
 
         self.draw_contents(sources, owner, transforms, clip, scene);
 
-        for child in sources.layers.layers.children(key) {
-            if sources.layers.layers[child].z_index >= 0 {
-                self.draw_child(sources, child, owner, transforms, clip, scene);
-            }
+        for child in sources.layers.layers.cursor(non_negative) {
+            self.draw_child(sources, child, owner, transforms, clip, scene);
         }
 
         if clipped {
