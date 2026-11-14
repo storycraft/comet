@@ -1,8 +1,10 @@
 use core::error::Error;
 use std::sync::Arc;
 
+use anyrender::Paint;
 use anyrender::WindowRenderer;
 use anyrender_vello_cpu::VelloCpuWindowRenderer;
+use comet_layout::style::geometry::StyleUnit;
 use comet_layout::{
     fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
@@ -16,11 +18,13 @@ use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
+    style::{OutlineFill, OutlineOffset, OutlineWidth},
 };
 use comet_tree::{node::NodeKey, ui::Ui};
+use peniko::Color;
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, MouseButton, WindowEvent},
+    event::WindowEvent,
     event_loop::{ActiveEventLoop, EventLoop},
     window::{Window, WindowAttributes, WindowId},
 };
@@ -50,6 +54,7 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
         viewport: None,
         hit_tester: PaintHitTester::new(),
         cursor: None,
+        hovered: None,
         win: None,
         vello: VelloCpuWindowRenderer::new(),
         ui_renderer: CometPainter::new(),
@@ -71,11 +76,14 @@ struct App {
     layer_root: Option<PaintLayerKey>,
     /// Viewport of the last input build.
     viewport: Option<Size<f64>>,
-    // TODO: Temporary hit testing, printing the fragment under the cursor on
-    // click. Replace with real input handling.
+    // TODO: Temporary hover outline, drawn around the node under the cursor.
+    // Replace with real input handling.
     hit_tester: PaintHitTester,
     /// Cursor position in physical pixels, the units of the layout viewport.
     cursor: Option<kurbo::Point>,
+    /// The node outlined under the cursor, with the outline styles it had
+    /// before, to restore once it is no longer hovered.
+    hovered: Option<Hovered>,
     win: Option<Arc<Window>>,
     vello: VelloCpuWindowRenderer,
     ui_renderer: CometPainter,
@@ -209,52 +217,119 @@ impl ApplicationHandler for App {
                     );
                 });
             }
+            // TODO: Temporary hover outline. Replace with real input
+            // handling.
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = Some(kurbo::Point::new(position.x, position.y));
+                self.update_hover();
             }
-            WindowEvent::CursorLeft { .. } => self.cursor = None,
-            // TODO: Temporary hit testing, printing the fragment under the
-            // cursor to stdout. Replace with real input handling.
-            WindowEvent::MouseInput {
-                state: ElementState::Pressed,
-                button: MouseButton::Left,
-                ..
-            } => self.print_hit(),
+            WindowEvent::CursorLeft { .. } => {
+                self.cursor = None;
+                self.update_hover();
+            }
             WindowEvent::CloseRequested => event_loop.exit(),
             _ => {}
         }
     }
 }
 
+/// Outline drawn around the hovered node.
+const HOVER_OUTLINE_WIDTH: f64 = 2.0;
+const HOVER_OUTLINE_OFFSET: f64 = 2.0;
+
+/// A node outlined because it is hovered, with the outline styles it set
+/// itself.
+struct Hovered {
+    node: NodeKey,
+    width: Option<OutlineWidth>,
+    offset: Option<OutlineOffset>,
+    fill: Option<OutlineFill>,
+}
+
 impl App {
-    /// Print the fragment under the cursor, from the last frame's layout.
+    /// Outline the node under the cursor, from the last frame's layout, and
+    /// restore the outline of the node hovered before.
     ///
     /// TODO: Temporary, for checking hit testing by hand. Remove once input
     /// events are dispatched to the UI.
-    fn print_hit(&mut self) {
-        let (Some(cursor), Some(layer_root)) = (self.cursor, self.layer_root) else {
-            return;
-        };
+    fn update_hover(&mut self) {
+        let node = self.hovered_node();
 
-        let Some(key) = self.hit_tester.hit(
+        if self.hovered.as_ref().map(|hovered| hovered.node) == node {
+            return;
+        }
+
+        if let Some(hovered) = self.hovered.take() {
+            restore(&mut self.ui, hovered);
+        }
+
+        if let Some(node) = node {
+            self.hovered = Some(outline(&mut self.ui, node));
+        }
+
+        if let Some(win) = &self.win {
+            win.request_redraw();
+        }
+    }
+
+    /// The source node of the fragment under the cursor.
+    fn hovered_node(&mut self) -> Option<NodeKey> {
+        let key = self.hit_tester.hit(
             &self.layers,
             &self.fragments,
             &self.pre_paint,
-            layer_root,
-            cursor,
-        ) else {
-            println!("hit ({}, {}): nothing", cursor.x, cursor.y);
-            return;
-        };
+            self.layer_root?,
+            self.cursor?,
+        )?;
+        let source = self.fragments.items.get(key)?.source;
 
-        let Some(fragment) = self.fragments.items.get(key) else {
-            return;
-        };
-        let node = self.inputs.items.get(fragment.source).map(|item| item.node);
+        Some(self.inputs.items.get(source)?.node)
+    }
+}
 
-        println!(
-            "hit ({}, {}): {key:?} {:?}, node {node:?}",
-            cursor.x, cursor.y, fragment.item
-        );
+/// Outline a hovered node, keeping the outline styles it set itself.
+fn outline(ui: &mut Ui, node: NodeKey) -> Hovered {
+    let props = ui.props(node);
+    let hovered = Hovered {
+        node,
+        width: props.and_then(|props| props.get_cloned()),
+        offset: props.and_then(|props| props.get_cloned()),
+        fill: props.and_then(|props| props.get_cloned()),
+    };
+
+    ui.set_props(
+        node,
+        (
+            OutlineWidth(StyleUnit::Px(HOVER_OUTLINE_WIDTH)),
+            OutlineOffset(StyleUnit::Px(HOVER_OUTLINE_OFFSET)),
+            OutlineFill(Paint::Solid(Color::BLACK)),
+        ),
+    );
+
+    hovered
+}
+
+/// Restore the outline styles a node set itself, once no longer hovered.
+fn restore(ui: &mut Ui, hovered: Hovered) {
+    let Hovered {
+        node,
+        width,
+        offset,
+        fill,
+    } = hovered;
+
+    match width {
+        Some(width) => ui.set_props(node, (width,)),
+        None => drop(ui.remove_prop::<OutlineWidth>(node)),
+    }
+
+    match offset {
+        Some(offset) => ui.set_props(node, (offset,)),
+        None => drop(ui.remove_prop::<OutlineOffset>(node)),
+    }
+
+    match fill {
+        Some(fill) => ui.set_props(node, (fill,)),
+        None => drop(ui.remove_prop::<OutlineFill>(node)),
     }
 }
