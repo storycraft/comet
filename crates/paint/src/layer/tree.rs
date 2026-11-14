@@ -21,6 +21,10 @@ use crate::layer::{PaintLayerItem, PaintLayerKey};
 pub struct PaintLayerTree {
     /// The layers, each a child of the layer it paints in. Children are kept
     /// in paint order, and the root layer has no parent.
+    ///
+    /// Kept in step with the layer of each owner, which
+    /// [`Self::layer_of`] looks up. Changes made outside the builder, such as
+    /// deleting a layer or changing its owner, must keep them in step.
     pub layers: SlotTree<PaintLayerKey, PaintLayerItem>,
     /// The layer each owner fragment starts.
     pub(super) by_owner: SecondaryMap<FragmentKey, PaintLayerKey>,
@@ -42,11 +46,7 @@ impl PaintLayerTree {
 
     /// The layer a fragment starts, or `None` if it starts none.
     pub fn layer_of(&self, owner: FragmentKey) -> Option<PaintLayerKey> {
-        self.by_owner.get(owner).copied().filter(|&layer| {
-            self.layers
-                .get(layer)
-                .is_some_and(|item| item.owner == owner)
-        })
+        self.by_owner.get(owner).copied()
     }
 
     /// The layer a fragment paints in: the layer of its nearest ancestor or
