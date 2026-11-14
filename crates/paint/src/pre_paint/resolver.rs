@@ -4,7 +4,7 @@ use comet_layout::{
     input::{LayoutInputKey, tree::LayoutInputTree},
     style::{
         bx::Overflow,
-        geometry::{Point as StylePoint, StyleUnit, UnitResolveContext},
+        geometry::{AutoValue, Point as StylePoint, StyleUnit, UnitResolveContext},
         taffy::Overflow as OverflowMode,
     },
 };
@@ -13,7 +13,7 @@ use kurbo::{Affine, Point, RoundedRectRadii, Size};
 
 use crate::{
     pre_paint::{FragmentData, LayoutInputData, tree::PrePaintTree},
-    style::{BorderRadius, TextColor, Transform, TransformOrigin},
+    style::{BorderRadius, TextColor, Transform, TransformOrigin, ZIndex},
 };
 
 /// Resolves a [`PrePaintTree`] for a fragment tree. Keep it to reuse its
@@ -53,6 +53,15 @@ impl PrePaintTreeResolver {
     /// `inputs` is the input tree `fragments` were built from, and `tree`
     /// belongs to them. `units` resolves border radii and transform origins,
     /// with each item's font size.
+    ///
+    /// Returns `None` if a fragment or item to resolve no longer matches the
+    /// UI, such as when its source node was deleted after `inputs` and
+    /// `fragments` were built. Rebuild them, then resolve again. Data resolved
+    /// before the failure stays in `tree`, so `tree` may be partly updated.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `key` is not in `fragments`.
     pub fn resolve(
         &mut self,
         ui: &Ui,
@@ -61,7 +70,7 @@ impl PrePaintTreeResolver {
         units: &UnitResolveContext,
         tree: &mut PrePaintTree,
         key: FragmentKey,
-    ) {
+    ) -> Option<()> {
         let sources = Sources {
             ui,
             inputs,
@@ -70,8 +79,9 @@ impl PrePaintTreeResolver {
         };
 
         // Fragments read the stitched sizes of their items.
-        self.resolve_items(sources, tree, fragments.items[key].source);
-        self.resolve_fragments(sources, tree, key);
+        self.resolve_items(sources, tree, fragments.items[key].source)?;
+        self.resolve_fragments(sources, tree, key)?;
+        Some(())
     }
 
     /// Resolve the data of the fragments under `key`.
@@ -80,7 +90,7 @@ impl PrePaintTreeResolver {
         sources: Sources<'_>,
         tree: &mut PrePaintTree,
         key: FragmentKey,
-    ) {
+    ) -> Option<()> {
         let fragments = sources.fragments;
 
         let pending = &mut self.fragments;
@@ -88,11 +98,12 @@ impl PrePaintTreeResolver {
         pending.push(key);
 
         while let Some(key) = pending.pop() {
-            let data = sources.resolve_fragment(tree, key);
+            let data = sources.resolve_fragment(tree, key)?;
 
             tree.fragment_mapping.insert(key, data);
             pending.extend(fragments.items.children(key));
         }
+        Some(())
     }
 
     /// Resolve the data of the layout input items under `key`, each after the
@@ -102,7 +113,7 @@ impl PrePaintTreeResolver {
         sources: Sources<'_>,
         tree: &mut PrePaintTree,
         key: LayoutInputKey,
-    ) {
+    ) -> Option<()> {
         let items = &sources.inputs.items;
 
         // Start below the nearest resolved ancestor.
@@ -119,21 +130,26 @@ impl PrePaintTreeResolver {
         pending.push(start);
 
         while let Some(key) = pending.pop() {
-            let data = sources.resolve_item(tree, key);
+            let data = sources.resolve_item(tree, key)?;
 
             tree.layout_mapping.insert(key, data);
             pending.extend(items.children(key).rev());
         }
+        Some(())
     }
 }
 
 impl Sources<'_> {
     /// Resolve the data of one fragment from the UI and the data of its item.
-    fn resolve_fragment(&self, tree: &PrePaintTree, key: FragmentKey) -> FragmentData {
-        let fragment = &self.fragments.items[key];
-        let props = self.ui.props(self.inputs.items[fragment.source].node);
+    fn resolve_fragment(&self, tree: &PrePaintTree, key: FragmentKey) -> Option<FragmentData> {
+        let fragment = self.fragments.items.get(key)?;
+        let props = self.ui.props(self.inputs.items[fragment.source].node)?;
         // Transforms only apply to boxes.
-        let box_props = props.filter(|_| fragment.item.is_box());
+        let box_props = if fragment.item.is_box() {
+            Some(props)
+        } else {
+            None
+        };
 
         let layout = &fragment.layout;
         let transform_origin = self.transform_origin(
@@ -147,12 +163,12 @@ impl Sources<'_> {
             transform_origin,
         );
 
-        FragmentData {
+        Some(FragmentData {
             transform,
             inverse_transform: invert(transform),
             transform_origin,
-            border_radius: props.and_then(|props| self.border_radius(tree, key, props)),
-        }
+            border_radius: self.border_radius(tree, key, props),
+        })
     }
 
     /// The corner radii of a fragment's border box, or `None` for fragments
@@ -236,19 +252,20 @@ impl Sources<'_> {
 
     /// Resolve the data of one item from the UI, its fragments and its
     /// parent's data.
-    fn resolve_item(&self, tree: &PrePaintTree, key: LayoutInputKey) -> LayoutInputData {
-        let props = self.ui.props(self.inputs.items[key].node);
+    fn resolve_item(&self, tree: &PrePaintTree, key: LayoutInputKey) -> Option<LayoutInputData> {
+        let props = self.ui.props(self.inputs.items[key].node)?;
 
         let inherited_color = match self.inputs.items.parent(key) {
             Some(parent) => tree[parent].text_color.clone(),
             None => TextColor::default().0,
         };
 
-        LayoutInputData {
+        Some(LayoutInputData {
             stitched_size: self.stitched_size(key),
-            text_color: props.and_then(lookup_text_color).unwrap_or(inherited_color),
-            clip: props.map_or((false, false), lookup_clip),
-        }
+            text_color: lookup_text_color(props).unwrap_or(inherited_color),
+            clip: lookup_clip(props),
+            z_index: lookup_z_index(props),
+        })
     }
 
     /// The size of the fragments an item generates and links together, placed
@@ -279,6 +296,20 @@ impl Sources<'_> {
 /// The text color an item sets, or `None` to inherit it.
 fn lookup_text_color(props: Props<'_>) -> Option<Paint> {
     props.get::<TextColor>().map(|color| color.0.clone())
+}
+
+fn lookup_z_index(props: Props<'_>) -> Option<i32> {
+    let v = props
+        .get::<ZIndex>()
+        .as_deref()
+        .copied()
+        .unwrap_or_default()
+        .0;
+
+    match v {
+        AutoValue::Auto => None,
+        AutoValue::Value(v) => Some(v),
+    }
 }
 
 /// The transform of a box, or identity.

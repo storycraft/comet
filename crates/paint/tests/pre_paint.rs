@@ -53,7 +53,7 @@ impl Fixture {
     /// Build the layout and resolve the whole pre-paint tree.
     fn build(&mut self, ui: &Ui, node: NodeKey) -> FragmentKey {
         let root = self.layout(ui, node);
-        self.resolve(ui, root);
+        self.resolve(ui, root).unwrap();
 
         root
     }
@@ -84,7 +84,7 @@ impl Fixture {
         root
     }
 
-    fn resolve(&mut self, ui: &Ui, key: FragmentKey) {
+    fn resolve(&mut self, ui: &Ui, key: FragmentKey) -> Option<()> {
         self.resolver.resolve(
             ui,
             &self.inputs,
@@ -92,7 +92,7 @@ impl Fixture {
             &UNITS,
             &mut self.pre_paint,
             key,
-        );
+        )
     }
 
     fn item(&self, node: NodeKey) -> LayoutInputKey {
@@ -699,7 +699,7 @@ fn resolving_a_subtree_follows_the_layout() {
     );
 
     // Resolving the subtree leaves its ancestors as they are.
-    f.resolve(&ui, clipper_fragment);
+    f.resolve(&ui, clipper_fragment).unwrap();
 
     assert_eq!(f.boxed(clipper).transform_origin, Point::new(25.0, 10.0));
     assert_affine(
@@ -726,7 +726,7 @@ fn resolving_a_subtree_looks_up_its_paint_styles_again() {
     ui.set_props(colored, (TextColor(Paint::Solid(GREEN)),));
     assert_eq!(f.text_color(colored), RED);
 
-    f.resolve(&ui, f.box_of(colored));
+    f.resolve(&ui, f.box_of(colored)).unwrap();
 
     assert_eq!(f.text_color(root), BLUE);
     assert_eq!(f.text_color(colored), GREEN);
@@ -744,13 +744,34 @@ fn resolving_a_fragment_resolves_only_its_unresolved_ancestor_items() {
 
     let mut f = Fixture::default();
     let root_fragment = f.layout(&ui, root);
-    f.resolve(&ui, f.box_of(block));
+    f.resolve(&ui, f.box_of(block)).unwrap();
 
     // Fragments do not depend on their ancestors, items inherit from theirs.
     assert!(f.pre_paint.fragment(root_fragment).is_none());
     assert_eq!(f.transform(f.box_of(block)), Affine::IDENTITY);
     assert_eq!(f.text_color(root), RED);
     assert_eq!(f.text_color(content), RED);
+}
+
+#[test]
+fn resolving_fails_for_nodes_deleted_since_the_layout_was_built() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let block = ui.create(Node::Box, ());
+    ui.append(root, block);
+    text(&mut ui, block, "text");
+
+    let mut f = Fixture::default();
+    let root_fragment = f.build(&ui, root);
+
+    // The layout still holds the deleted node until it is rebuilt.
+    ui.delete(block);
+    assert_eq!(f.resolve(&ui, root_fragment), None);
+
+    // Resolving succeeds again once the layout follows the UI.
+    f.inputs.mark_node(root, LayoutFlags::FULL_DIRTY);
+    let root_fragment = f.layout(&ui, root);
+    assert_eq!(f.resolve(&ui, root_fragment), Some(()));
 }
 
 #[test]

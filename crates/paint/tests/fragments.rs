@@ -141,7 +141,9 @@ fn draw(
     scene: &mut Scene,
 ) {
     let mut pre_paint = PrePaintTree::new();
-    PrePaintTreeResolver::new().resolve(ui, inputs, tree, units, &mut pre_paint, root);
+    PrePaintTreeResolver::new()
+        .resolve(ui, inputs, tree, units, &mut pre_paint, root)
+        .unwrap();
     painter.draw(ui, inputs, tree, &pre_paint, root, viewport, scene);
 }
 
