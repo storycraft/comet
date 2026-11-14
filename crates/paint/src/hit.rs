@@ -79,7 +79,7 @@ impl PaintHitTester {
             fragments,
             pre_paint,
         };
-        let owner = layers.get(root)?.owner;
+        let owner = layers.layers.get(root)?.owner;
 
         // Map the point to the local coordinates of the owner's parent.
         self.chain.clear();
@@ -108,14 +108,19 @@ impl PaintHitTester {
         key: PaintLayerKey,
         point: Point,
     ) -> Option<FragmentKey> {
-        let owner = sources.layers.get(key)?.owner;
+        let owner = sources.layers.layers.get(key)?.owner;
         let point = sources.pre_paint.fragment(owner)?.inverse_transform? * point;
         // The owner's clip bounds its descendants, child layers included.
         let inside = inside_clip(sources, owner, point);
 
         if inside {
-            for child in sources.layers.children(key).rev() {
-                if sources.layers[child].z_index < 0 {
+            // The last child layer with a negative z index, where the search
+            // of negative layers resumes after the contents.
+            let mut negative = None;
+
+            for child in sources.layers.layers.children(key).rev() {
+                if sources.layers.layers[child].z_index < 0 {
+                    negative = Some(child);
                     break;
                 }
 
@@ -128,12 +133,12 @@ impl PaintHitTester {
                 return Some(hit);
             }
 
-            for child in sources.layers.children(key).rev() {
-                if sources.layers[child].z_index < 0
-                    && let Some(hit) = self.hit_child(sources, child, owner, point)
-                {
+            while let Some(child) = negative {
+                if let Some(hit) = self.hit_child(sources, child, owner, point) {
                     return Some(hit);
                 }
+
+                negative = sources.layers.layers.prev_sibling(child);
             }
         }
 
@@ -153,7 +158,7 @@ impl PaintHitTester {
         owner: FragmentKey,
         point: Point,
     ) -> Option<FragmentKey> {
-        let child_owner = sources.layers.get(child)?.owner;
+        let child_owner = sources.layers.layers.get(child)?.owner;
 
         // Fragments between the owners, innermost first.
         self.chain.clear();

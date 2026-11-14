@@ -1,7 +1,5 @@
-use std::ops::Index;
-
 use comet_layout::fragment::{FragmentKey, tree::FragmentTree};
-use comet_slotmap_tree::{SlotTree, iter::Cursor};
+use comet_slotmap_tree::SlotTree;
 use slotmap::SecondaryMap;
 
 use crate::layer::{PaintLayerItem, PaintLayerKey};
@@ -21,7 +19,9 @@ use crate::layer::{PaintLayerItem, PaintLayerKey};
 /// their keys across builds for as long as their owner starts one.
 #[derive(Debug)]
 pub struct PaintLayerTree {
-    pub(super) layers: SlotTree<PaintLayerKey, PaintLayerItem>,
+    /// The layers, each a child of the layer it paints in. Children are kept
+    /// in paint order, and the root layer has no parent.
+    pub layers: SlotTree<PaintLayerKey, PaintLayerItem>,
     /// The layer each owner fragment starts.
     pub(super) by_owner: SecondaryMap<FragmentKey, PaintLayerKey>,
 }
@@ -38,10 +38,6 @@ impl Default for PaintLayerTree {
 impl PaintLayerTree {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    pub fn get(&self, key: PaintLayerKey) -> Option<&PaintLayerItem> {
-        self.layers.get(key)
     }
 
     /// The layer a fragment starts, or `None` if it starts none.
@@ -73,34 +69,8 @@ impl PaintLayerTree {
         None
     }
 
-    /// The layer a layer is a child of, or `None` for the root layer.
-    pub fn parent(&self, key: PaintLayerKey) -> Option<PaintLayerKey> {
-        self.layers.parent(key)
-    }
-
-    /// The child layers of a layer, in paint order.
-    pub fn children(&self, key: PaintLayerKey) -> Cursor<'_, PaintLayerKey, PaintLayerItem> {
-        self.layers.children(key)
-    }
-
-    pub fn len(&self) -> usize {
-        self.layers.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.layers.is_empty()
-    }
-
     pub fn clear(&mut self) {
         self.layers.clear();
         self.by_owner.clear();
-    }
-}
-
-impl Index<PaintLayerKey> for PaintLayerTree {
-    type Output = PaintLayerItem;
-
-    fn index(&self, key: PaintLayerKey) -> &PaintLayerItem {
-        &self.layers[key]
     }
 }

@@ -70,8 +70,8 @@ impl PaintLayerBuilder {
         key: FragmentKey,
         layer: Option<PaintLayerKey>,
     ) -> Option<PaintLayerKey> {
-        match layer.filter(|&layer| tree.get(layer).is_some()) {
-            Some(root) if tree[root].owner != key => {
+        match layer.filter(|&layer| tree.layers.get(layer).is_some()) {
+            Some(root) if tree.layers[root].owner != key => {
                 self.update(fragments, pre_paint, tree, key)?;
                 Some(root)
             }
@@ -131,7 +131,7 @@ impl PaintLayerBuilder {
         // A layer `key` starts is placed in its parent layer, which may change
         // with its stacking. The root layer stays.
         let layer = match tree.layer_of(key) {
-            Some(layer) => tree.parent(layer).unwrap_or(layer),
+            Some(layer) => tree.layers.parent(layer).unwrap_or(layer),
             None => tree.enclosing(fragments, key)?,
         };
 

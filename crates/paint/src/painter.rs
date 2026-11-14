@@ -145,7 +145,7 @@ impl CometPainter {
         viewport: Rect,
         scene: &mut impl PaintScene,
     ) {
-        let Some(item) = layers.get(root) else {
+        let Some(item) = layers.layers.get(root) else {
             return;
         };
         let parent = match tree.items.parent(item.owner) {
@@ -181,7 +181,7 @@ impl CometPainter {
         clip: Option<Rect>,
         scene: &mut impl PaintScene,
     ) {
-        let Some(owner) = sources.layers.get(key).map(|item| item.owner) else {
+        let Some(owner) = sources.layers.layers.get(key).map(|item| item.owner) else {
             return;
         };
         let (Some(fragment), Some(own)) = (
@@ -249,8 +249,8 @@ impl CometPainter {
         self.draw_fragment(sources, owner, transforms, None, clip, scene);
         let (clip, clipped) = push_clip(sources, fragment, own, transforms, clip, scene);
 
-        for child in sources.layers.children(key) {
-            if sources.layers[child].z_index >= 0 {
+        for child in sources.layers.layers.children(key) {
+            if sources.layers.layers[child].z_index >= 0 {
                 break;
             }
 
@@ -259,8 +259,8 @@ impl CometPainter {
 
         self.draw_contents(sources, owner, transforms, clip, scene);
 
-        for child in sources.layers.children(key) {
-            if sources.layers[child].z_index >= 0 {
+        for child in sources.layers.layers.children(key) {
+            if sources.layers.layers[child].z_index >= 0 {
                 self.draw_child(sources, child, owner, transforms, clip, scene);
             }
         }
@@ -287,7 +287,7 @@ impl CometPainter {
         clip: Option<Rect>,
         scene: &mut impl PaintScene,
     ) {
-        let Some(child_owner) = sources.layers.get(child).map(|item| item.owner) else {
+        let Some(child_owner) = sources.layers.layers.get(child).map(|item| item.owner) else {
             return;
         };
 

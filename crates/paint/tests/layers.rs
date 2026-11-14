@@ -125,7 +125,7 @@ impl Fixture {
 
     /// The child layers of a layer, in paint order.
     fn children(&self, layer: PaintLayerKey) -> Vec<PaintLayerKey> {
-        self.layers.children(layer).collect()
+        self.layers.layers.children(layer).collect()
     }
 
     /// The fragment hit at a scene point.
@@ -207,9 +207,9 @@ fn fragments_without_layer_styles_share_the_root_layer() {
 
     let f = Fixture::build(&ui, root);
 
-    assert_eq!(f.layers.len(), 1);
-    assert_eq!(f.layers[f.root].owner, f.box_of(root));
-    assert_eq!(f.layers.parent(f.root), None);
+    assert_eq!(f.layers.layers.len(), 1);
+    assert_eq!(f.layers.layers[f.root].owner, f.box_of(root));
+    assert_eq!(f.layers.layers.parent(f.root), None);
     assert!(f.children(f.root).is_empty());
 
     for node in [outer, inner] {
@@ -240,14 +240,14 @@ fn transforms_opacity_and_z_indices_start_layers() {
 
     let f = Fixture::build(&ui, root);
 
-    assert_eq!(f.layers.len(), 4);
+    assert_eq!(f.layers.layers.len(), 4);
 
     for node in [transformed, translucent, zero] {
         let layer = f.layer_of(node);
 
-        assert_eq!(f.layers[layer].owner, f.box_of(node));
-        assert_eq!(f.layers[layer].z_index, 0);
-        assert_eq!(f.layers.parent(layer), Some(f.root));
+        assert_eq!(f.layers.layers[layer].owner, f.box_of(node));
+        assert_eq!(f.layers.layers[layer].z_index, 0);
+        assert_eq!(f.layers.layers.parent(layer), Some(f.root));
     }
 
     assert_eq!(f.layers.layer_of(f.box_of(nested)), None);
@@ -276,7 +276,7 @@ fn only_boxes_start_layers() {
 
     let f = Fixture::build(&ui, root);
 
-    assert_eq!(f.layers.len(), 1);
+    assert_eq!(f.layers.layers.len(), 1);
 }
 
 #[test]
@@ -310,7 +310,7 @@ fn layers_paint_in_z_index_order_around_their_owner() {
         f.children(f.root),
         [f.layer_of(below), f.layer_of(above), f.layer_of(also_above)]
     );
-    assert_eq!(f.layers[f.layer_of(below)].z_index, -1);
+    assert_eq!(f.layers.layers[f.layer_of(below)].z_index, -1);
 
     assert_eq!(
         commands(&f.draw(&ui)),
@@ -433,9 +433,9 @@ fn filters_start_layers() {
 
     let f = Fixture::build(&ui, root);
 
-    assert_eq!(f.layers.len(), 3);
-    assert_eq!(f.layers[f.layer_of(filtered)].z_index, 0);
-    assert_eq!(f.layers[f.layer_of(backdrop)].z_index, 0);
+    assert_eq!(f.layers.layers.len(), 3);
+    assert_eq!(f.layers.layers[f.layer_of(filtered)].z_index, 0);
+    assert_eq!(f.layers.layers[f.layer_of(backdrop)].z_index, 0);
 }
 
 #[test]
@@ -698,13 +698,13 @@ fn building_again_keeps_layer_keys() {
     f.update(&ui, raised);
 
     assert_eq!(f.root, root_layer);
-    assert_eq!(f.layers.len(), 2);
+    assert_eq!(f.layers.layers.len(), 2);
     assert_eq!(f.layers.layer_of(f.box_of(raised)), None);
     assert_eq!(f.layer_of(moved), moved_layer);
     assert_eq!(f.children(f.root), [moved_layer]);
 
     // Building from the root keeps them too.
-    let fragment_root = f.layers[f.root].owner;
+    let fragment_root = f.layers.layers[f.root].owner;
     f.root = f
         .builder
         .build(
@@ -735,7 +735,10 @@ fn layers_of_stopped_owners_move_to_their_parent() {
     let raised_layer = f.layer_of(raised);
     let below_layer = f.layer_of(below);
 
-    assert_eq!(f.layers.parent(raised_layer), Some(f.layer_of(group)));
+    assert_eq!(
+        f.layers.layers.parent(raised_layer),
+        Some(f.layer_of(group))
+    );
 
     ui.remove_prop::<Opacity>(group);
     f.update(&ui, group);
@@ -755,8 +758,9 @@ fn layers_of_stopped_owners_move_to_their_parent() {
 
 /// The layers under `layer`, with their owners and z indices, nested.
 fn shape(layers: &PaintLayerTree, layer: PaintLayerKey) -> String {
-    let item = &layers[layer];
+    let item = &layers.layers[layer];
     let children: Vec<_> = layers
+        .layers
         .children(layer)
         .map(|child| shape(layers, child))
         .collect();
@@ -795,18 +799,21 @@ fn updates_match_full_builds() {
         .build(&f.fragments, &f.pre_paint, &mut f.layers, key, Some(f.root))
         .unwrap();
 
-    let fragment_root = f.layers[f.root].owner;
+    let fragment_root = f.layers.layers[f.root].owner;
     let mut full = PaintLayerTree::new();
     let full_root = PaintLayerBuilder::new()
         .build(&f.fragments, &f.pre_paint, &mut full, fragment_root, None)
         .unwrap();
 
     assert_eq!(shape(&f.layers, f.root), shape(&full, full_root));
-    assert_eq!(f.layers.len(), 5);
+    assert_eq!(f.layers.layers.len(), 5);
     // Layers outside the updated subtree are left as they are.
     assert_eq!(f.layer_of(kept), kept_layer);
-    assert_eq!(f.layers[f.layer_of(deep)].z_index, -2);
-    assert_eq!(f.layers.parent(f.layer_of(inner)), Some(f.layer_of(deep)));
+    assert_eq!(f.layers.layers[f.layer_of(deep)].z_index, -2);
+    assert_eq!(
+        f.layers.layers.parent(f.layer_of(inner)),
+        Some(f.layer_of(deep))
+    );
 }
 
 #[test]
@@ -858,7 +865,7 @@ fn hit_testers_can_be_reused() {
     assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_of(moved)));
 
     // Nor into hits on rebuilt layers.
-    let fragment_root = f.layers[f.root].owner;
+    let fragment_root = f.layers.layers[f.root].owner;
     f.root = PaintLayerBuilder::new()
         .build(
             &f.fragments,
@@ -884,8 +891,33 @@ fn layer_styles_start_layers_whatever_their_value() {
 
     let f = Fixture::build(&ui, root);
 
-    assert_eq!(f.layers[f.layer_of(identity)].z_index, 0);
-    assert_eq!(f.layers[f.layer_of(opaque)].z_index, 0);
+    assert_eq!(f.layers.layers[f.layer_of(identity)].z_index, 0);
+    assert_eq!(f.layers.layers[f.layer_of(opaque)].z_index, 0);
     // An auto z index sets no value.
     assert_eq!(f.layers.layer_of(f.box_of(auto)), None);
+}
+
+#[test]
+fn hits_negative_layers_below_contents_from_the_last() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let lowest = ui.create(Node::Box, (fixed(40.0, 20.0), z(-2)));
+    let low = ui.create(Node::Box, (fixed(40.0, 20.0), z(-1), overlap(10.0)));
+    let flow = ui.create(Node::Box, (fixed(40.0, 20.0), overlap(10.0)));
+    let raised = ui.create(Node::Box, (fixed(10.0, 20.0), z(1), overlap(30.0)));
+    ui.append(root, lowest);
+    ui.append(root, low);
+    ui.append(root, flow);
+    ui.append(root, raised);
+
+    let f = Fixture::build(&ui, root);
+
+    // Boxes from y 0, 10 and 20, and the narrow raised box from y 10.
+    assert_eq!(f.hit(20.0, 5.0), Some(f.box_of(lowest)));
+    // The later negative layer is above the earlier one.
+    assert_eq!(f.hit(20.0, 15.0), Some(f.box_of(low)));
+    // Contents are above negative layers, and positive layers above both.
+    assert_eq!(f.hit(20.0, 25.0), Some(f.box_of(flow)));
+    assert_eq!(f.hit(5.0, 15.0), Some(f.box_of(raised)));
+    assert_eq!(f.hit(50.0, 5.0), Some(f.box_of(root)));
 }
