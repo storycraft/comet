@@ -291,12 +291,22 @@ impl Ui {
 pub struct Props<'a>(EntityRef<'a>);
 
 impl<'a> Props<'a> {
-    pub fn get<T: StyleProp>(&self) -> Option<Ref<'a, T>> {
+    pub fn get<T: StyleProp>(self) -> Option<Ref<'a, T>> {
         self.0.get::<&T>()
     }
 
-    pub fn get_mut<T: StyleProp>(&self) -> Option<RefMut<'a, T>> {
+    pub fn get_mut<T: StyleProp>(self) -> Option<RefMut<'a, T>> {
         self.0.get::<&mut T>()
+    }
+
+    /// A copy of the prop, or `None` if the node does not set it.
+    pub fn get_cloned<T: StyleProp + Clone>(self) -> Option<T> {
+        self.get::<T>().as_deref().cloned()
+    }
+
+    /// A copy of the prop, or its default if the node does not set it.
+    pub fn get_or_default<T: StyleProp + Clone + Default>(self) -> T {
+        self.get_cloned().unwrap_or_default()
     }
 
     pub fn kind(self) -> Node {
