@@ -244,7 +244,7 @@ fn classify(node: Node, props: Props) -> (LayoutInputKind, ChildLayout) {
         return (LayoutInputKind::Text, ChildLayout::None);
     }
 
-    let outer = props.get::<DisplayOuter>().map(|v| *v).unwrap_or_default();
+    let outer = props.get_or_default::<DisplayOuter>();
     let inner = props.get::<DisplayInner>();
     let inner = inner.as_deref();
 

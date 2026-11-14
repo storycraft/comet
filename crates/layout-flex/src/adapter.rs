@@ -1,4 +1,5 @@
 use comet_layout::{container::ContainerContext, style::geometry::AutoValue};
+use comet_tree::ui::Props;
 use taffy::{
     CoreStyle, FlexboxContainerStyle, FlexboxItemStyle, LayoutContainingBlock,
     LayoutFlexboxContainer, LayoutPartialTree, OofItemStyle, TraversePartialTree,
@@ -128,9 +129,9 @@ impl Style {
         macro_rules! prop {
             ($name:ident) => {
                 props
-                    .and_then(|props| props.get::<styles::$name>())
-                    .map(|v| v.0)
-                    .unwrap_or_else(|| styles::$name::default().0)
+                    .map(Props::get_or_default::<styles::$name>)
+                    .unwrap_or_default()
+                    .0
             };
         }
 
@@ -160,9 +161,9 @@ impl Style {
         macro_rules! prop {
             ($name:ident) => {
                 props
-                    .and_then(|props| props.get::<styles::$name>())
-                    .map(|v| v.0)
-                    .unwrap_or_else(|| styles::$name::default().0)
+                    .map(Props::get_or_default::<styles::$name>)
+                    .unwrap_or_default()
+                    .0
             };
         }
 

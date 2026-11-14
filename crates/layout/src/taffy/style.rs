@@ -34,9 +34,9 @@ pub fn resolve(props: Option<Props>, cx: &LayoutConstraint) -> Style {
     macro_rules! value {
         ($prop:ident) => {
             props
-                .and_then(|props| props.get::<bx::$prop>())
-                .map(|v| v.0)
-                .unwrap_or_else(|| bx::$prop::default().0)
+                .map(Props::get_or_default::<bx::$prop>)
+                .unwrap_or_default()
+                .0
         };
     }
 
@@ -53,8 +53,8 @@ pub fn resolve(props: Option<Props>, cx: &LayoutConstraint) -> Style {
         min_size: conv::to_size(value!(MinSize), |v| conv::length_auto(v, cx)),
         max_size: conv::to_size(value!(MaxSize), |v| conv::length_auto(v, cx)),
         aspect_ratio: props
-            .and_then(|props| props.get::<bx::AspectRatio>())
-            .map(|v| v.0),
+            .and_then(Props::get_cloned)
+            .map(|bx::AspectRatio(ratio)| ratio),
         margin: conv::to_rect(value!(Margin), |v| conv::length_auto(v, cx)),
         padding: conv::to_rect(value!(Padding), |v| conv::length(v, cx)),
         border: conv::to_rect(value!(Border), |v| conv::length(v, cx)),

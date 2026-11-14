@@ -1,4 +1,3 @@
-use anyrender::Paint;
 use comet_layout::{
     fragment::{FragmentItem, FragmentKey, tree::FragmentTree},
     input::{LayoutInputKey, tree::LayoutInputTree},
@@ -151,15 +150,18 @@ impl Sources<'_> {
             None
         };
 
+        let TransformOrigin(origin) = box_props.map(Props::get_or_default).unwrap_or_default();
+        let Transform(own_transform) = box_props.map(Props::get_or_default).unwrap_or_default();
+
         let layout = &fragment.layout;
         let transform_origin = self.transform_origin(
             key,
-            box_props.map_or(TransformOrigin::default().0, lookup_transform_origin),
+            origin,
             Size::new(layout.size.width, layout.size.height),
         );
         let transform = resolve_transform(
             Point::new(layout.location.x, layout.location.y),
-            box_props.map_or(Transform::default().0, lookup_transform),
+            own_transform,
             transform_origin,
         );
 
@@ -190,7 +192,7 @@ impl Sources<'_> {
             return None;
         }
 
-        let radius = props.get::<BorderRadius>()?.0;
+        let BorderRadius(radius) = props.get_cloned()?;
 
         let mut units = self.units.clone();
         units.font_size = self.inputs.items[fragment.source].text_style.span.font_size as f64;
@@ -255,16 +257,29 @@ impl Sources<'_> {
     fn resolve_item(&self, tree: &PrePaintTree, key: LayoutInputKey) -> Option<LayoutInputData> {
         let props = self.ui.props(self.inputs.items[key].node)?;
 
-        let inherited_color = match self.inputs.items.parent(key) {
-            Some(parent) => tree[parent].text_color.clone(),
-            None => TextColor::default().0,
+        // Text colors inherit from the parent item unless the item sets one.
+        let TextColor(text_color) =
+            props
+                .get_cloned()
+                .unwrap_or_else(|| match self.inputs.items.parent(key) {
+                    Some(parent) => TextColor(tree[parent].text_color.clone()),
+                    None => TextColor::default(),
+                });
+        let Overflow(overflow) = props.get_or_default();
+        let ZIndex(z_index) = props.get_or_default();
+        let z_index = match z_index {
+            AutoValue::Auto => None,
+            AutoValue::Value(z_index) => Some(z_index),
         };
 
         Some(LayoutInputData {
             stitched_size: self.stitched_size(key),
-            text_color: lookup_text_color(props).unwrap_or(inherited_color),
-            clip: lookup_clip(props),
-            z_index: lookup_z_index(props),
+            text_color,
+            clip: (
+                overflow.x != OverflowMode::Visible,
+                overflow.y != OverflowMode::Visible,
+            ),
+            z_index,
         })
     }
 
@@ -291,51 +306,6 @@ impl Sources<'_> {
                 }
             })
     }
-}
-
-/// The text color an item sets, or `None` to inherit it.
-fn lookup_text_color(props: Props<'_>) -> Option<Paint> {
-    props.get::<TextColor>().map(|color| color.0.clone())
-}
-
-fn lookup_z_index(props: Props<'_>) -> Option<i32> {
-    let v = props
-        .get::<ZIndex>()
-        .as_deref()
-        .copied()
-        .unwrap_or_default()
-        .0;
-
-    match v {
-        AutoValue::Auto => None,
-        AutoValue::Value(v) => Some(v),
-    }
-}
-
-/// The transform of a box, or identity.
-fn lookup_transform(props: Props<'_>) -> Affine {
-    props
-        .get::<Transform>()
-        .map_or(Transform::default().0, |transform| transform.0)
-}
-
-/// The point of a box its transform is applied around, or its centre.
-fn lookup_transform_origin(props: Props<'_>) -> StylePoint<StyleUnit> {
-    props
-        .get::<TransformOrigin>()
-        .map_or(TransformOrigin::default().0, |origin| origin.0)
-}
-
-/// The axes an item clips its overflow on, or none.
-fn lookup_clip(props: Props<'_>) -> (bool, bool) {
-    let overflow = props
-        .get::<Overflow>()
-        .map_or(Overflow::default().0, |overflow| overflow.0);
-
-    (
-        overflow.x != OverflowMode::Visible,
-        overflow.y != OverflowMode::Visible,
-    )
 }
 
 /// The inverse of `transform`, or `None` if it collapses an axis and has no
