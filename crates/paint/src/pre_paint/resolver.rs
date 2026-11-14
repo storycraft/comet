@@ -57,10 +57,6 @@ impl PrePaintTreeResolver {
     /// UI, such as when its source node was deleted after `inputs` and
     /// `fragments` were built. Rebuild them, then resolve again. Data resolved
     /// before the failure stays in `tree`, so `tree` may be partly updated.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `key` is not in `fragments`.
     pub fn resolve(
         &mut self,
         ui: &Ui,
@@ -78,7 +74,7 @@ impl PrePaintTreeResolver {
         };
 
         // Fragments read the stitched sizes of their items.
-        self.resolve_items(sources, tree, fragments.items[key].source)?;
+        self.resolve_items(sources, tree, fragments.items.get(key)?.source)?;
         self.resolve_fragments(sources, tree, key)?;
         Some(())
     }
