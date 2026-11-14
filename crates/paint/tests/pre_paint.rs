@@ -21,7 +21,10 @@ use comet_paint::{
     pre_paint::{
         FragmentData, LayoutInputData, resolver::PrePaintTreeResolver, tree::PrePaintTree,
     },
-    style::{BorderRadius, Fill, TextColor, Transform, TransformOrigin},
+    style::{
+        BorderRadius, Fill, OutlineFill, OutlineOffset, OutlineWidth, TextColor, Transform,
+        TransformOrigin,
+    },
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
@@ -114,7 +117,7 @@ impl Fixture {
     }
 
     fn border_radius(&self, key: FragmentKey) -> Option<RoundedRectRadii> {
-        self.pre_paint.fragment(key).unwrap().border_radius
+        self.pre_paint.border_radius(&self.fragments, key)
     }
 
     fn fragment(&self, key: FragmentKey) -> &FragmentData {
@@ -323,17 +326,25 @@ fn wrapped_inline_elements_stitch_their_fragments_across_lines() {
 }
 
 #[test]
-fn wrapped_fragments_resolve_percentage_radii_against_their_stitched_size() {
+fn items_keep_whole_radii_and_resolve_percentages_to_zero() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let span = ui.create(
         Node::Box,
         (
             bx::DisplayOuter::Inline,
+            BorderRadius(LayoutRect::new_all(StyleUnit::Px(6.0))),
+        ),
+    );
+    let relative = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 20.0),
             BorderRadius(LayoutRect::new_all(StyleUnit::Percent(0.5))),
         ),
     );
     ui.append(root, span);
+    ui.append(root, relative);
     text(
         &mut ui,
         span,
@@ -346,14 +357,21 @@ fn wrapped_fragments_resolve_percentage_radii_against_their_stitched_size() {
     let fragments: Vec<_> = f.fragments.fragments(f.item(span)).collect();
     assert!(fragments.len() > 1);
 
-    // The stitched span is wider than tall, so the radius is half its height,
-    // whatever the width of each fragment.
-    let stitched = f.data(span).stitched_size;
-    assert!(stitched.width > stitched.height);
-    let radius = stitched.height / 2.0;
+    // The item keeps every corner, and its fragments square the joins.
+    assert_eq!(
+        f.data(span).border_radius,
+        Some(RoundedRectRadii::from(6.0))
+    );
+    assert_eq!(
+        f.border_radius(fragments[0]),
+        Some(RoundedRectRadii::new(6.0, 0.0, 0.0, 6.0))
+    );
 
-    let first = f.border_radius(fragments[0]).unwrap();
-    assert_eq!(first, RoundedRectRadii::new(radius, 0.0, 0.0, radius));
+    // Percentages have no basis.
+    assert_eq!(
+        f.data(relative).border_radius,
+        Some(RoundedRectRadii::from(0.0))
+    );
 }
 
 #[test]
@@ -399,11 +417,10 @@ fn fragment_boxes_resolve_their_border_radii() {
         assert_eq!(f.border_radius(line), None);
     }
 
-    // Percentages resolve against the shorter side, units with the item's
-    // font size.
+    // Units resolve with the item's font size, percentages to 0.
     assert_eq!(
         f.border_radius(f.box_of(rounded)),
-        Some(RoundedRectRadii::new(3.0, 4.0, 8.0, 10.0))
+        Some(RoundedRectRadii::new(3.0, 4.0, 8.0, 0.0))
     );
 
     // Only the outer corners of wrapped fragments are rounded.
@@ -943,4 +960,153 @@ fn resolving_without_recursion_leaves_descendants_as_they_are() {
 
     assert_eq!(f.clip(child), (true, true));
     assert_eq!(f.boxed(child).stacking, Some(0));
+}
+
+#[test]
+fn outlines_resolve_without_a_percentage_basis() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let lengths = ui.create(
+        Node::Box,
+        (
+            fixed(10.0, 10.0),
+            OutlineWidth(StyleUnit::Em(0.25)),
+            OutlineOffset(StyleUnit::Px(-2.0)),
+        ),
+    );
+    let relative = ui.create(
+        Node::Box,
+        (
+            fixed(10.0, 10.0),
+            OutlineWidth(StyleUnit::Percent(0.5)),
+            OutlineOffset(StyleUnit::Percent(0.5)),
+        ),
+    );
+    let negative = ui.create(
+        Node::Box,
+        (fixed(10.0, 10.0), OutlineWidth(StyleUnit::Px(-3.0))),
+    );
+    for node in [lengths, relative, negative] {
+        ui.append(root, node);
+    }
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    assert_eq!(f.data(lengths).outline_width, 4.0);
+    assert_eq!(f.data(lengths).outline_offset, -2.0);
+    assert_eq!(f.data(relative).outline_width, 0.0);
+    assert_eq!(f.data(relative).outline_offset, 0.0);
+    assert_eq!(f.data(negative).outline_width, 0.0);
+    assert_eq!(f.data(root).outline_width, 0.0);
+    assert_eq!(f.data(root).outline_offset, 0.0);
+}
+
+/// Strokes of a scene, with their widths and path bounding boxes in scene
+/// coordinates.
+fn strokes(scene: &Scene) -> Vec<(f64, Rect)> {
+    scene
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            RenderCommand::Stroke(stroke) => Some((
+                stroke.style.width,
+                stroke
+                    .transform
+                    .transform_rect_bbox(stroke.shape.bounding_box()),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn outlines_stroke_outside_the_offset_box() {
+    let mut ui = Ui::new();
+    let root = ui.create(
+        Node::Box,
+        (bx::Padding(LayoutRect::new_all(StyleUnit::Px(10.0))),),
+    );
+    let outlined = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 20.0),
+            OutlineWidth(StyleUnit::Px(2.0)),
+            OutlineOffset(StyleUnit::Px(3.0)),
+            OutlineFill(Paint::Solid(RED)),
+        ),
+    );
+    // Without a fill, nothing is stroked.
+    let unfilled = ui.create(
+        Node::Box,
+        (fixed(40.0, 20.0), OutlineWidth(StyleUnit::Px(2.0))),
+    );
+    ui.append(root, outlined);
+    ui.append(root, unfilled);
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    // Stroked along the box moved out by the offset and half the width.
+    assert_eq!(
+        strokes(&f.draw(&ui)),
+        [(2.0, Rect::new(6.0, 6.0, 54.0, 34.0))]
+    );
+}
+
+#[test]
+fn outlines_of_split_fragments_keep_their_item_radii() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let span = ui.create(
+        Node::Box,
+        (
+            bx::DisplayOuter::Inline,
+            BorderRadius(LayoutRect::new_all(StyleUnit::Px(4.0))),
+            OutlineWidth(StyleUnit::Px(2.0)),
+            OutlineFill(Paint::Solid(RED)),
+        ),
+    );
+    ui.append(root, span);
+    text(
+        &mut ui,
+        span,
+        "one two three four five six seven eight nine ten",
+    );
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    let scene = f.draw(&ui);
+    let outlines: Vec<_> = scene
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            RenderCommand::Stroke(stroke) => Some(&stroke.shape),
+            _ => None,
+        })
+        .collect();
+    let fragments: Vec<_> = f.fragments.fragments(f.item(span)).collect();
+
+    assert!(fragments.len() > 1);
+    assert_eq!(outlines.len(), fragments.len());
+
+    // Every corner of every fragment's outline is rounded with the item's
+    // radius, grown by half the outline width.
+    for (outline, key) in outlines.into_iter().zip(fragments) {
+        let size = f.fragments.items[key].layout.size;
+        let expected = Rect::from_origin_size(Point::ORIGIN, (size.width, size.height))
+            .inflate(1.0, 1.0)
+            .to_rounded_rect(5.0)
+            .to_path(scene.tolerance);
+
+        assert_eq!(outline.elements().len(), expected.elements().len());
+        assert!(
+            outline
+                .elements()
+                .iter()
+                .zip(expected.elements())
+                .all(|(actual, expected)| format!("{actual:?}") == format!("{expected:?}"))
+        );
+    }
 }

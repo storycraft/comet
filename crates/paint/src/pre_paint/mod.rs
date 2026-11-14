@@ -19,12 +19,31 @@ pub struct LayoutInputData {
     /// as its box, or its inline and glyph run fragments across lines, placed
     /// end to end as if the item was not split: box fragments below each
     /// other, inline and glyph run fragments side by side. Line boxes and
-    /// anonymous blocks do not participate. Border radii resolve against it.
+    /// anonymous blocks do not participate.
     pub stitched_size: Size,
 
     /// Axes the item clips its overflow on. Each box fragment of the item
     /// clips its contents to its own border box; other fragments do not clip.
     pub clip: (bool, bool),
+
+    /// Corner radii of the item's border box, resolved from its
+    /// [`BorderRadius`](crate::style::BorderRadius) with its font size, as if
+    /// the item was not split. Percentages resolve to 0. `None` if the item
+    /// sets no radius. Fragments joining a linked fragment
+    /// square the corners at the join, see
+    /// [`PrePaintTree::border_radius`](tree::PrePaintTree::border_radius).
+    pub border_radius: Option<RoundedRectRadii>,
+
+    /// Width of the outline drawn around the item's fragments, resolved from
+    /// its [`OutlineWidth`](crate::style::OutlineWidth) with its font size.
+    /// Percentages resolve to 0. At least 0, and 0 if the item sets none.
+    pub outline_width: f64,
+
+    /// Distance between the outline and the border box, outwards, resolved
+    /// from its [`OutlineOffset`](crate::style::OutlineOffset) with its font
+    /// size. Negative offsets draw the outline inside the box. Percentages
+    /// resolve to 0, and so does an item setting none.
+    pub outline_offset: f64,
 }
 
 /// Paint data of a fragment.
@@ -50,13 +69,6 @@ pub struct FragmentData {
     /// border box's top-left corner. The centre of its border box, unless a
     /// box sets [`TransformOrigin`](crate::style::TransformOrigin).
     pub transform_origin: Point,
-
-    /// Corner radii of the fragment's border box, resolved from its item's
-    /// [`BorderRadius`](crate::style::BorderRadius) against the
-    /// [stitched size](LayoutInputData::stitched_size) of its item. Corners
-    /// joining a linked fragment are square. `None` for fragments painting no
-    /// box, such as line boxes, or items setting no radius.
-    pub border_radius: Option<RoundedRectRadii>,
 
     /// Z index of the paint layer the fragment starts, or `None` if it paints
     /// in the layer of its parent. See

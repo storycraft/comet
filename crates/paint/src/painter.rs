@@ -10,15 +10,15 @@ use comet_layout::{
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
 };
 use comet_tree::{node::NodeKey, ui::Ui};
-use kurbo::{Affine, Point, Rect, Stroke, Vec2};
+use kurbo::{Affine, Insets, Point, Rect, RoundedRect, RoundedRectRadii, Stroke, Vec2};
 use parley::PositionedLayoutItem;
 use peniko::BlendMode;
 use slotmap::SecondaryMap;
 
 use crate::{
     layer::{PaintLayerKey, tree::PaintLayerTree},
-    pre_paint::{FragmentData, tree::PrePaintTree},
-    style::{BackdropFilter, BorderFill, Fill, Filter, Opacity, TextColor},
+    pre_paint::{FragmentData, LayoutInputData, tree::PrePaintTree},
+    style::{BackdropFilter, BorderFill, Fill, Filter, Opacity, OutlineFill, TextColor},
 };
 
 /// Paints final fragments in the order of their [`PaintLayerTree`], with the
@@ -224,8 +224,8 @@ impl CometPainter {
         if let Some(backdrop_filter) = backdrop_filter {
             draw_backdrop(
                 sources,
+                owner,
                 fragment,
-                own,
                 transforms,
                 clip,
                 backdrop_filter,
@@ -255,7 +255,7 @@ impl CometPainter {
         // The owner paints outside its own clip, and its descendants inside
         // it, child layers included.
         self.draw_fragment(sources, owner, transforms, None, clip, scene);
-        let (clip, clipped) = push_clip(sources, fragment, own, transforms, clip, scene);
+        let (clip, clipped) = push_clip(sources, owner, fragment, transforms, clip, scene);
 
         // The first child layer with a non-negative z index, where painting
         // child layers resumes after the contents.
@@ -332,7 +332,7 @@ impl CometPainter {
             transforms = transforms.then(own);
 
             let clipped;
-            (clip, clipped) = push_clip(sources, fragment, own, transforms, clip, scene);
+            (clip, clipped) = push_clip(sources, key, fragment, transforms, clip, scene);
             pushed += usize::from(clipped);
         }
 
@@ -407,7 +407,7 @@ impl CometPainter {
             self.draw_fragment(sources, key, transforms, inline_owner, clip, scene);
 
             // A clipping fragment clips its descendants, not itself.
-            let (child_clip, clipped) = push_clip(sources, fragment, own, transforms, clip, scene);
+            let (child_clip, clipped) = push_clip(sources, key, fragment, transforms, clip, scene);
 
             if clipped {
                 self.pending.push(Visit::PopClip);
@@ -494,10 +494,13 @@ impl CometPainter {
             viewport,
             ..
         } = sources;
-        let (Some(fragment), Some(own)) = (tree.items.get(key), pre_paint.fragment(key)) else {
+        let Some(fragment) = tree.items.get(key) else {
             return;
         };
+        let data = pre_paint.get(fragment.source);
+        let radii = pre_paint.border_radius(tree, key).unwrap_or_default();
         let rect = local_rect(fragment);
+        let bounds = box_bounds(fragment, data, rect);
         let transform = transforms.transform;
         let visible = |bounds: Rect| {
             let bounds = transform.transform_rect_bbox(bounds);
@@ -513,22 +516,22 @@ impl CometPainter {
                     .items
                     .get(fragment.source)
                     .is_some_and(|item| item.kind != LayoutInputKind::Text)
-                    && visible(box_bounds(fragment, rect))
+                    && visible(bounds)
                 {
-                    draw_box(ui, inputs, fragment, own, rect, transform, scene);
+                    draw_box(ui, inputs, fragment, data, radii, rect, transform, scene);
                 }
             }
             FragmentItem::Inline { .. } => {
-                if visible(box_bounds(fragment, rect)) {
-                    draw_box(ui, inputs, fragment, own, rect, transform, scene);
+                if visible(bounds) {
+                    draw_box(ui, inputs, fragment, data, radii, rect, transform, scene);
                 }
             }
             // Anonymous blocks only position their lines.
             FragmentItem::AnonymousBlock { .. } => {}
             FragmentItem::Line { .. } => {}
             FragmentItem::GlyphRun { line, item } => {
-                if visible(box_bounds(fragment, rect)) {
-                    draw_box(ui, inputs, fragment, own, rect, transform, scene);
+                if visible(bounds) {
+                    draw_box(ui, inputs, fragment, data, radii, rect, transform, scene);
                 }
 
                 if let Some(owner) = inline_owner {
@@ -556,8 +559,8 @@ impl CometPainter {
 /// of, with whether a clip layer was pushed.
 fn push_clip(
     sources: Sources<'_>,
+    key: FragmentKey,
     fragment: &Fragment,
-    own: &FragmentData,
     transforms: Transforms,
     clip: Option<Rect>,
     scene: &mut impl PaintScene,
@@ -575,7 +578,9 @@ fn push_clip(
 
     // Clipping on both axes follows the rounded corners of the box.
     // TODO:: horizontal, vertical curve clip for round rect.
-    match own.border_radius.filter(|_| axes == (true, true)) {
+    let radii = sources.pre_paint.border_radius(sources.tree, key);
+
+    match radii.filter(|_| axes == (true, true)) {
         Some(radii) => scene.push_clip_layer(
             peniko::Fill::NonZero,
             transform,
@@ -596,8 +601,8 @@ fn push_clip(
 /// empty layer clipped to it.
 fn draw_backdrop(
     sources: Sources<'_>,
+    key: FragmentKey,
     fragment: &Fragment,
-    own: &FragmentData,
     transforms: Transforms,
     clip: Option<Rect>,
     filter: Arc<anyrender::Filter>,
@@ -615,7 +620,10 @@ fn draw_backdrop(
         return;
     }
 
-    let radii = own.border_radius.unwrap_or_default();
+    let radii = sources
+        .pre_paint
+        .border_radius(sources.tree, key)
+        .unwrap_or_default();
 
     scene.push_layer(
         peniko::Fill::NonZero,
@@ -669,12 +677,16 @@ fn clip_layer(
     ))
 }
 
-/// Bounds of the background and border painted for a fragment's border box.
-/// The border is stroked outside the box, up to its widest side.
-fn box_bounds(fragment: &Fragment, rect: Rect) -> Rect {
-    let width = border_width(fragment);
+/// Bounds of the background, border and outline painted for a fragment's
+/// border box `rect`. The border is stroked outside the box, up to its widest
+/// side, and the outline past its offset.
+fn box_bounds(fragment: &Fragment, data: Option<&LayoutInputData>, rect: Rect) -> Rect {
+    let outline = data
+        .filter(|data| data.outline_width > 0.0)
+        .map_or(0.0, |data| data.outline_offset + data.outline_width);
+    let width = border_width(fragment).max(outline);
 
-    rect.inflate(width, width)
+    rect + Insets::uniform(width)
 }
 
 fn border_width(fragment: &Fragment) -> f64 {
@@ -693,13 +705,17 @@ fn node(inputs: &LayoutInputTree, fragment: &Fragment) -> Option<NodeKey> {
     inputs.items.get(fragment.source).map(|item| item.node)
 }
 
-/// Paint the background and border of a fragment's border box `rect`, with
-/// its resolved corner radii.
+/// Paint the background, border and outline of a fragment's border box
+/// `rect`. The background and border are rounded with the fragment's corner
+/// `radii`, and the outline with the radii of its whole item in `data`, even
+/// for a split fragment.
+#[allow(clippy::too_many_arguments)]
 fn draw_box(
     ui: &Ui,
     inputs: &LayoutInputTree,
     fragment: &Fragment,
-    own: &FragmentData,
+    data: Option<&LayoutInputData>,
+    radii: RoundedRectRadii,
     rect: Rect,
     transform: Affine,
     scene: &mut impl PaintScene,
@@ -707,8 +723,6 @@ fn draw_box(
     let Some(props) = node(inputs, fragment).and_then(|node| ui.props(node)) else {
         return;
     };
-
-    let radii = own.border_radius.unwrap_or_default();
 
     if let Some(fill) = props.get::<Fill>() {
         scene.fill(
@@ -733,6 +747,45 @@ fn draw_box(
             &rect.inset(-width / 2.0).to_rounded_rect(radii),
         );
     }
+
+    if let Some(data) = data.filter(|data| data.outline_width > 0.0)
+        && let Some(fill) = props.get::<OutlineFill>()
+    {
+        let width = data.outline_width;
+
+        scene.stroke(
+            &Stroke::new(width),
+            transform,
+            &fill.0,
+            None,
+            &outline_path(rect, data, width),
+        );
+    }
+}
+
+/// The path an outline of `width` is stroked along: each edge of the border
+/// box `rect` moved out by the outline offset and half the width, rounded
+/// with the item's
+/// border radii grown by the same distance. Square corners stay square, and a
+/// negative offset shrinks the box no further than its centre.
+fn outline_path(rect: Rect, data: &LayoutInputData, width: f64) -> RoundedRect {
+    let shrink = rect.width().min(rect.height()) / 2.0;
+    let distance = (data.outline_offset + width / 2.0).max(-shrink);
+    let grow = |radius: f64| {
+        if radius > 0.0 {
+            (radius + distance).max(0.0)
+        } else {
+            0.0
+        }
+    };
+    let radii = data.border_radius.unwrap_or_default();
+
+    (rect + Insets::uniform(distance)).to_rounded_rect(RoundedRectRadii::new(
+        grow(radii.top_left),
+        grow(radii.top_right),
+        grow(radii.bottom_right),
+        grow(radii.bottom_left),
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]

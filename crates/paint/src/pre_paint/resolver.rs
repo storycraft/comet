@@ -1,9 +1,9 @@
 use comet_layout::{
-    fragment::{FragmentItem, FragmentKey, tree::FragmentTree},
+    fragment::{FragmentKey, tree::FragmentTree},
     input::{LayoutInputKey, tree::LayoutInputTree},
     style::{
         bx::Overflow,
-        geometry::{AutoValue, Point as StylePoint, StyleUnit, UnitResolveContext},
+        geometry::{AutoValue, Point as StylePoint, Rect, StyleUnit, UnitResolveContext},
         taffy::Overflow as OverflowMode,
     },
 };
@@ -12,7 +12,10 @@ use kurbo::{Affine, Point, RoundedRectRadii, Size};
 
 use crate::{
     pre_paint::{FragmentData, LayoutInputData, tree::PrePaintTree},
-    style::{BackdropFilter, BorderRadius, Filter, Opacity, Transform, TransformOrigin, ZIndex},
+    style::{
+        BackdropFilter, BorderRadius, Filter, Opacity, OutlineOffset, OutlineWidth, Transform,
+        TransformOrigin, ZIndex,
+    },
 };
 
 /// Resolves a [`PrePaintTree`] for a fragment tree. Keep it to reuse its
@@ -97,7 +100,7 @@ impl PrePaintTreeResolver {
         pending.push(key);
 
         while let Some(key) = pending.pop() {
-            let data = sources.resolve_fragment(tree, key)?;
+            let data = sources.resolve_fragment(key)?;
 
             tree.fragment_mapping.insert(key, data);
 
@@ -138,7 +141,7 @@ impl PrePaintTreeResolver {
 
 impl Sources<'_> {
     /// Resolve the data of one fragment from the UI and the data of its item.
-    fn resolve_fragment(&self, tree: &PrePaintTree, key: FragmentKey) -> Option<FragmentData> {
+    fn resolve_fragment(&self, key: FragmentKey) -> Option<FragmentData> {
         let fragment = self.fragments.items.get(key)?;
         let props = self.ui.props(self.inputs.items[fragment.source].node)?;
         // Transforms only apply to boxes.
@@ -167,72 +170,8 @@ impl Sources<'_> {
             transform,
             inverse_transform: invert(transform),
             transform_origin,
-            border_radius: self.border_radius(tree, key, props),
             stacking: box_props.and_then(stacking),
         })
-    }
-
-    /// The corner radii of a fragment's border box, or `None` for fragments
-    /// painting no box or items setting no radius. Radii resolve against the
-    /// stitched size of the item, and corners joining a linked fragment are
-    /// square.
-    fn border_radius(
-        &self,
-        tree: &PrePaintTree,
-        key: FragmentKey,
-        props: Props<'_>,
-    ) -> Option<RoundedRectRadii> {
-        let fragment = &self.fragments.items[key];
-
-        if matches!(
-            fragment.item,
-            FragmentItem::Line { .. } | FragmentItem::AnonymousBlock { .. }
-        ) {
-            return None;
-        }
-
-        let BorderRadius(radius) = props.get_cloned()?;
-
-        let mut units = self.units.clone();
-        units.font_size = self.inputs.items[fragment.source].text_style.span.font_size as f64;
-
-        let size = tree[fragment.source].stitched_size;
-        // TODO:: horizontal, vertical curve value for round rect.
-        let basis = size.width.min(size.height);
-        let resolve = |value: StyleUnit| value.resolve(&units, basis).max(0.0);
-
-        let mut radii = RoundedRectRadii::new(
-            resolve(radius.left_top.y),
-            resolve(radius.right_bottom.x),
-            resolve(radius.right_bottom.y),
-            resolve(radius.left_top.x),
-        );
-
-        // Box fragments continue below their previous fragment, inline and
-        // glyph run fragments to its right.
-        let vertical = fragment.item.is_box();
-
-        if fragment.link.prev.is_some() {
-            radii.top_left = 0.0;
-
-            if vertical {
-                radii.top_right = 0.0;
-            } else {
-                radii.bottom_left = 0.0;
-            }
-        }
-
-        if fragment.link.next.is_some() {
-            radii.bottom_right = 0.0;
-
-            if vertical {
-                radii.bottom_left = 0.0;
-            } else {
-                radii.top_right = 0.0;
-            }
-        }
-
-        Some(radii)
     }
 
     /// The point a fragment's own transform is applied around, relative to
@@ -253,15 +192,29 @@ impl Sources<'_> {
 
     /// Resolve the data of one item from the UI and its fragments.
     fn resolve_item(&self, key: LayoutInputKey) -> Option<LayoutInputData> {
-        let props = self.ui.props(self.inputs.items[key].node)?;
+        let item = &self.inputs.items[key];
+        let props = self.ui.props(item.node)?;
         let Overflow(overflow) = props.get_or_default();
 
+        let mut units = self.units.clone();
+        units.font_size = item.text_style.span.font_size as f64;
+
+        let stitched_size = self.stitched_size(key);
+        // Outline lengths have no percentage basis.
+        let outline =
+            |value: Option<StyleUnit>| value.map_or(0.0, |value| value.resolve(&units, 0.0));
+
         Some(LayoutInputData {
-            stitched_size: self.stitched_size(key),
+            stitched_size,
             clip: (
                 overflow.x != OverflowMode::Visible,
                 overflow.y != OverflowMode::Visible,
             ),
+            border_radius: props
+                .get_cloned()
+                .map(|BorderRadius(radius)| border_radius(radius, &units)),
+            outline_width: outline(props.get_cloned().map(|OutlineWidth(width)| width)).max(0.0),
+            outline_offset: outline(props.get_cloned().map(|OutlineOffset(offset)| offset)),
         })
     }
 
@@ -288,6 +241,21 @@ impl Sources<'_> {
                 }
             })
     }
+}
+
+/// The corner radii of an item's border box. Percentages have no basis yet
+/// and resolve to 0.
+fn border_radius(radius: Rect<StyleUnit>, units: &UnitResolveContext) -> RoundedRectRadii {
+    // TODO:: horizontal, vertical curve value for round rect, with
+    // percentages of the box size.
+    let resolve = |value: StyleUnit| value.resolve(units, 0.0).max(0.0);
+
+    RoundedRectRadii::new(
+        resolve(radius.left_top.y),
+        resolve(radius.right_bottom.x),
+        resolve(radius.right_bottom.y),
+        resolve(radius.left_top.x),
+    )
 }
 
 /// The z index of the paint layer a box starts, or `None` if it paints in

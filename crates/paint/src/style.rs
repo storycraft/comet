@@ -12,8 +12,17 @@ define_style_props!(
     pub Fill: Paint;
     #[derive(Debug, Clone, PartialEq)]
     pub BorderFill: Paint;
+    #[derive(Debug, Clone, PartialEq)]
+    pub OutlineFill: Paint;
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub OutlineWidth: StyleUnit;
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub OutlineOffset: StyleUnit;
+
     /// Circular corner radii, clockwise from top-left, using Rect's
-    /// top/right/bottom/left slots. Percentages use the shorter box dimension.
+    /// top/right/bottom/left slots. Percentages resolve to 0 for now.
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub BorderRadius: Rect<StyleUnit> = Rect::default();
 
