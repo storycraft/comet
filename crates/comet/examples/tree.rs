@@ -14,6 +14,7 @@ use comet_layout::{
 };
 use comet_paint::{
     CometPainter,
+    layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
     pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
 };
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
@@ -36,14 +37,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("could not build fragment tree")?;
     inputs.clear_flags(input_root);
     let mut pre_paint = PrePaintTree::new();
-    PrePaintTreeResolver::new().resolve(
-        &ui,
-        &inputs,
-        &fragments,
-        &constraint.units,
-        &mut pre_paint,
-        root,
-    );
+    PrePaintTreeResolver::new()
+        .resolve(
+            &ui,
+            &inputs,
+            &fragments,
+            &constraint.units,
+            &mut pre_paint,
+            root,
+        )
+        .ok_or("could not resolve pre-paint tree")?;
+    let mut layers = PaintLayerTree::new();
+    PaintLayerBuilder::new()
+        .build(&ui, &inputs, &fragments, &mut layers, root)
+        .ok_or("could not build paint layer tree")?;
 
     let mut pending = vec![(root, 0)];
 
@@ -82,7 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &inputs,
                 &fragments,
                 &pre_paint,
-                root,
+                &layers,
                 kurbo::Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
                 scene,
             );

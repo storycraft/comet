@@ -1,3 +1,4 @@
+pub mod layer;
 pub mod pre_paint;
 pub mod prelude;
 pub mod style;
@@ -9,35 +10,69 @@ use comet_layout::{
     input::{LayoutInputKind, tree::LayoutInputTree},
 };
 use comet_tree::{node::NodeKey, ui::Ui};
-use kurbo::{Affine, Point, Rect, Stroke, Vec2};
+use kurbo::{Affine, Point, Rect, RoundedRect, Stroke, Vec2};
 use parley::PositionedLayoutItem;
+use peniko::BlendMode;
+use slotmap::SecondaryMap;
 
 use crate::{
-    pre_paint::{FragmentData, LayoutInputData, tree::PrePaintTree},
+    layer::tree::{PaintLayerEntry, PaintLayerKey, PaintLayerTree},
+    pre_paint::{FragmentData, tree::PrePaintTree},
     style::{BorderFill, Fill},
 };
 
-/// Paints final fragments in tree order, with the [`PrePaintTree`] resolved
-/// for them.
+/// Paints final fragments in the order of their [`PaintLayerTree`], with the
+/// [`PrePaintTree`] resolved for them.
 #[derive(Default)]
 pub struct CometPainter {
+    /// Paint state of every fragment under the root layer's owner.
+    states: SecondaryMap<FragmentKey, FragmentState>,
+    /// Clips fragments paint inside of, each inside its parent.
+    clips: Vec<Clip>,
+    /// Clips currently pushed to the scene, outermost first.
+    pushed: Vec<usize>,
+    /// Buffer of the clips a fragment paints inside of, outermost first.
+    chain: Vec<usize>,
+    /// Fragments to resolve the paint state of.
     pending: Vec<Visit>,
-    /// Clips of the pushed clip layers, each intersected with the ones below
-    /// it, to skip fragments painting outside them.
-    clips: Vec<Rect>,
 }
 
-enum Visit {
-    /// Paint a fragment, inside the line containing it.
-    Fragment {
-        key: FragmentKey,
-        inline_owner: Option<FragmentKey>,
-        /// Maps the local coordinates of the fragment's parent to scene
-        /// coordinates.
-        parent: Transforms,
-    },
-    /// Pop the clip layer of a fragment's contents.
-    PopClip,
+/// A fragment to resolve the paint state of.
+struct Visit {
+    key: FragmentKey,
+    /// Line containing the fragment.
+    inline_owner: Option<FragmentKey>,
+    /// Maps the local coordinates of the fragment's parent to scene
+    /// coordinates.
+    parent: Transforms,
+    /// Clip the fragment paints inside of.
+    clip: Option<usize>,
+}
+
+/// Where and inside what a fragment paints.
+#[derive(Clone, Copy)]
+struct FragmentState {
+    transforms: Transforms,
+    /// Line containing the fragment, which owns the inline layout of its
+    /// glyph runs.
+    inline_owner: Option<FragmentKey>,
+    /// Innermost clip the fragment paints inside of.
+    clip: Option<usize>,
+}
+
+/// The clip of a box fragment clipping its contents.
+struct Clip {
+    parent: Option<usize>,
+    /// Maps the clip shape to scene coordinates.
+    transform: Affine,
+    shape: ClipShape,
+    /// Scene bounds of the clip, intersected with its parents.
+    bounds: Rect,
+}
+
+enum ClipShape {
+    Rect(Rect),
+    Rounded(RoundedRect),
 }
 
 /// A transform from local fragment coordinates to scene coordinates, and its
@@ -79,24 +114,41 @@ impl Transforms {
     }
 }
 
+/// What painting reads from.
+#[derive(Clone, Copy)]
+struct Sources<'a> {
+    ui: &'a Ui,
+    inputs: &'a LayoutInputTree,
+    tree: &'a FragmentTree,
+    pre_paint: &'a PrePaintTree,
+    layers: &'a PaintLayerTree,
+    viewport: Rect,
+}
+
 impl CometPainter {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Paint the fragments under `root`. `inputs` is the input tree the
-    /// fragments were built from, and `pre_paint` must be resolved for them.
-    /// Each fragment paints with its resolved data, such as its transform and
-    /// border radius, and the text color of its source item. Fragment
-    /// transforms multiply down the tree, starting with the transforms of
-    /// `root`'s ancestors.
+    /// Paint the fragments under the owner of the root layer of `layers`.
+    /// `inputs` is the input tree the fragments were built from, and
+    /// `pre_paint` and `layers` must be resolved and built for them.
     ///
-    /// A box fragment clipping its overflow pushes a clip layer of its border
-    /// box for its contents, rounded with its border radius. Clips of `root`'s ancestors do not apply.
+    /// Layers paint their entries in order, each with the opacity of its
+    /// owner fragment: a layer with an opacity below 1 paints into a group
+    /// blended with that opacity, and a transparent one is skipped. Each
+    /// fragment paints with its resolved data, such as its transform and
+    /// border radius, and the text color of its source item. Fragment
+    /// transforms multiply down the fragment tree, starting with the
+    /// transforms of the root's ancestors.
+    ///
+    /// A box fragment clipping its overflow clips its descendants to its
+    /// border box, rounded with its border radius, including those painting
+    /// in other layers. Clips of the root's ancestors do not apply.
     ///
     /// Fragments painting entirely outside `viewport` or their clip, in scene
     /// coordinates, are skipped. Fragments touching their edges are painted.
-    /// Their descendants are still visited, since children may paint outside
+    /// Their descendants are still painted, since children may paint outside
     /// their parents.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
@@ -105,34 +157,59 @@ impl CometPainter {
         inputs: &LayoutInputTree,
         tree: &FragmentTree,
         pre_paint: &PrePaintTree,
-        root: FragmentKey,
+        layers: &PaintLayerTree,
         viewport: Rect,
         scene: &mut impl PaintScene,
     ) {
-        self.pending.clear();
+        let Some(root) = layers.root() else {
+            return;
+        };
+
+        let sources = Sources {
+            ui,
+            inputs,
+            tree,
+            pre_paint,
+            layers,
+            viewport,
+        };
+
+        self.resolve_states(sources, layers[root].owner);
+        self.pushed.clear();
+        self.draw_layer(sources, root, scene);
+        self.pop_clips(scene);
+    }
+
+    /// Resolve the paint state of the fragments under `root`, and the clips
+    /// they paint inside of.
+    fn resolve_states(&mut self, sources: Sources<'_>, root: FragmentKey) {
+        let Sources {
+            tree,
+            pre_paint,
+            viewport,
+            ..
+        } = sources;
+
+        self.states.clear();
         self.clips.clear();
-        self.pending.push(Visit::Fragment {
+        self.pending.clear();
+        self.pending.push(Visit {
             key: root,
             inline_owner: None,
             parent: match tree.items.parent(root) {
                 Some(parent) => Transforms::of(tree, pre_paint, parent),
                 None => Transforms::IDENTITY,
             },
+            clip: None,
         });
 
-        while let Some(visit) = self.pending.pop() {
-            let (key, mut inline_owner, parent) = match visit {
-                Visit::Fragment {
-                    key,
-                    inline_owner,
-                    parent,
-                } => (key, inline_owner, parent),
-                Visit::PopClip => {
-                    scene.pop_layer();
-                    self.clips.pop();
-                    continue;
-                }
-            };
+        while let Some(Visit {
+            key,
+            mut inline_owner,
+            parent,
+            clip,
+        }) = self.pending.pop()
+        {
             let fragment = &tree.items[key];
 
             if matches!(fragment.item, FragmentItem::Line { .. }) {
@@ -140,72 +217,170 @@ impl CometPainter {
             }
 
             let own = &pre_paint[key];
-            let transforms = parent.then(own);
             let data = &pre_paint[fragment.source];
-            let clip = self.clips.last().copied();
-            self.draw_fragment(
-                ui,
-                inputs,
-                tree,
+            let transforms = parent.then(own);
+
+            self.states.insert(
                 key,
-                inline_owner,
-                own,
-                transforms.transform,
-                data,
-                viewport,
-                clip,
-                scene,
+                FragmentState {
+                    transforms,
+                    inline_owner,
+                    clip,
+                },
             );
 
-            // A clipping fragment clips the contents of its item.
-            if let Some(layer) = clip_layer(fragment, data.clip, transforms, viewport) {
-                let transform = transforms.transform;
+            // A clipping fragment clips its descendants, not itself.
+            let mut child_clip = clip;
 
+            if let Some(layer) = clip_layer(fragment, data.clip, transforms, viewport) {
                 // Clipping on both axes follows the rounded corners of the box.
                 // TODO:: horizontal, vertical curve clip for round rect.
-                match own.border_radius.filter(|_| data.clip == (true, true)) {
-                    Some(radii) => scene.push_clip_layer(
-                        peniko::Fill::NonZero,
-                        transform,
-                        &layer.to_rounded_rect(radii),
-                    ),
-                    None => scene.push_clip_layer(peniko::Fill::NonZero, transform, &layer),
-                }
+                let shape = match own.border_radius.filter(|_| data.clip == (true, true)) {
+                    Some(radii) => ClipShape::Rounded(layer.to_rounded_rect(radii)),
+                    None => ClipShape::Rect(layer),
+                };
+                let bounds = transforms.transform.transform_rect_bbox(layer);
 
-                let bounds = transform.transform_rect_bbox(layer);
-                self.clips
-                    .push(clip.map_or(bounds, |clip| clip.intersect(bounds)));
-                self.pending.push(Visit::PopClip);
+                child_clip = Some(self.clips.len());
+                self.clips.push(Clip {
+                    parent: clip,
+                    transform: transforms.transform,
+                    shape,
+                    bounds: clip.map_or(bounds, |clip| self.clips[clip].bounds.intersect(bounds)),
+                });
             }
 
             self.pending
-                .extend(tree.items.children(key).rev().map(|child| Visit::Fragment {
+                .extend(tree.items.children(key).rev().map(|child| Visit {
                     key: child,
                     inline_owner,
                     parent: transforms,
+                    clip: child_clip,
                 }));
         }
     }
 
-    /// Paint one fragment itself, inside `clip`, in its local coordinates
-    /// mapped to the scene by `transform`.
-    #[allow(clippy::too_many_arguments)]
-    fn draw_fragment(
-        &self,
-        ui: &Ui,
-        inputs: &LayoutInputTree,
-        tree: &FragmentTree,
-        key: FragmentKey,
-        inline_owner: Option<FragmentKey>,
-        own: &FragmentData,
-        transform: Affine,
-        data: &LayoutInputData,
-        viewport: Rect,
-        clip: Option<Rect>,
+    /// Paint the entries of a layer, inside a group with its owner's opacity.
+    fn draw_layer(
+        &mut self,
+        sources: Sources<'_>,
+        key: PaintLayerKey,
         scene: &mut impl PaintScene,
     ) {
+        let layer = &sources.layers[key];
+        let owner = &sources.tree.items[layer.owner];
+        let opacity = sources.pre_paint[owner.source].opacity;
+
+        if opacity <= 0.0 {
+            return;
+        }
+
+        // Clip layers pushed before the group must be popped after it, so the
+        // group starts without clips and pushes the ones it needs.
+        let group = opacity < 1.0;
+
+        if group {
+            self.pop_clips(scene);
+            scene.push_layer(
+                peniko::Fill::NonZero,
+                BlendMode::default(),
+                opacity as f32,
+                Affine::IDENTITY,
+                &sources.viewport,
+                None,
+                None,
+            );
+        }
+
+        for &entry in &layer.entries {
+            match entry {
+                PaintLayerEntry::Fragment(fragment) => {
+                    let state = self.states[fragment];
+
+                    self.sync_clips(state.clip, scene);
+                    self.draw_fragment(sources, fragment, state, scene);
+                }
+                PaintLayerEntry::Layer(child) => self.draw_layer(sources, child, scene),
+            }
+        }
+
+        if group {
+            self.pop_clips(scene);
+            scene.pop_layer();
+        }
+    }
+
+    /// Push and pop clip layers, so exactly `clip` and its parents are pushed.
+    fn sync_clips(&mut self, clip: Option<usize>, scene: &mut impl PaintScene) {
+        self.chain.clear();
+
+        let mut next = clip;
+
+        while let Some(clip) = next {
+            self.chain.push(clip);
+            next = self.clips[clip].parent;
+        }
+
+        self.chain.reverse();
+
+        let kept = self
+            .pushed
+            .iter()
+            .zip(&self.chain)
+            .take_while(|(pushed, wanted)| pushed == wanted)
+            .count();
+
+        while self.pushed.len() > kept {
+            self.pushed.pop();
+            scene.pop_layer();
+        }
+
+        for &clip in &self.chain[kept..] {
+            let Clip {
+                transform, shape, ..
+            } = &self.clips[clip];
+
+            match shape {
+                ClipShape::Rect(rect) => {
+                    scene.push_clip_layer(peniko::Fill::NonZero, *transform, rect)
+                }
+                ClipShape::Rounded(rect) => {
+                    scene.push_clip_layer(peniko::Fill::NonZero, *transform, rect)
+                }
+            }
+
+            self.pushed.push(clip);
+        }
+    }
+
+    /// Pop every pushed clip layer.
+    fn pop_clips(&mut self, scene: &mut impl PaintScene) {
+        for _ in self.pushed.drain(..) {
+            scene.pop_layer();
+        }
+    }
+
+    /// Paint one fragment itself, without its descendants.
+    fn draw_fragment(
+        &self,
+        sources: Sources<'_>,
+        key: FragmentKey,
+        state: FragmentState,
+        scene: &mut impl PaintScene,
+    ) {
+        let Sources {
+            ui,
+            inputs,
+            tree,
+            pre_paint,
+            viewport,
+            ..
+        } = sources;
         let fragment = &tree.items[key];
+        let own = &pre_paint[key];
         let rect = local_rect(fragment);
+        let transform = state.transforms.transform;
+        let clip = state.clip.map(|clip| self.clips[clip].bounds);
         let visible = |bounds: Rect| {
             let bounds = transform.transform_rect_bbox(bounds);
 
@@ -235,7 +410,7 @@ impl CometPainter {
                     draw_box(ui, inputs, fragment, own, rect, transform, scene);
                 }
 
-                if let Some(owner) = inline_owner {
+                if let Some(owner) = state.inline_owner {
                     draw_glyph_run(
                         tree,
                         fragment,
@@ -243,7 +418,7 @@ impl CometPainter {
                         (line, item),
                         rect,
                         transform,
-                        &data.text_color,
+                        &pre_paint[fragment.source].text_color,
                         &visible,
                         scene,
                     );

@@ -12,6 +12,7 @@ use comet_layout::{
 };
 use comet_paint::{
     CometPainter,
+    layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
     pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
     style::{BorderFill, BorderRadius, Fill, TextColor},
 };
@@ -128,7 +129,8 @@ fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, FragmentKey)
     (inputs, fragments, fragment)
 }
 
-/// Resolve the pre-paint tree for the fragments, then paint them.
+/// Resolve the pre-paint tree and build the paint layers of the fragments,
+/// then paint them.
 #[allow(clippy::too_many_arguments)]
 fn draw(
     painter: &mut CometPainter,
@@ -144,7 +146,11 @@ fn draw(
     PrePaintTreeResolver::new()
         .resolve(ui, inputs, tree, units, &mut pre_paint, root)
         .unwrap();
-    painter.draw(ui, inputs, tree, &pre_paint, root, viewport, scene);
+    let mut layers = PaintLayerTree::new();
+    PaintLayerBuilder::new()
+        .build(ui, inputs, tree, &mut layers, root)
+        .unwrap();
+    painter.draw(ui, inputs, tree, &pre_paint, &layers, viewport, scene);
 }
 
 #[test]

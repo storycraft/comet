@@ -31,6 +31,11 @@ pub struct LayoutInputData {
     pub clip: (bool, bool),
 
     pub z_index: Option<i32>,
+
+    /// Opacity of the item's box and its contents, clamped to `0..=1`. Applies
+    /// to the paint layer its box fragments start, see
+    /// [`PaintLayerTree`](crate::layer::tree::PaintLayerTree).
+    pub opacity: f64,
 }
 
 /// Paint data of a fragment.

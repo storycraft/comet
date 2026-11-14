@@ -13,6 +13,7 @@ use comet_layout::{
 };
 use comet_paint::{
     CometPainter,
+    layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
     pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
 };
 use comet_tree::{node::NodeKey, ui::Ui};
@@ -42,6 +43,8 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
         fragments: FragmentTree::new(),
         pre_paint: PrePaintTree::new(),
         pre_paint_resolver: PrePaintTreeResolver::new(),
+        layers: PaintLayerTree::new(),
+        layer_builder: PaintLayerBuilder::new(),
         win: None,
         vello: VelloCpuWindowRenderer::new(),
         ui_renderer: CometPainter::new(),
@@ -57,6 +60,8 @@ struct App {
     fragments: FragmentTree,
     pre_paint: PrePaintTree,
     pre_paint_resolver: PrePaintTreeResolver,
+    layers: PaintLayerTree,
+    layer_builder: PaintLayerBuilder,
     win: Option<Arc<Window>>,
     vello: VelloCpuWindowRenderer,
     ui_renderer: CometPainter,
@@ -145,14 +150,34 @@ impl ApplicationHandler for App {
 
                 // Positions and clips follow the layout, which was just
                 // built, so resolve the whole tree again.
-                self.pre_paint_resolver.resolve(
-                    &self.ui,
-                    &self.inputs,
-                    &self.fragments,
-                    &constraint.units,
-                    &mut self.pre_paint,
-                    fragment_root,
-                );
+                if self
+                    .pre_paint_resolver
+                    .resolve(
+                        &self.ui,
+                        &self.inputs,
+                        &self.fragments,
+                        &constraint.units,
+                        &mut self.pre_paint,
+                        fragment_root,
+                    )
+                    .is_none()
+                {
+                    return;
+                }
+
+                if self
+                    .layer_builder
+                    .build(
+                        &self.ui,
+                        &self.inputs,
+                        &self.fragments,
+                        &mut self.layers,
+                        fragment_root,
+                    )
+                    .is_none()
+                {
+                    return;
+                }
 
                 self.vello.render(|painter| {
                     self.ui_renderer.draw(
@@ -160,7 +185,7 @@ impl ApplicationHandler for App {
                         &self.inputs,
                         &self.fragments,
                         &self.pre_paint,
-                        fragment_root,
+                        &self.layers,
                         kurbo::Rect::new(0.0, 0.0, viewport.width, viewport.height),
                         painter,
                     );
