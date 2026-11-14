@@ -1,3 +1,4 @@
+pub mod hit;
 pub mod layer;
 pub mod painter;
 pub mod pre_paint;

@@ -1,3 +1,4 @@
+pub use crate::hit::PaintHitTester;
 pub use crate::layer::{
     PaintLayerEntry, PaintLayerItem, PaintLayerKey, builder::PaintLayerBuilder,
     tree::PaintLayerTree,

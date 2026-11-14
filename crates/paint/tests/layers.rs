@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyrender::{Paint, Scene, recording::RenderCommand};
 use comet_layout::{
-    fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
+    fragment::{FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
@@ -14,6 +14,7 @@ use comet_layout::{
     },
 };
 use comet_paint::{
+    hit::PaintHitTester,
     layer::{PaintLayerEntry, PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
@@ -23,7 +24,7 @@ use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,
 };
-use kurbo::{Affine, Rect, Shape};
+use kurbo::{Affine, Point, Rect, Shape};
 use peniko::Color;
 
 const VIEWPORT: Size<f64> = Size::new(120.0, 400.0);
@@ -101,6 +102,17 @@ impl Fixture {
     /// The entries of a layer.
     fn entries(&self, layer: PaintLayerKey) -> &[PaintLayerEntry] {
         &self.layers[layer].entries
+    }
+
+    /// The fragment hit at a scene point.
+    fn hit(&self, x: f64, y: f64) -> Option<FragmentKey> {
+        PaintHitTester::new().hit(
+            &self.layers,
+            &self.fragments,
+            &self.pre_paint,
+            self.root,
+            Point::new(x, y),
+        )
     }
 
     fn draw(&self, ui: &Ui) -> Scene {
@@ -510,6 +522,143 @@ fn filters_of_collapsed_owners_paint_nothing() {
     assert!(commands(&f.draw(&ui)).is_empty());
 }
 
+/// A margin pulling a box up over the previous one.
+fn overlap(value: f64) -> bx::Margin {
+    let zero = AutoValue::Value(StyleUnit::ZERO);
+
+    bx::Margin(LayoutRect::new_invidiual(
+        AutoValue::Value(StyleUnit::Px(-value)),
+        zero,
+        zero,
+        zero,
+    ))
+}
+
+#[test]
+fn hits_the_topmost_fragment_in_paint_order() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let raised = ui.create(Node::Box, (fixed(40.0, 20.0), z(1)));
+    // Paints after the raised box in tree order, but below it.
+    let flow = ui.create(Node::Box, (fixed(40.0, 20.0), overlap(10.0)));
+    ui.append(root, raised);
+    ui.append(root, flow);
+
+    let f = Fixture::build(&ui, root);
+
+    assert_eq!(f.hit(5.0, 5.0), Some(f.box_of(raised)));
+    assert_eq!(f.hit(5.0, 15.0), Some(f.box_of(raised)));
+    assert_eq!(f.hit(5.0, 25.0), Some(f.box_of(flow)));
+    assert_eq!(f.hit(100.0, 5.0), Some(f.box_of(root)));
+    assert_eq!(f.hit(500.0, 5.0), None);
+}
+
+#[test]
+fn hits_children_before_parents_and_skips_line_boxes() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let parent = ui.create(Node::Box, (fixed(80.0, 40.0),));
+    let child = ui.create(Node::Box, (fixed(20.0, 10.0),));
+    ui.append(root, parent);
+    ui.append(parent, child);
+    let content = ui.create(Node::Text, (Text("text".into()),));
+    ui.append(parent, content);
+
+    let f = Fixture::build(&ui, root);
+
+    assert_eq!(f.hit(5.0, 5.0), Some(f.box_of(child)));
+    assert_eq!(f.hit(70.0, 35.0), Some(f.box_of(parent)));
+
+    // Text below the child hits its glyph run, not the line holding it.
+    let text = f.hit(2.0, 15.0).unwrap();
+    assert!(matches!(
+        f.fragments.items[text].item,
+        FragmentItem::GlyphRun { .. }
+    ));
+}
+
+#[test]
+fn hits_through_transforms() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let moved = ui.create(
+        Node::Box,
+        (fixed(40.0, 20.0), Transform(Affine::translate((50.0, 0.0)))),
+    );
+    let inner = ui.create(
+        Node::Box,
+        (fixed(10.0, 10.0), Transform(Affine::scale(2.0))),
+    );
+    ui.append(root, moved);
+    ui.append(moved, inner);
+
+    let f = Fixture::build(&ui, root);
+
+    // The inner box scales around its centre (5, 5), to (-5, -5)..(15, 15)
+    // inside the moved box.
+    assert_eq!(f.hit(46.0, 1.0), Some(f.box_of(inner)));
+    assert_eq!(f.hit(64.0, 14.0), Some(f.box_of(inner)));
+    assert_eq!(f.hit(80.0, 15.0), Some(f.box_of(moved)));
+    assert_eq!(f.hit(10.0, 10.0), Some(f.box_of(root)));
+}
+
+#[test]
+fn clips_and_rounded_corners_limit_hits() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let clipper = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 20.0),
+            bx::Overflow(comet_layout::style::geometry::Point::new(
+                Overflow::Hidden,
+                Overflow::Hidden,
+            )),
+        ),
+    );
+    // Overflows the clipper, in a layer of its own.
+    let wide = ui.create(Node::Box, (fixed(80.0, 10.0), z(1)));
+    let rounded = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 40.0),
+            BorderRadius(LayoutRect::new_all(StyleUnit::Px(10.0))),
+        ),
+    );
+    ui.append(root, clipper);
+    ui.append(clipper, wide);
+    ui.append(root, rounded);
+
+    let f = Fixture::build(&ui, root);
+
+    assert_eq!(f.hit(10.0, 5.0), Some(f.box_of(wide)));
+    assert_eq!(f.hit(60.0, 5.0), Some(f.box_of(root)));
+
+    // The rounded box sits below the clipper, from y 20.
+    assert_eq!(f.hit(20.0, 40.0), Some(f.box_of(rounded)));
+    assert_eq!(f.hit(1.0, 21.0), Some(f.box_of(root)));
+}
+
+#[test]
+fn collapsed_fragments_are_not_hit() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let collapsed = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 20.0),
+            Transform(Affine::scale_non_uniform(0.0, 1.0)),
+        ),
+    );
+    let content = ui.create(Node::Box, (fixed(40.0, 20.0),));
+    ui.append(root, collapsed);
+    ui.append(collapsed, content);
+
+    let f = Fixture::build(&ui, root);
+
+    assert_eq!(f.hit(20.0, 10.0), Some(f.box_of(root)));
+}
+
 #[test]
 fn rebuilding_replaces_the_layers() {
     let mut ui = Ui::new();
@@ -529,4 +678,51 @@ fn rebuilding_replaces_the_layers() {
     assert_eq!(f.layers.len(), 1);
     assert_eq!(f.layers[new_root].owner, fragment_root);
     assert!(f.layers.get(old_root).is_none());
+
+    // Stale root layers hit nothing instead of panicking.
+    assert_eq!(
+        PaintHitTester::new().hit(
+            &f.layers,
+            &f.fragments,
+            &f.pre_paint,
+            old_root,
+            Point::new(1.0, 1.0)
+        ),
+        None
+    );
+}
+
+#[test]
+fn hit_testers_can_be_reused() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let moved = ui.create(
+        Node::Box,
+        (fixed(40.0, 20.0), Transform(Affine::translate((50.0, 0.0)))),
+    );
+    ui.append(root, moved);
+
+    let mut f = Fixture::build(&ui, root);
+    let mut tester = PaintHitTester::new();
+    let mut hit = |f: &Fixture, x, y| {
+        tester.hit(
+            &f.layers,
+            &f.fragments,
+            &f.pre_paint,
+            f.root,
+            Point::new(x, y),
+        )
+    };
+
+    // Points mapped by earlier hits do not leak into later ones.
+    assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_of(moved)));
+    assert_eq!(hit(&f, 10.0, 10.0), Some(f.box_of(root)));
+    assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_of(moved)));
+
+    // Nor into hits on rebuilt layers.
+    let fragment_root = f.layers[f.root].owner;
+    f.root = PaintLayerBuilder::new()
+        .build(&ui, &f.inputs, &f.fragments, &mut f.layers, fragment_root)
+        .unwrap();
+    assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_of(moved)));
 }
