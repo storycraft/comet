@@ -36,9 +36,6 @@ pub struct PaintLayerItem {
     /// opacity the layer paints with.
     pub owner: FragmentKey,
 
-    /// Layer the owner fragment would paint in without starting its own.
-    pub parent: Option<PaintLayerKey>,
-
     /// Z index of the layer among the entries of its parent layer.
     pub z_index: i32,
 

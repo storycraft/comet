@@ -171,7 +171,6 @@ fn fragments_without_layer_styles_share_the_root_layer() {
 
     assert_eq!(f.layers.len(), 1);
     assert_eq!(f.layers[f.root].owner, f.box_of(root));
-    assert_eq!(f.layers[f.root].parent, None);
     assert_eq!(
         f.entries(f.root),
         [
@@ -206,7 +205,6 @@ fn transforms_opacity_and_z_indices_start_layers() {
     for node in [transformed, translucent, zero] {
         let layer = f.layer_of(node);
 
-        assert_eq!(f.layers[layer].parent, Some(f.root));
         assert_eq!(f.layers[layer].z_index, 0);
         assert_eq!(
             f.entries(layer)[0],

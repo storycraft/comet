@@ -58,7 +58,6 @@ impl PaintLayerBuilder {
 
         let root_layer = tree.items.insert(PaintLayerItem {
             owner: root,
-            parent: None,
             z_index: 0,
             entries: Vec::new(),
         });
@@ -77,7 +76,6 @@ impl PaintLayerBuilder {
                 Some(z_index) if key != root => {
                     let layer = tree.items.insert(PaintLayerItem {
                         owner: key,
-                        parent: Some(parent_layer),
                         z_index,
                         entries: Vec::new(),
                     });
