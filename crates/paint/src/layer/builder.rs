@@ -70,7 +70,7 @@ impl PaintLayerBuilder {
         key: FragmentKey,
         layer: Option<PaintLayerKey>,
     ) -> Option<PaintLayerKey> {
-        match layer.filter(|&layer| tree.layers.get(layer).is_some()) {
+        match layer {
             Some(root) if tree.layers[root].owner != key => {
                 self.update(fragments, pre_paint, tree, key)?;
                 Some(root)
