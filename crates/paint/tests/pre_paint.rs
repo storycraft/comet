@@ -86,6 +86,10 @@ impl Fixture {
     }
 
     fn resolve(&mut self, ui: &Ui, key: FragmentKey) -> Option<()> {
+        self.resolve_with(ui, key, true)
+    }
+
+    fn resolve_with(&mut self, ui: &Ui, key: FragmentKey, recursive: bool) -> Option<()> {
         self.resolver.resolve(
             ui,
             &self.inputs,
@@ -93,6 +97,7 @@ impl Fixture {
             &UNITS,
             &mut self.pre_paint,
             key,
+            recursive,
         )
     }
 
@@ -908,4 +913,34 @@ fn local_hits_follow_the_rounded_border_box() {
 
     // Fragments missing from the trees are not hit instead of panicking.
     assert!(!hit(FragmentKey::default(), 1.0, 1.0));
+}
+
+#[test]
+fn resolving_without_recursion_leaves_descendants_as_they_are() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let parent = ui.create(Node::Box, (fixed(40.0, 20.0),));
+    let child = ui.create(Node::Box, (fixed(10.0, 10.0),));
+    ui.append(root, parent);
+    ui.append(parent, child);
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+    let child_data = f.boxed(child).clone();
+
+    ui.set_props(parent, (hidden(), Transform(Affine::scale(2.0))));
+    ui.set_props(child, (hidden(), Transform(Affine::scale(3.0))));
+    f.resolve_with(&ui, f.box_of(parent), false).unwrap();
+
+    // Only the parent's item and fragment are resolved again.
+    assert_eq!(f.clip(parent), (true, true));
+    assert_eq!(f.boxed(parent).stacking, Some(0));
+    assert_eq!(f.clip(child), (false, false));
+    assert_eq!(f.boxed(child), &child_data);
+
+    // Resolving recursively reaches them.
+    f.resolve(&ui, f.box_of(parent)).unwrap();
+
+    assert_eq!(f.clip(child), (true, true));
+    assert_eq!(f.boxed(child).stacking, Some(0));
 }

@@ -66,7 +66,7 @@ impl Fixture {
 
         let mut pre_paint = PrePaintTree::new();
         PrePaintTreeResolver::new()
-            .resolve(ui, &inputs, &fragments, &UNITS, &mut pre_paint, root)
+            .resolve(ui, &inputs, &fragments, &UNITS, &mut pre_paint, root, true)
             .unwrap();
 
         let mut layers = PaintLayerTree::new();
@@ -86,7 +86,7 @@ impl Fixture {
     }
 
     /// Resolve the pre-paint data of a node's box fragment again, after its
-    /// paint styles changed, and update the layers under it.
+    /// own paint styles changed, and update the layers under it.
     fn update(&mut self, ui: &Ui, node: NodeKey) {
         let key = self.box_of(node);
 
@@ -98,6 +98,7 @@ impl Fixture {
                 &UNITS,
                 &mut self.pre_paint,
                 key,
+                false,
             )
             .unwrap();
         self.root = self
@@ -792,7 +793,15 @@ fn updates_match_full_builds() {
     ui.set_props(inner, (z(4),));
     let key = f.box_of(right);
     PrePaintTreeResolver::new()
-        .resolve(&ui, &f.inputs, &f.fragments, &UNITS, &mut f.pre_paint, key)
+        .resolve(
+            &ui,
+            &f.inputs,
+            &f.fragments,
+            &UNITS,
+            &mut f.pre_paint,
+            key,
+            true,
+        )
         .unwrap();
     f.root = f
         .builder

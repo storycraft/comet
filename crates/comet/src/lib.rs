@@ -176,6 +176,7 @@ impl ApplicationHandler for App {
                         &constraint.units,
                         &mut self.pre_paint,
                         fragment_root,
+                        true,
                     )
                     .is_none()
                 {
