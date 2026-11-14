@@ -12,14 +12,15 @@ use comet_layout::{
     style::{LayoutConstraint, geometry::Size},
 };
 use comet_paint::{
-    layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
+    hit::PaintHitTester,
+    layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
 };
 use comet_tree::{node::NodeKey, ui::Ui};
 use winit::{
     application::ApplicationHandler,
-    event::WindowEvent,
+    event::{ElementState, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     window::{Window, WindowAttributes, WindowId},
 };
@@ -45,6 +46,9 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
         pre_paint_resolver: PrePaintTreeResolver::new(),
         layers: PaintLayerTree::new(),
         layer_builder: PaintLayerBuilder::new(),
+        layer_root: None,
+        hit_tester: PaintHitTester::new(),
+        cursor: None,
         win: None,
         vello: VelloCpuWindowRenderer::new(),
         ui_renderer: CometPainter::new(),
@@ -62,6 +66,13 @@ struct App {
     pre_paint_resolver: PrePaintTreeResolver,
     layers: PaintLayerTree,
     layer_builder: PaintLayerBuilder,
+    /// Root layer of `layers`, from the last frame.
+    layer_root: Option<PaintLayerKey>,
+    // TODO: Temporary hit testing, printing the fragment under the cursor on
+    // click. Replace with real input handling.
+    hit_tester: PaintHitTester,
+    /// Cursor position in physical pixels, the units of the layout viewport.
+    cursor: Option<kurbo::Point>,
     win: Option<Arc<Window>>,
     vello: VelloCpuWindowRenderer,
     ui_renderer: CometPainter,
@@ -165,13 +176,14 @@ impl ApplicationHandler for App {
                     return;
                 }
 
-                let Some(layer_root) = self.layer_builder.build(
+                self.layer_root = self.layer_builder.build(
                     &self.ui,
                     &self.inputs,
                     &self.fragments,
                     &mut self.layers,
                     fragment_root,
-                ) else {
+                );
+                let Some(layer_root) = self.layer_root else {
                     return;
                 };
 
@@ -188,8 +200,52 @@ impl ApplicationHandler for App {
                     );
                 });
             }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor = Some(kurbo::Point::new(position.x, position.y));
+            }
+            WindowEvent::CursorLeft { .. } => self.cursor = None,
+            // TODO: Temporary hit testing, printing the fragment under the
+            // cursor to stdout. Replace with real input handling.
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } => self.print_hit(),
             WindowEvent::CloseRequested => event_loop.exit(),
             _ => {}
         }
+    }
+}
+
+impl App {
+    /// Print the fragment under the cursor, from the last frame's layout.
+    ///
+    /// TODO: Temporary, for checking hit testing by hand. Remove once input
+    /// events are dispatched to the UI.
+    fn print_hit(&mut self) {
+        let (Some(cursor), Some(layer_root)) = (self.cursor, self.layer_root) else {
+            return;
+        };
+
+        let Some(key) = self.hit_tester.hit(
+            &self.layers,
+            &self.fragments,
+            &self.pre_paint,
+            layer_root,
+            cursor,
+        ) else {
+            println!("hit ({}, {}): nothing", cursor.x, cursor.y);
+            return;
+        };
+
+        let Some(fragment) = self.fragments.items.get(key) else {
+            return;
+        };
+        let node = self.inputs.items.get(fragment.source).map(|item| item.node);
+
+        println!(
+            "hit ({}, {}): {key:?} {:?}, node {node:?}",
+            cursor.x, cursor.y, fragment.item
+        );
     }
 }
