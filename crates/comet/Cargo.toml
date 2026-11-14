@@ -13,7 +13,7 @@ comet-paint = { workspace = true }
 
 anyrender = "0.14.0"
 kurbo = "0.13.1"
-anyrender_vello_cpu = { version = "0.18.0", features = ["softbuffer_window_renderer"] }
+anyrender_vello_cpu = { version = "0.18.0", features = ["softbuffer_window_renderer", "filters"] }
 
 winit = { version = "0.30.12", features = ["rwh_06"] }
 

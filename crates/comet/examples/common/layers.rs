@@ -1,4 +1,6 @@
-use anyrender::Paint;
+use std::sync::Arc;
+
+use anyrender::{Filter as FilterGraph, Paint, filters::FilterEffect};
 use comet_layout::style::{
     bx::{DisplayInner, FontSize, FontWeight, Margin, Overflow, Padding, Size as BoxSize},
     geometry::{AutoValue, Point, Rect, Size as LayoutSize, StyleUnit},
@@ -7,29 +9,31 @@ use comet_layout::style::{
 };
 use comet_layout_flex::{Flex, styles::Gap};
 use comet_paint::style::{
-    BorderRadius, Fill, Opacity, TextColor, Transform, TransformOrigin, ZIndex,
+    BorderRadius, Fill, Filter, Opacity, TextColor, Transform, TransformOrigin, ZIndex,
 };
 use comet_tree::{
     node::{Node, NodeKey},
     ui::Ui,
 };
-use kurbo::Affine;
+use kurbo::{Affine, Vec2};
 use peniko::Color;
 
 use super::{panel, text};
 
 pub(super) fn showcase(ui: &mut Ui, root: NodeKey) {
-    let panel = panel(
+    let transforms = panel(ui, root, "06 / Transforms", Color::from_rgb8(250, 240, 246));
+    transform_origins(ui, transforms);
+    nested_transforms(ui, transforms);
+
+    let compositing = panel(
         ui,
         root,
-        "06 / Layers: transform, opacity, z-index",
-        Color::from_rgb8(250, 240, 246),
+        "07 / Opacity, z-index + filters",
+        Color::from_rgb8(240, 244, 250),
     );
-
-    transform_origins(ui, panel);
-    opacity(ui, panel);
-    z_index(ui, panel);
-    nested_transforms(ui, panel);
+    opacity(ui, compositing);
+    z_index(ui, compositing);
+    filters(ui, compositing);
 }
 
 /// The same rotation around different transform origins. Transforms do not
@@ -143,6 +147,64 @@ fn z_index(ui: &mut Ui, panel: NodeKey) {
             ),
         );
     }
+}
+
+/// Filters apply to a box and its contents as one group, in its local
+/// coordinates.
+fn filters(ui: &mut Ui, panel: NodeKey) {
+    caption(ui, panel, "Filters");
+    let row = row(ui, panel);
+
+    let blurred = card(ui, row, "blur 1.5", Color::from_rgb8(212, 198, 250));
+    ui.set_props(blurred, (filter(FilterEffect::blur(1.5)),));
+
+    let shadowed = card(ui, row, "drop shadow", Color::WHITE);
+    ui.set_props(
+        shadowed,
+        (filter(FilterEffect::drop_shadow(
+            3.0,
+            4.0,
+            3.0,
+            Color::from_rgba8(36, 46, 63, 90),
+        )),),
+    );
+
+    // The filter sees the box and its children as one image: the shadow
+    // follows the chip poking out of the card too.
+    let group = card(ui, row, "shadow · group", Color::from_rgb8(255, 214, 231));
+    ui.set_props(
+        group,
+        (filter(FilterEffect::drop_shadow(
+            0.0,
+            6.0,
+            2.0,
+            Color::from_rgba8(229, 72, 77, 120),
+        )),),
+    );
+    let poking = chip(ui, group, Color::from_rgb8(229, 72, 77));
+    ui.set_props(
+        poking,
+        (Margin(Rect::new_invidiual(
+            px(6.0),
+            px(0.0),
+            px(0.0),
+            px(96.0),
+        )),),
+    );
+
+    // Offsets are in the box's local coordinates, so they turn with it.
+    let offset = card(ui, row, "offset · rotated", Color::from_rgb8(222, 242, 233));
+    ui.set_props(
+        offset,
+        (
+            filter(FilterEffect::Offset(Vec2::new(12.0, 0.0))),
+            Transform(Affine::rotate(20f64.to_radians())),
+        ),
+    );
+}
+
+fn filter(effect: FilterEffect) -> Filter {
+    Filter(Arc::new(FilterGraph::single(effect)))
 }
 
 /// Nested transforms multiply, and overflow clips transformed contents.
