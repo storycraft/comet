@@ -42,7 +42,7 @@ impl PaintLayerBuilder {
     /// the root layer. Keep it to paint the layers and to build again: `tree`
     /// does not store it.
     ///
-    /// With `layer`, the root layer of a previous build, only the layers of
+    /// With `root`, the root layer of a previous build, only the layers of
     /// the fragments under `key` are built again, after their fragments or
     /// stacking changed, such as after a fragment build or a paint style
     /// change resolved into `pre_paint`. The child layers of the layer `key`
@@ -53,7 +53,7 @@ impl PaintLayerBuilder {
     /// A fragment moved to another parent needs a key above both its old and
     /// new places.
     ///
-    /// Without `layer`, or when `layer` is gone from `tree` or owned by
+    /// Without `root`, or when `root` is gone from `tree` or owned by
     /// `key`, `key` is the root fragment: every layer under it is built, and
     /// layers of other fragments, such as those left by a previous root, are
     /// deleted. The root layer has z index 0, whatever `key`'s stacking.
@@ -68,9 +68,9 @@ impl PaintLayerBuilder {
         pre_paint: &PrePaintTree,
         tree: &mut PaintLayerTree,
         key: FragmentKey,
-        layer: Option<PaintLayerKey>,
+        root: Option<PaintLayerKey>,
     ) -> Option<PaintLayerKey> {
-        match layer {
+        match root {
             Some(root) if tree.layers.get(root).map(|layer| layer.owner) != Some(key) => {
                 self.update(fragments, pre_paint, tree, key)?;
                 Some(root)
