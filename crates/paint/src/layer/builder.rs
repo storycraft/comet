@@ -9,7 +9,7 @@ use comet_tree::ui::{Props, Ui};
 
 use crate::{
     layer::{PaintLayerEntry, PaintLayerItem, PaintLayerKey, tree::PaintLayerTree},
-    style::{Opacity, Transform, ZIndex},
+    style::{BackdropFilter, Filter, Opacity, Transform, ZIndex},
 };
 
 /// Builds a [`PaintLayerTree`] for a fragment tree. Keep it to reuse its
@@ -32,8 +32,9 @@ impl PaintLayerBuilder {
     /// it to paint the layers: `tree` does not store it.
     ///
     /// A box fragment below `root` starts a child layer when its item sets a
-    /// non-identity [`Transform`], an [`Opacity`] other than 1, or a
-    /// [`ZIndex`] other than auto. An auto z index counts as 0. The root
+    /// non-identity [`Transform`], an [`Opacity`] other than 1, a [`Filter`],
+    /// a [`BackdropFilter`], or a [`ZIndex`] other than auto. An auto z index
+    /// counts as 0. The root
     /// layer has z index 0, whatever `root` sets.
     ///
     /// `inputs` is the input tree `fragments` were built from, and `ui` the UI
@@ -134,12 +135,20 @@ fn layer_z_index(fragment: &Fragment, props: Props<'_>) -> Option<i32> {
     }
 
     let ZIndex(z_index) = props.get_or_default();
-    let Transform(transform) = props.get_or_default();
-    let Opacity(opacity) = props.get_or_default();
 
     match z_index {
         AutoValue::Value(z_index) => Some(z_index),
-        AutoValue::Auto if transform != Transform::default().0 || opacity != 1.0 => Some(0),
-        AutoValue::Auto => None,
+        AutoValue::Auto => starts_layer(props).then_some(0),
     }
+}
+
+/// Whether an item's paint styles start a layer whatever its z index.
+fn starts_layer(props: Props<'_>) -> bool {
+    let Transform(transform) = props.get_or_default();
+    let Opacity(opacity) = props.get_or_default();
+
+    transform != Transform::default().0
+        || opacity != 1.0
+        || props.get::<Filter>().is_some()
+        || props.get::<BackdropFilter>().is_some()
 }

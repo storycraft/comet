@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyrender::{Paint, Scene, recording::RenderCommand};
 use comet_layout::{
     fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -15,7 +17,7 @@ use comet_paint::{
     layer::{PaintLayerEntry, PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
-    style::{Fill, Opacity, Transform, ZIndex},
+    style::{BackdropFilter, BorderRadius, Fill, Filter, Opacity, Transform, ZIndex},
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
@@ -352,22 +354,160 @@ fn clips_apply_to_descendants_in_other_layers() {
     let f = Fixture::build(&ui, root);
     let clip = format!("clip {:?}", Rect::new(0.0, 0.0, 50.0, 20.0));
 
-    // The raised layer paints after the flow content, inside the clip of its
-    // ancestor. Its group is pushed outside the clip, which is pushed again
-    // inside it.
+    // The raised layer paints after the flow content. Its group nests in the
+    // clip of its ancestor, which stays pushed until the group is popped.
     assert_eq!(
         commands(&f.draw(&ui)),
         [
-            clip.clone(),
-            fill(BLUE),
-            "pop".into(),
-            "layer 0.5".into(),
             clip,
+            fill(BLUE),
+            "layer 0.5".into(),
             fill(RED),
             "pop".into(),
             "pop".into(),
         ]
     );
+}
+
+fn blur() -> Arc<anyrender::Filter> {
+    Arc::new(anyrender::Filter::default())
+}
+
+/// Layers pushed to a scene, with their alpha, transform, clip bounds rounded
+/// to whole units, and whether they filter their contents and their backdrop.
+fn pushed_layers(scene: &Scene) -> Vec<(f32, Affine, Rect, bool, bool)> {
+    scene
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            RenderCommand::PushLayer(layer) => Some((
+                layer.alpha,
+                layer.transform,
+                layer.clip.bounding_box().round(),
+                layer.filter.is_some(),
+                layer.backdrop_filter.is_some(),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn filters_start_layers() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let filtered = ui.create(Node::Box, (fixed(10.0, 10.0), Filter(blur())));
+    let backdrop = ui.create(Node::Box, (fixed(10.0, 10.0), BackdropFilter(blur())));
+    ui.append(root, filtered);
+    ui.append(root, backdrop);
+
+    let f = Fixture::build(&ui, root);
+
+    assert_eq!(f.layers.len(), 3);
+    assert_eq!(f.layers[f.layer_of(filtered)].z_index, 0);
+    assert_eq!(f.layers[f.layer_of(backdrop)].z_index, 0);
+}
+
+#[test]
+fn filters_apply_to_a_group_in_the_owner_coordinates() {
+    let mut ui = Ui::new();
+    let root = ui.create(
+        Node::Box,
+        (bx::Padding(LayoutRect::new_all(StyleUnit::Px(5.0))),),
+    );
+    let filtered = ui.create(
+        Node::Box,
+        (fixed(40.0, 20.0), Filter(blur()), Fill(Paint::Solid(RED))),
+    );
+    let content = ui.create(Node::Box, (fixed(10.0, 10.0), Fill(Paint::Solid(GREEN))));
+    ui.append(root, filtered);
+    ui.append(filtered, content);
+
+    let f = Fixture::build(&ui, root);
+    let scene = f.draw(&ui);
+
+    // Opaque, but grouped for the filter, which applies in local coordinates.
+    // The group clip is the viewport, mapped to them.
+    assert_eq!(
+        pushed_layers(&scene),
+        [(
+            1.0,
+            Affine::translate((5.0, 5.0)),
+            Rect::new(-5.0, -5.0, 115.0, 395.0),
+            true,
+            false
+        )]
+    );
+    assert_eq!(
+        commands(&scene),
+        ["layer 1".into(), fill(RED), fill(GREEN), "pop".into()]
+    );
+}
+
+#[test]
+fn backdrop_filters_apply_behind_the_owner_border_box() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, (Fill(Paint::Solid(Color::WHITE)),));
+    let glass = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 20.0),
+            BackdropFilter(blur()),
+            BorderRadius(LayoutRect::new_all(StyleUnit::Px(4.0))),
+            Fill(Paint::Solid(BLUE)),
+        ),
+    );
+    // Overflows the border box, unclipped by the backdrop filter.
+    let content = ui.create(Node::Box, (fixed(80.0, 10.0), Fill(Paint::Solid(GREEN))));
+    ui.append(root, glass);
+    ui.append(glass, content);
+
+    let f = Fixture::build(&ui, root);
+    let scene = f.draw(&ui);
+
+    // An empty layer filters the backdrop before the owner paints, without a
+    // group for its contents.
+    assert_eq!(
+        pushed_layers(&scene),
+        [(
+            1.0,
+            Affine::IDENTITY,
+            Rect::new(0.0, 0.0, 40.0, 20.0),
+            false,
+            true
+        )]
+    );
+    assert_eq!(
+        commands(&scene),
+        [
+            fill(Color::WHITE),
+            "layer 1".into(),
+            "pop".into(),
+            fill(BLUE),
+            fill(GREEN),
+        ]
+    );
+}
+
+#[test]
+fn filters_of_collapsed_owners_paint_nothing() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let collapsed = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 20.0),
+            Filter(blur()),
+            BackdropFilter(blur()),
+            Transform(Affine::scale_non_uniform(0.0, 1.0)),
+            Fill(Paint::Solid(RED)),
+        ),
+    );
+    ui.append(root, collapsed);
+
+    let f = Fixture::build(&ui, root);
+
+    assert!(commands(&f.draw(&ui)).is_empty());
 }
 
 #[test]

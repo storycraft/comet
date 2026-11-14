@@ -3,12 +3,13 @@
 //! A [`PaintLayerTree`](tree::PaintLayerTree) groups the fragments under a
 //! root fragment into layers, like stacking contexts in CSS. A box fragment
 //! whose item sets a [`Transform`](crate::style::Transform), an
-//! [`Opacity`](crate::style::Opacity) or a [`ZIndex`](crate::style::ZIndex)
-//! starts a child layer it owns. Every other fragment paints in the layer of
-//! its nearest owning ancestor. A layer paints with the transform of its
-//! owner fragment, looked up in the
-//! [`PrePaintTree`](crate::pre_paint::tree::PrePaintTree), and the opacity of
-//! its owner's item.
+//! [`Opacity`](crate::style::Opacity), a [`Filter`](crate::style::Filter), a
+//! [`BackdropFilter`](crate::style::BackdropFilter) or a
+//! [`ZIndex`](crate::style::ZIndex) starts a child layer it owns. Every other
+//! fragment paints in the layer of its nearest owning ancestor. A layer paints
+//! with the transform of its owner fragment, looked up in the
+//! [`PrePaintTree`](crate::pre_paint::tree::PrePaintTree), and the opacity and
+//! filters of its owner's item.
 
 pub mod builder;
 pub mod tree;
@@ -34,7 +35,7 @@ pub enum PaintLayerEntry {
 #[derive(Debug, Clone)]
 pub struct PaintLayerItem {
     /// Fragment starting the layer. Its pre-paint data gives the transform the
-    /// layer paints with, and its item's style the opacity.
+    /// layer paints with, and its item's style the opacity and filters.
     pub owner: FragmentKey,
 
     /// Z index of the layer among the entries of its parent layer.

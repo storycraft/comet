@@ -1,5 +1,7 @@
 //! Painting of fragments into a scene, in the order of their paint layers.
 
+use std::sync::Arc;
+
 use anyrender::PaintScene;
 use bytemuck::TransparentWrapper;
 use comet_layout::{
@@ -15,7 +17,7 @@ use slotmap::SecondaryMap;
 use crate::{
     layer::{PaintLayerEntry, PaintLayerKey, tree::PaintLayerTree},
     pre_paint::{FragmentData, tree::PrePaintTree},
-    style::{BorderFill, Fill, Opacity},
+    style::{BackdropFilter, BorderFill, Fill, Filter, Opacity},
 };
 
 /// Paints final fragments in the order of their [`PaintLayerTree`], with the
@@ -28,6 +30,9 @@ pub struct CometPainter {
     clips: Vec<Clip>,
     /// Clips currently pushed to the scene, outermost first.
     pushed: Vec<usize>,
+    /// For each pushed layer group, innermost last, the number of clips
+    /// pushed below it. Those stay pushed until the group is popped.
+    bases: Vec<usize>,
     /// Buffer of the clips a fragment paints inside of, outermost first.
     chain: Vec<usize>,
     /// Fragments to resolve the paint state of.
@@ -135,9 +140,13 @@ impl CometPainter {
     ///
     /// Panics if `root` is not in `layers`.
     ///
-    /// Layers paint their entries in order, each with the opacity of its
-    /// owner fragment: a layer with an opacity below 1 paints into a group
-    /// blended with that opacity, and a transparent one is skipped. Each
+    /// Layers paint their entries in order, with the opacity and filters of
+    /// their owner fragment's item. A layer with an opacity below 1 or a
+    /// [`Filter`] paints into a group, blended with that opacity and filtered
+    /// in the owner's local coordinates. A transparent layer is skipped, and
+    /// so is the group of a layer whose owner collapses. A
+    /// [`BackdropFilter`] filters what is painted behind the owner's border
+    /// box, rounded with its border radius, before the layer paints. Each
     /// fragment paints with its resolved data, such as its transform and
     /// border radius, and the text color of its source item. Fragment
     /// transforms multiply down the fragment tree, starting with the
@@ -174,8 +183,9 @@ impl CometPainter {
 
         self.resolve_states(sources, layers[root].owner);
         self.pushed.clear();
+        self.bases.clear();
         self.draw_layer(sources, root, scene);
-        self.pop_clips(scene);
+        self.pop_clips_to(0, scene);
     }
 
     /// Resolve the paint state of the fragments under `root`, and the clips
@@ -258,7 +268,8 @@ impl CometPainter {
         }
     }
 
-    /// Paint the entries of a layer, inside a group with its owner's opacity.
+    /// Paint the entries of a layer, after its owner's backdrop filter and
+    /// inside a group with its owner's opacity and filter.
     fn draw_layer(
         &mut self,
         sources: Sources<'_>,
@@ -267,33 +278,50 @@ impl CometPainter {
     ) {
         let layer = &sources.layers[key];
         let owner = &sources.tree.items[layer.owner];
-        let opacity = sources
-            .ui
-            .props(sources.inputs.items[owner.source].node)
-            .map_or(1.0, |props| {
-                let Opacity(opacity) = props.get_or_default();
-                opacity.clamp(0.0, 1.0)
-            });
+        let props = sources.ui.props(sources.inputs.items[owner.source].node);
+        let opacity = props.map_or(1.0, |props| {
+            let Opacity(opacity) = props.get_or_default();
+            opacity.clamp(0.0, 1.0)
+        });
 
         if opacity <= 0.0 {
             return;
         }
 
-        // Clip layers pushed before the group must be popped after it, so the
-        // group starts without clips and pushes the ones it needs.
-        let group = opacity < 1.0;
+        let filter = props
+            .and_then(|props| props.get_cloned())
+            .map(|Filter(filter)| filter);
+        let backdrop_filter = props
+            .and_then(|props| props.get_cloned())
+            .map(|BackdropFilter(filter)| filter);
+        let state = self.states[layer.owner];
+
+        if let Some(backdrop_filter) = backdrop_filter {
+            self.draw_backdrop(sources, layer.owner, state, backdrop_filter, scene);
+        }
+
+        let group = opacity < 1.0 || filter.is_some();
 
         if group {
-            self.pop_clips(scene);
+            // A collapsed owner paints nothing, and its contents with it.
+            let Some(inverse) = state.transforms.inverse else {
+                return;
+            };
+
+            // The group nests in the clips of the owner, so its filtered
+            // output stays inside them. Its contents only push the clips
+            // nested in those.
+            self.sync_clips(state.clip, scene);
             scene.push_layer(
                 peniko::Fill::NonZero,
                 BlendMode::default(),
                 opacity as f32,
-                Affine::IDENTITY,
-                &sources.viewport,
-                None,
+                state.transforms.transform,
+                &inverse.transform_rect_bbox(sources.viewport),
+                filter,
                 None,
             );
+            self.bases.push(self.pushed.len());
         }
 
         for &entry in &layer.entries {
@@ -309,9 +337,50 @@ impl CometPainter {
         }
 
         if group {
-            self.pop_clips(scene);
+            let base = self.bases.pop().unwrap_or_default();
+
+            self.pop_clips_to(base, scene);
             scene.pop_layer();
         }
+    }
+
+    /// Filter what is painted behind the border box of a layer's owner, with
+    /// an empty layer clipped to it.
+    fn draw_backdrop(
+        &mut self,
+        sources: Sources<'_>,
+        owner: FragmentKey,
+        state: FragmentState,
+        filter: Arc<anyrender::Filter>,
+        scene: &mut impl PaintScene,
+    ) {
+        let fragment = &sources.tree.items[owner];
+        let rect = local_rect(fragment);
+        let transform = state.transforms.transform;
+        let bounds = transform.transform_rect_bbox(rect);
+        let clip = state.clip.map(|clip| self.clips[clip].bounds);
+
+        // A collapsed box has no area to filter behind.
+        if state.transforms.inverse.is_none()
+            || !bounds.overlaps(sources.viewport)
+            || clip.is_some_and(|clip| !bounds.overlaps(clip))
+        {
+            return;
+        }
+
+        let radii = sources.pre_paint[owner].border_radius.unwrap_or_default();
+
+        self.sync_clips(state.clip, scene);
+        scene.push_layer(
+            peniko::Fill::NonZero,
+            BlendMode::default(),
+            1.0,
+            transform,
+            &rect.to_rounded_rect(radii),
+            None,
+            Some(filter),
+        );
+        scene.pop_layer();
     }
 
     /// Push and pop clip layers, so exactly `clip` and its parents are pushed.
@@ -327,19 +396,21 @@ impl CometPainter {
 
         self.chain.reverse();
 
+        // Clips below the innermost group stay until it is popped. Fragments
+        // painting in a group are its owner's descendants, so they paint
+        // inside those clips anyway.
+        let base = self.bases.last().copied().unwrap_or_default();
         let kept = self
             .pushed
             .iter()
             .zip(&self.chain)
             .take_while(|(pushed, wanted)| pushed == wanted)
-            .count();
+            .count()
+            .max(base);
 
-        while self.pushed.len() > kept {
-            self.pushed.pop();
-            scene.pop_layer();
-        }
+        self.pop_clips_to(kept, scene);
 
-        for &clip in &self.chain[kept..] {
+        for &clip in self.chain.get(kept..).unwrap_or_default() {
             let Clip {
                 transform, shape, ..
             } = &self.clips[clip];
@@ -357,9 +428,10 @@ impl CometPainter {
         }
     }
 
-    /// Pop every pushed clip layer.
-    fn pop_clips(&mut self, scene: &mut impl PaintScene) {
-        for _ in self.pushed.drain(..) {
+    /// Pop the pushed clip layers above the first `len`.
+    fn pop_clips_to(&mut self, len: usize, scene: &mut impl PaintScene) {
+        while self.pushed.len() > len {
+            self.pushed.pop();
             scene.pop_layer();
         }
     }

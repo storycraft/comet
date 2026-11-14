@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyrender::Paint;
 use comet_layout::style::geometry::{AutoValue, Point, Rect, StyleUnit};
 use comet_tree::style::define_style_props;
@@ -33,4 +35,10 @@ define_style_props!(
 
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub Opacity: f64 = 1.0;
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub Filter: Arc<anyrender::Filter>;
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub BackdropFilter: Arc<anyrender::Filter>;
 );
