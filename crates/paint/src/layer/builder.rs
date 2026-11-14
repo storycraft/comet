@@ -71,7 +71,7 @@ impl PaintLayerBuilder {
         layer: Option<PaintLayerKey>,
     ) -> Option<PaintLayerKey> {
         match layer {
-            Some(root) if tree.layers[root].owner != key => {
+            Some(root) if tree.layers.get(root).map(|layer| layer.owner) != Some(key) => {
                 self.update(fragments, pre_paint, tree, key)?;
                 Some(root)
             }
