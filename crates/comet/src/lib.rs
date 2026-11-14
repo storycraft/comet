@@ -12,8 +12,8 @@ use comet_layout::{
     style::{LayoutConstraint, geometry::Size},
 };
 use comet_paint::{
-    CometPainter,
     layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
+    painter::CometPainter,
     pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
 };
 use comet_tree::{node::NodeKey, ui::Ui};
@@ -165,19 +165,15 @@ impl ApplicationHandler for App {
                     return;
                 }
 
-                if self
-                    .layer_builder
-                    .build(
-                        &self.ui,
-                        &self.inputs,
-                        &self.fragments,
-                        &mut self.layers,
-                        fragment_root,
-                    )
-                    .is_none()
-                {
+                let Some(layer_root) = self.layer_builder.build(
+                    &self.ui,
+                    &self.inputs,
+                    &self.fragments,
+                    &mut self.layers,
+                    fragment_root,
+                ) else {
                     return;
-                }
+                };
 
                 self.vello.render(|painter| {
                     self.ui_renderer.draw(
@@ -186,6 +182,7 @@ impl ApplicationHandler for App {
                         &self.fragments,
                         &self.pre_paint,
                         &self.layers,
+                        layer_root,
                         kurbo::Rect::new(0.0, 0.0, viewport.width, viewport.height),
                         painter,
                     );

@@ -11,3 +11,41 @@
 
 pub mod builder;
 pub mod tree;
+
+use comet_layout::fragment::FragmentKey;
+use slotmap::new_key_type;
+
+new_key_type! {
+    pub struct PaintLayerKey;
+}
+
+/// One entry painted by a layer, in paint order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaintLayerEntry {
+    /// A fragment painting in the layer, without its descendants: they have
+    /// entries of their own.
+    Fragment(FragmentKey),
+    /// A child layer, painted whole.
+    Layer(PaintLayerKey),
+}
+
+/// A layer of fragments painting together, owned by a fragment.
+#[derive(Debug, Clone)]
+pub struct PaintLayerItem {
+    /// Fragment starting the layer. Its pre-paint data gives the transform and
+    /// opacity the layer paints with.
+    pub owner: FragmentKey,
+
+    /// Layer the owner fragment would paint in without starting its own.
+    pub parent: Option<PaintLayerKey>,
+
+    /// Z index of the layer among the entries of its parent layer.
+    pub z_index: i32,
+
+    /// Fragments painting in the layer and its child layers, in paint order.
+    ///
+    /// The owner fragment comes first. The rest are sorted by z index:
+    /// fragments sort at 0, child layers at their own z index, and entries
+    /// with equal z index keep their fragment tree order.
+    pub entries: Vec<PaintLayerEntry>,
+}

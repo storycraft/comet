@@ -1,8 +1,8 @@
-pub use crate::CometPainter;
 pub use crate::layer::{
-    builder::PaintLayerBuilder,
-    tree::{PaintLayerEntry, PaintLayerItem, PaintLayerKey, PaintLayerTree},
+    PaintLayerEntry, PaintLayerItem, PaintLayerKey, builder::PaintLayerBuilder,
+    tree::PaintLayerTree,
 };
+pub use crate::painter::CometPainter;
 pub use crate::pre_paint::{
     FragmentData, LayoutInputData, resolver::PrePaintTreeResolver, tree::PrePaintTree,
 };

@@ -13,8 +13,8 @@ use comet_layout::{
     style::{LayoutConstraint, geometry::Size},
 };
 use comet_paint::{
-    CometPainter,
     layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
+    painter::CometPainter,
     pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
 };
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
@@ -48,7 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .ok_or("could not resolve pre-paint tree")?;
     let mut layers = PaintLayerTree::new();
-    PaintLayerBuilder::new()
+    let layer_root = PaintLayerBuilder::new()
         .build(&ui, &inputs, &fragments, &mut layers, root)
         .ok_or("could not build paint layer tree")?;
 
@@ -90,6 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &fragments,
                 &pre_paint,
                 &layers,
+                layer_root,
                 kurbo::Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
                 scene,
             );

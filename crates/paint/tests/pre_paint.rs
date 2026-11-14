@@ -16,8 +16,8 @@ use comet_layout::{
     },
 };
 use comet_paint::{
-    CometPainter,
-    layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
+    layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
+    painter::CometPainter,
     pre_paint::{
         FragmentData, LayoutInputData, resolver::PrePaintTreeResolver, tree::PrePaintTree,
     },
@@ -147,10 +147,10 @@ impl Fixture {
             .collect()
     }
 
-    /// Build the paint layers of the whole fragment tree.
-    fn layers(&self, ui: &Ui) -> PaintLayerTree {
+    /// Build the paint layers of the whole fragment tree, with their root.
+    fn layers(&self, ui: &Ui) -> (PaintLayerTree, PaintLayerKey) {
         let mut layers = PaintLayerTree::new();
-        PaintLayerBuilder::new()
+        let root = PaintLayerBuilder::new()
             .build(
                 ui,
                 &self.inputs,
@@ -160,17 +160,19 @@ impl Fixture {
             )
             .unwrap();
 
-        layers
+        (layers, root)
     }
 
     fn draw(&self, ui: &Ui) -> Scene {
         let mut scene = Scene::new();
+        let (layers, root) = self.layers(ui);
         CometPainter::new().draw(
             ui,
             &self.inputs,
             &self.fragments,
             &self.pre_paint,
-            &self.layers(ui),
+            &layers,
+            root,
             SCENE_VIEWPORT,
             &mut scene,
         );

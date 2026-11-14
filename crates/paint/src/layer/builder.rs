@@ -8,7 +8,7 @@ use comet_layout::{
 use comet_tree::ui::{Props, Ui};
 
 use crate::{
-    layer::tree::{PaintLayerEntry, PaintLayerItem, PaintLayerKey, PaintLayerTree},
+    layer::{PaintLayerEntry, PaintLayerItem, PaintLayerKey, tree::PaintLayerTree},
     style::{Opacity, Transform, ZIndex},
 };
 
@@ -28,7 +28,8 @@ impl PaintLayerBuilder {
     }
 
     /// Build the layers of the fragments under `root` into `tree`, replacing
-    /// its previous layers, and return the root layer owned by `root`.
+    /// its previous layers, and return the root layer owned by `root`. Keep
+    /// it to paint the layers: `tree` does not store it.
     ///
     /// A box fragment below `root` starts a child layer when its item sets a
     /// non-identity [`Transform`], an [`Opacity`] other than 1, or a
@@ -61,7 +62,6 @@ impl PaintLayerBuilder {
             z_index: 0,
             entries: Vec::new(),
         });
-        tree.root = Some(root_layer);
 
         // Fragments are placed in tree order, so each layer lists its
         // entries in tree order before sorting.

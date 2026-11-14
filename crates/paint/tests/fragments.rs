@@ -11,8 +11,8 @@ use comet_layout::{
     },
 };
 use comet_paint::{
-    CometPainter,
     layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
+    painter::CometPainter,
     pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
     style::{BorderFill, BorderRadius, Fill, TextColor},
 };
@@ -147,10 +147,12 @@ fn draw(
         .resolve(ui, inputs, tree, units, &mut pre_paint, root)
         .unwrap();
     let mut layers = PaintLayerTree::new();
-    PaintLayerBuilder::new()
+    let layer_root = PaintLayerBuilder::new()
         .build(ui, inputs, tree, &mut layers, root)
         .unwrap();
-    painter.draw(ui, inputs, tree, &pre_paint, &layers, viewport, scene);
+    painter.draw(
+        ui, inputs, tree, &pre_paint, &layers, layer_root, viewport, scene,
+    );
 }
 
 #[test]
