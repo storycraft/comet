@@ -31,9 +31,9 @@ impl LayoutInputTree {
     /// Insert `flags` into an item and propagate descendant dirtiness to its
     /// ancestors. Stale keys are ignored.
     ///
-    /// Use [`LayoutFlags::FULL_DIRTY`] when the item's content, child list or text
+    /// Use [`LayoutFlags::NEED_FULL_LAYOUT`] when the item's content, child list or text
     /// style changed. Mark the parent for insertions, and both parents when
-    /// moving a source node. Use [`LayoutFlags::BOX_DIRTY`] when only its box
+    /// moving a source node. Use [`LayoutFlags::NEED_BOX_LAYOUT`] when only its box
     /// style changed, such as its size, padding, margin or insets, to keep its
     /// shaped text and child fragments.
     pub fn mark(&mut self, key: LayoutInputKey, flags: LayoutFlags) {
@@ -48,11 +48,11 @@ impl LayoutInputTree {
         while let Some(key) = ancestor {
             let item = &mut self.items[key];
 
-            if item.flags.contains(LayoutFlags::CHILDREN_DIRTY) {
+            if item.flags.contains(LayoutFlags::CHILD_NEED_LAYOUT) {
                 break;
             }
 
-            item.flags.insert(LayoutFlags::CHILDREN_DIRTY);
+            item.flags.insert(LayoutFlags::CHILD_NEED_LAYOUT);
             ancestor = self.items.parent(key);
         }
     }
@@ -83,7 +83,7 @@ impl LayoutInputTree {
             let flags = std::mem::take(&mut self.items[key].flags);
 
             // Flagged descendants always have flagged ancestors.
-            if flags.contains(LayoutFlags::CHILDREN_DIRTY) {
+            if flags.contains(LayoutFlags::CHILD_NEED_LAYOUT) {
                 pending.extend(self.items.children(key));
             }
         }

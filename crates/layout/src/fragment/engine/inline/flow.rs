@@ -24,7 +24,7 @@ impl Engine<'_> {
     pub(in crate::fragment::engine) fn inline_content_dirty(&self, key: LayoutInputKey) -> bool {
         InlineEvents::new(self.tree, key).any(|op| match op {
             Op::Push(key) | Op::Text(key) | Op::Box(key) | Op::Empty(key) => {
-                self.tree.items[key].flags.contains(LayoutFlags::FULL_DIRTY)
+                self.tree.items[key].flags.contains(LayoutFlags::NEED_FULL_LAYOUT)
             }
             Op::Block(_) | Op::Pop => false,
         })
@@ -47,7 +47,7 @@ impl Engine<'_> {
         // Content changes shape a run again; other flags, such as box style
         // changes of atomic inlines, only lay it out again.
         let dirty =
-            |key: LayoutInputKey| force || tree.items[key].flags.contains(LayoutFlags::FULL_DIRTY);
+            |key: LayoutInputKey| force || tree.items[key].flags.contains(LayoutFlags::NEED_FULL_LAYOUT);
         let flagged = |key: LayoutInputKey| force || !tree.items[key].flags.is_empty();
 
         let mut runs: Vec<FragmentKey> = self
@@ -59,7 +59,7 @@ impl Engine<'_> {
         runs.reverse();
         self.release_children(fragment);
 
-        let owner_dirty = force || tree.items[owner].flags.contains(LayoutFlags::FULL_DIRTY);
+        let owner_dirty = force || tree.items[owner].flags.contains(LayoutFlags::NEED_FULL_LAYOUT);
         // Inline elements open at the current position, which runs reopen.
         let mut open: Vec<LayoutInputKey> = Vec::new();
         let mut run = Run {

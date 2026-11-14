@@ -162,7 +162,7 @@ impl Engine<'_> {
                 self.release(fragment);
             }
 
-            if (force || flags.contains(LayoutFlags::CHILDREN_DIRTY))
+            if (force || flags.contains(LayoutFlags::CHILD_NEED_LAYOUT))
                 && child_layout != ChildLayout::None
             {
                 stack.extend(self.tree.items.children(key));
@@ -180,12 +180,12 @@ impl Engine<'_> {
     /// children changing kind only flag their parent's descendants.
     ///
     /// Box style changes alone keep shaped text and child fragments. Inline
-    /// content is shaped again only when an item in it is [`LayoutFlags::FULL_DIRTY`].
+    /// content is shaped again only when an item in it is [`LayoutFlags::NEED_FULL_LAYOUT`].
     fn invalidate_box(&mut self, key: LayoutInputKey, flags: LayoutFlags, force: bool) {
         let fragment = self.ensure_box(key);
         let created = self.scratch.created.contains(&fragment);
-        let box_dirty = force || flags.contains(LayoutFlags::BOX_DIRTY);
-        let dirty = force || flags.contains(LayoutFlags::FULL_DIRTY);
+        let box_dirty = force || flags.contains(LayoutFlags::NEED_BOX_LAYOUT);
+        let dirty = force || flags.contains(LayoutFlags::NEED_FULL_LAYOUT);
         let update =
             (!created).then(|| (self.mode(key), box_dirty.then(|| self.resolve_style(key))));
         let Some(state) = self.fragments.get_state_mut(fragment) else {

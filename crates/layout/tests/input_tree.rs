@@ -156,45 +156,45 @@ fn mark_propagates_to_ancestors() {
     clean(&mut tree, key);
 
     let leaf_key = tree.item_for_node(leaf).unwrap();
-    tree.mark(leaf_key, LayoutFlags::FULL_DIRTY);
+    tree.mark(leaf_key, LayoutFlags::NEED_FULL_LAYOUT);
 
-    assert_eq!(tree.items[leaf_key].flags, LayoutFlags::FULL_DIRTY);
+    assert_eq!(tree.items[leaf_key].flags, LayoutFlags::NEED_FULL_LAYOUT);
     assert_eq!(
         tree.items[tree.item_for_node(left).unwrap()].flags,
-        LayoutFlags::CHILDREN_DIRTY
+        LayoutFlags::CHILD_NEED_LAYOUT
     );
-    assert_eq!(tree.items[key].flags, LayoutFlags::CHILDREN_DIRTY);
+    assert_eq!(tree.items[key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
     assert!(
         tree.items[tree.item_for_node(right).unwrap()]
             .flags
             .is_empty()
     );
 
-    tree.mark_node(right, LayoutFlags::FULL_DIRTY);
+    tree.mark_node(right, LayoutFlags::NEED_FULL_LAYOUT);
     assert_eq!(
         tree.items[tree.item_for_node(right).unwrap()].flags,
-        LayoutFlags::FULL_DIRTY
+        LayoutFlags::NEED_FULL_LAYOUT
     );
 
     // Box style changes flag only the box, and propagate the same way.
     clean(&mut tree, key);
-    tree.mark_node(leaf, LayoutFlags::BOX_DIRTY);
+    tree.mark_node(leaf, LayoutFlags::NEED_BOX_LAYOUT);
 
-    assert_eq!(tree.items[leaf_key].flags, LayoutFlags::BOX_DIRTY);
+    assert_eq!(tree.items[leaf_key].flags, LayoutFlags::NEED_BOX_LAYOUT);
     assert_eq!(
         tree.items[tree.item_for_node(left).unwrap()].flags,
-        LayoutFlags::CHILDREN_DIRTY
+        LayoutFlags::CHILD_NEED_LAYOUT
     );
-    assert_eq!(tree.items[key].flags, LayoutFlags::CHILDREN_DIRTY);
+    assert_eq!(tree.items[key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
 
     // A full change includes the box change.
-    tree.mark(leaf_key, LayoutFlags::FULL_DIRTY);
-    assert_eq!(tree.items[leaf_key].flags, LayoutFlags::FULL_DIRTY);
-    assert!(LayoutFlags::FULL_DIRTY.contains(LayoutFlags::BOX_DIRTY));
+    tree.mark(leaf_key, LayoutFlags::NEED_FULL_LAYOUT);
+    assert_eq!(tree.items[leaf_key].flags, LayoutFlags::NEED_FULL_LAYOUT);
+    assert!(LayoutFlags::NEED_FULL_LAYOUT.contains(LayoutFlags::NEED_BOX_LAYOUT));
 
     // Unmapped nodes are ignored.
     let unmapped = ui.create(Node::Box, ());
-    tree.mark_node(unmapped, LayoutFlags::FULL_DIRTY);
+    tree.mark_node(unmapped, LayoutFlags::NEED_FULL_LAYOUT);
 }
 
 #[test]
@@ -233,8 +233,8 @@ fn update_reconciles_children_and_keeps_keys() {
         Some(key)
     );
     for item in tree.items.descendants(key) {
-        assert!(tree.items[item].flags.contains(LayoutFlags::BOX_DIRTY));
-        assert!(!tree.items[item].flags.contains(LayoutFlags::FULL_DIRTY));
+        assert!(tree.items[item].flags.contains(LayoutFlags::NEED_BOX_LAYOUT));
+        assert!(!tree.items[item].flags.contains(LayoutFlags::NEED_FULL_LAYOUT));
     }
     clean(&mut tree, key);
 
@@ -263,7 +263,7 @@ fn update_reconciles_children_and_keeps_keys() {
     assert_eq!(tree.items[inner_key].flags, LayoutFlags::empty());
     assert_eq!(
         tree.items[key].flags,
-        LayoutFlags::FULL_DIRTY | LayoutFlags::CHILDREN_DIRTY
+        LayoutFlags::NEED_FULL_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
     );
 }
 
@@ -285,16 +285,16 @@ fn changed_text_style_updates_descendants() {
     clean(&mut tree, key);
 
     ui.set_props(root, (bx::FontSize(StyleUnit::Px(24.0)),));
-    tree.mark(key, LayoutFlags::FULL_DIRTY);
+    tree.mark(key, LayoutFlags::NEED_FULL_LAYOUT);
     build(&mut builder, &ui, root, &mut tree).unwrap();
 
     let item = |node| &tree.items[tree.item_for_node(node).unwrap()];
 
     assert_eq!(item(text).text_style.span.font_size, 24.0);
-    assert_eq!(item(text).flags, LayoutFlags::FULL_DIRTY);
+    assert_eq!(item(text).flags, LayoutFlags::NEED_FULL_LAYOUT);
     assert_eq!(
         item(child).flags,
-        LayoutFlags::FULL_DIRTY | LayoutFlags::CHILDREN_DIRTY
+        LayoutFlags::NEED_FULL_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
     );
     // Its own font size wins, so the resolved style is unchanged and it is
     // not flagged.
@@ -320,7 +320,7 @@ fn partial_update_of_descendant_uses_parent_style() {
 
     let child_key = tree.item_for_node(child).unwrap();
     ui.set_props(child, (bx::FontSize(StyleUnit::Em(2.0)),));
-    tree.mark(child_key, LayoutFlags::FULL_DIRTY);
+    tree.mark(child_key, LayoutFlags::NEED_FULL_LAYOUT);
 
     assert_eq!(build(&mut builder, &ui, child, &mut tree), Some(child_key));
     assert_eq!(tree.items[child_key].text_style.span.font_size, 40.0);
@@ -329,7 +329,7 @@ fn partial_update_of_descendant_uses_parent_style() {
     clean(&mut tree, key);
     let other_child = ui.create(Node::Text, ());
     ui.append(root, other_child);
-    tree.mark_node(root, LayoutFlags::FULL_DIRTY);
+    tree.mark_node(root, LayoutFlags::NEED_FULL_LAYOUT);
     assert_eq!(build(&mut builder, &ui, root, &mut tree), Some(key));
 
     let inserted = tree.item_for_node(other_child).unwrap();
@@ -371,7 +371,7 @@ fn rebuilding_a_node_only_updates_its_own_item() {
     clean(&mut tree, key);
 
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
-    tree.mark_node(interruption, LayoutFlags::FULL_DIRTY);
+    tree.mark_node(interruption, LayoutFlags::NEED_FULL_LAYOUT);
     assert_eq!(
         build(&mut builder, &ui, interruption, &mut tree),
         Some(interruption_key)
@@ -386,8 +386,8 @@ fn rebuilding_a_node_only_updates_its_own_item() {
         ChildLayout::Block
     );
     assert_eq!(tree.items[paragraph_key].child_layout, ChildLayout::Block);
-    assert_eq!(tree.items[paragraph_key].flags, LayoutFlags::CHILDREN_DIRTY);
-    assert_eq!(tree.items[span_key].flags, LayoutFlags::CHILDREN_DIRTY);
+    assert_eq!(tree.items[paragraph_key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
+    assert_eq!(tree.items[span_key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
     assert_fresh(&ui, root, &tree, key);
 
     // Deleting a node flags its parent's child list.
@@ -395,8 +395,8 @@ fn rebuilding_a_node_only_updates_its_own_item() {
     ui.delete(interruption);
     assert_eq!(build(&mut builder, &ui, interruption, &mut tree), None);
     assert_eq!(tree.item_for_node(interruption), None);
-    assert_eq!(tree.items[span_key].flags, LayoutFlags::FULL_DIRTY);
-    assert_eq!(tree.items[paragraph_key].flags, LayoutFlags::CHILDREN_DIRTY);
+    assert_eq!(tree.items[span_key].flags, LayoutFlags::NEED_FULL_LAYOUT);
+    assert_eq!(tree.items[paragraph_key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
     assert_fresh(&ui, root, &tree, key);
 }
 
@@ -446,13 +446,13 @@ fn build_re_resolves_and_flags_clean_subtrees() {
 
     assert_eq!(
         tree.items[key].flags,
-        LayoutFlags::FULL_DIRTY | LayoutFlags::CHILDREN_DIRTY
+        LayoutFlags::NEED_FULL_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
     );
     assert_eq!(
         tree.items[child_key].flags,
-        LayoutFlags::FULL_DIRTY | LayoutFlags::CHILDREN_DIRTY
+        LayoutFlags::NEED_FULL_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
     );
-    assert_eq!(tree.items[text_key].flags, LayoutFlags::FULL_DIRTY);
+    assert_eq!(tree.items[text_key].flags, LayoutFlags::NEED_FULL_LAYOUT);
 
     // Building again with the same root font size and viewport resolves equal
     // items, so nothing is flagged.
@@ -471,13 +471,13 @@ fn build_re_resolves_and_flags_clean_subtrees() {
 
     assert_eq!(
         tree.items[key].flags,
-        LayoutFlags::BOX_DIRTY | LayoutFlags::CHILDREN_DIRTY
+        LayoutFlags::NEED_BOX_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
     );
     assert_eq!(
         tree.items[child_key].flags,
-        LayoutFlags::BOX_DIRTY | LayoutFlags::CHILDREN_DIRTY
+        LayoutFlags::NEED_BOX_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
     );
-    assert_eq!(tree.items[text_key].flags, LayoutFlags::BOX_DIRTY);
+    assert_eq!(tree.items[text_key].flags, LayoutFlags::NEED_BOX_LAYOUT);
 
     // Only items whose text style resolves differently are fully dirty.
     clean(&mut tree, key);
@@ -490,18 +490,18 @@ fn build_re_resolves_and_flags_clean_subtrees() {
 
     assert_eq!(
         tree.items[key].flags,
-        LayoutFlags::BOX_DIRTY | LayoutFlags::CHILDREN_DIRTY
+        LayoutFlags::NEED_BOX_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
     );
     assert_eq!(
         tree.items[child_key].flags,
-        LayoutFlags::BOX_DIRTY | LayoutFlags::CHILDREN_DIRTY
+        LayoutFlags::NEED_BOX_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
     );
-    assert_eq!(tree.items[text_key].flags, LayoutFlags::FULL_DIRTY);
+    assert_eq!(tree.items[text_key].flags, LayoutFlags::NEED_FULL_LAYOUT);
     assert_eq!(tree.items[text_key].text_style.span.letter_spacing, 5.0);
 
     // Marked content changes are kept.
     clean(&mut tree, key);
-    tree.mark(text_key, LayoutFlags::FULL_DIRTY);
+    tree.mark(text_key, LayoutFlags::NEED_FULL_LAYOUT);
     builder.build(&ui, &mut tree, BuildRequest::new(root, 20.0, wider));
-    assert_eq!(tree.items[text_key].flags, LayoutFlags::FULL_DIRTY);
+    assert_eq!(tree.items[text_key].flags, LayoutFlags::NEED_FULL_LAYOUT);
 }

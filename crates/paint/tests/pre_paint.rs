@@ -708,7 +708,7 @@ fn resolving_a_subtree_follows_the_layout() {
     let root_data = f.boxed(root).clone();
 
     ui.set_props(top, (fixed(10.0, 30.0),));
-    f.inputs.mark_node(top, LayoutFlags::BOX_DIRTY);
+    f.inputs.mark_node(top, LayoutFlags::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
 
     // Resolved data is kept until it is resolved again.
@@ -788,7 +788,7 @@ fn resolving_fails_for_nodes_deleted_since_the_layout_was_built() {
     assert_eq!(f.resolve(&ui, root_fragment), None);
 
     // Resolving succeeds again once the layout follows the UI.
-    f.inputs.mark_node(root, LayoutFlags::FULL_DIRTY);
+    f.inputs.mark_node(root, LayoutFlags::NEED_FULL_LAYOUT);
     let root_fragment = f.layout(&ui, root);
     assert_eq!(f.resolve(&ui, root_fragment), Some(()));
 }

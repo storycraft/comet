@@ -29,7 +29,7 @@ pub struct BuildRequest {
     pub viewport: Size<f64>,
     /// Whether `root_font_size` or `viewport` may differ from the previous
     /// build. When set, every existing item in the subtree is marked
-    /// [`LayoutFlags::BOX_DIRTY`], since box styles may depend on them. When
+    /// [`LayoutFlags::NEED_BOX_LAYOUT`], since box styles may depend on them. When
     /// unset, they are treated as unchanged and only items whose resolved
     /// kind, text style or child list changed are flagged.
     pub forced: bool,
@@ -77,9 +77,9 @@ impl LayoutInputTreeBuilder {
     /// no longer mirrors the UI. Build from the UI root first.
     ///
     /// Generated items have every [`LayoutFlags`] set. Existing items are
-    /// marked [`LayoutFlags::FULL_DIRTY`] when their resolved text style, kind
+    /// marked [`LayoutFlags::NEED_FULL_LAYOUT`] when their resolved text style, kind
     /// or child list changed. In a [forced](BuildRequest::forced) build, the
-    /// other existing items are marked [`LayoutFlags::BOX_DIRTY`], so every box
+    /// other existing items are marked [`LayoutFlags::NEED_BOX_LAYOUT`], so every box
     /// is laid out again but only changed content is refragmented. Mark content
     /// changes the builder cannot see, such as edited text, as usual. Flags are
     /// left for the consumer of the input tree to clear. Use `item_for_node`
@@ -105,7 +105,7 @@ impl LayoutInputTreeBuilder {
                 tree.delete_item(key);
 
                 if let Some(parent) = parent {
-                    tree.mark(parent, LayoutFlags::FULL_DIRTY);
+                    tree.mark(parent, LayoutFlags::NEED_FULL_LAYOUT);
                 }
             }
 
@@ -177,7 +177,7 @@ impl LayoutInputTreeBuilder {
 
                 if existing.is_none() {
                     // Propagate the new item's flags to the ancestors.
-                    tree.mark(item, LayoutFlags::FULL_DIRTY);
+                    tree.mark(item, LayoutFlags::NEED_FULL_LAYOUT);
                 }
 
                 self.pending.push(Task {
@@ -194,7 +194,7 @@ impl LayoutInputTreeBuilder {
         }
 
         if changed {
-            tree.mark(key, LayoutFlags::FULL_DIRTY);
+            tree.mark(key, LayoutFlags::NEED_FULL_LAYOUT);
         }
     }
 
@@ -237,9 +237,9 @@ impl LayoutInputTreeBuilder {
         // forced build, box styles may depend on a changed viewport or root
         // font size, so every box is laid out again.
         if changed {
-            tree.mark(key, LayoutFlags::FULL_DIRTY);
+            tree.mark(key, LayoutFlags::NEED_FULL_LAYOUT);
         } else if self.forced {
-            tree.mark(key, LayoutFlags::BOX_DIRTY);
+            tree.mark(key, LayoutFlags::NEED_BOX_LAYOUT);
         }
 
         Some(key)

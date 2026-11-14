@@ -178,7 +178,7 @@ fn custom_layout_runs_again_when_its_box_is_dirty() {
         calls.store(0, Ordering::Relaxed);
 
         if dirty {
-            f.inputs.mark_node(custom, LayoutFlags::FULL_DIRTY);
+            f.inputs.mark_node(custom, LayoutFlags::NEED_FULL_LAYOUT);
         }
 
         let fragment_root = f.build(&ui, root, viewport_width);
@@ -275,7 +275,7 @@ fn container_children_follow_reorders_and_removals() {
 
     ui.prepend(root, children[2]);
     ui.delete(children[0]);
-    f.inputs.mark_node(root, LayoutFlags::FULL_DIRTY);
+    f.inputs.mark_node(root, LayoutFlags::NEED_FULL_LAYOUT);
     f.build(&ui, root, 400.0);
 
     // Box fragments of kept children are reused in their new order.
@@ -378,7 +378,7 @@ fn size_probes_do_not_leave_probe_geometry_in_cached_final_layouts() {
     // A new probe width misses the wrapper's size cache, while its final
     // layout input is unchanged.
     probe.store(50, Ordering::Relaxed);
-    f.inputs.mark_node(custom, LayoutFlags::FULL_DIRTY);
+    f.inputs.mark_node(custom, LayoutFlags::NEED_FULL_LAYOUT);
     f.build(&ui, root, 400.0);
 
     assert_eq!(width(&f, wrapper), 300.0);

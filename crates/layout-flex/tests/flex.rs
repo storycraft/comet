@@ -384,12 +384,12 @@ fn nested_flex_and_incremental_style_changes_match_fresh_layout() {
             );
             ui.set_props(b, (flex::FlexGrow(2.0),));
             let (nested, b) = (retained.item(nested), retained.item(b));
-            retained.inputs.mark(nested, LayoutFlags::FULL_DIRTY);
-            retained.inputs.mark(b, LayoutFlags::FULL_DIRTY);
+            retained.inputs.mark(nested, LayoutFlags::NEED_FULL_LAYOUT);
+            retained.inputs.mark(b, LayoutFlags::NEED_FULL_LAYOUT);
         } else if step == 2 {
             ui.prepend(nested, b);
             let nested = retained.item(nested);
-            retained.inputs.mark(nested, LayoutFlags::FULL_DIRTY);
+            retained.inputs.mark(nested, LayoutFlags::NEED_FULL_LAYOUT);
         }
 
         let current = retained.build(&ui, root);

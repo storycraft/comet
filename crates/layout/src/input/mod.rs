@@ -43,17 +43,17 @@ bitflags! {
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
     pub struct LayoutFlags: u8 {
         /// At least one descendant needs refragmentation.
-        const CHILDREN_DIRTY = 1 << 0;
+        const CHILD_NEED_LAYOUT = 1 << 0;
 
         /// Only the box style of this item changed, such as its size, padding,
         /// margin or insets. Its box is laid out again, keeping its shaped text
         /// and child fragments.
-        const BOX_DIRTY = 1 << 1;
+        const NEED_BOX_LAYOUT = 1 << 1;
 
         /// This item needs refragmentation: its content, child list, kind or
-        /// text style changed. Includes [`Self::BOX_DIRTY`], so check
-        /// `contains(BOX_DIRTY)` for any change of the box.
-        const FULL_DIRTY = 1 << 2 | Self::BOX_DIRTY.bits();
+        /// text style changed. Includes [`Self::NEED_BOX_LAYOUT`], so check
+        /// `contains(NEED_BOX_LAYOUT)` for any change of the box.
+        const NEED_FULL_LAYOUT = 1 << 2 | Self::NEED_BOX_LAYOUT.bits();
     }
 }
 
