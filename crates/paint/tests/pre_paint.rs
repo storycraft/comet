@@ -856,3 +856,44 @@ fn collapsed_fragments_have_no_inverse_transform() {
             .any(|command| command.starts_with("clip"))
     );
 }
+
+#[test]
+fn local_hits_follow_the_rounded_border_box() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let rounded = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 20.0),
+            BorderRadius(LayoutRect::new_all(StyleUnit::Px(10.0))),
+        ),
+    );
+    ui.append(root, rounded);
+    text(&mut ui, root, "text");
+
+    let mut f = Fixture::default();
+    let root_fragment = f.build(&ui, root);
+    let rounded = f.box_of(rounded);
+    let hit = |key, x, y| f.pre_paint.hit_local(&f.fragments, key, Point::new(x, y));
+
+    // Local coordinates start at the border box corner, whatever its layout
+    // location.
+    assert!(hit(rounded, 20.0, 10.0));
+    assert!(hit(rounded, 0.0, 10.0));
+    assert!(!hit(rounded, 1.0, 1.0));
+    assert!(!hit(rounded, 41.0, 10.0));
+    assert!(!hit(rounded, -1.0, 10.0));
+
+    // Any kind of fragment is hit inside its box, line boxes included.
+    let line = f
+        .fragments
+        .items
+        .children(root_fragment)
+        .find(|&child| !f.fragments.items[child].item.is_box())
+        .unwrap();
+    assert!(hit(line, 1.0, 1.0));
+    assert!(!hit(line, -1.0, 1.0));
+
+    // Fragments missing from the trees are not hit instead of panicking.
+    assert!(!hit(FragmentKey::default(), 1.0, 1.0));
+}
