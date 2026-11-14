@@ -2,21 +2,23 @@
 
 use std::sync::Arc;
 
+use anyrender::Paint;
 use anyrender::PaintScene;
 use bytemuck::TransparentWrapper;
 use comet_layout::{
     fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
-    input::{LayoutInputKind, tree::LayoutInputTree},
+    input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
 };
 use comet_tree::{node::NodeKey, ui::Ui};
 use kurbo::{Affine, Point, Rect, Stroke, Vec2};
 use parley::PositionedLayoutItem;
 use peniko::BlendMode;
+use slotmap::SecondaryMap;
 
 use crate::{
     layer::{PaintLayerKey, tree::PaintLayerTree},
     pre_paint::{FragmentData, tree::PrePaintTree},
-    style::{BackdropFilter, BorderFill, Fill, Filter, Opacity},
+    style::{BackdropFilter, BorderFill, Fill, Filter, Opacity, TextColor},
 };
 
 /// Paints final fragments in the order of their [`PaintLayerTree`], with the
@@ -29,6 +31,11 @@ pub struct CometPainter {
     /// Ancestors of a child layer's owner, up to the owner of its parent
     /// layer, innermost first.
     chain: Vec<FragmentKey>,
+    /// Text color of each item looked up while painting, cleared on every
+    /// paint.
+    text_colors: SecondaryMap<LayoutInputKey, Paint>,
+    /// Items looked up for a text color, innermost first.
+    items: Vec<LayoutInputKey>,
 }
 
 /// A step of painting the fragments of a layer.
@@ -166,6 +173,7 @@ impl CometPainter {
         };
 
         self.pending.clear();
+        self.text_colors.clear();
         self.draw_layer(sources, root, parent, None, scene);
     }
 
@@ -422,10 +430,55 @@ impl CometPainter {
         }
     }
 
+    /// The text color of an item: the [`TextColor`] of the nearest item
+    /// among it and its ancestors setting one, or the default. Inherited
+    /// along the input item tree, not the fragment tree, so a block inside an
+    /// inline span inherits from the span.
+    ///
+    /// Looked up from the UI and kept until the next paint, along with the
+    /// items on the way, so each item is looked up at most once per paint.
+    fn text_color(&mut self, sources: Sources<'_>, key: LayoutInputKey) -> &Paint {
+        if !self.text_colors.contains_key(key) {
+            let items = &sources.inputs.items;
+            let mut next = Some(key);
+
+            self.items.clear();
+
+            let color = loop {
+                let Some(key) = next else {
+                    break TextColor::default().0;
+                };
+
+                if let Some(color) = self.text_colors.get(key) {
+                    break color.clone();
+                }
+
+                self.items.push(key);
+
+                let own = items
+                    .get(key)
+                    .and_then(|item| sources.ui.props(item.node))
+                    .and_then(|props| props.get_cloned());
+
+                if let Some(TextColor(color)) = own {
+                    break color;
+                }
+
+                next = items.parent(key);
+            };
+
+            for &key in &self.items {
+                self.text_colors.insert(key, color.clone());
+            }
+        }
+
+        &self.text_colors[key]
+    }
+
     /// Paint one fragment itself, without its descendants, inside the clips
     /// bounded by `clip`.
     fn draw_fragment(
-        &self,
+        &mut self,
         sources: Sources<'_>,
         key: FragmentKey,
         transforms: Transforms,
@@ -478,9 +531,9 @@ impl CometPainter {
                     draw_box(ui, inputs, fragment, own, rect, transform, scene);
                 }
 
-                if let Some(owner) = inline_owner
-                    && let Some(data) = pre_paint.get(fragment.source)
-                {
+                if let Some(owner) = inline_owner {
+                    let text_color = self.text_color(sources, fragment.source);
+
                     draw_glyph_run(
                         tree,
                         fragment,
@@ -488,7 +541,7 @@ impl CometPainter {
                         (line, item),
                         rect,
                         transform,
-                        &data.text_color,
+                        text_color,
                         &visible,
                         scene,
                     );

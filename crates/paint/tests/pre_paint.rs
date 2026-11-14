@@ -130,8 +130,21 @@ impl Fixture {
         self.fragment(key).transform
     }
 
-    fn text_color(&self, node: NodeKey) -> Color {
-        solid(&self.data(node).text_color)
+    /// Colors of the glyph runs painted, in paint order, with consecutive
+    /// equal colors merged.
+    fn text_colors(&self, ui: &Ui) -> Vec<Color> {
+        let mut colors: Vec<Color> = self
+            .draw(ui)
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                RenderCommand::GlyphRun(run) => Some(solid(&run.brush)),
+                _ => None,
+            })
+            .collect();
+        colors.dedup();
+
+        colors
     }
 
     /// Border boxes of the fragments an item links together, each in its own
@@ -411,18 +424,18 @@ fn fragment_boxes_resolve_their_border_radii() {
 fn text_color_is_inherited_through_the_ui() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, (TextColor(Paint::Solid(BLUE)),));
-    let plain = text(&mut ui, root, "blue ");
+    text(&mut ui, root, "blue ");
     let span = ui.create(
         Node::Box,
         (bx::DisplayOuter::Inline, TextColor(Paint::Solid(RED))),
     );
     ui.append(root, span);
-    let before = text(&mut ui, span, "red ");
+    text(&mut ui, span, "red ");
     // A block inside the span is a fragment child of the root box, but still
     // inherits from the span.
     let block = ui.create(Node::Box, (fixed(10.0, 10.0),));
     ui.append(span, block);
-    let inside = text(&mut ui, block, "still red");
+    text(&mut ui, block, "still red");
     let green = text(&mut ui, span, "green");
     ui.set_props(green, (TextColor(Paint::Solid(GREEN)),));
 
@@ -433,11 +446,8 @@ fn text_color_is_inherited_through_the_ui() {
         f.fragments.items.parent(f.box_of(block)),
         Some(root_fragment)
     );
-    assert_eq!(f.text_color(plain), BLUE);
-    assert_eq!(f.text_color(before), RED);
-    assert_eq!(f.text_color(block), RED);
-    assert_eq!(f.text_color(inside), RED);
-    assert_eq!(f.text_color(green), GREEN);
+    // Blue, then red before and inside the block, then green.
+    assert_eq!(f.text_colors(&ui), [BLUE, RED, GREEN]);
 }
 
 #[test]
@@ -729,32 +739,33 @@ fn resolving_a_subtree_follows_the_layout() {
 }
 
 #[test]
-fn resolving_a_subtree_looks_up_its_paint_styles_again() {
+fn text_color_changes_paint_without_resolving() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, (TextColor(Paint::Solid(BLUE)),));
+    text(&mut ui, root, "blue");
     let colored = ui.create(Node::Box, (TextColor(Paint::Solid(RED)),));
     let block = ui.create(Node::Box, ());
     ui.append(root, colored);
     ui.append(colored, block);
-    let content = text(&mut ui, block, "text");
+    text(&mut ui, block, "text");
 
     let mut f = Fixture::default();
     f.build(&ui, root);
 
-    // Paint style changes are only looked up when resolving.
+    assert_eq!(f.text_colors(&ui), [BLUE, RED]);
+
+    // Text colors are looked up while painting, inherited by the nested
+    // text, so the change shows without resolving the pre-paint tree.
     ui.set_props(colored, (TextColor(Paint::Solid(GREEN)),));
-    assert_eq!(f.text_color(colored), RED);
+    assert_eq!(f.text_colors(&ui), [BLUE, GREEN]);
 
-    f.resolve(&ui, f.box_of(colored)).unwrap();
-
-    assert_eq!(f.text_color(root), BLUE);
-    assert_eq!(f.text_color(colored), GREEN);
-    assert_eq!(f.text_color(block), GREEN);
-    assert_eq!(f.text_color(content), GREEN);
+    // Without a color of its own, the box inherits again.
+    ui.remove_prop::<TextColor>(colored);
+    assert_eq!(f.text_colors(&ui), [BLUE]);
 }
 
 #[test]
-fn resolving_a_fragment_resolves_only_its_unresolved_ancestor_items() {
+fn resolving_a_fragment_leaves_its_ancestors_unresolved() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, (TextColor(Paint::Solid(RED)),));
     let block = ui.create(Node::Box, ());
@@ -765,11 +776,12 @@ fn resolving_a_fragment_resolves_only_its_unresolved_ancestor_items() {
     let root_fragment = f.layout(&ui, root);
     f.resolve(&ui, f.box_of(block)).unwrap();
 
-    // Fragments do not depend on their ancestors, items inherit from theirs.
+    // Neither fragments nor items depend on their ancestors.
     assert!(f.pre_paint.fragment(root_fragment).is_none());
+    assert!(f.pre_paint.get(f.item(root)).is_none());
     assert_eq!(f.transform(f.box_of(block)), Affine::IDENTITY);
-    assert_eq!(f.text_color(root), RED);
-    assert_eq!(f.text_color(content), RED);
+    assert!(f.pre_paint.get(f.item(block)).is_some());
+    assert!(f.pre_paint.get(f.item(content)).is_some());
 }
 
 #[test]

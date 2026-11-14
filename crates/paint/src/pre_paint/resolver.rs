@@ -12,10 +12,7 @@ use kurbo::{Affine, Point, RoundedRectRadii, Size};
 
 use crate::{
     pre_paint::{FragmentData, LayoutInputData, tree::PrePaintTree},
-    style::{
-        BackdropFilter, BorderRadius, Filter, Opacity, TextColor, Transform, TransformOrigin,
-        ZIndex,
-    },
+    style::{BackdropFilter, BorderRadius, Filter, Opacity, Transform, TransformOrigin, ZIndex},
 };
 
 /// Resolves a [`PrePaintTree`] for a fragment tree. Keep it to reuse its
@@ -43,10 +40,8 @@ impl PrePaintTreeResolver {
     }
 
     /// Resolve the layout input items under the source of `key` into `tree`
-    /// again, then the fragments under `key`. Fragment data is relative to
-    /// the parent fragment, so ancestor fragments are neither read nor
-    /// resolved. Items inherit from their parents: unresolved ancestor items
-    /// are resolved along with them, and resolved ones stay as they are.
+    /// again, then the fragments under `key`. Data only depends on the
+    /// fragment or item itself, so ancestors are neither read nor resolved.
     ///
     /// Resolve again the subtrees whose layout or paint styles changed, or the
     /// whole tree after a fragment build or when the root font size or
@@ -104,8 +99,7 @@ impl PrePaintTreeResolver {
         Some(())
     }
 
-    /// Resolve the data of the layout input items under `key`, each after the
-    /// parent it inherits from.
+    /// Resolve the data of the layout input items under `key`.
     fn resolve_items(
         &mut self,
         sources: Sources<'_>,
@@ -114,21 +108,12 @@ impl PrePaintTreeResolver {
     ) -> Option<()> {
         let items = &sources.inputs.items;
 
-        // Start below the nearest resolved ancestor.
-        let mut start = key;
-
-        while let Some(parent) = items.parent(start)
-            && tree.get(parent).is_none()
-        {
-            start = parent;
-        }
-
         let pending = &mut self.items;
         pending.clear();
-        pending.push(start);
+        pending.push(key);
 
         while let Some(key) = pending.pop() {
-            let data = sources.resolve_item(tree, key)?;
+            let data = sources.resolve_item(key)?;
 
             tree.layout_mapping.insert(key, data);
             pending.extend(items.children(key).rev());
@@ -252,24 +237,13 @@ impl Sources<'_> {
         Point::new(origin.x, origin.y)
     }
 
-    /// Resolve the data of one item from the UI, its fragments and its
-    /// parent's data.
-    fn resolve_item(&self, tree: &PrePaintTree, key: LayoutInputKey) -> Option<LayoutInputData> {
+    /// Resolve the data of one item from the UI and its fragments.
+    fn resolve_item(&self, key: LayoutInputKey) -> Option<LayoutInputData> {
         let props = self.ui.props(self.inputs.items[key].node)?;
-
-        // Text colors inherit from the parent item unless the item sets one.
-        let TextColor(text_color) =
-            props
-                .get_cloned()
-                .unwrap_or_else(|| match self.inputs.items.parent(key) {
-                    Some(parent) => TextColor(tree[parent].text_color.clone()),
-                    None => TextColor::default(),
-                });
         let Overflow(overflow) = props.get_or_default();
 
         Some(LayoutInputData {
             stitched_size: self.stitched_size(key),
-            text_color,
             clip: (
                 overflow.x != OverflowMode::Visible,
                 overflow.y != OverflowMode::Visible,

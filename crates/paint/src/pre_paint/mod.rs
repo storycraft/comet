@@ -2,15 +2,14 @@
 //!
 //! A [`PrePaintTree`](tree::PrePaintTree) holds the [`FragmentData`] of every
 //! fragment, such as its transform relative to its parent fragment, and the
-//! [`LayoutInputData`] of every layout input item. Fragment data only depends
-//! on the fragment itself and its item, so any fragment subtree can be
-//! resolved again on its own. Items inherit text colors from their parent
-//! items.
+//! [`LayoutInputData`] of every layout input item. Data only depends on the
+//! fragment or item itself, and fragment data on its item, so any subtree can
+//! be resolved again on its own. Inherited paint styles, such as text colors,
+//! are looked up while painting instead.
 
 pub mod resolver;
 pub mod tree;
 
-use anyrender::Paint;
 use kurbo::{Affine, Point, RoundedRectRadii, Size};
 
 /// Paint data of a layout input item, shared by all fragments it generates.
@@ -22,9 +21,6 @@ pub struct LayoutInputData {
     /// other, inline and glyph run fragments side by side. Line boxes and
     /// anonymous blocks do not participate. Border radii resolve against it.
     pub stitched_size: Size,
-
-    /// Text color, inherited from the parent item unless the item sets one.
-    pub text_color: Paint,
 
     /// Axes the item clips its overflow on. Each box fragment of the item
     /// clips its contents to its own border box; other fragments do not clip.
