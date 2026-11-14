@@ -12,7 +12,10 @@ use kurbo::{Affine, Point, RoundedRectRadii, Size};
 
 use crate::{
     pre_paint::{FragmentData, LayoutInputData, tree::PrePaintTree},
-    style::{BorderRadius, TextColor, Transform, TransformOrigin, ZIndex},
+    style::{
+        BackdropFilter, BorderRadius, Filter, Opacity, TextColor, Transform, TransformOrigin,
+        ZIndex,
+    },
 };
 
 /// Resolves a [`PrePaintTree`] for a fragment tree. Keep it to reuse its
@@ -166,6 +169,7 @@ impl Sources<'_> {
             inverse_transform: invert(transform),
             transform_origin,
             border_radius: self.border_radius(tree, key, props),
+            stacking: box_props.and_then(stacking),
         })
     }
 
@@ -262,11 +266,6 @@ impl Sources<'_> {
                     None => TextColor::default(),
                 });
         let Overflow(overflow) = props.get_or_default();
-        let ZIndex(z_index) = props.get_or_default();
-        let z_index = match z_index {
-            AutoValue::Auto => None,
-            AutoValue::Value(z_index) => Some(z_index),
-        };
 
         Some(LayoutInputData {
             stitched_size: self.stitched_size(key),
@@ -275,7 +274,6 @@ impl Sources<'_> {
                 overflow.x != OverflowMode::Visible,
                 overflow.y != OverflowMode::Visible,
             ),
-            z_index,
         })
     }
 
@@ -302,6 +300,22 @@ impl Sources<'_> {
                 }
             })
     }
+}
+
+/// The z index of the paint layer a box starts, or `None` if it paints in
+/// the layer of its parent. Setting a layer style starts a layer, whatever
+/// its value. An auto z index counts as 0.
+fn stacking(props: Props<'_>) -> Option<i32> {
+    if let AutoValue::Value(z_index) = props.get_or_default::<ZIndex>().0 {
+        return Some(z_index);
+    }
+
+    let starts = props.get::<Transform>().is_some()
+        || props.get::<Opacity>().is_some()
+        || props.get::<Filter>().is_some()
+        || props.get::<BackdropFilter>().is_some();
+
+    starts.then_some(0)
 }
 
 /// The inverse of `transform`, or `None` if it collapses an axis and has no

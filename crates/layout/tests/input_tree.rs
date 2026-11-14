@@ -233,8 +233,16 @@ fn update_reconciles_children_and_keeps_keys() {
         Some(key)
     );
     for item in tree.items.descendants(key) {
-        assert!(tree.items[item].flags.contains(LayoutFlags::NEED_BOX_LAYOUT));
-        assert!(!tree.items[item].flags.contains(LayoutFlags::NEED_FULL_LAYOUT));
+        assert!(
+            tree.items[item]
+                .flags
+                .contains(LayoutFlags::NEED_BOX_LAYOUT)
+        );
+        assert!(
+            !tree.items[item]
+                .flags
+                .contains(LayoutFlags::NEED_FULL_LAYOUT)
+        );
     }
     clean(&mut tree, key);
 
@@ -386,7 +394,10 @@ fn rebuilding_a_node_only_updates_its_own_item() {
         ChildLayout::Block
     );
     assert_eq!(tree.items[paragraph_key].child_layout, ChildLayout::Block);
-    assert_eq!(tree.items[paragraph_key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
+    assert_eq!(
+        tree.items[paragraph_key].flags,
+        LayoutFlags::CHILD_NEED_LAYOUT
+    );
     assert_eq!(tree.items[span_key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
     assert_fresh(&ui, root, &tree, key);
 
@@ -396,7 +407,10 @@ fn rebuilding_a_node_only_updates_its_own_item() {
     assert_eq!(build(&mut builder, &ui, interruption, &mut tree), None);
     assert_eq!(tree.item_for_node(interruption), None);
     assert_eq!(tree.items[span_key].flags, LayoutFlags::NEED_FULL_LAYOUT);
-    assert_eq!(tree.items[paragraph_key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
+    assert_eq!(
+        tree.items[paragraph_key].flags,
+        LayoutFlags::CHILD_NEED_LAYOUT
+    );
     assert_fresh(&ui, root, &tree, key);
 }
 

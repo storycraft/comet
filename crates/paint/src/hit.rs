@@ -3,10 +3,9 @@
 
 use comet_layout::fragment::{FragmentItem, FragmentKey, tree::FragmentTree};
 use kurbo::Point;
-use slotmap::SecondaryMap;
 
 use crate::{
-    layer::{PaintLayerEntry, PaintLayerKey, tree::PaintLayerTree},
+    layer::{PaintLayerKey, tree::PaintLayerTree},
     pre_paint::tree::PrePaintTree,
 };
 
@@ -14,19 +13,29 @@ use crate::{
 /// buffers across hit tests.
 #[derive(Default)]
 pub struct PaintHitTester {
-    /// The point in the local coordinates of each fragment looked at so far,
-    /// or `None` for fragments it cannot hit.
-    locals: SecondaryMap<FragmentKey, Option<Local>>,
-    /// Layer entries to search, popped in reverse paint order.
-    pending: Vec<PaintLayerEntry>,
+    /// Fragments to test in the layer being searched.
+    pending: Vec<Visit>,
+    /// Ancestors of a fragment, innermost first.
+    chain: Vec<FragmentKey>,
 }
 
-/// The point hit, in the local coordinates of a fragment.
+/// A step of searching the fragments of a layer, in reverse paint order.
 #[derive(Clone, Copy)]
-struct Local {
+struct Visit {
+    key: FragmentKey,
+    /// The point in the local coordinates of the fragment's parent, or of
+    /// the fragment itself once its children were queued.
     point: Point,
-    /// Whether the point lies outside a clip of the fragment's ancestors.
-    clipped: bool,
+    /// Whether the fragment's children were queued, so it is tested next.
+    expanded: bool,
+}
+
+/// What hit testing reads from.
+#[derive(Clone, Copy)]
+struct Sources<'a> {
+    layers: &'a PaintLayerTree,
+    fragments: &'a FragmentTree,
+    pre_paint: &'a PrePaintTree,
 }
 
 impl PaintHitTester {
@@ -37,18 +46,21 @@ impl PaintHitTester {
     /// The topmost fragment under `point`, in scene coordinates, among the
     /// layers of `root` in `layers`, or `None` if no fragment is under it.
     ///
-    /// Entries are searched depth first in reverse paint order, so fragments
-    /// painting on top are hit first: later entries before earlier ones, and
-    /// a child layer's entries before the entries painting below it. A
-    /// fragment is hit when `point` falls in its border box, rounded with its
-    /// border radius, after mapping it through the transforms of the fragment
-    /// and its ancestors, including the ancestors of `root`'s owner. See
+    /// Fragments are searched in reverse paint order, so fragments painting
+    /// on top are hit first: in each layer, its child layers with a
+    /// non-negative z index from the last, then its other fragments from the
+    /// last painted, children before their parents, then its child layers
+    /// with a negative z index from the last, then its owner. A fragment is
+    /// hit when `point` falls in its border box, rounded with its border
+    /// radius, after mapping it through the transforms of the fragment and
+    /// its ancestors, including the ancestors of `root`'s owner. See
     /// [`PrePaintTree::hit_local`].
     ///
     /// Points outside the clip of a box clipping its overflow do not hit its
-    /// descendants, like the painter. Clips of the ancestors of `root`'s
-    /// owner do not apply. Line boxes and anonymous blocks are never hit, and
-    /// neither are fragments whose transforms collapse them to no area.
+    /// descendants, like the painter, and their subtrees are not searched.
+    /// Clips of the ancestors of `root`'s owner do not apply. Line boxes and
+    /// anonymous blocks are never hit, and neither are fragments whose
+    /// transforms collapse them to no area.
     ///
     /// `pre_paint` must be resolved for `fragments`, and `layers` built for
     /// them. Returns `None` if `root` is not in `layers`. Fragments missing
@@ -62,34 +74,185 @@ impl PaintHitTester {
         root: PaintLayerKey,
         point: Point,
     ) -> Option<FragmentKey> {
-        let root_owner = layers.get(root)?.owner;
-
-        self.locals.clear();
-        self.pending.clear();
-
-        let mut hit = Hit {
+        let sources = Sources {
+            layers,
             fragments,
             pre_paint,
-            root: root_owner,
-            point,
-            locals: &mut self.locals,
         };
+        let owner = layers.get(root)?.owner;
 
-        // Entries are pushed in paint order, so they pop in reverse.
-        self.pending.push(PaintLayerEntry::Layer(root));
+        // Map the point to the local coordinates of the owner's parent.
+        self.chain.clear();
+        let mut next = fragments.items.parent(owner);
 
-        while let Some(entry) = self.pending.pop() {
-            match entry {
-                PaintLayerEntry::Fragment(key) => {
-                    if hit.hits(key) {
-                        return Some(key);
-                    }
+        while let Some(fragment) = next {
+            self.chain.push(fragment);
+            next = fragments.items.parent(fragment);
+        }
+
+        let mut point = point;
+
+        for &key in self.chain.iter().rev() {
+            point = pre_paint.fragment(key)?.inverse_transform? * point;
+        }
+
+        self.pending.clear();
+        self.hit_layer(sources, root, point)
+    }
+
+    /// The topmost fragment of a layer under `point`, in the local
+    /// coordinates of its owner's parent.
+    fn hit_layer(
+        &mut self,
+        sources: Sources<'_>,
+        key: PaintLayerKey,
+        point: Point,
+    ) -> Option<FragmentKey> {
+        let owner = sources.layers.get(key)?.owner;
+        let point = sources.pre_paint.fragment(owner)?.inverse_transform? * point;
+        // The owner's clip bounds its descendants, child layers included.
+        let inside = inside_clip(sources, owner, point);
+
+        if inside {
+            for child in sources.layers.children(key).rev() {
+                if sources.layers[child].z_index < 0 {
+                    break;
                 }
-                PaintLayerEntry::Layer(layer) => {
-                    if let Some(layer) = layers.get(layer) {
-                        self.pending.extend_from_slice(&layer.entries);
-                    }
+
+                if let Some(hit) = self.hit_child(sources, child, owner, point) {
+                    return Some(hit);
                 }
+            }
+
+            if let Some(hit) = self.hit_contents(sources, owner, point) {
+                return Some(hit);
+            }
+
+            for child in sources.layers.children(key).rev() {
+                if sources.layers[child].z_index < 0
+                    && let Some(hit) = self.hit_child(sources, child, owner, point)
+                {
+                    return Some(hit);
+                }
+            }
+        }
+
+        sources
+            .pre_paint
+            .hit_local(sources.fragments, owner, point)
+            .then_some(owner)
+    }
+
+    /// The topmost fragment of a child layer of the layer owned by `owner`
+    /// under `point`, in the local coordinates of `owner`, inside the clips
+    /// of the fragments between their owners.
+    fn hit_child(
+        &mut self,
+        sources: Sources<'_>,
+        child: PaintLayerKey,
+        owner: FragmentKey,
+        point: Point,
+    ) -> Option<FragmentKey> {
+        let child_owner = sources.layers.get(child)?.owner;
+
+        // Fragments between the owners, innermost first.
+        self.chain.clear();
+        let mut next = sources.fragments.items.parent(child_owner);
+
+        while let Some(fragment) = next
+            && fragment != owner
+        {
+            self.chain.push(fragment);
+            next = sources.fragments.items.parent(fragment);
+        }
+
+        // An outdated layer not under the owner is not hit.
+        next?;
+
+        let mut point = point;
+
+        for &key in self.chain.iter().rev() {
+            point = sources.pre_paint.fragment(key)?.inverse_transform? * point;
+
+            if !inside_clip(sources, key, point) {
+                return None;
+            }
+        }
+
+        self.hit_layer(sources, child, point)
+    }
+
+    /// The topmost descendant of a layer's owner under `point`, in the local
+    /// coordinates of the owner, skipping the owners of child layers and
+    /// their descendants.
+    fn hit_contents(
+        &mut self,
+        sources: Sources<'_>,
+        owner: FragmentKey,
+        point: Point,
+    ) -> Option<FragmentKey> {
+        let base = self.pending.len();
+
+        // Children pop from the last, each after its own children.
+        self.pending
+            .extend(sources.fragments.items.children(owner).map(|child| Visit {
+                key: child,
+                point,
+                expanded: false,
+            }));
+
+        while self.pending.len() > base {
+            let Visit {
+                key,
+                point,
+                expanded,
+            } = self.pending.pop()?;
+
+            if expanded {
+                let Some(fragment) = sources.fragments.items.get(key) else {
+                    continue;
+                };
+
+                if !matches!(
+                    fragment.item,
+                    FragmentItem::Line { .. } | FragmentItem::AnonymousBlock { .. }
+                ) && sources.pre_paint.hit_local(sources.fragments, key, point)
+                {
+                    self.pending.truncate(base);
+                    return Some(key);
+                }
+
+                continue;
+            }
+
+            // Child layers are searched on their own, and collapsed or
+            // unresolved fragments are not hit with their descendants.
+            if sources.layers.layer_of(key).is_some() {
+                continue;
+            }
+
+            let Some(point) = sources
+                .pre_paint
+                .fragment(key)
+                .and_then(|data| data.inverse_transform)
+                .map(|inverse| inverse * point)
+            else {
+                continue;
+            };
+
+            self.pending.push(Visit {
+                key,
+                point,
+                expanded: true,
+            });
+
+            if inside_clip(sources, key, point) {
+                self.pending
+                    .extend(sources.fragments.items.children(key).map(|child| Visit {
+                        key: child,
+                        point,
+                        expanded: false,
+                    }));
             }
         }
 
@@ -97,98 +260,30 @@ impl PaintHitTester {
     }
 }
 
-/// State of one [`PaintHitTester::hit`].
-struct Hit<'a> {
-    fragments: &'a FragmentTree,
-    pre_paint: &'a PrePaintTree,
-    /// Owner of the root layer. Clips of its ancestors do not apply.
-    root: FragmentKey,
-    /// The point hit, in scene coordinates.
-    point: Point,
-    locals: &'a mut SecondaryMap<FragmentKey, Option<Local>>,
-}
+/// Whether `point`, in the local coordinates of a fragment, is inside the
+/// clip it applies to its descendants. Fragments not clipping contain every
+/// point.
+fn inside_clip(sources: Sources<'_>, key: FragmentKey, point: Point) -> bool {
+    let Some(fragment) = sources.fragments.items.get(key) else {
+        return true;
+    };
+    let (x, y) = sources
+        .pre_paint
+        .get(fragment.source)
+        .map_or((false, false), |data| data.clip);
 
-impl Hit<'_> {
-    /// Whether the point hits a fragment itself, inside the clips of its
-    /// ancestors.
-    fn hits(&mut self, key: FragmentKey) -> bool {
-        // Line boxes and anonymous blocks are never hit: skip mapping the
-        // point for them.
-        if self.fragments.items.get(key).is_none_or(|fragment| {
-            matches!(
-                fragment.item,
-                FragmentItem::Line { .. } | FragmentItem::AnonymousBlock { .. }
-            )
-        }) {
-            return false;
-        }
-
-        let Some(local) = self.local(key) else {
-            return false;
-        };
-
-        !local.clipped && self.pre_paint.hit_local(self.fragments, key, local.point)
+    if !fragment.item.is_box() || !x && !y {
+        return true;
     }
 
-    /// The point in the local coordinates of a fragment, mapped from its
-    /// parent's.
-    fn local(&mut self, key: FragmentKey) -> Option<Local> {
-        if let Some(&local) = self.locals.get(key) {
-            return local;
-        }
-
-        let parent = self.fragments.items.parent(key);
-        let (point, clipped) = match parent {
-            Some(parent) => {
-                let local = self.local(parent)?;
-                let clipped =
-                    key != self.root && (local.clipped || !self.inside_clip(parent, local.point));
-
-                (local.point, clipped)
-            }
-            None => (self.point, false),
-        };
-        // Unresolved fragments are not hit, like collapsed ones.
-        let local = self
-            .pre_paint
-            .fragment(key)
-            .and_then(|data| data.inverse_transform)
-            .map(|inverse| Local {
-                point: inverse * point,
-                clipped,
-            });
-
-        self.locals.insert(key, local);
-        local
+    // Clipping on both axes follows the rounded corners of the box, so its
+    // clip is the area hitting it.
+    if x && y {
+        return sources.pre_paint.hit_local(sources.fragments, key, point);
     }
 
-    /// Whether `point`, in the local coordinates of a fragment, is inside the
-    /// clip it applies to its descendants. Fragments not clipping contain
-    /// every point.
-    fn inside_clip(&self, key: FragmentKey, point: Point) -> bool {
-        // A fragment without data clips nothing.
-        let Some(fragment) = self.fragments.items.get(key) else {
-            return true;
-        };
-        let (x, y) = self
-            .pre_paint
-            .get(fragment.source)
-            .map_or((false, false), |data| data.clip);
+    // Clipping on one axis stays square, unbounded on the other.
+    let size = fragment.layout.size;
 
-        if !fragment.item.is_box() || !x && !y {
-            return true;
-        }
-
-        // Clipping on both axes follows the rounded corners of the box, so
-        // its clip is the area hitting it.
-        if x && y {
-            return self.pre_paint.hit_local(self.fragments, key, point);
-        }
-
-        // Clipping on one axis stays square, unbounded on the other.
-        let size = fragment.layout.size;
-
-        (!x || (0.0..size.width).contains(&point.x))
-            && (!y || (0.0..size.height).contains(&point.y))
-    }
+    (!x || (0.0..size.width).contains(&point.x)) && (!y || (0.0..size.height).contains(&point.y))
 }

@@ -29,8 +29,6 @@ pub struct LayoutInputData {
     /// Axes the item clips its overflow on. Each box fragment of the item
     /// clips its contents to its own border box; other fragments do not clip.
     pub clip: (bool, bool),
-
-    pub z_index: Option<i32>,
 }
 
 /// Paint data of a fragment.
@@ -63,4 +61,17 @@ pub struct FragmentData {
     /// joining a linked fragment are square. `None` for fragments painting no
     /// box, such as line boxes, or items setting no radius.
     pub border_radius: Option<RoundedRectRadii>,
+
+    /// Z index of the paint layer the fragment starts, or `None` if it paints
+    /// in the layer of its parent. See
+    /// [`PaintLayerTree`](crate::layer::tree::PaintLayerTree).
+    ///
+    /// Only boxes start layers: when their item sets a
+    /// [`Transform`](crate::style::Transform), an
+    /// [`Opacity`](crate::style::Opacity), a
+    /// [`Filter`](crate::style::Filter) or a
+    /// [`BackdropFilter`](crate::style::BackdropFilter), whatever its value,
+    /// or a [`ZIndex`](crate::style::ZIndex) other than auto. An auto z index
+    /// counts as 0.
+    pub stacking: Option<i32>,
 }

@@ -1,25 +1,36 @@
-use std::mem;
-
-use comet_layout::{
-    fragment::{Fragment, FragmentKey, tree::FragmentTree},
-    input::tree::LayoutInputTree,
-    style::geometry::AutoValue,
-};
-use comet_tree::ui::{Props, Ui};
+use comet_layout::fragment::{FragmentKey, tree::FragmentTree};
 
 use crate::{
-    layer::{PaintLayerEntry, PaintLayerItem, PaintLayerKey, tree::PaintLayerTree},
-    style::{BackdropFilter, Filter, Opacity, Transform, ZIndex},
+    layer::{PaintLayerItem, PaintLayerKey, tree::PaintLayerTree},
+    pre_paint::tree::PrePaintTree,
 };
 
-/// Builds a [`PaintLayerTree`] for a fragment tree. Keep it to reuse its
-/// buffers across builds.
+/// Builds and updates a [`PaintLayerTree`] for a fragment tree, from the
+/// [stacking](crate::pre_paint::FragmentData::stacking) z indices resolved in
+/// its [`PrePaintTree`]. Keep it to reuse its buffers: once the trees settle,
+/// building again allocates nothing.
 #[derive(Default)]
 pub struct PaintLayerBuilder {
-    /// Fragments to place, with the layer they would paint in.
-    pending: Vec<(FragmentKey, PaintLayerKey)>,
-    /// Layers to sort the entries of.
-    layers: Vec<PaintLayerKey>,
+    /// Number of the current build or update, stamped on the layers it
+    /// reaches.
+    pass: u32,
+    /// Fragments to place, with the layer they paint in and whether they are
+    /// inside the subtree being rebuilt.
+    pending: Vec<Visit>,
+    /// Child layers detached from the layers being rebuilt. Those not
+    /// reached again are deleted.
+    detached: Vec<PaintLayerKey>,
+    /// Layers to delete, children after their parents.
+    deleting: Vec<PaintLayerKey>,
+}
+
+#[derive(Clone, Copy)]
+struct Visit {
+    fragment: FragmentKey,
+    layer: PaintLayerKey,
+    /// Whether the fragment is inside the subtree being rebuilt, so layers it
+    /// starts are rebuilt too.
+    inside: bool,
 }
 
 impl PaintLayerBuilder {
@@ -27,128 +38,247 @@ impl PaintLayerBuilder {
         Self::default()
     }
 
-    /// Build the layers of the fragments under `root` into `tree`, replacing
-    /// its previous layers, and return the root layer owned by `root`. Keep
-    /// it to paint the layers: `tree` does not store it.
+    /// Build the layers of the fragments under `key` into `tree`, and return
+    /// the root layer. Keep it to paint the layers and to build again: `tree`
+    /// does not store it.
     ///
-    /// A box fragment below `root` starts a child layer when its item sets a
-    /// non-identity [`Transform`], an [`Opacity`] other than 1, a [`Filter`],
-    /// a [`BackdropFilter`], or a [`ZIndex`] other than auto. An auto z index
-    /// counts as 0. The root
-    /// layer has z index 0, whatever `root` sets.
+    /// With `layer`, the root layer of a previous build, only the layers of
+    /// the fragments under `key` are built again, after their fragments or
+    /// stacking changed, such as after a fragment build or a paint style
+    /// change resolved into `pre_paint`. The child layers of the layer `key`
+    /// paints in are placed again: layers started under `key` are rebuilt,
+    /// and layers started elsewhere in that layer are kept as they are. Pass
+    /// the same keys as to
+    /// [`PrePaintTreeResolver::resolve`](crate::pre_paint::resolver::PrePaintTreeResolver::resolve).
+    /// A fragment moved to another parent needs a key above both its old and
+    /// new places.
     ///
-    /// `inputs` is the input tree `fragments` were built from, and `ui` the UI
-    /// it was built from.
+    /// Without `layer`, or when `layer` is gone from `tree` or owned by
+    /// `key`, `key` is the root fragment: every layer under it is built, and
+    /// layers of other fragments, such as those left by a previous root, are
+    /// deleted. The root layer has z index 0, whatever `key`'s stacking.
     ///
-    /// Returns `None` if a fragment no longer matches the UI, such as when its
-    /// source node was deleted after `inputs` and `fragments` were built.
-    /// `tree` is then partly built: rebuild the layout and build again.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `root` is not in `fragments`.
+    /// Layers whose owner still starts one keep their keys. `pre_paint` must
+    /// be resolved for the fragments built. Fragments without pre-paint data
+    /// start no layer. Returns `None` if `key` is not in `fragments`, or
+    /// paints in no layer of `tree` when building from `layer`.
     pub fn build(
         &mut self,
-        ui: &Ui,
-        inputs: &LayoutInputTree,
         fragments: &FragmentTree,
+        pre_paint: &PrePaintTree,
+        tree: &mut PaintLayerTree,
+        key: FragmentKey,
+        layer: Option<PaintLayerKey>,
+    ) -> Option<PaintLayerKey> {
+        match layer.filter(|&layer| tree.get(layer).is_some()) {
+            Some(root) if tree[root].owner != key => {
+                self.update(fragments, pre_paint, tree, key)?;
+                Some(root)
+            }
+            _ => self.build_root(fragments, pre_paint, tree, key),
+        }
+    }
+
+    /// Build every layer under `root`, deleting the layers of other
+    /// fragments, and return the root layer.
+    fn build_root(
+        &mut self,
+        fragments: &FragmentTree,
+        pre_paint: &PrePaintTree,
         tree: &mut PaintLayerTree,
         root: FragmentKey,
     ) -> Option<PaintLayerKey> {
-        tree.clear();
+        fragments.items.get(root)?;
+        self.pass = self.pass.wrapping_add(1);
 
-        let root_layer = tree.items.insert(PaintLayerItem {
-            owner: root,
-            z_index: 0,
-            entries: Vec::new(),
-        });
+        let root_layer = match tree.layer_of(root) {
+            Some(layer) => {
+                tree.layers.remove_parent(layer);
+                layer
+            }
+            None => self.insert(tree, root, 0),
+        };
+        tree.layers[root_layer].z_index = 0;
 
-        // Fragments are placed in tree order, so each layer lists its
-        // entries in tree order before sorting.
-        let pending = &mut self.pending;
-        pending.clear();
-        pending.push((root, root_layer));
+        self.rebuild(fragments, pre_paint, tree, root_layer, None);
 
-        while let Some((key, parent_layer)) = pending.pop() {
-            let fragment = &fragments.items[key];
-            let props = ui.props(inputs.items[fragment.source].node)?;
-
-            let layer = match layer_z_index(fragment, props) {
-                Some(z_index) if key != root => {
-                    let layer = tree.items.insert(PaintLayerItem {
-                        owner: key,
-                        z_index,
-                        entries: Vec::new(),
-                    });
-                    tree.items[parent_layer]
-                        .entries
-                        .push(PaintLayerEntry::Layer(layer));
-
-                    layer
-                }
-                _ => parent_layer,
-            };
-
-            tree.items[layer]
-                .entries
-                .push(PaintLayerEntry::Fragment(key));
-            pending.extend(
-                fragments
-                    .items
-                    .children(key)
-                    .rev()
-                    .map(|child| (child, layer)),
-            );
-        }
-
-        self.sort_entries(tree);
+        // Layers of fragments outside `root`, such as previous roots, were
+        // not reached.
+        self.deleting.clear();
+        self.deleting
+            .extend(tree.by_owner.values().copied().filter(|&layer| {
+                tree.layers
+                    .get(layer)
+                    .is_some_and(|item| item.pass != self.pass)
+            }));
+        self.delete_pending(tree);
 
         Some(root_layer)
     }
 
-    /// Sort the entries of every layer after its owner by z index, keeping
-    /// the tree order of equal z indices.
-    fn sort_entries(&mut self, tree: &mut PaintLayerTree) {
-        self.layers.clear();
-        self.layers.extend(tree.items.keys());
+    /// Build the layers of the fragments under `key` again, in the layer it
+    /// paints in. Returns `None` if `key` is not in `fragments` or paints in
+    /// no layer of `tree`.
+    fn update(
+        &mut self,
+        fragments: &FragmentTree,
+        pre_paint: &PrePaintTree,
+        tree: &mut PaintLayerTree,
+        key: FragmentKey,
+    ) -> Option<()> {
+        fragments.items.get(key)?;
 
-        for &key in &self.layers {
-            let mut entries = mem::take(&mut tree.items[key].entries);
+        // A layer `key` starts is placed in its parent layer, which may change
+        // with its stacking. The root layer stays.
+        let layer = match tree.layer_of(key) {
+            Some(layer) => tree.parent(layer).unwrap_or(layer),
+            None => tree.enclosing(fragments, key)?,
+        };
 
-            // The owner fragment paints first, below its negative z index
-            // layers.
-            entries[1..].sort_by_key(|entry| match *entry {
-                PaintLayerEntry::Fragment(_) => 0,
-                PaintLayerEntry::Layer(layer) => tree.items[layer].z_index,
-            });
+        self.pass = self.pass.wrapping_add(1);
+        self.rebuild(fragments, pre_paint, tree, layer, Some(key));
 
-            tree.items[key].entries = entries;
+        Some(())
+    }
+
+    /// Place the child layers of `layer` again from its owner's subtree.
+    /// Child layers started inside `key`'s subtree, or every child layer when
+    /// `key` is `None`, are rebuilt the same way. Detached layers not reached
+    /// again are deleted.
+    fn rebuild(
+        &mut self,
+        fragments: &FragmentTree,
+        pre_paint: &PrePaintTree,
+        tree: &mut PaintLayerTree,
+        layer: PaintLayerKey,
+        key: Option<FragmentKey>,
+    ) {
+        let owner = tree.layers[layer].owner;
+        let inside = key.is_none_or(|key| key == owner);
+
+        tree.layers[layer].pass = self.pass;
+        self.detached.clear();
+        self.pending.clear();
+        self.detach_children(tree, layer);
+        self.push_children(fragments, owner, layer, inside, key);
+
+        while let Some(Visit {
+            fragment,
+            layer,
+            inside,
+        }) = self.pending.pop()
+        {
+            let stacking = pre_paint.fragment(fragment).and_then(|data| data.stacking);
+
+            let Some(z_index) = stacking else {
+                self.push_children(fragments, fragment, layer, inside, key);
+                continue;
+            };
+
+            let child = match tree.layer_of(fragment) {
+                Some(child) => child,
+                None => self.insert(tree, fragment, z_index),
+            };
+            let item = &mut tree.layers[child];
+            item.z_index = z_index;
+            item.pass = self.pass;
+            insert_sorted(tree, layer, child);
+
+            // Layers started outside the rebuilt subtree keep their children.
+            if inside {
+                self.detach_children(tree, child);
+                self.push_children(fragments, fragment, child, inside, key);
+            }
+        }
+
+        self.deleting.clear();
+        for &layer in &self.detached {
+            if tree
+                .layers
+                .get(layer)
+                .is_some_and(|item| item.pass != self.pass)
+            {
+                self.deleting.push(layer);
+            }
+        }
+        self.delete_pending(tree);
+    }
+
+    /// Insert a parentless layer owned by `owner`.
+    fn insert(&self, tree: &mut PaintLayerTree, owner: FragmentKey, z_index: i32) -> PaintLayerKey {
+        let layer = tree.layers.insert(PaintLayerItem {
+            owner,
+            z_index,
+            pass: self.pass,
+        });
+        tree.by_owner.insert(owner, layer);
+
+        layer
+    }
+
+    /// Detach the child layers of `layer`, keeping them for reuse.
+    fn detach_children(&mut self, tree: &mut PaintLayerTree, layer: PaintLayerKey) {
+        while let Some(child) = tree.layers.first_child(layer) {
+            tree.layers.remove_parent(child);
+            self.detached.push(child);
+        }
+    }
+
+    /// Queue the children of `fragment` in tree order, painting in `layer`.
+    fn push_children(
+        &mut self,
+        fragments: &FragmentTree,
+        fragment: FragmentKey,
+        layer: PaintLayerKey,
+        inside: bool,
+        key: Option<FragmentKey>,
+    ) {
+        self.pending
+            .extend(fragments.items.children(fragment).rev().map(|child| Visit {
+                fragment: child,
+                layer,
+                inside: inside || key == Some(child),
+            }));
+    }
+
+    /// Delete the queued layers and the layers left under them. Layers are
+    /// deleted as leaves, children first, so deleting allocates nothing.
+    fn delete_pending(&mut self, tree: &mut PaintLayerTree) {
+        while let Some(&layer) = self.deleting.last() {
+            if tree.layers.get(layer).is_none() {
+                self.deleting.pop();
+                continue;
+            }
+
+            if let Some(child) = tree.layers.first_child(layer) {
+                self.deleting.push(child);
+                continue;
+            }
+
+            self.deleting.pop();
+
+            if let Some(item) = tree.layers.delete_node(layer)
+                && tree.by_owner.get(item.owner) == Some(&layer)
+            {
+                tree.by_owner.remove(item.owner);
+            }
         }
     }
 }
 
-/// The z index of the layer a fragment starts, or `None` if it paints in the
-/// layer of its parent. Only boxes start layers.
-fn layer_z_index(fragment: &Fragment, props: Props<'_>) -> Option<i32> {
-    if !fragment.item.is_box() {
-        return None;
-    }
+/// Attach `child` to `parent` after the last child layer with a z index at
+/// most its own. Children attached in tree order then stay in tree order
+/// among equal z indices.
+fn insert_sorted(tree: &mut PaintLayerTree, parent: PaintLayerKey, child: PaintLayerKey) {
+    let z_index = tree.layers[child].z_index;
+    let after = tree
+        .layers
+        .children(parent)
+        .rev()
+        .find(|&sibling| sibling != child && tree.layers[sibling].z_index <= z_index);
 
-    let ZIndex(z_index) = props.get_or_default();
-
-    match z_index {
-        AutoValue::Value(z_index) => Some(z_index),
-        AutoValue::Auto => starts_layer(props).then_some(0),
-    }
-}
-
-/// Whether an item's paint styles start a layer whatever its z index.
-fn starts_layer(props: Props<'_>) -> bool {
-    let Transform(transform) = props.get_or_default();
-    let Opacity(opacity) = props.get_or_default();
-
-    transform != Transform::default().0
-        || opacity != 1.0
-        || props.get::<Filter>().is_some()
-        || props.get::<BackdropFilter>().is_some()
+    match after {
+        Some(sibling) => tree.layers.after(sibling, child),
+        None => tree.layers.prepend(parent, child),
+    };
 }

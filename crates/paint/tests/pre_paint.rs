@@ -148,15 +148,15 @@ impl Fixture {
     }
 
     /// Build the paint layers of the whole fragment tree, with their root.
-    fn layers(&self, ui: &Ui) -> (PaintLayerTree, PaintLayerKey) {
+    fn layers(&self) -> (PaintLayerTree, PaintLayerKey) {
         let mut layers = PaintLayerTree::new();
         let root = PaintLayerBuilder::new()
             .build(
-                ui,
-                &self.inputs,
                 &self.fragments,
+                &self.pre_paint,
                 &mut layers,
                 self.root.unwrap(),
+                None,
             )
             .unwrap();
 
@@ -165,7 +165,7 @@ impl Fixture {
 
     fn draw(&self, ui: &Ui) -> Scene {
         let mut scene = Scene::new();
-        let (layers, root) = self.layers(ui);
+        let (layers, root) = self.layers();
         CometPainter::new().draw(
             ui,
             &self.inputs,

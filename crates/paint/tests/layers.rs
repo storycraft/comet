@@ -15,7 +15,7 @@ use comet_layout::{
 };
 use comet_paint::{
     hit::PaintHitTester,
-    layer::{PaintLayerEntry, PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
+    layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
     style::{BackdropFilter, BorderRadius, Fill, Filter, Opacity, Transform, ZIndex},
@@ -43,6 +43,7 @@ struct Fixture {
     layers: PaintLayerTree,
     /// Root layer of `layers`.
     root: PaintLayerKey,
+    builder: PaintLayerBuilder,
 }
 
 impl Fixture {
@@ -69,8 +70,9 @@ impl Fixture {
             .unwrap();
 
         let mut layers = PaintLayerTree::new();
-        let root = PaintLayerBuilder::new()
-            .build(ui, &inputs, &fragments, &mut layers, root)
+        let mut builder = PaintLayerBuilder::new();
+        let root = builder
+            .build(&fragments, &pre_paint, &mut layers, root, None)
             .unwrap();
 
         Self {
@@ -79,7 +81,35 @@ impl Fixture {
             pre_paint,
             layers,
             root,
+            builder,
         }
+    }
+
+    /// Resolve the pre-paint data of a node's box fragment again, after its
+    /// paint styles changed, and update the layers under it.
+    fn update(&mut self, ui: &Ui, node: NodeKey) {
+        let key = self.box_of(node);
+
+        PrePaintTreeResolver::new()
+            .resolve(
+                ui,
+                &self.inputs,
+                &self.fragments,
+                &UNITS,
+                &mut self.pre_paint,
+                key,
+            )
+            .unwrap();
+        self.root = self
+            .builder
+            .build(
+                &self.fragments,
+                &self.pre_paint,
+                &mut self.layers,
+                key,
+                Some(self.root),
+            )
+            .unwrap();
     }
 
     fn box_of(&self, node: NodeKey) -> FragmentKey {
@@ -90,18 +120,12 @@ impl Fixture {
 
     /// The layer owned by a node's box fragment.
     fn layer_of(&self, node: NodeKey) -> PaintLayerKey {
-        let owner = self.box_of(node);
-
-        self.layers
-            .iter()
-            .find(|(_, layer)| layer.owner == owner)
-            .map(|(key, _)| key)
-            .unwrap()
+        self.layers.layer_of(self.box_of(node)).unwrap()
     }
 
-    /// The entries of a layer.
-    fn entries(&self, layer: PaintLayerKey) -> &[PaintLayerEntry] {
-        &self.layers[layer].entries
+    /// The child layers of a layer, in paint order.
+    fn children(&self, layer: PaintLayerKey) -> Vec<PaintLayerKey> {
+        self.layers.children(layer).collect()
     }
 
     /// The fragment hit at a scene point.
@@ -185,14 +209,16 @@ fn fragments_without_layer_styles_share_the_root_layer() {
 
     assert_eq!(f.layers.len(), 1);
     assert_eq!(f.layers[f.root].owner, f.box_of(root));
-    assert_eq!(
-        f.entries(f.root),
-        [
-            PaintLayerEntry::Fragment(f.box_of(root)),
-            PaintLayerEntry::Fragment(f.box_of(outer)),
-            PaintLayerEntry::Fragment(f.box_of(inner)),
-        ]
-    );
+    assert_eq!(f.layers.parent(f.root), None);
+    assert!(f.children(f.root).is_empty());
+
+    for node in [outer, inner] {
+        assert_eq!(f.layers.layer_of(f.box_of(node)), None);
+        assert_eq!(
+            f.layers.enclosing(&f.fragments, f.box_of(node)),
+            Some(f.root)
+        );
+    }
 }
 
 #[test]
@@ -219,27 +245,22 @@ fn transforms_opacity_and_z_indices_start_layers() {
     for node in [transformed, translucent, zero] {
         let layer = f.layer_of(node);
 
+        assert_eq!(f.layers[layer].owner, f.box_of(node));
         assert_eq!(f.layers[layer].z_index, 0);
-        assert_eq!(
-            f.entries(layer)[0],
-            PaintLayerEntry::Fragment(f.box_of(node))
-        );
+        assert_eq!(f.layers.parent(layer), Some(f.root));
     }
 
+    assert_eq!(f.layers.layer_of(f.box_of(nested)), None);
     assert_eq!(
-        f.entries(f.layer_of(transformed)),
-        [
-            PaintLayerEntry::Fragment(f.box_of(transformed)),
-            PaintLayerEntry::Fragment(f.box_of(nested)),
-        ]
+        f.layers.enclosing(&f.fragments, f.box_of(nested)),
+        Some(f.layer_of(transformed))
     );
     assert_eq!(
-        f.entries(f.root),
+        f.children(f.root),
         [
-            PaintLayerEntry::Fragment(f.box_of(root)),
-            PaintLayerEntry::Layer(f.layer_of(transformed)),
-            PaintLayerEntry::Layer(f.layer_of(translucent)),
-            PaintLayerEntry::Layer(f.layer_of(zero)),
+            f.layer_of(transformed),
+            f.layer_of(translucent),
+            f.layer_of(zero)
         ]
     );
 }
@@ -259,7 +280,7 @@ fn only_boxes_start_layers() {
 }
 
 #[test]
-fn entries_paint_in_z_index_order_after_their_owner() {
+fn layers_paint_in_z_index_order_around_their_owner() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, (Fill(Paint::Solid(Color::WHITE)),));
     let above = ui.create(
@@ -282,17 +303,12 @@ fn entries_paint_in_z_index_order_after_their_owner() {
 
     let f = Fixture::build(&ui, root);
 
-    // The owner first, then negative layers, flow content, and positive
-    // layers in tree order.
+    // Child layers sort by z index, keeping tree order among equals. The
+    // owner paints first, then negative layers, flow content, and the other
+    // layers.
     assert_eq!(
-        f.entries(f.root),
-        [
-            PaintLayerEntry::Fragment(f.box_of(root)),
-            PaintLayerEntry::Layer(f.layer_of(below)),
-            PaintLayerEntry::Fragment(f.box_of(flow)),
-            PaintLayerEntry::Layer(f.layer_of(above)),
-            PaintLayerEntry::Layer(f.layer_of(also_above)),
-        ]
+        f.children(f.root),
+        [f.layer_of(below), f.layer_of(above), f.layer_of(also_above)]
     );
     assert_eq!(f.layers[f.layer_of(below)].z_index, -1);
 
@@ -366,13 +382,15 @@ fn clips_apply_to_descendants_in_other_layers() {
     let f = Fixture::build(&ui, root);
     let clip = format!("clip {:?}", Rect::new(0.0, 0.0, 50.0, 20.0));
 
-    // The raised layer paints after the flow content. Its group nests in the
-    // clip of its ancestor, which stays pushed until the group is popped.
+    // The raised layer paints after the flow content, inside the clip of its
+    // ancestor pushed again around it. Its group nests in that clip.
     assert_eq!(
         commands(&f.draw(&ui)),
         [
-            clip,
+            clip.clone(),
             fill(BLUE),
+            "pop".into(),
+            clip,
             "layer 0.5".into(),
             fill(RED),
             "pop".into(),
@@ -660,26 +678,146 @@ fn collapsed_fragments_are_not_hit() {
 }
 
 #[test]
-fn rebuilding_replaces_the_layers() {
+fn building_again_keeps_layer_keys() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let raised = ui.create(Node::Box, (fixed(10.0, 10.0), z(2)));
+    let moved = ui.create(
+        Node::Box,
+        (fixed(10.0, 10.0), Transform(Affine::translate((5.0, 0.0)))),
+    );
     ui.append(root, raised);
+    ui.append(root, moved);
+
+    let mut f = Fixture::build(&ui, root);
+    let root_layer = f.root;
+    let moved_layer = f.layer_of(moved);
+
+    // The raised box stops starting a layer.
+    ui.set_props(raised, (ZIndex(AutoValue::Auto),));
+    f.update(&ui, raised);
+
+    assert_eq!(f.root, root_layer);
+    assert_eq!(f.layers.len(), 2);
+    assert_eq!(f.layers.layer_of(f.box_of(raised)), None);
+    assert_eq!(f.layer_of(moved), moved_layer);
+    assert_eq!(f.children(f.root), [moved_layer]);
+
+    // Building from the root keeps them too.
+    let fragment_root = f.layers[f.root].owner;
+    f.root = f
+        .builder
+        .build(
+            &f.fragments,
+            &f.pre_paint,
+            &mut f.layers,
+            fragment_root,
+            Some(f.root),
+        )
+        .unwrap();
+
+    assert_eq!(f.root, root_layer);
+    assert_eq!(f.layer_of(moved), moved_layer);
+}
+
+#[test]
+fn layers_of_stopped_owners_move_to_their_parent() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let group = ui.create(Node::Box, (fixed(40.0, 40.0), Opacity(0.5)));
+    let raised = ui.create(Node::Box, (fixed(10.0, 10.0), z(1)));
+    let below = ui.create(Node::Box, (fixed(10.0, 10.0), z(-1)));
+    ui.append(root, group);
+    ui.append(group, raised);
+    ui.append(group, below);
+
+    let mut f = Fixture::build(&ui, root);
+    let raised_layer = f.layer_of(raised);
+    let below_layer = f.layer_of(below);
+
+    assert_eq!(f.layers.parent(raised_layer), Some(f.layer_of(group)));
+
+    ui.remove_prop::<Opacity>(group);
+    f.update(&ui, group);
+
+    // Placed in the root layer by z index, with the same keys.
+    assert_eq!(f.layers.layer_of(f.box_of(group)), None);
+    assert_eq!(f.children(f.root), [below_layer, raised_layer]);
+
+    // And back again.
+    ui.set_props(group, (Opacity(0.5),));
+    f.update(&ui, group);
+
+    let group_layer = f.layer_of(group);
+    assert_eq!(f.children(f.root), [group_layer]);
+    assert_eq!(f.children(group_layer), [below_layer, raised_layer]);
+}
+
+/// The layers under `layer`, with their owners and z indices, nested.
+fn shape(layers: &PaintLayerTree, layer: PaintLayerKey) -> String {
+    let item = &layers[layer];
+    let children: Vec<_> = layers
+        .children(layer)
+        .map(|child| shape(layers, child))
+        .collect();
+
+    format!("{:?}@{}[{}]", item.owner, item.z_index, children.join(", "))
+}
+
+#[test]
+fn updates_match_full_builds() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let left = ui.create(Node::Box, (fixed(60.0, 60.0), z(1)));
+    let right = ui.create(Node::Box, (fixed(60.0, 60.0),));
+    let deep = ui.create(Node::Box, (fixed(20.0, 20.0),));
+    let kept = ui.create(Node::Box, (fixed(20.0, 20.0), z(3)));
+    let inner = ui.create(Node::Box, (fixed(10.0, 10.0), Opacity(0.5)));
+    ui.append(root, left);
+    ui.append(root, right);
+    ui.append(left, kept);
+    ui.append(right, deep);
+    ui.append(deep, inner);
+
+    let mut f = Fixture::build(&ui, root);
+    let kept_layer = f.layer_of(kept);
+
+    // Deep in the right box: a new layer above an existing one, which also
+    // changes z index.
+    ui.set_props(deep, (z(-2),));
+    ui.set_props(inner, (z(4),));
+    let key = f.box_of(right);
+    PrePaintTreeResolver::new()
+        .resolve(&ui, &f.inputs, &f.fragments, &UNITS, &mut f.pre_paint, key)
+        .unwrap();
+    f.root = f
+        .builder
+        .build(&f.fragments, &f.pre_paint, &mut f.layers, key, Some(f.root))
+        .unwrap();
+
+    let fragment_root = f.layers[f.root].owner;
+    let mut full = PaintLayerTree::new();
+    let full_root = PaintLayerBuilder::new()
+        .build(&f.fragments, &f.pre_paint, &mut full, fragment_root, None)
+        .unwrap();
+
+    assert_eq!(shape(&f.layers, f.root), shape(&full, full_root));
+    assert_eq!(f.layers.len(), 5);
+    // Layers outside the updated subtree are left as they are.
+    assert_eq!(f.layer_of(kept), kept_layer);
+    assert_eq!(f.layers[f.layer_of(deep)].z_index, -2);
+    assert_eq!(f.layers.parent(f.layer_of(inner)), Some(f.layer_of(deep)));
+}
+
+#[test]
+fn stale_root_layers_hit_nothing() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
 
     let mut f = Fixture::build(&ui, root);
     let old_root = f.root;
-    let fragment_root = f.layers[old_root].owner;
+    f.layers.clear();
 
-    ui.set_props(raised, (fixed(10.0, 10.0), ZIndex(AutoValue::Auto)));
-    let new_root = PaintLayerBuilder::new()
-        .build(&ui, &f.inputs, &f.fragments, &mut f.layers, fragment_root)
-        .unwrap();
-
-    assert_eq!(f.layers.len(), 1);
-    assert_eq!(f.layers[new_root].owner, fragment_root);
-    assert!(f.layers.get(old_root).is_none());
-
-    // Stale root layers hit nothing instead of panicking.
     assert_eq!(
         PaintHitTester::new().hit(
             &f.layers,
@@ -722,7 +860,32 @@ fn hit_testers_can_be_reused() {
     // Nor into hits on rebuilt layers.
     let fragment_root = f.layers[f.root].owner;
     f.root = PaintLayerBuilder::new()
-        .build(&ui, &f.inputs, &f.fragments, &mut f.layers, fragment_root)
+        .build(
+            &f.fragments,
+            &f.pre_paint,
+            &mut f.layers,
+            fragment_root,
+            None,
+        )
         .unwrap();
     assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_of(moved)));
+}
+
+#[test]
+fn layer_styles_start_layers_whatever_their_value() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let identity = ui.create(Node::Box, (fixed(10.0, 10.0), Transform(Affine::IDENTITY)));
+    let opaque = ui.create(Node::Box, (fixed(10.0, 10.0), Opacity(1.0)));
+    let auto = ui.create(Node::Box, (fixed(10.0, 10.0), ZIndex(AutoValue::Auto)));
+    ui.append(root, identity);
+    ui.append(root, opaque);
+    ui.append(root, auto);
+
+    let f = Fixture::build(&ui, root);
+
+    assert_eq!(f.layers[f.layer_of(identity)].z_index, 0);
+    assert_eq!(f.layers[f.layer_of(opaque)].z_index, 0);
+    // An auto z index sets no value.
+    assert_eq!(f.layers.layer_of(f.box_of(auto)), None);
 }

@@ -443,6 +443,7 @@ dependencies = [
  "anyrender",
  "bytemuck",
  "comet-layout",
+ "comet-slotmap-tree",
  "comet-tree",
  "kurbo",
  "parley",

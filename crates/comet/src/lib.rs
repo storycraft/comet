@@ -182,12 +182,14 @@ impl ApplicationHandler for App {
                     return;
                 }
 
+                // Layers keep their keys, so building from the root again
+                // only places the layers whose owners changed.
                 self.layer_root = self.layer_builder.build(
-                    &self.ui,
-                    &self.inputs,
                     &self.fragments,
+                    &self.pre_paint,
                     &mut self.layers,
                     fragment_root,
+                    self.layer_root,
                 );
                 let Some(layer_root) = self.layer_root else {
                     return;
