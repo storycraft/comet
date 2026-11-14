@@ -15,7 +15,7 @@ use slotmap::SecondaryMap;
 use crate::{
     layer::{PaintLayerEntry, PaintLayerKey, tree::PaintLayerTree},
     pre_paint::{FragmentData, tree::PrePaintTree},
-    style::{BorderFill, Fill},
+    style::{BorderFill, Fill, Opacity},
 };
 
 /// Paints final fragments in the order of their [`PaintLayerTree`], with the
@@ -267,7 +267,13 @@ impl CometPainter {
     ) {
         let layer = &sources.layers[key];
         let owner = &sources.tree.items[layer.owner];
-        let opacity = sources.pre_paint[owner.source].opacity;
+        let opacity = sources
+            .ui
+            .props(sources.inputs.items[owner.source].node)
+            .map_or(1.0, |props| {
+                let Opacity(opacity) = props.get_or_default();
+                opacity.clamp(0.0, 1.0)
+            });
 
         if opacity <= 0.0 {
             return;

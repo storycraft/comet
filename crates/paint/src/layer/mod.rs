@@ -5,9 +5,10 @@
 //! whose item sets a [`Transform`](crate::style::Transform), an
 //! [`Opacity`](crate::style::Opacity) or a [`ZIndex`](crate::style::ZIndex)
 //! starts a child layer it owns. Every other fragment paints in the layer of
-//! its nearest owning ancestor. A layer paints with the transform and opacity
-//! of its owner fragment, looked up in the
-//! [`PrePaintTree`](crate::pre_paint::tree::PrePaintTree).
+//! its nearest owning ancestor. A layer paints with the transform of its
+//! owner fragment, looked up in the
+//! [`PrePaintTree`](crate::pre_paint::tree::PrePaintTree), and the opacity of
+//! its owner's item.
 
 pub mod builder;
 pub mod tree;
@@ -32,8 +33,8 @@ pub enum PaintLayerEntry {
 /// A layer of fragments painting together, owned by a fragment.
 #[derive(Debug, Clone)]
 pub struct PaintLayerItem {
-    /// Fragment starting the layer. Its pre-paint data gives the transform and
-    /// opacity the layer paints with.
+    /// Fragment starting the layer. Its pre-paint data gives the transform the
+    /// layer paints with, and its item's style the opacity.
     pub owner: FragmentKey,
 
     /// Z index of the layer among the entries of its parent layer.

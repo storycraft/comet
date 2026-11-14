@@ -12,7 +12,7 @@ use kurbo::{Affine, Point, RoundedRectRadii, Size};
 
 use crate::{
     pre_paint::{FragmentData, LayoutInputData, tree::PrePaintTree},
-    style::{BorderRadius, Opacity, TextColor, Transform, TransformOrigin, ZIndex},
+    style::{BorderRadius, TextColor, Transform, TransformOrigin, ZIndex},
 };
 
 /// Resolves a [`PrePaintTree`] for a fragment tree. Keep it to reuse its
@@ -266,7 +266,6 @@ impl Sources<'_> {
                     None => TextColor::default(),
                 });
         let Overflow(overflow) = props.get_or_default();
-        let Opacity(opacity) = props.get_or_default();
         let ZIndex(z_index) = props.get_or_default();
         let z_index = match z_index {
             AutoValue::Auto => None,
@@ -281,7 +280,6 @@ impl Sources<'_> {
                 overflow.y != OverflowMode::Visible,
             ),
             z_index,
-            opacity: opacity.clamp(0.0, 1.0),
         })
     }
 
