@@ -195,6 +195,7 @@ impl Fixture {
             &layers,
             root,
             SCENE_VIEWPORT,
+            1.0,
             &mut scene,
         );
 
@@ -1108,5 +1109,108 @@ fn outlines_of_split_fragments_keep_their_item_radii() {
                 .zip(expected.elements())
                 .all(|(actual, expected)| format!("{actual:?}") == format!("{expected:?}"))
         );
+    }
+}
+
+impl Fixture {
+    /// Paint the whole tree at a display scale factor, into a physical
+    /// viewport scaled with it.
+    fn draw_scaled(&self, ui: &Ui, scale_factor: f64) -> Scene {
+        let mut scene = Scene::new();
+        let (layers, root) = self.layers();
+        CometPainter::new().draw(
+            ui,
+            &self.inputs,
+            &self.fragments,
+            &self.pre_paint,
+            &layers,
+            root,
+            SCENE_VIEWPORT.scale_from_origin(scale_factor),
+            scale_factor,
+            &mut scene,
+        );
+
+        scene
+    }
+}
+
+/// Glyphs painted, as their font size and scene position.
+fn scene_glyphs(scene: &Scene) -> Vec<(f32, Point)> {
+    scene
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            RenderCommand::GlyphRun(run) => Some(run),
+            _ => None,
+        })
+        .flat_map(|run| {
+            run.glyphs.iter().map(|glyph| {
+                (
+                    run.font_size,
+                    run.transform * Point::new(glyph.x as f64, glyph.y as f64),
+                )
+            })
+        })
+        .collect()
+}
+
+#[test]
+fn paints_logical_layouts_at_the_display_scale_factor() {
+    let mut ui = Ui::new();
+    let root = ui.create(
+        Node::Box,
+        (bx::Padding(LayoutRect::new_all(StyleUnit::Px(5.0))),),
+    );
+    let block = ui.create(Node::Box, (fixed(40.0, 20.0), Fill(Paint::Solid(RED))));
+    ui.append(root, block);
+    text(&mut ui, root, "scaled text");
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    let logical = f.draw_scaled(&ui, 1.0);
+    let physical = f.draw_scaled(&ui, 2.0);
+
+    // Boxes paint in physical pixels.
+    let fill = physical
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            RenderCommand::Fill(fill) => Some(fill),
+            _ => None,
+        })
+        .unwrap();
+    assert_affine(
+        fill.transform,
+        Affine::scale(2.0) * Affine::translate((5.0, 5.0)),
+    );
+    assert_eq!(
+        fill.transform
+            .transform_rect_bbox(fill.shape.bounding_box()),
+        Rect::new(10.0, 10.0, 90.0, 50.0)
+    );
+
+    // Glyphs draw at their physical font size, in the same places scaled.
+    let logical = scene_glyphs(&logical);
+    let physical = scene_glyphs(&physical);
+    assert!(!logical.is_empty());
+    assert_eq!(logical.len(), physical.len());
+
+    for ((logical_size, logical), (physical_size, physical)) in logical.into_iter().zip(physical) {
+        assert_eq!(physical_size, logical_size * 2.0);
+        assert!((physical - logical.to_vec2() * 2.0).to_vec2().hypot() < 1e-3);
+    }
+}
+
+#[test]
+fn invalid_scale_factors_paint_nothing() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, (fixed(40.0, 20.0), Fill(Paint::Solid(RED))));
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    for scale_factor in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        assert!(f.draw_scaled(&ui, scale_factor).commands.is_empty());
     }
 }

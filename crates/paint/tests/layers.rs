@@ -150,6 +150,7 @@ impl Fixture {
             &self.layers,
             self.root,
             SCENE_VIEWPORT,
+            1.0,
             &mut scene,
         );
 

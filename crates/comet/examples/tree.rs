@@ -22,10 +22,13 @@ use kurbo::Affine;
 
 const WIDTH: u32 = 1100;
 const HEIGHT: u32 = 1400;
+/// Physical pixels per logical unit of the rendered image.
+const SCALE_FACTOR: f64 = 1.0;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (ui, root) = common::sample_ui();
-    let viewport = Size::new(WIDTH as f64, HEIGHT as f64);
+    // Layout works in logical units.
+    let viewport = Size::new(WIDTH as f64 / SCALE_FACTOR, HEIGHT as f64 / SCALE_FACTOR);
     let mut inputs = LayoutInputTree::new();
     let input_root = LayoutInputTreeBuilder::new()
         .build(&ui, &mut inputs, BuildRequest::new(root, 16.0, viewport))
@@ -93,6 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &layers,
                 layer_root,
                 kurbo::Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
+                SCALE_FACTOR,
                 scene,
             );
         },

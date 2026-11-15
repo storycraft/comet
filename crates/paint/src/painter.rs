@@ -104,7 +104,10 @@ struct Sources<'a> {
     tree: &'a FragmentTree,
     pre_paint: &'a PrePaintTree,
     layers: &'a PaintLayerTree,
+    /// The scene's viewport, in physical pixels.
     viewport: Rect,
+    /// Physical pixels per logical layout unit.
+    scale_factor: f64,
 }
 
 impl CometPainter {
@@ -136,10 +139,16 @@ impl CometPainter {
     /// border box, rounded with its border radius, including those painting
     /// in other layers. Clips of the root's ancestors do not apply.
     ///
-    /// Fragments painting entirely outside `viewport` or their clip, in scene
-    /// coordinates, are skipped. Fragments touching their edges are painted.
-    /// Their descendants are still painted, since children may paint outside
-    /// their parents.
+    /// Layout and pre-paint data are in logical units. The scene is in
+    /// physical pixels: everything paints scaled by `scale_factor`, the
+    /// physical pixels per logical unit of the display, and text is shaped at
+    /// its logical size but drawn at its physical font size. Paints nothing
+    /// unless `scale_factor` is positive and finite.
+    ///
+    /// Fragments painting entirely outside `viewport`, in physical pixels, or
+    /// outside their clip are skipped. Fragments touching their edges are
+    /// painted. Their descendants are still painted, since children may paint
+    /// outside their parents.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
@@ -150,8 +159,13 @@ impl CometPainter {
         layers: &PaintLayerTree,
         root: PaintLayerKey,
         viewport: Rect,
+        scale_factor: f64,
         scene: &mut impl PaintScene,
     ) {
+        if !(scale_factor > 0.0 && scale_factor.is_finite()) {
+            return;
+        }
+
         let Some(item) = layers.layers.get(root) else {
             return;
         };
@@ -163,6 +177,15 @@ impl CometPainter {
             return;
         };
 
+        // Logical layout coordinates scale to physical scene pixels at the
+        // root, so every transform below includes the display scale.
+        let parent = Transforms {
+            transform: Affine::scale(scale_factor) * parent.transform,
+            inverse: parent
+                .inverse
+                .map(|inverse| inverse * Affine::scale(scale_factor.recip())),
+        };
+
         let sources = Sources {
             ui,
             inputs,
@@ -170,6 +193,7 @@ impl CometPainter {
             pre_paint,
             layers,
             viewport,
+            scale_factor,
         };
 
         self.pending.clear();
@@ -544,6 +568,7 @@ impl CometPainter {
                         (line, item),
                         rect,
                         transform,
+                        sources.scale_factor,
                         text_color,
                         &visible,
                         scene,
@@ -796,6 +821,7 @@ fn draw_glyph_run(
     (line, item): (usize, usize),
     rect: Rect,
     transform: Affine,
+    scale_factor: f64,
     text_color: &anyrender::Paint,
     visible: &impl Fn(Rect) -> bool,
     scene: &mut impl PaintScene,
@@ -831,21 +857,26 @@ fn draw_glyph_run(
     let offset_y =
         (origin.y + fragment.layout.baseline.unwrap_or_default()) as f32 - glyph_run.baseline();
 
+    // Glyphs are shaped at their logical size but drawn at their physical
+    // font size, so they are hinted for the display's pixels. Their positions
+    // scale with them, and the display scale is taken out of the transform.
+    let scale = scale_factor as f32;
+
     scene.draw_glyphs(
         run.font(),
-        run.font_size(),
+        run.font_size() * scale,
         true,
         normalized_coords,
         Vec2::ZERO,
         peniko::StyleRef::Fill(peniko::Fill::NonZero),
         text_color,
         1.0,
-        transform,
+        transform * Affine::scale(scale_factor.recip()),
         None,
         glyph_run.positioned_glyphs().map(|glyph| anyrender::Glyph {
             id: glyph.id,
-            x: offset_x + glyph.x,
-            y: offset_y + glyph.y,
+            x: (offset_x + glyph.x) * scale,
+            y: (offset_y + glyph.y) * scale,
         }),
     );
 }

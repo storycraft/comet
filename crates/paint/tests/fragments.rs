@@ -151,7 +151,7 @@ fn draw(
         .build(tree, &pre_paint, &mut layers, root, None)
         .unwrap();
     painter.draw(
-        ui, inputs, tree, &pre_paint, &layers, layer_root, viewport, scene,
+        ui, inputs, tree, &pre_paint, &layers, layer_root, viewport, 1.0, scene,
     );
 }
 

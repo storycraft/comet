@@ -74,12 +74,12 @@ struct App {
     layer_builder: PaintLayerBuilder,
     /// Root layer of `layers`, from the last frame.
     layer_root: Option<PaintLayerKey>,
-    /// Viewport of the last input build.
+    /// Logical viewport of the last input build.
     viewport: Option<Size<f64>>,
     // TODO: Temporary hover outline, drawn around the node under the cursor.
     // Replace with real input handling.
     hit_tester: PaintHitTester,
-    /// Cursor position in physical pixels, the units of the layout viewport.
+    /// Cursor position in logical units, the units of the layout.
     cursor: Option<kurbo::Point>,
     /// The node outlined under the cursor, with the outline styles it had
     /// before, to restore once it is no longer hovered.
@@ -146,9 +146,16 @@ impl ApplicationHandler for App {
                     return;
                 }
 
-                let viewport = Size::new(size.width as f64, size.height as f64);
-                // Boxes may depend on the viewport, so a resize lays out every
-                // box again.
+                // Layout works in logical units: the physical surface divided
+                // by the display's scale factor.
+                let scale_factor = win.scale_factor();
+                let physical = kurbo::Rect::new(0.0, 0.0, size.width as f64, size.height as f64);
+                let viewport = Size::new(
+                    physical.width() / scale_factor,
+                    physical.height() / scale_factor,
+                );
+                // Boxes may depend on the viewport, so a resize or a scale
+                // factor change lays out every box again.
                 let forced = self.viewport.replace(viewport) != Some(viewport);
                 let Some(input_root) = self.input_builder.build(
                     &self.ui,
@@ -212,7 +219,8 @@ impl ApplicationHandler for App {
                         &self.pre_paint,
                         &self.layers,
                         layer_root,
-                        kurbo::Rect::new(0.0, 0.0, viewport.width, viewport.height),
+                        physical,
+                        scale_factor,
                         painter,
                     );
                 });
@@ -220,6 +228,8 @@ impl ApplicationHandler for App {
             // TODO: Temporary hover outline. Replace with real input
             // handling.
             WindowEvent::CursorMoved { position, .. } => {
+                // Hit testing works in logical units, like the layout.
+                let position = position.to_logical::<f64>(win.scale_factor());
                 self.cursor = Some(kurbo::Point::new(position.x, position.y));
                 self.update_hover();
             }
@@ -227,6 +237,9 @@ impl ApplicationHandler for App {
                 self.cursor = None;
                 self.update_hover();
             }
+            // The logical viewport changes with the scale factor. A resize
+            // usually follows, but the surface may keep its physical size.
+            WindowEvent::ScaleFactorChanged { .. } => win.request_redraw(),
             WindowEvent::CloseRequested => event_loop.exit(),
             _ => {}
         }
