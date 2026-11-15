@@ -4,6 +4,7 @@ use comet_layout::{
     input::{
         ChildLayout, LayoutFlags, LayoutInputKey, LayoutInputKind,
         builder::{BuildRequest, LayoutInputTreeBuilder},
+        text::TextStyleBits,
         tree::LayoutInputTree,
     },
     style::{
@@ -137,6 +138,63 @@ fn text_styles_resolve_units_and_share_allocations() {
     assert_eq!(changed.span.letter_spacing, 3.0);
     assert_eq!(style(rem).span.font_size, 32.0);
     assert_eq!(style(vw).span.font_size, 8.0);
+}
+
+#[test]
+fn style_units_report_viewport_dependence() {
+    for unit in [StyleUnit::Vw(0.5), StyleUnit::Vh(0.5)] {
+        assert!(unit.is_viewport_relative());
+    }
+
+    for unit in [
+        StyleUnit::Px(1.0),
+        StyleUnit::Percent(0.5),
+        StyleUnit::Em(1.0),
+        StyleUnit::Rem(1.0),
+    ] {
+        assert!(!unit.is_viewport_relative());
+    }
+}
+
+#[test]
+fn viewport_lengths_mark_text_styles_and_their_descendants() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, (bx::FontSize(StyleUnit::Rem(1.5)),));
+    let spaced = ui.create(Node::Box, (bx::LetterSpacing(StyleUnit::Vw(0.01)),));
+    let inherited = ui.create(Node::Text, ());
+    let overridden = ui.create(Node::Text, (bx::FontSize(StyleUnit::Px(12.0)),));
+    let tall = ui.create(Node::Box, (bx::LineHeight(StyleUnit::Vh(0.05)),));
+    let plain = ui.create(
+        Node::Box,
+        (
+            bx::FontSize(StyleUnit::Em(2.0)),
+            bx::WordSpacing(StyleUnit::Percent(0.5)),
+        ),
+    );
+
+    ui.append(root, spaced);
+    ui.append(spaced, inherited);
+    ui.append(spaced, overridden);
+    ui.append(root, tall);
+    ui.append(root, plain);
+
+    let mut tree = LayoutInputTree::new();
+    build(&mut LayoutInputTreeBuilder::new(), &ui, root, &mut tree).unwrap();
+    let bits = |node| {
+        tree.items[tree.item_for_node(node).unwrap()]
+            .text_style
+            .bits
+    };
+
+    assert_eq!(bits(spaced), TextStyleBits::DEPENDS_VIEWPORT);
+    assert_eq!(bits(tall), TextStyleBits::DEPENDS_VIEWPORT);
+    // Descendants inherit values resolved with the viewport.
+    assert_eq!(bits(inherited), TextStyleBits::DEPENDS_VIEWPORT);
+    assert_eq!(bits(overridden), TextStyleBits::DEPENDS_VIEWPORT);
+
+    // `rem`, `em` and percentages do not depend on the viewport.
+    assert!(bits(root).is_empty());
+    assert!(bits(plain).is_empty());
 }
 
 #[test]

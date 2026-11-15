@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use bitflags::bitflags;
 use comet_tree::ui::Props;
 
 use super::LayoutInputKey;
@@ -15,12 +16,25 @@ use crate::style::{
 /// owning the span, so glyph runs map back to their item.
 pub type SpanStyle = ::parley::TextStyle<'static, 'static, Option<LayoutInputKey>>;
 
+bitflags! {
+    /// What a resolved [`TextStyle`] depends on.
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+    pub struct TextStyleBits: u8 {
+        /// A length of the style uses `vw` or `vh`, so the style resolves
+        /// differently when the viewport size changes. Inherited from the
+        /// parent's style, since inherited values were resolved with it.
+        const DEPENDS_VIEWPORT = 1 << 0;
+    }
+}
+
 /// Inherited text properties of an item: the style of its text spans and the
 /// alignment of the lines in an inline formatting context it establishes.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TextStyle {
     pub span: SpanStyle,
     pub align: Alignment,
+    /// What the resolved style depends on.
+    pub bits: TextStyleBits,
 }
 
 /// Default style for a root without a source parent. Its font size is the root font size.
@@ -56,6 +70,15 @@ pub fn resolve_text_style(
         font_size: style.span.font_size as f64,
         ..cx.clone()
     };
+    // Starts from the parent's bits, which every inherited value carries.
+    let mut bits = style.bits;
+    let mut length = |value: StyleUnit, cx: &UnitResolveContext, percentage_basis: f64| {
+        if value.is_viewport_relative() {
+            bits |= TextStyleBits::DEPENDS_VIEWPORT;
+        }
+
+        resolve_length(value, cx, percentage_basis)
+    };
 
     macro_rules! set {
         ($($field:ident).+, $value:expr) => {
@@ -68,7 +91,7 @@ pub fn resolve_text_style(
 
     // `font-size` percentages use the parent's font size.
     if let Some(value) = props.get::<bx::FontSize>() {
-        set!(span.font_size, resolve_length(value.0, &cx, cx.font_size));
+        set!(span.font_size, length(value.0, &cx, cx.font_size));
     }
 
     // Every other length resolves against the resolved font size.
@@ -85,15 +108,12 @@ pub fn resolve_text_style(
         };
         ($prop:ident, $field:ident, length) => {
             if let Some(value) = props.get::<bx::$prop>() {
-                set!(span.$field, resolve_length(value.0, &cx, percentage_basis));
+                set!(span.$field, length(value.0, &cx, percentage_basis));
             }
         };
         ($prop:ident, $field:ident, optional) => {
             if let Some(value) = props.get::<bx::$prop>() {
-                set!(
-                    span.$field,
-                    Some(resolve_length(value.0, &cx, percentage_basis))
-                );
+                set!(span.$field, Some(length(value.0, &cx, percentage_basis)));
             }
         };
     }
@@ -117,12 +137,14 @@ pub fn resolve_text_style(
     if let Some(value) = props.get::<bx::LineHeight>() {
         set!(
             span.line_height,
-            parley::LineHeight::Absolute(resolve_length(value.0, &cx, percentage_basis))
+            parley::LineHeight::Absolute(length(value.0, &cx, percentage_basis))
         );
     }
     if let Some(value) = props.get::<bx::TextAlign>() {
         set!(align, value.0);
     }
+
+    set!(bits, bits);
 
     style
 }

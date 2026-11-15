@@ -18,6 +18,12 @@ pub enum StyleUnit {
 impl StyleUnit {
     pub const ZERO: StyleUnit = StyleUnit::Px(0.0);
 
+    /// Whether the unit is relative to the viewport (`vw` or `vh`), so its
+    /// resolved length changes with the viewport size.
+    pub const fn is_viewport_relative(self) -> bool {
+        matches!(self, StyleUnit::Vw(_) | StyleUnit::Vh(_))
+    }
+
     /// Resolve a length with the percentage basis chosen by the caller.
     pub const fn resolve(self, cx: &UnitResolveContext, percentage_basis: f64) -> f64 {
         match self {
