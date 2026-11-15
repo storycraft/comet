@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyrender::Paint;
 use anyrender::WindowRenderer;
-use anyrender_vello_cpu::VelloCpuWindowRenderer;
+use anyrender_vello::VelloWindowRenderer;
 use comet_layout::style::geometry::StyleUnit;
 use comet_layout::{
     fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -56,7 +56,7 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
         cursor: None,
         hovered: None,
         win: None,
-        vello: VelloCpuWindowRenderer::new(),
+        vello: VelloWindowRenderer::new(),
         ui_renderer: CometPainter::new(),
     })?)
 }
@@ -85,7 +85,7 @@ struct App {
     /// before, to restore once it is no longer hovered.
     hovered: Option<Hovered>,
     win: Option<Arc<Window>>,
-    vello: VelloCpuWindowRenderer,
+    vello: VelloWindowRenderer,
     ui_renderer: CometPainter,
 }
 
