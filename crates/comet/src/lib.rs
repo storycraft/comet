@@ -72,9 +72,10 @@ struct App {
     pre_paint_resolver: PrePaintTreeResolver,
     layers: PaintLayerTree,
     layer_builder: PaintLayerBuilder,
-    /// Root layer of `layers`, from the last frame.
+    /// Root layer of `layers`, from the last layout. `None` until a layout
+    /// succeeds, or after one fails.
     layer_root: Option<PaintLayerKey>,
-    /// Logical viewport of the last input build.
+    /// Logical viewport of the last successful layout.
     viewport: Option<Size<f64>>,
     // TODO: Temporary hover outline, drawn around the node under the cursor.
     // Replace with real input handling.
@@ -114,7 +115,7 @@ impl ApplicationHandler for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
-        let Some(win) = &self.win else {
+        let Some(win) = self.win.clone() else {
             return;
         };
 
@@ -154,59 +155,15 @@ impl ApplicationHandler for App {
                     physical.width() / scale_factor,
                     physical.height() / scale_factor,
                 );
-                // Boxes may depend on the viewport, so a resize or a scale
-                // factor change lays out every box again.
-                let forced = self.viewport.replace(viewport) != Some(viewport);
-                let Some(input_root) = self.input_builder.build(
-                    &self.ui,
-                    &mut self.inputs,
-                    BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport).forced(forced),
-                ) else {
-                    return;
-                };
 
-                let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE);
-                let fragment_root = self.fragment_builder.build(
-                    &self.ui,
-                    &self.inputs,
-                    input_root,
-                    &mut self.fragments,
-                    &constraint,
-                );
-                // Flags were consumed by the fragment build.
-                self.inputs.clear_flags(input_root);
-
-                let Some(fragment_root) = fragment_root else {
-                    return;
-                };
-
-                // Positions and clips follow the layout, which was just
-                // built, so resolve the whole tree again.
-                if self
-                    .pre_paint_resolver
-                    .resolve(
-                        &self.ui,
-                        &self.inputs,
-                        &self.fragments,
-                        &constraint.units,
-                        &mut self.pre_paint,
-                        fragment_root,
-                        true,
-                    )
-                    .is_none()
+                // The layout only changes with the logical viewport, so other
+                // redraws only paint the last layout again.
+                if (self.viewport != Some(viewport) || self.layer_root.is_none())
+                    && self.update_layout(viewport).is_none()
                 {
                     return;
                 }
 
-                // Layers keep their keys, so building from the root again
-                // only places the layers whose owners changed.
-                self.layer_root = self.layer_builder.build(
-                    &self.fragments,
-                    &self.pre_paint,
-                    &mut self.layers,
-                    fragment_root,
-                    self.layer_root,
-                );
                 let Some(layer_root) = self.layer_root else {
                     return;
                 };
@@ -260,6 +217,89 @@ struct Hovered {
 }
 
 impl App {
+    /// Build the input and fragment trees for `viewport`, resolve the
+    /// pre-paint tree and place the layers. On failure, nothing is painted
+    /// until a later redraw lays out again.
+    fn update_layout(&mut self, viewport: Size<f64>) -> Option<()> {
+        // Boxes may depend on the viewport, so a resize or a scale factor
+        // change lays out every box again.
+        let forced = self.viewport.take() != Some(viewport);
+        // Cleared until the layers are placed, but passed on to keep their keys.
+        let previous_layer_root = self.layer_root.take();
+
+        let input_root = self.input_builder.build(
+            &self.ui,
+            &mut self.inputs,
+            BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport).forced(forced),
+        )?;
+
+        let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE);
+        let fragment_root = self.fragment_builder.build(
+            &self.ui,
+            &self.inputs,
+            input_root,
+            &mut self.fragments,
+            &constraint,
+        );
+        // Flags were consumed by the fragment build.
+        self.inputs.clear_flags(input_root);
+        let fragment_root = fragment_root?;
+
+        // Positions and clips follow the layout, which was just built, so
+        // resolve the whole tree again.
+        self.pre_paint_resolver.resolve(
+            &self.ui,
+            &self.inputs,
+            &self.fragments,
+            &constraint.units,
+            &mut self.pre_paint,
+            fragment_root,
+            true,
+        )?;
+
+        // Layers keep their keys, so building from the root again only places
+        // the layers whose owners changed.
+        self.layer_root = Some(self.layer_builder.build(
+            &self.fragments,
+            &self.pre_paint,
+            &mut self.layers,
+            fragment_root,
+            previous_layer_root,
+        )?);
+        self.viewport = Some(viewport);
+
+        Some(())
+    }
+
+    /// Resolve the pre-paint data of a node's item again after its outline
+    /// styles changed. Outlines are painted from that data and do not affect
+    /// the layout or the layers, so a repaint is enough to show them.
+    fn resolve_outline(&mut self, node: NodeKey) {
+        let Some(viewport) = self.viewport else {
+            return;
+        };
+        let Some(fragment) = self
+            .inputs
+            .item_for_node(node)
+            .and_then(|item| self.fragments.fragments(item).next())
+        else {
+            return;
+        };
+
+        let units = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE).units;
+        // A node that no longer matches the layout is resolved on the next
+        // layout instead.
+        let _ = self.pre_paint_resolver.resolve(
+            &self.ui,
+            &self.inputs,
+            &self.fragments,
+            &units,
+            &mut self.pre_paint,
+            fragment,
+            false,
+        );
+    }
+
     /// Outline the node under the cursor, from the last frame's layout, and
     /// restore the outline of the node hovered before.
     ///
@@ -273,11 +313,14 @@ impl App {
         }
 
         if let Some(hovered) = self.hovered.take() {
+            let previous = hovered.node;
             restore(&mut self.ui, hovered);
+            self.resolve_outline(previous);
         }
 
         if let Some(node) = node {
             self.hovered = Some(outline(&mut self.ui, node));
+            self.resolve_outline(node);
         }
 
         if let Some(win) = &self.win {
