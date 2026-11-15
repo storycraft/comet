@@ -221,16 +221,15 @@ impl App {
     /// pre-paint tree and place the layers. On failure, nothing is painted
     /// until a later redraw lays out again.
     fn update_layout(&mut self, viewport: Size<f64>) -> Option<()> {
-        // Boxes may depend on the viewport, so a resize or a scale factor
-        // change lays out every box again.
-        let forced = self.viewport.take() != Some(viewport);
+        // Cleared until the layout succeeds.
+        self.viewport = None;
         // Cleared until the layers are placed, but passed on to keep their keys.
         let previous_layer_root = self.layer_root.take();
 
         let input_root = self.input_builder.build(
             &self.ui,
             &mut self.inputs,
-            BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport).forced(forced),
+            BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport),
         )?;
 
         let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE);

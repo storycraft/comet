@@ -97,20 +97,17 @@ struct Fixture {
     fragments: FragmentTree,
     input_builder: LayoutInputTreeBuilder,
     builder: FragmentTreeBuilder,
-    /// Viewport of the last build.
-    viewport: Option<Size<f64>>,
 }
 
 impl Fixture {
     fn build(&mut self, ui: &Ui, node: NodeKey, width: f64) -> FragmentKey {
         let viewport = Size::new(width, 600.0);
-        let forced = self.viewport.replace(viewport) != Some(viewport);
         let root = self
             .input_builder
             .build(
                 ui,
                 &mut self.inputs,
-                BuildRequest::new(node, 16.0, viewport).forced(forced),
+                BuildRequest::new(node, 16.0, viewport),
             )
             .unwrap();
         let fragment = self
@@ -171,7 +168,7 @@ fn custom_layout_runs_again_when_its_box_is_dirty() {
         // state is not picked up.
         (40, 80, false, 400.0, false),
         (40, 40, true, 400.0, true),
-        // A viewport change forces a build that lays out every box again.
+        // A viewport change lays out the boxes it resizes again.
         (100, 100, false, 500.0, true),
     ] {
         width.store(state_width, Ordering::Relaxed);

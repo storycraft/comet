@@ -64,14 +64,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nAfter changing the greeting (box fragments retained):");
     print_tree(&inputs, &fragments, updated);
 
-    // Boxes may depend on the viewport, so a forced build flags every box.
+    // A narrower viewport reflows the lines.
     viewport = Size::new(180.0, 600.0);
     constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE);
     input_builder
         .build(
             &ui,
             &mut inputs,
-            BuildRequest::new(root, ROOT_FONT_SIZE, viewport).forced(true),
+            BuildRequest::new(root, ROOT_FONT_SIZE, viewport),
         )
         .ok_or("could not rebuild sample UI")?;
     let resized = fragment_builder

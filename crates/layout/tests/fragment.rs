@@ -24,8 +24,6 @@ struct Fixture {
     tree: LayoutInputTree,
     builder: FragmentTreeBuilder,
     fragments: FragmentTree,
-    /// Viewport of the last input build.
-    viewport: Option<Size<f64>>,
 }
 
 impl Fixture {
@@ -35,7 +33,6 @@ impl Fixture {
             tree: LayoutInputTree::new(),
             builder: FragmentTreeBuilder::new(),
             fragments: FragmentTree::new(),
-            viewport: None,
         }
     }
 
@@ -49,14 +46,9 @@ impl Fixture {
         node: NodeKey,
         viewport: Size<f64>,
     ) -> (LayoutInputKey, FragmentKey) {
-        let forced = self.viewport.replace(viewport) != Some(viewport);
         let root = self
             .inputs
-            .build(
-                ui,
-                &mut self.tree,
-                BuildRequest::new(node, 16.0, viewport).forced(forced),
-            )
+            .build(ui, &mut self.tree, BuildRequest::new(node, 16.0, viewport))
             .unwrap();
 
         (root, self.layout_with(ui, root, viewport))
@@ -1046,8 +1038,8 @@ fn rebuilds_break_lines_again_without_shaping() {
     let shaped = f.shaped_text(root_fragment);
     assert_eq!(f.children(root_fragment).len(), 1);
 
-    // A viewport change re-resolves every item, but equal text styles keep
-    // the shaped text while lines follow the new width.
+    // A viewport change keeps the shaped text of equal text styles, while
+    // lines follow the new width.
     ui.set_props(content, (Text("edited".into()),));
     f.build_with(&ui, root, Size::new(80.0, 600.0));
     f.tree.clear_flags(input_root);

@@ -86,13 +86,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     print_tree(&ui, &tree, layout_root);
 
-    // Every item may depend on the root font size or the viewport, so a forced
-    // build re-resolves the whole subtree and flags every box. Keys are kept.
+    // Every build re-resolves the whole subtree, so a new root font size is
+    // picked up. Keys are kept.
     let layout_root = builder
         .build(
             &ui,
             &mut tree,
-            BuildRequest::new(root, 20.0, Size::new(1024.0, 768.0)).forced(true),
+            BuildRequest::new(root, 20.0, Size::new(1024.0, 768.0)),
         )
         .ok_or("could not re-resolve the tree")?;
 

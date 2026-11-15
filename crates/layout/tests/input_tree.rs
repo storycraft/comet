@@ -281,27 +281,6 @@ fn update_reconciles_children_and_keeps_keys() {
         assert_eq!(tree.items[item].flags, LayoutFlags::empty());
     }
 
-    // A forced build flags only the boxes.
-    assert_eq!(
-        builder.build(
-            &ui,
-            &mut tree,
-            BuildRequest::new(root, 16.0, VIEWPORT).forced(true)
-        ),
-        Some(key)
-    );
-    for item in tree.items.descendants(key) {
-        assert!(
-            tree.items[item]
-                .flags
-                .contains(LayoutFlags::NEED_BOX_LAYOUT)
-        );
-        assert!(
-            !tree.items[item]
-                .flags
-                .contains(LayoutFlags::NEED_FULL_LAYOUT)
-        );
-    }
     clean(&mut tree, key);
 
     let a_key = tree.item_for_node(a).unwrap();
@@ -503,11 +482,7 @@ fn build_re_resolves_and_flags_clean_subtrees() {
     // A clean tree picks up the new root font size and viewport. Keys are kept.
     let viewport = Size::new(1000.0, 600.0);
     assert_eq!(
-        builder.build(
-            &ui,
-            &mut tree,
-            BuildRequest::new(root, 20.0, viewport).forced(true)
-        ),
+        builder.build(&ui, &mut tree, BuildRequest::new(root, 20.0, viewport)),
         Some(key)
     );
     assert_eq!(tree.item_for_node(child), Some(child_key));
@@ -534,40 +509,14 @@ fn build_re_resolves_and_flags_clean_subtrees() {
         assert_eq!(tree.items[item].flags, LayoutFlags::empty());
     }
 
-    // A forced build lays out every box again.
-    builder.build(
-        &ui,
-        &mut tree,
-        BuildRequest::new(root, 20.0, viewport).forced(true),
-    );
-
-    assert_eq!(
-        tree.items[key].flags,
-        LayoutFlags::NEED_BOX_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
-    );
-    assert_eq!(
-        tree.items[child_key].flags,
-        LayoutFlags::NEED_BOX_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
-    );
-    assert_eq!(tree.items[text_key].flags, LayoutFlags::NEED_BOX_LAYOUT);
-
-    // Only items whose text style resolves differently are fully dirty.
+    // A new viewport flags only the items whose text style resolves
+    // differently.
     clean(&mut tree, key);
     let wider = Size::new(500.0, 600.0);
-    builder.build(
-        &ui,
-        &mut tree,
-        BuildRequest::new(root, 20.0, wider).forced(true),
-    );
+    builder.build(&ui, &mut tree, BuildRequest::new(root, 20.0, wider));
 
-    assert_eq!(
-        tree.items[key].flags,
-        LayoutFlags::NEED_BOX_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
-    );
-    assert_eq!(
-        tree.items[child_key].flags,
-        LayoutFlags::NEED_BOX_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
-    );
+    assert_eq!(tree.items[key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
+    assert_eq!(tree.items[child_key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
     assert_eq!(tree.items[text_key].flags, LayoutFlags::NEED_FULL_LAYOUT);
     assert_eq!(tree.items[text_key].text_style.span.letter_spacing, 5.0);
 
