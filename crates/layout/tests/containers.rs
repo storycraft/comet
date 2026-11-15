@@ -85,7 +85,7 @@ impl ContainerLayout for Row {
 }
 
 fn row(width: &Arc<AtomicU32>, calls: &Arc<AtomicU32>) -> DisplayInner {
-    DisplayInner::Container(Box::new(Row {
+    DisplayInner::Container(Arc::new(Row {
         width: width.clone(),
         calls: calls.clone(),
     }))
@@ -348,7 +348,7 @@ fn size_probes_do_not_leave_probe_geometry_in_cached_final_layouts() {
     let root = ui.create(Node::Box, ());
     let custom = ui.create(
         Node::Box,
-        (DisplayInner::Container(Box::new(Probe {
+        (DisplayInner::Container(Arc::new(Probe {
             probe: probe.clone(),
         })),),
     );

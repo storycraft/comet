@@ -1,6 +1,6 @@
 //! Flexbox containers for Comet.
 //!
-//! Attach `DisplayInner::Container(Box::new(Flex))` to a node, then set
+//! Attach `DisplayInner::Container(flex())` to a node, then set
 //! properties from [`styles`] on the container and its children.
 //!
 //! ```
@@ -10,7 +10,7 @@
 //!
 //! let mut ui = Ui::new();
 //! let row = ui.create(Node::Box, (
-//!     DisplayInner::Container(Box::new(Flex)),
+//!     DisplayInner::Container(flex()),
 //!     Gap(Size::new(StyleUnit::Px(12.0), StyleUnit::ZERO)),
 //! ));
 //! let child = ui.create(Node::Box, (FlexGrow(1.0),));
@@ -22,11 +22,24 @@ mod adapter;
 pub mod prelude;
 pub mod styles;
 
+use std::sync::{Arc, LazyLock};
+
 use comet_layout::container::{ContainerContext, ContainerLayout};
 
+/// The flexbox algorithm, shared by every flex container.
+static FLEX: LazyLock<Arc<dyn ContainerLayout>> = LazyLock::new(|| Arc::new(Flex));
+
+/// The flexbox container algorithm, for [`DisplayInner::Container`].
+/// Configure each container and its children with the properties in
+/// [`styles`]. Every call returns the same shared instance.
+///
+/// [`DisplayInner::Container`]: comet_layout::style::bx::DisplayInner::Container
+pub fn flex() -> Arc<dyn ContainerLayout> {
+    FLEX.clone()
+}
+
 /// A flexbox algorithm with configuration supplied by node style properties.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct Flex;
+struct Flex;
 
 impl ContainerLayout for Flex {
     fn layout(

@@ -14,7 +14,7 @@ use comet_layout::{
         geometry::{AutoValue, Rect, Size, StyleUnit},
     },
 };
-use comet_layout_flex::{Flex, styles as flex};
+use comet_layout_flex::{flex as flex_layout, styles as flex};
 use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,
@@ -110,7 +110,7 @@ fn grows_and_shrinks_items_with_gaps() {
     let root = ui.create(
         Node::Box,
         (
-            bx::DisplayInner::Container(Box::new(Flex)),
+            bx::DisplayInner::Container(flex_layout()),
             size(300.0, 100.0),
             flex::Gap(Size::new(StyleUnit::Px(10.0), StyleUnit::ZERO)),
         ),
@@ -144,7 +144,7 @@ fn percentages_use_content_size_and_padding_is_applied_once() {
     let root = ui.create(
         Node::Box,
         (
-            bx::DisplayInner::Container(Box::new(Flex)),
+            bx::DisplayInner::Container(flex_layout()),
             size(224.0, 100.0),
             bx::Padding(Rect::new_all(StyleUnit::Px(10.0))),
             bx::Border(Rect::new_all(StyleUnit::Px(2.0))),
@@ -195,7 +195,7 @@ fn wraps_and_aligns_rows_and_supports_column_reverse() {
     let root = ui.create(
         Node::Box,
         (
-            bx::DisplayInner::Container(Box::new(Flex)),
+            bx::DisplayInner::Container(flex_layout()),
             size(130.0, 100.0),
             flex::FlexWrap(taffy::FlexWrap::Wrap),
             flex::Gap(Size::new(StyleUnit::Px(10.0), StyleUnit::Px(5.0))),
@@ -238,7 +238,7 @@ fn alignment_and_item_override_use_fixed_cross_size() {
     let root = ui.create(
         Node::Box,
         (
-            bx::DisplayInner::Container(Box::new(Flex)),
+            bx::DisplayInner::Container(flex_layout()),
             size(200.0, 100.0),
             flex::JustifyContent(taffy::JustifyContent::SPACE_BETWEEN),
             flex::AlignItems(taffy::AlignItems::CENTER),
@@ -269,7 +269,7 @@ fn font_and_viewport_units_use_the_source_node_context() {
     let root = ui.create(
         Node::Box,
         (
-            bx::DisplayInner::Container(Box::new(Flex)),
+            bx::DisplayInner::Container(flex_layout()),
             size(500.0, 100.0),
             bx::FontSize(StyleUnit::Px(20.0)),
             flex::Gap(Size::new(StyleUnit::Em(1.0), StyleUnit::ZERO)),
@@ -314,7 +314,7 @@ fn wrapped_text_and_inline_children_use_source_flex_properties() {
     let root = ui.create(
         Node::Box,
         (
-            bx::DisplayInner::Container(Box::new(Flex)),
+            bx::DisplayInner::Container(flex_layout()),
             size(300.0, 100.0),
         ),
     );
@@ -354,14 +354,14 @@ fn nested_flex_and_incremental_style_changes_match_fresh_layout() {
     let root = ui.create(
         Node::Box,
         (
-            bx::DisplayInner::Container(Box::new(Flex)),
+            bx::DisplayInner::Container(flex_layout()),
             size(300.0, 100.0),
         ),
     );
     let nested = ui.create(
         Node::Box,
         (
-            bx::DisplayInner::Container(Box::new(Flex)),
+            bx::DisplayInner::Container(flex_layout()),
             flex::FlexGrow(1.0),
         ),
     );
@@ -419,7 +419,7 @@ fn absolute_children_and_descendants_stay_out_of_flex_sizing() {
     let root = ui.create(
         Node::Box,
         (
-            bx::DisplayInner::Container(Box::new(Flex)),
+            bx::DisplayInner::Container(flex_layout()),
             size(200.0, 100.0),
         ),
     );
@@ -465,7 +465,7 @@ fn text_items_align_by_their_first_baseline() {
     let root = ui.create(
         Node::Box,
         (
-            bx::DisplayInner::Container(Box::new(Flex)),
+            bx::DisplayInner::Container(flex_layout()),
             size(300.0, 100.0),
             flex::AlignItems(taffy::AlignItems::BASELINE),
         ),

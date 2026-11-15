@@ -138,10 +138,14 @@ impl Engine<'_> {
     ) -> taffy::LayoutOutput {
         let ui = self.ui;
         let source = self.fragments.items[fragment].source;
-        let inner = ui.prop::<DisplayInner>(self.tree.items[source].node);
-
-        let Some(DisplayInner::Container(algorithm)) = inner.as_deref() else {
-            return self.layout_leaf(fragment, input);
+        // Take the algorithm out, so the prop is not borrowed while the
+        // children are laid out.
+        let algorithm = match ui
+            .prop::<DisplayInner>(self.tree.items[source].node)
+            .as_deref()
+        {
+            Some(DisplayInner::Container(algorithm)) => algorithm.clone(),
+            _ => return self.layout_leaf(fragment, input),
         };
 
         let mut context = ContainerContext {

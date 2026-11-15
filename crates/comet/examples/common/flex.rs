@@ -97,7 +97,7 @@ fn flex_row(ui: &mut Ui, parent: NodeKey) -> NodeKey {
     let row = ui.create(
         Node::Box,
         (
-            DisplayInner::Container(Box::new(Flex)),
+            DisplayInner::Container(flex()),
             Gap(LayoutSize::new(StyleUnit::Px(8.0), StyleUnit::Px(8.0))),
         ),
     );

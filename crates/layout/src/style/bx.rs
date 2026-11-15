@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use comet_tree::style::{StyleProp, define_style_props};
 use kurbo;
 use parley;
@@ -18,13 +20,13 @@ pub enum DisplayOuter {
 }
 impl StyleProp for DisplayOuter {}
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub enum DisplayInner {
     #[default]
     /// Generate layout boxes and display children using Flow layout.
     Flow,
     /// Lay out independent child boxes using a custom algorithm.
-    Container(Box<dyn ContainerLayout>),
+    Container(Arc<dyn ContainerLayout>),
     /// Establish a new flow context and layout children inside.
     FlowRoot,
     /// Display a content inside. Children will not be laid out.

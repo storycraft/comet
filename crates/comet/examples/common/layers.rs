@@ -7,7 +7,7 @@ use comet_layout::style::{
     parley,
     taffy::Overflow as Clip,
 };
-use comet_layout_flex::{Flex, styles::Gap};
+use comet_layout_flex::{flex, styles::Gap};
 use comet_paint::style::{
     BorderRadius, Fill, Filter, Opacity, TextColor, Transform, TransformOrigin, ZIndex,
 };
@@ -290,7 +290,7 @@ fn row(ui: &mut Ui, parent: NodeKey) -> NodeKey {
     let row = ui.create(
         Node::Box,
         (
-            DisplayInner::Container(Box::new(Flex)),
+            DisplayInner::Container(flex()),
             Gap(LayoutSize::new(StyleUnit::Px(16.0), StyleUnit::Px(16.0))),
             Padding(Rect::new_axis(StyleUnit::Px(10.0), StyleUnit::Px(8.0))),
         ),

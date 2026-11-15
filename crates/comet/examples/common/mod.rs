@@ -8,7 +8,7 @@ use comet_layout::style::{
     geometry::{AutoValue, Rect, Size as LayoutSize, StyleUnit},
     parley::{self, Alignment},
 };
-use comet_layout_flex::{Flex, styles as flex_style};
+use comet_layout_flex::{flex, styles as flex_style};
 use comet_paint::style::{BorderRadius, Fill, TextColor};
 use comet_tree::{
     node::{Node, NodeKey, Text},
@@ -47,7 +47,7 @@ pub fn sample_ui() -> (Ui, NodeKey) {
     let sections = ui.create(
         Node::Box,
         (
-            DisplayInner::Container(Box::new(Flex)),
+            DisplayInner::Container(flex()),
             flex_style::FlexWrap(flex_style::taffy::FlexWrap::Wrap),
             flex_style::Gap(LayoutSize::new(StyleUnit::Px(16.0), StyleUnit::Px(16.0))),
             Margin(Rect::new_invidiual(
