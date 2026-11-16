@@ -127,10 +127,12 @@ impl Engine<'_> {
         (style, bits)
     }
 
-    /// Add `bits` to the box fragments of the ancestors of an item, up to the
-    /// root of the build. Items without boxes, such as inline elements, are
-    /// skipped.
+    /// Add the [propagated](NodeLayoutBits::PROPAGATED) part of `bits` to the
+    /// box fragments of the ancestors of an item, up to the root of the
+    /// build. Items without boxes, such as inline elements, are skipped.
     fn propagate_bits(&mut self, key: LayoutInputKey, bits: NodeLayoutBits) {
+        let bits = bits & NodeLayoutBits::PROPAGATED;
+
         if bits.is_empty() || key == self.root {
             return;
         }

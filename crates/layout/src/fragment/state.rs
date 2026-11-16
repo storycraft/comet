@@ -6,11 +6,16 @@ use crate::{input::LayoutInputKey, style::geometry::StyleUnit, taffy::style::Sty
 bitflags! {
     /// What the layout of a box or of its subtree depends on, besides its
     /// own content. Set when box styles are resolved and from what custom
-    /// container algorithms return, and on every ancestor box up to the root
-    /// of the build.
+    /// container algorithms return. [`Self::PROPAGATED`] bits are also set
+    /// on every ancestor box up to the root of the build.
     #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
     pub struct NodeLayoutBits: u8 {
-        /// A length resolves against the parent's size, such as a percentage.
+        /// A length of the box itself resolves against its parent's size,
+        /// such as a percentage. Not propagated: a box whose size is known
+        /// lays out its subtree the same whatever its parent's size, since
+        /// its descendants resolve against it or boxes inside it, and
+        /// out-of-flow descendants claimed by an ancestor are laid out by
+        /// that ancestor.
         const DEPENDS_PARENT_SIZE = 1 << 0;
         /// A length uses `vw` or `vh`.
         const DEPENDS_VIEWPORT = 1 << 1;
@@ -18,6 +23,10 @@ bitflags! {
 }
 
 impl NodeLayoutBits {
+    /// Bits set on the ancestors of a box too, so a build finds the box
+    /// from the root.
+    pub const PROPAGATED: Self = Self::DEPENDS_VIEWPORT;
+
     /// What a length of `unit` depends on.
     pub fn of_unit(unit: StyleUnit) -> Self {
         match unit {
@@ -55,8 +64,9 @@ pub(crate) struct NodeState {
     pub style: Style,
     /// Unrounded layout of the latest final layout pass.
     pub layout: taffy::Layout,
-    /// What the layout of this box and of its subtree depends on. Bits are
-    /// only added, so they may outlive the styles that set them.
+    /// What the layout of this box depends on, with the
+    /// [propagated](NodeLayoutBits::PROPAGATED) bits of its subtree. Bits
+    /// are only added, so they may outlive the styles that set them.
     pub bits: NodeLayoutBits,
     pub cache: taffy::Cache,
     /// Whether retained text and descendant geometry match the final cache entry.

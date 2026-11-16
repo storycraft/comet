@@ -83,7 +83,7 @@ fn width(unit: StyleUnit) -> bx::Size {
 }
 
 #[test]
-fn style_units_set_layout_bits_up_to_the_root() {
+fn style_units_set_viewport_bits_up_to_the_root() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let card = ui.create(Node::Box, (width(StyleUnit::Percent(0.5)),));
@@ -107,7 +107,8 @@ fn style_units_set_layout_bits_up_to_the_root() {
     assert_eq!(f.bits(inner), NodeLayoutBits::DEPENDS_VIEWPORT);
     // Its own percentage width, and the viewport padding of its child.
     assert_eq!(f.bits(card), NodeLayoutBits::all());
-    assert_eq!(f.bits(root), NodeLayoutBits::all());
+    // Only the viewport bit reaches the ancestors.
+    assert_eq!(f.bits(root), NodeLayoutBits::DEPENDS_VIEWPORT);
     assert!(f.bits(plain).is_empty());
 
     // A box style edit adds the bits of its new style to the ancestors.
@@ -149,8 +150,9 @@ fn containers_add_the_bits_their_layout_returns() {
     assert!(f.bits(independent).is_empty());
 }
 
-/// A container algorithm that counts its layouts.
-struct Counted(Arc<std::sync::atomic::AtomicU32>);
+/// A container algorithm that counts its layouts, and returns the given
+/// bits.
+struct Counted(Arc<std::sync::atomic::AtomicU32>, NodeLayoutBits);
 
 impl ContainerLayout for Counted {
     fn layout(
@@ -164,8 +166,7 @@ impl ContainerLayout for Counted {
             height: input.known_dimensions.height.unwrap_or(0.0),
         });
 
-        // As if it resolved a length of its own in `vw`.
-        (output, NodeLayoutBits::DEPENDS_VIEWPORT)
+        (output, self.1)
     }
 }
 
@@ -186,8 +187,10 @@ fn viewport_changes_skip_cached_layouts_of_viewport_dependent_boxes() {
     );
     let container = ui.create(
         Node::Box,
+        // As if it resolved a length of its own in `vw`.
         (bx::DisplayInner::Container(Arc::new(Counted(
             calls.clone(),
+            NodeLayoutBits::DEPENDS_VIEWPORT,
         ))),),
     );
     ui.append(root, wrapper);
@@ -221,6 +224,60 @@ fn viewport_changes_skip_cached_layouts_of_viewport_dependent_boxes() {
     assert_eq!(layout(&mut f, 500.0, false), 0);
     // A changed viewport lays out viewport dependent boxes again.
     assert!(layout(&mut f, 600.0, true) > 0);
+}
+
+#[test]
+fn percentage_descendants_keep_fixed_size_ancestors_cached() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    let calls = Arc::new(AtomicU32::new(0));
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    // Fixed size, so it lays out the same whatever the root's size.
+    let container = ui.create(
+        Node::Box,
+        (
+            bx::Size(Size::new(
+                AutoValue::Value(StyleUnit::Px(100.0)),
+                AutoValue::Value(StyleUnit::Px(50.0)),
+            )),
+            bx::DisplayInner::Container(Arc::new(Counted(calls.clone(), NodeLayoutBits::empty()))),
+        ),
+    );
+    // Resolves against the container, not the root.
+    let child = ui.create(Node::Box, (width(StyleUnit::Percent(0.5)),));
+    ui.append(root, container);
+    ui.append(container, child);
+
+    let mut f = Fixture::new();
+    let layout = |f: &mut Fixture, width: f64| {
+        let viewport = Size::new(width, 600.0);
+        let input_root = f
+            .inputs
+            .build(&ui, &mut f.tree, BuildRequest::new(root, 16.0, viewport))
+            .unwrap();
+        f.builder
+            .build(
+                &ui,
+                &f.tree,
+                input_root,
+                &mut f.fragments,
+                &LayoutConstraint::new_root(viewport, 16.0),
+            )
+            .unwrap();
+        f.tree.clear_flags(input_root);
+
+        calls.swap(0, Ordering::Relaxed)
+    };
+
+    assert!(layout(&mut f, 400.0) > 0);
+    assert_eq!(f.bits(child), NodeLayoutBits::DEPENDS_PARENT_SIZE);
+    // The child's percentage stays with the child.
+    assert!(f.bits(container).is_empty());
+    assert!(f.bits(root).is_empty());
+
+    // The root is laid out at the new size, but the container is cached.
+    assert_eq!(layout(&mut f, 500.0), 0);
 }
 
 #[test]

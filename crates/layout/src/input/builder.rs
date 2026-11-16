@@ -425,9 +425,7 @@ impl LayoutInputTreeBuilder {
 
         // Unchanged children are only visited for their marked descendants,
         // or descendants depending on a changed viewport.
-        if ui.props(node).is_none() {
-            return None;
-        }
+        ui.props(node)?;
 
         let visit = self
             .needs_visit(&tree.items[item])
