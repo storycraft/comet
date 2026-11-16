@@ -48,8 +48,9 @@ impl PaintLayerBuilder {
     /// change resolved into `pre_paint`. The child layers of the layer `key`
     /// paints in are placed again: layers started under `key` are rebuilt,
     /// and layers started elsewhere in that layer are kept as they are. Pass
-    /// the same keys as to
-    /// [`PrePaintTreeResolver::resolve`](crate::pre_paint::resolver::PrePaintTreeResolver::resolve).
+    /// a fragment above those
+    /// [marked](crate::pre_paint::tree::PrePaintTree::mark) for the
+    /// [`PrePaintTreeResolver`](crate::pre_paint::resolver::PrePaintTreeResolver).
     /// A fragment moved to another parent needs a key above both its old and
     /// new places.
     ///

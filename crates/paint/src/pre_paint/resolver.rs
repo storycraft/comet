@@ -11,7 +11,7 @@ use comet_tree::ui::{Props, Ui};
 use kurbo::{Affine, Point, RoundedRectRadii, Size};
 
 use crate::{
-    pre_paint::{FragmentData, LayoutInputData, tree::PrePaintTree},
+    pre_paint::{FragmentData, LayoutInputData, PrePaintFlags, tree::PrePaintTree},
     style::{
         BackdropFilter, BorderRadius, Filter, Opacity, OutlineOffset, OutlineWidth, Transform,
         TransformOrigin, ZIndex,
@@ -22,11 +22,11 @@ use crate::{
 /// buffers across resolves.
 #[derive(Default)]
 pub struct PrePaintTreeResolver {
-    /// Fragments to resolve.
-    fragments: Vec<FragmentKey>,
-    /// Layout input items to resolve, after their parents.
+    /// Fragments to visit.
+    pending: Vec<FragmentKey>,
+    /// Layout input items to resolve.
     items: Vec<LayoutInputKey>,
-    /// Fragments found changed by [`Self::resolve_changed`].
+    /// Fragments to resolve.
     changed: Vec<FragmentKey>,
 }
 
@@ -44,15 +44,25 @@ impl PrePaintTreeResolver {
         Self::default()
     }
 
-    /// Resolve the layout input item of `key` into `tree` again, then `key`
-    /// itself. With `recursive`, the items under that item and the fragments
-    /// under `key` are resolved too. Data only depends on the fragment or
-    /// item itself, so ancestors are neither read nor resolved.
+    /// Resolve into `tree` the fragments under `root` that need it, and
+    /// their layout input items:
+    /// - fragments that fragment builds created, moved or resized since the
+    ///   last successful call, found with the
+    ///   [generations](FragmentTree::generation) of `fragments`,
+    /// - fragments [marked](PrePaintTree::mark)
+    ///   [`NEED_PRE_PAINT`](PrePaintFlags::NEED_PRE_PAINT), such as after
+    ///   their paint styles changed,
+    /// - fragments without data in `tree`.
     ///
-    /// Resolve again the subtrees whose layout or paint styles changed, or the
-    /// whole tree after a fragment build or when the root font size or
-    /// viewport changes. Resolve without `recursive` when only the styles of
-    /// `key`'s item changed, not those of its descendants.
+    /// Subtrees without such fragments are skipped, so the first call, or a
+    /// call on an empty `tree`, resolves everything. Data only depends on the
+    /// fragment or item itself, so ancestors are not resolved. Flags are not
+    /// cleared; call [`PrePaintTree::clear_flags`] after resolving.
+    ///
+    /// Changes builds cannot see, such as paint styles, must be marked. The
+    /// root font size and viewport units data resolves with are not tracked:
+    /// resolve into a new or [cleared](PrePaintTree::clear) tree when they
+    /// change.
     ///
     /// `inputs` is the input tree `fragments` were built from, and `tree`
     /// belongs to them. `units` resolves border radii and transform origins,
@@ -61,42 +71,9 @@ impl PrePaintTreeResolver {
     /// Returns `None` if a fragment or item to resolve no longer matches the
     /// UI, such as when its source node was deleted after `inputs` and
     /// `fragments` were built. Rebuild them, then resolve again. Data resolved
-    /// before the failure stays in `tree`, so `tree` may be partly updated.
-    #[allow(clippy::too_many_arguments)]
+    /// before the failure stays in `tree`, so `tree` may be partly updated,
+    /// but the next call resolves the same fragments again.
     pub fn resolve(
-        &mut self,
-        ui: &Ui,
-        inputs: &LayoutInputTree,
-        fragments: &FragmentTree,
-        units: &UnitResolveContext,
-        tree: &mut PrePaintTree,
-        key: FragmentKey,
-        recursive: bool,
-    ) -> Option<()> {
-        let sources = Sources {
-            ui,
-            inputs,
-            fragments,
-            units,
-        };
-
-        // Fragments read the stitched sizes of their items.
-        self.resolve_items(sources, tree, fragments.items.get(key)?.source, recursive)?;
-        self.resolve_fragments(sources, tree, key, recursive)?;
-        Some(())
-    }
-
-    /// Resolve what fragment builds changed since the last call into `tree`:
-    /// the fragments under `root` that were created, moved or resized, and
-    /// their layout input items. Subtrees without such fragments are skipped,
-    /// using the [generations](FragmentTree::generation) of `fragments`. The
-    /// first call resolves everything.
-    ///
-    /// Changes builds cannot see, such as paint styles or the root font size
-    /// and viewport units they resolve with, are resolved with
-    /// [`Self::resolve`]. Arguments and failures are those of
-    /// [`Self::resolve`].
-    pub fn resolve_changed(
         &mut self,
         ui: &Ui,
         inputs: &LayoutInputTree,
@@ -112,7 +89,7 @@ impl PrePaintTreeResolver {
             units,
         };
         let Self {
-            fragments: pending,
+            pending,
             items,
             changed,
         } = self;
@@ -125,17 +102,24 @@ impl PrePaintTreeResolver {
 
         while let Some(key) = pending.pop() {
             let fragment = fragments.items.get(key)?;
+            let flags = tree.flags(key);
+            let stale = fragment.subtree_generation > resolved;
 
-            if fragment.subtree_generation <= resolved {
+            if !stale && flags.is_empty() {
                 continue;
             }
 
-            if fragment.geometry_generation > resolved || !tree.fragment_mapping.contains_key(key) {
+            if fragment.geometry_generation > resolved
+                || flags.contains(PrePaintFlags::NEED_PRE_PAINT)
+                || !tree.fragment_mapping.contains_key(key)
+            {
                 changed.push(key);
                 items.push(fragment.source);
             }
 
-            pending.extend(fragments.items.children(key));
+            if stale || flags.contains(PrePaintFlags::CHILD_NEED_PRE_PAINT) {
+                pending.extend(fragments.items.children(key));
+            }
         }
 
         // Items read the sizes of all their fragments, and fragments read
@@ -153,60 +137,6 @@ impl PrePaintTreeResolver {
         }
 
         tree.generation = fragments.generation();
-        Some(())
-    }
-
-    /// Resolve the data of `key`, and of the fragments under it if
-    /// `recursive`.
-    fn resolve_fragments(
-        &mut self,
-        sources: Sources<'_>,
-        tree: &mut PrePaintTree,
-        key: FragmentKey,
-        recursive: bool,
-    ) -> Option<()> {
-        let fragments = sources.fragments;
-
-        let pending = &mut self.fragments;
-        pending.clear();
-        pending.push(key);
-
-        while let Some(key) = pending.pop() {
-            let data = sources.resolve_fragment(key)?;
-
-            tree.fragment_mapping.insert(key, data);
-
-            if recursive {
-                pending.extend(fragments.items.children(key));
-            }
-        }
-        Some(())
-    }
-
-    /// Resolve the data of the layout input item `key`, and of the items
-    /// under it if `recursive`.
-    fn resolve_items(
-        &mut self,
-        sources: Sources<'_>,
-        tree: &mut PrePaintTree,
-        key: LayoutInputKey,
-        recursive: bool,
-    ) -> Option<()> {
-        let items = &sources.inputs.items;
-
-        let pending = &mut self.items;
-        pending.clear();
-        pending.push(key);
-
-        while let Some(key) = pending.pop() {
-            let data = sources.resolve_item(key)?;
-
-            tree.layout_mapping.insert(key, data);
-
-            if recursive {
-                pending.extend(items.children(key).rev());
-            }
-        }
         Some(())
     }
 }

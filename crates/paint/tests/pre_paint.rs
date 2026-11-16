@@ -19,7 +19,8 @@ use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     pre_paint::{
-        FragmentData, LayoutInputData, resolver::PrePaintTreeResolver, tree::PrePaintTree,
+        FragmentData, LayoutInputData, PrePaintFlags, resolver::PrePaintTreeResolver,
+        tree::PrePaintTree,
     },
     style::{
         BorderRadius, Fill, OutlineFill, OutlineOffset, OutlineWidth, TextColor, Transform,
@@ -89,10 +90,6 @@ impl Fixture {
     }
 
     fn resolve(&mut self, ui: &Ui, key: FragmentKey) -> Option<()> {
-        self.resolve_with(ui, key, true)
-    }
-
-    fn resolve_with(&mut self, ui: &Ui, key: FragmentKey, recursive: bool) -> Option<()> {
         self.resolver.resolve(
             ui,
             &self.inputs,
@@ -100,8 +97,12 @@ impl Fixture {
             &UNITS,
             &mut self.pre_paint,
             key,
-            recursive,
         )
+    }
+
+    /// Mark a fragment as needing pre-paint.
+    fn mark(&mut self, key: FragmentKey) {
+        self.pre_paint.mark(&self.fragments, key);
     }
 
     fn item(&self, node: NodeKey) -> LayoutInputKey {
@@ -720,7 +721,7 @@ fn content_outside_its_clip_is_not_painted() {
 }
 
 #[test]
-fn resolving_a_subtree_follows_the_layout() {
+fn resolving_follows_the_layout() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let top = ui.create(Node::Box, (fixed(10.0, 10.0),));
@@ -750,15 +751,19 @@ fn resolving_a_subtree_follows_the_layout() {
         Affine::translate((3.0, 10.0)),
     );
 
-    // Resolving the subtree leaves its ancestors as they are.
-    f.resolve(&ui, clipper_fragment).unwrap();
+    // Resolving follows the moved and resized fragments.
+    let root_fragment = f.root.unwrap();
+    f.resolve(&ui, root_fragment).unwrap();
 
     assert_eq!(f.boxed(clipper).transform_origin, Point::new(25.0, 10.0));
     assert_affine(
         f.transform(clipper_fragment),
         Affine::translate((3.0, 30.0)),
     );
-    assert_eq!(f.boxed(root), &root_data);
+    // The root grew, so its origin moved, but it stays in place.
+    assert_eq!(f.boxed(root).transform, root_data.transform);
+    assert_ne!(f.boxed(root).transform_origin, root_data.transform_origin);
+    f.assert_matches_full_resolve(&ui, root_fragment);
 }
 
 #[test]
@@ -818,7 +823,9 @@ fn resolving_fails_for_nodes_deleted_since_the_layout_was_built() {
     let mut f = Fixture::default();
     let root_fragment = f.build(&ui, root);
 
-    // The layout still holds the deleted node until it is rebuilt.
+    // The layout still holds the deleted node until it is rebuilt, so a
+    // fragment of it fails to resolve.
+    f.mark(f.box_of(block));
     ui.delete(block);
     assert_eq!(f.resolve(&ui, root_fragment), None);
 
@@ -826,6 +833,7 @@ fn resolving_fails_for_nodes_deleted_since_the_layout_was_built() {
     f.inputs.mark_node(root, LayoutFlags::NEED_FULL_LAYOUT);
     let root_fragment = f.layout(&ui, root);
     assert_eq!(f.resolve(&ui, root_fragment), Some(()));
+    f.pre_paint.clear_flags();
 }
 
 #[test]
@@ -934,7 +942,7 @@ fn local_hits_follow_the_rounded_border_box() {
 }
 
 #[test]
-fn resolving_without_recursion_leaves_descendants_as_they_are() {
+fn resolving_marked_fragments_leaves_unmarked_descendants_as_they_are() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let parent = ui.create(Node::Box, (fixed(40.0, 20.0),));
@@ -948,7 +956,9 @@ fn resolving_without_recursion_leaves_descendants_as_they_are() {
 
     ui.set_props(parent, (hidden(), Transform(Affine::scale(2.0))));
     ui.set_props(child, (hidden(), Transform(Affine::scale(3.0))));
-    f.resolve_with(&ui, f.box_of(parent), false).unwrap();
+    f.mark(f.box_of(parent));
+    f.resolve(&ui, f.root.unwrap()).unwrap();
+    f.pre_paint.clear_flags();
 
     // Only the parent's item and fragment are resolved again.
     assert_eq!(f.clip(parent), (true, true));
@@ -956,8 +966,9 @@ fn resolving_without_recursion_leaves_descendants_as_they_are() {
     assert_eq!(f.clip(child), (false, false));
     assert_eq!(f.boxed(child), &child_data);
 
-    // Resolving recursively reaches them.
-    f.resolve(&ui, f.box_of(parent)).unwrap();
+    // Marking the child reaches it.
+    f.mark(f.box_of(child));
+    f.resolve(&ui, f.root.unwrap()).unwrap();
 
     assert_eq!(f.clip(child), (true, true));
     assert_eq!(f.boxed(child).stacking, Some(0));
@@ -1217,31 +1228,14 @@ fn invalid_scale_factors_paint_nothing() {
 
 impl Fixture {
     fn resolve_changed(&mut self, ui: &Ui, root: FragmentKey) {
-        self.resolver
-            .resolve_changed(
-                ui,
-                &self.inputs,
-                &self.fragments,
-                &UNITS,
-                &mut self.pre_paint,
-                root,
-            )
-            .unwrap();
+        self.resolve(ui, root).unwrap();
     }
 
     /// The pre-paint tree of `root`, resolved from scratch.
     fn full_resolve(&self, ui: &Ui, root: FragmentKey) -> PrePaintTree {
         let mut full = PrePaintTree::new();
         PrePaintTreeResolver::new()
-            .resolve(
-                ui,
-                &self.inputs,
-                &self.fragments,
-                &UNITS,
-                &mut full,
-                root,
-                true,
-            )
+            .resolve(ui, &self.inputs, &self.fragments, &UNITS, &mut full, root)
             .unwrap();
 
         full
@@ -1316,4 +1310,57 @@ fn incremental_resolves_follow_changed_fragments_only() {
         f.pre_paint.get(f.item(bottom)),
         f.full_resolve(&ui, fragment_root).get(f.item(bottom))
     );
+}
+
+#[test]
+fn resolves_both_changed_and_marked_fragments() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let top = ui.create(Node::Box, (fixed(120.0, 20.0),));
+    let wrapper = ui.create(Node::Box, (fixed(120.0, 40.0),));
+    let marked = ui.create(Node::Box, (fixed(60.0, 20.0),));
+    ui.append(root, top);
+    ui.append(root, wrapper);
+    ui.append(wrapper, marked);
+
+    let mut f = Fixture::default();
+    let fragment_root = f.build(&ui, root);
+
+    // A paint style edit, marked by hand, and a layout change moving another
+    // box, resolved together.
+    ui.set_props(
+        marked,
+        (BorderRadius(LayoutRect::new_all(StyleUnit::Px(6.0))),),
+    );
+    ui.set_props(top, (fixed(120.0, 30.0),));
+    f.inputs.mark_node(top, LayoutFlags::NEED_BOX_LAYOUT);
+    f.layout(&ui, root);
+    f.mark(f.box_of(marked));
+
+    assert_eq!(
+        f.pre_paint.flags(f.box_of(marked)),
+        PrePaintFlags::NEED_PRE_PAINT
+    );
+    assert_eq!(
+        f.pre_paint.flags(f.box_of(wrapper)),
+        PrePaintFlags::CHILD_NEED_PRE_PAINT
+    );
+    assert_eq!(
+        f.pre_paint.flags(fragment_root),
+        PrePaintFlags::CHILD_NEED_PRE_PAINT
+    );
+
+    f.resolve_changed(&ui, fragment_root);
+    f.assert_matches_full_resolve(&ui, fragment_root);
+    assert_affine(f.boxed(wrapper).transform, Affine::translate((0.0, 30.0)));
+    assert!(f.data(marked).border_radius.is_some());
+
+    // The resolver keeps the flags for the caller to clear.
+    assert_eq!(
+        f.pre_paint.flags(f.box_of(marked)),
+        PrePaintFlags::NEED_PRE_PAINT
+    );
+    f.pre_paint.clear_flags();
+    assert!(f.pre_paint.flags(f.box_of(marked)).is_empty());
+    assert!(f.pre_paint.flags(fragment_root).is_empty());
 }

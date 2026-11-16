@@ -3,14 +3,32 @@
 //! A [`PrePaintTree`](tree::PrePaintTree) holds the [`FragmentData`] of every
 //! fragment, such as its transform relative to its parent fragment, and the
 //! [`LayoutInputData`] of every layout input item. Data only depends on the
-//! fragment or item itself, and fragment data on its item, so any subtree can
-//! be resolved again on its own. Inherited paint styles, such as text colors,
-//! are looked up while painting instead.
+//! fragment or item itself, and fragment data on its item, so any fragment can
+//! be resolved again on its own: mark it with
+//! [`PrePaintTree::mark`](tree::PrePaintTree::mark) and resolve from the root.
+//! Inherited paint styles, such as text colors, are looked up while painting
+//! instead.
 
 pub mod resolver;
 pub mod tree;
 
+use bitflags::bitflags;
 use kurbo::{Affine, Point, RoundedRectRadii, Size};
+
+bitflags! {
+    /// Invalidation state of a fragment, maintained by
+    /// [`PrePaintTree`](tree::PrePaintTree) and consumed by the
+    /// [`PrePaintTreeResolver`](resolver::PrePaintTreeResolver).
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    pub struct PrePaintFlags: u8 {
+        /// At least one descendant fragment needs pre-paint.
+        const CHILD_NEED_PRE_PAINT = 1 << 0;
+
+        /// The fragment needs pre-paint: its data, and the data of its item,
+        /// are resolved again, such as after its paint styles changed.
+        const NEED_PRE_PAINT = 1 << 1;
+    }
+}
 
 /// Paint data of a layout input item, shared by all fragments it generates.
 #[derive(Debug, Clone, PartialEq)]

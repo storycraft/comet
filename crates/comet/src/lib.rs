@@ -254,7 +254,7 @@ impl App {
 
         // Positions and clips follow the layout, so resolve the fragments it
         // created, moved or resized.
-        self.pre_paint_resolver.resolve_changed(
+        self.pre_paint_resolver.resolve(
             &self.ui,
             &self.inputs,
             &self.fragments,
@@ -262,6 +262,7 @@ impl App {
             &mut self.pre_paint,
             fragment_root,
         )?;
+        self.pre_paint.clear_flags();
 
         // Layers keep their keys, so building from the root again only places
         // the layers whose owners changed.
@@ -291,19 +292,32 @@ impl App {
         else {
             return;
         };
+        let Some(root) = self
+            .inputs
+            .item_for_node(self.ui_root)
+            .and_then(|item| self.fragments.box_fragment(item))
+        else {
+            return;
+        };
 
         let units = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE).units;
+        self.pre_paint.mark(&self.fragments, fragment);
         // A node that no longer matches the layout is resolved on the next
-        // layout instead.
-        let _ = self.pre_paint_resolver.resolve(
-            &self.ui,
-            &self.inputs,
-            &self.fragments,
-            &units,
-            &mut self.pre_paint,
-            fragment,
-            false,
-        );
+        // layout instead, so the flags are kept on failure.
+        if self
+            .pre_paint_resolver
+            .resolve(
+                &self.ui,
+                &self.inputs,
+                &self.fragments,
+                &units,
+                &mut self.pre_paint,
+                root,
+            )
+            .is_some()
+        {
+            self.pre_paint.clear_flags();
+        }
     }
 
     /// Outline the node under the cursor, from the last frame's layout, and

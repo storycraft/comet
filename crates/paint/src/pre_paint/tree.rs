@@ -7,13 +7,15 @@ use comet_layout::{
 use kurbo::{Point, Rect, RoundedRectRadii, Shape};
 use slotmap::SecondaryMap;
 
-use crate::pre_paint::{FragmentData, LayoutInputData};
+use crate::pre_paint::{FragmentData, LayoutInputData, PrePaintFlags};
 
 /// Paint data of the fragments of a fragment tree, such as their transforms
 /// relative to their parents, and of the layout input items they were built
 /// from.
 ///
-/// Filled by a [`PrePaintTreeResolver`](super::resolver::PrePaintTreeResolver).
+/// Filled by a [`PrePaintTreeResolver`](super::resolver::PrePaintTreeResolver),
+/// which resolves the fragments fragment builds changed and the fragments
+/// [marked](Self::mark) with [`PrePaintFlags::NEED_PRE_PAINT`].
 /// Keys are generational, so data left behind by deleted fragments and items
 /// is never returned for the fragments and items reusing their slots, and is
 /// overwritten when those are resolved.
@@ -22,9 +24,11 @@ pub struct PrePaintTree {
     pub(super) fragment_mapping: SecondaryMap<FragmentKey, FragmentData>,
     pub(super) layout_mapping: SecondaryMap<LayoutInputKey, LayoutInputData>,
     /// [Generation](FragmentTree::generation) of the fragment tree when
-    /// [`resolve_changed`](super::resolver::PrePaintTreeResolver::resolve_changed)
-    /// last ran, or 0.
+    /// [`resolve`](super::resolver::PrePaintTreeResolver::resolve) last
+    /// succeeded, or 0.
     pub(super) generation: u64,
+    /// Invalidation state of fragments. Fragments without an entry are clean.
+    pub(super) flags: SecondaryMap<FragmentKey, PrePaintFlags>,
 }
 
 impl PrePaintTree {
@@ -42,9 +46,60 @@ impl PrePaintTree {
         self.layout_mapping.get(key)
     }
 
+    /// The invalidation state of a fragment.
+    pub fn flags(&self, key: FragmentKey) -> PrePaintFlags {
+        self.flags.get(key).copied().unwrap_or_default()
+    }
+
+    /// Mark a fragment [`PrePaintFlags::NEED_PRE_PAINT`] and its ancestors
+    /// [`PrePaintFlags::CHILD_NEED_PRE_PAINT`], so the next
+    /// [`resolve`](super::resolver::PrePaintTreeResolver::resolve) resolves it
+    /// and its item again, such as after their paint styles changed.
+    /// Fragments not in `fragments` are ignored.
+    ///
+    /// Mark after the fragment build: line, inline and glyph run fragments
+    /// are replaced when their lines are laid out again, and fragments moved
+    /// by a build keep marks propagated to their old ancestors only.
+    pub fn mark(&mut self, fragments: &FragmentTree, key: FragmentKey) {
+        if fragments.items.get(key).is_none() {
+            return;
+        }
+
+        self.insert_flags(key, PrePaintFlags::NEED_PRE_PAINT);
+
+        let mut ancestor = fragments.items.parent(key);
+
+        while let Some(key) = ancestor {
+            // Ancestors of a marked fragment are marked already.
+            if self
+                .flags(key)
+                .contains(PrePaintFlags::CHILD_NEED_PRE_PAINT)
+            {
+                break;
+            }
+
+            self.insert_flags(key, PrePaintFlags::CHILD_NEED_PRE_PAINT);
+            ancestor = fragments.items.parent(key);
+        }
+    }
+
+    /// Clear the flags of every fragment. The resolver keeps them, so run it
+    /// after resolving.
+    pub fn clear_flags(&mut self) {
+        self.flags.clear();
+    }
+
+    fn insert_flags(&mut self, key: FragmentKey, flags: PrePaintFlags) {
+        // Only keys removed from their slot map have no entry.
+        if let Some(entry) = self.flags.entry(key) {
+            entry.or_default().insert(flags);
+        }
+    }
+
     pub fn clear(&mut self) {
         self.fragment_mapping.clear();
         self.layout_mapping.clear();
+        self.flags.clear();
         self.generation = 0;
     }
 
