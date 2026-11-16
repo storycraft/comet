@@ -5,7 +5,10 @@ use std::sync::{
 
 use comet_layout::{
     container::{ContainerContext, ContainerLayout},
-    fragment::{FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
+    fragment::{
+        FragmentItem, FragmentKey, builder::FragmentTreeBuilder, state::NodeLayoutBits,
+        tree::FragmentTree,
+    },
     input::{
         LayoutFlags,
         builder::{BuildRequest, LayoutInputTreeBuilder},
@@ -34,7 +37,7 @@ impl ContainerLayout for Row {
         &self,
         context: &mut ContainerContext<'_, '_>,
         input: taffy::LayoutInput,
-    ) -> taffy::LayoutOutput {
+    ) -> (taffy::LayoutOutput, NodeLayoutBits) {
         assert!(!context.style().is_block());
         self.calls.fetch_add(1, Ordering::Relaxed);
 
@@ -77,10 +80,12 @@ impl ContainerLayout for Row {
             height = height.max(output.size.height);
         }
 
-        taffy::LayoutOutput::from_outer_size(taffy::Size {
+        let output = taffy::LayoutOutput::from_outer_size(taffy::Size {
             width: input.known_dimensions.width.unwrap_or(x),
             height: input.known_dimensions.height.unwrap_or(height + 7.0),
-        })
+        });
+
+        (output, NodeLayoutBits::empty())
     }
 }
 
@@ -299,7 +304,7 @@ impl ContainerLayout for Probe {
         &self,
         context: &mut ContainerContext<'_, '_>,
         input: taffy::LayoutInput,
-    ) -> taffy::LayoutOutput {
+    ) -> (taffy::LayoutOutput, NodeLayoutBits) {
         let at = |width: f32, run_mode| taffy::LayoutInput {
             run_mode,
             known_dimensions: taffy::Size {
@@ -331,10 +336,12 @@ impl ContainerLayout for Probe {
             );
         }
 
-        taffy::LayoutOutput::from_outer_size(taffy::Size {
+        let output = taffy::LayoutOutput::from_outer_size(taffy::Size {
             width: input.known_dimensions.width.unwrap_or(300.0),
             height: input.known_dimensions.height.unwrap_or(output.size.height),
-        })
+        });
+
+        (output, NodeLayoutBits::empty())
     }
 }
 

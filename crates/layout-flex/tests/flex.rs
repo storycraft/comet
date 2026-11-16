@@ -504,3 +504,54 @@ fn text_items_align_by_their_first_baseline() {
 
     close(baseline(a), baseline(b));
 }
+
+#[test]
+fn viewport_gaps_follow_viewport_changes() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    // Fixed size, so the row's own layout input does not change.
+    let wrapper = ui.create(Node::Box, (size(600.0, 50.0),));
+    let row = ui.create(
+        Node::Box,
+        (
+            bx::DisplayInner::Container(flex_layout()),
+            flex::Gap(Size::new(StyleUnit::Vw(0.1), StyleUnit::ZERO)),
+        ),
+    );
+    let a = ui.create(Node::Box, (size(50.0, 20.0),));
+    let b = ui.create(Node::Box, (size(50.0, 20.0),));
+    ui.append(root, wrapper);
+    ui.append(wrapper, row);
+    ui.append(row, a);
+    ui.append(row, b);
+
+    let mut layout = Layout::default();
+    let second_x = |layout: &mut Layout, width: f64, viewport_changed: bool| {
+        let viewport = Size::new(width, 600.0);
+        let key = layout
+            .input_builder
+            .build(
+                &ui,
+                &mut layout.inputs,
+                BuildRequest::new(root, 16.0, viewport),
+            )
+            .unwrap();
+        let fragment = layout
+            .builder
+            .build(
+                &ui,
+                &layout.inputs,
+                key,
+                &mut layout.fragments,
+                &LayoutConstraint::new_root(viewport, 16.0).with_viewport_changed(viewport_changed),
+            )
+            .unwrap();
+        layout.inputs.clear_flags(key);
+
+        box_for(layout, fragment, b).location.x
+    };
+
+    close(second_x(&mut layout, 400.0, false), 50.0 + 40.0);
+    // The row reports the viewport unit of its gap, so it is laid out again.
+    close(second_x(&mut layout, 800.0, true), 50.0 + 80.0);
+}

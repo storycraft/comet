@@ -151,8 +151,17 @@ impl Engine<'_> {
         let mut context = ContainerContext {
             engine: FragmentEngine::new(self, fragment, state),
         };
+        let (output, bits) = algorithm.layout(&mut context, input);
+        drop(context);
 
-        algorithm.layout(&mut context, input)
+        // What the algorithm depends on is known once it ran, and is used by
+        // later builds.
+        if let Some(state) = self.fragments.get_state_mut(fragment) {
+            state.bits |= bits;
+        }
+        self.propagate_bits(source, bits);
+
+        output
     }
 
     /// Last in-flow line baseline, measured from the border-box top.

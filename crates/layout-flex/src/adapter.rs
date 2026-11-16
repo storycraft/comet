@@ -1,4 +1,8 @@
-use comet_layout::{container::ContainerContext, style::geometry::AutoValue};
+use comet_layout::{
+    container::ContainerContext,
+    fragment::state::NodeLayoutBits,
+    style::geometry::{AutoValue, StyleUnit},
+};
 use comet_tree::ui::Props;
 use taffy::{
     CoreStyle, FlexboxContainerStyle, FlexboxItemStyle, LayoutContainingBlock,
@@ -9,22 +13,34 @@ use crate::styles;
 
 const ROOT: taffy::NodeId = taffy::NodeId::new(0);
 
+/// Lay out a flex container. Gaps and flex bases resolve percentages against
+/// the container, so only their viewport units are reported.
 pub(crate) fn layout(
     context: &mut ContainerContext<'_, '_>,
     input: taffy::LayoutInput,
-) -> taffy::LayoutOutput {
+) -> (taffy::LayoutOutput, NodeLayoutBits) {
+    let mut bits = NodeLayoutBits::empty();
     let mut styles = Vec::with_capacity(context.child_count() + 1);
-    styles.push(Style::container(context));
+    styles.push(Style::container(context, &mut bits));
 
     for index in 0..context.child_count() {
-        styles.push(Style::child(context, index));
+        styles.push(Style::child(context, index, &mut bits));
     }
 
     let mut adapter = Adapter { context, styles };
     let mut output = taffy::compute_flexbox_layout(&mut adapter, ROOT, input);
     taffy::compute_oof_layout(&mut adapter, ROOT, &mut output);
 
-    output
+    (output, bits)
+}
+
+/// Record what a custom length depends on.
+fn track(bits: &mut NodeLayoutBits, unit: StyleUnit) -> StyleUnit {
+    if unit.is_viewport_relative() {
+        *bits |= NodeLayoutBits::DEPENDS_VIEWPORT;
+    }
+
+    unit
 }
 
 /// Local IDs describe only the container (0) and its direct children (1..).
@@ -123,7 +139,7 @@ struct Style {
 }
 
 impl Style {
-    fn container(context: &ContainerContext<'_, '_>) -> Self {
+    fn container(context: &ContainerContext<'_, '_>, bits: &mut NodeLayoutBits) -> Self {
         let props = context.props();
 
         macro_rules! prop {
@@ -144,8 +160,8 @@ impl Style {
                 flex_wrap: prop!(FlexWrap),
                 flex_line_count: prop!(FlexLineCount),
                 gap: taffy::Size {
-                    width: context.resolve_length(gap.width),
-                    height: context.resolve_length(gap.height),
+                    width: context.resolve_length(track(bits, gap.width)),
+                    height: context.resolve_length(track(bits, gap.height)),
                 },
                 align_items: prop!(AlignItems),
                 align_content: prop!(AlignContent),
@@ -155,7 +171,7 @@ impl Style {
         }
     }
 
-    fn child(context: &ContainerContext<'_, '_>, index: usize) -> Self {
+    fn child(context: &ContainerContext<'_, '_>, index: usize, bits: &mut NodeLayoutBits) -> Self {
         let props = context.child_props(index);
 
         macro_rules! prop {
@@ -169,7 +185,9 @@ impl Style {
 
         let basis = match prop!(FlexBasis) {
             AutoValue::Auto => taffy::Dimension::auto(),
-            AutoValue::Value(value) => context.resolve_child_length(index, value).into(),
+            AutoValue::Value(value) => context
+                .resolve_child_length(index, track(bits, value))
+                .into(),
         };
 
         Self {

@@ -122,12 +122,6 @@ impl Engine<'_> {
             &mut |unit| bits |= NodeLayoutBits::of_unit(unit),
         );
 
-        // TODO: Custom container algorithms may resolve lengths of their own,
-        // so assume they depend on everything.
-        if self.tree.items[key].child_layout == ChildLayout::Container {
-            bits = NodeLayoutBits::all();
-        }
-
         (style, bits)
     }
 

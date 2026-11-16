@@ -8,6 +8,7 @@ use crate::{
         FragmentKey,
         adapter::{Child, FragmentEngine},
         engine::node_id,
+        state::NodeLayoutBits,
     },
     input::LayoutInputKey,
     style::geometry::StyleUnit,
@@ -24,11 +25,17 @@ pub trait ContainerLayout: Send + Sync {
     /// and positions relative to this container's border box. Descendant layout
     /// is handled by the engine when a child is measured with its final known
     /// dimensions.
+    ///
+    /// Also return what the layout depends on beyond the box styles of the
+    /// container and its children, such as custom lengths using `vw` or `vh`
+    /// ([`NodeLayoutBits::DEPENDS_VIEWPORT`]) or resolving against the
+    /// container's parent ([`NodeLayoutBits::DEPENDS_PARENT_SIZE`]). Lengths
+    /// resolving against the container itself need no bits.
     fn layout(
         &self,
         context: &mut ContainerContext<'_, '_>,
         input: taffy::LayoutInput,
-    ) -> taffy::LayoutOutput;
+    ) -> (taffy::LayoutOutput, NodeLayoutBits);
 }
 
 /// Restricted access to the current box and its direct children only.

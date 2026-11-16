@@ -24,7 +24,10 @@ pub mod styles;
 
 use std::sync::{Arc, LazyLock};
 
-use comet_layout::container::{ContainerContext, ContainerLayout};
+use comet_layout::{
+    container::{ContainerContext, ContainerLayout},
+    fragment::state::NodeLayoutBits,
+};
 
 /// The flexbox algorithm, shared by every flex container.
 static FLEX: LazyLock<Arc<dyn ContainerLayout>> = LazyLock::new(|| Arc::new(Flex));
@@ -46,7 +49,7 @@ impl ContainerLayout for Flex {
         &self,
         context: &mut ContainerContext<'_, '_>,
         input: taffy::LayoutInput,
-    ) -> taffy::LayoutOutput {
+    ) -> (taffy::LayoutOutput, NodeLayoutBits) {
         adapter::layout(context, input)
     }
 }

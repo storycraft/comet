@@ -21,16 +21,16 @@ use crate::{
 
 const VIEWPORT: Size<f64> = Size::new(400.0, 600.0);
 
-/// A container algorithm that lays out nothing.
-struct Empty;
+/// A container algorithm that lays out nothing, and returns the given bits.
+struct Empty(NodeLayoutBits);
 
 impl ContainerLayout for Empty {
     fn layout(
         &self,
         _: &mut ContainerContext<'_, '_>,
         _: taffy::LayoutInput,
-    ) -> taffy::LayoutOutput {
-        taffy::LayoutOutput::HIDDEN
+    ) -> (taffy::LayoutOutput, NodeLayoutBits) {
+        (taffy::LayoutOutput::HIDDEN, self.0)
     }
 }
 
@@ -119,21 +119,34 @@ fn style_units_set_layout_bits_up_to_the_root() {
 }
 
 #[test]
-fn containers_depend_on_everything() {
+fn containers_add_the_bits_their_layout_returns() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let wrapper = ui.create(Node::Box, ());
-    let container = ui.create(Node::Box, (bx::DisplayInner::Container(Arc::new(Empty)),));
+    let dependent = ui.create(
+        Node::Box,
+        (bx::DisplayInner::Container(Arc::new(Empty(
+            NodeLayoutBits::DEPENDS_VIEWPORT,
+        ))),),
+    );
+    let independent = ui.create(
+        Node::Box,
+        (bx::DisplayInner::Container(Arc::new(Empty(
+            NodeLayoutBits::empty(),
+        ))),),
+    );
 
     ui.append(root, wrapper);
-    ui.append(wrapper, container);
+    ui.append(wrapper, dependent);
+    ui.append(root, independent);
 
     let mut f = Fixture::new();
     f.build(&ui, root);
 
-    assert_eq!(f.bits(container), NodeLayoutBits::all());
-    assert_eq!(f.bits(wrapper), NodeLayoutBits::all());
-    assert_eq!(f.bits(root), NodeLayoutBits::all());
+    assert_eq!(f.bits(dependent), NodeLayoutBits::DEPENDS_VIEWPORT);
+    assert_eq!(f.bits(wrapper), NodeLayoutBits::DEPENDS_VIEWPORT);
+    assert_eq!(f.bits(root), NodeLayoutBits::DEPENDS_VIEWPORT);
+    assert!(f.bits(independent).is_empty());
 }
 
 /// A container algorithm that counts its layouts.
@@ -144,12 +157,15 @@ impl ContainerLayout for Counted {
         &self,
         _: &mut ContainerContext<'_, '_>,
         input: taffy::LayoutInput,
-    ) -> taffy::LayoutOutput {
+    ) -> (taffy::LayoutOutput, NodeLayoutBits) {
         self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        taffy::LayoutOutput::from_outer_size(taffy::Size {
+        let output = taffy::LayoutOutput::from_outer_size(taffy::Size {
             width: input.known_dimensions.width.unwrap_or(0.0),
             height: input.known_dimensions.height.unwrap_or(0.0),
-        })
+        });
+
+        // As if it resolved a length of its own in `vw`.
+        (output, NodeLayoutBits::DEPENDS_VIEWPORT)
     }
 }
 
@@ -199,7 +215,7 @@ fn viewport_changes_skip_cached_layouts_of_viewport_dependent_boxes() {
     };
 
     assert!(layout(&mut f, 400.0, false) > 0);
-    assert_eq!(f.bits(container), NodeLayoutBits::all());
+    assert_eq!(f.bits(container), NodeLayoutBits::DEPENDS_VIEWPORT);
 
     // The cache serves the container while the viewport is not marked changed.
     assert_eq!(layout(&mut f, 500.0, false), 0);

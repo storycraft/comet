@@ -5,10 +5,11 @@ use crate::{input::LayoutInputKey, style::geometry::StyleUnit, taffy::style::Sty
 
 bitflags! {
     /// What the layout of a box or of its subtree depends on, besides its
-    /// own content. Set when box styles are resolved, and on every ancestor
-    /// box up to the root of the build.
+    /// own content. Set when box styles are resolved and from what custom
+    /// container algorithms return, and on every ancestor box up to the root
+    /// of the build.
     #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-    pub(crate) struct NodeLayoutBits: u8 {
+    pub struct NodeLayoutBits: u8 {
         /// A length resolves against the parent's size, such as a percentage.
         const DEPENDS_PARENT_SIZE = 1 << 0;
         /// A length uses `vw` or `vh`.

@@ -8,7 +8,7 @@
 
 pub(crate) mod adapter;
 pub(crate) mod engine;
-mod state;
+pub mod state;
 
 pub mod builder;
 pub mod iter;
