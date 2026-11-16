@@ -4,7 +4,7 @@
 //! fragment, such as its transform relative to its parent fragment, and the
 //! [`LayoutInputData`] of every layout input item. Data only depends on the
 //! fragment or item itself, and fragment data on its item, so any fragment can
-//! be resolved again on its own: mark it with
+//! be resolved again on its own: mark its item with
 //! [`PrePaintTree::mark`](tree::PrePaintTree::mark) and resolve from the root.
 //! Inherited paint styles, such as text colors, are looked up while painting
 //! instead.
@@ -17,16 +17,17 @@ use comet_layout::fragment::Fragment;
 use kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii};
 
 bitflags! {
-    /// Invalidation state of a fragment, maintained by
+    /// Invalidation state of a layout input item, maintained by
     /// [`PrePaintTree`](tree::PrePaintTree) and consumed by the
     /// [`PrePaintTreeResolver`](resolver::PrePaintTreeResolver).
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
     pub struct PrePaintFlags: u8 {
-        /// At least one descendant fragment needs pre-paint.
+        /// At least one descendant item needs pre-paint.
         const CHILD_NEED_PRE_PAINT = 1 << 0;
 
-        /// The fragment needs pre-paint: its data, and the data of its item,
-        /// are resolved again, such as after its paint styles changed.
+        /// The item needs pre-paint: its data, and the data of every fragment
+        /// it generates, are resolved again, such as after its paint styles
+        /// changed.
         const NEED_PRE_PAINT = 1 << 1;
     }
 }
@@ -37,8 +38,8 @@ bitflags! {
     /// [`PrePaintTree`](tree::PrePaintTree) and consumed by the
     /// [`PaintLayerBuilder`](crate::layer::builder::PaintLayerBuilder).
     ///
-    /// Only set for fragments resolved because they were marked
-    /// [`PrePaintFlags::NEED_PRE_PAINT`] or had no data yet, such as new
+    /// Only set for fragments resolved because their item was marked
+    /// [`PrePaintFlags::NEED_PRE_PAINT`] or they had no data yet, such as new
     /// fragments, when their [stacking](FragmentData::stacking) changed.
     /// Fragments resolved again only because a fragment build moved or
     /// resized them keep their stacking.

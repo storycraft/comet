@@ -49,12 +49,13 @@ impl PrePaintTreeResolver {
     /// - fragments that fragment builds created, moved or resized since the
     ///   last successful call, found with the
     ///   [generations](FragmentTree::generation) of `fragments`,
-    /// - fragments [marked](PrePaintTree::mark)
+    /// - fragments of items [marked](PrePaintTree::mark)
     ///   [`NEED_PRE_PAINT`](PrePaintFlags::NEED_PRE_PAINT), such as after
     ///   their paint styles changed,
     /// - fragments without data in `tree`.
     ///
-    /// Fragments resolved because they were marked or had no data, whose
+    /// Fragments resolved because their item was marked or they had no data,
+    /// whose
     /// [stacking](FragmentData::stacking) changed, get
     /// [`LayerFlags::NEED_LAYER`] or [`LayerFlags::NEED_NO_LAYER`], and their
     /// ancestors [`LayerFlags::CHILD_LAYER_UPDATE`], for the next layer
@@ -114,9 +115,13 @@ impl PrePaintTreeResolver {
         changed.clear();
         pending.push(root);
 
+        // Flags are kept by item. Every ancestor of a fragment is a fragment
+        // of the item's ancestors or of the item itself, such as the box
+        // owning its line, so following flagged sources from the root reaches
+        // every fragment of a marked item.
         while let Some(key) = pending.pop() {
             let fragment = fragments.items.get(key)?;
-            let flags = tree.flags(key);
+            let flags = tree.flags(fragment.source);
             let stale = fragment.subtree_generation > resolved;
 
             if !stale && flags.is_empty() {
@@ -131,7 +136,9 @@ impl PrePaintTreeResolver {
                 items.push(fragment.source);
             }
 
-            if stale || flags.contains(PrePaintFlags::CHILD_NEED_PRE_PAINT) {
+            // A marked item's own fragments can sit under its box, such as its
+            // line boxes, so the children of any flagged source are visited.
+            if stale || !flags.is_empty() {
                 pending.extend(fragments.items.children(key));
             }
         }
@@ -154,7 +161,10 @@ impl PrePaintTreeResolver {
 
             // Layer changes are tracked for marked and new fragments.
             let old_stacking = old.and_then(|old| old.stacking);
-            let tracked = old.is_none() || tree.flags(key).contains(PrePaintFlags::NEED_PRE_PAINT);
+            let tracked = old.is_none()
+                || tree
+                    .flags(fragments.items[key].source)
+                    .contains(PrePaintFlags::NEED_PRE_PAINT);
 
             if tracked && old_stacking != data.stacking {
                 let change = if data.stacking.is_some() {

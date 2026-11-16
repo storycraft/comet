@@ -290,11 +290,7 @@ impl App {
         let Some(viewport) = self.viewport else {
             return;
         };
-        let Some(fragment) = self
-            .inputs
-            .item_for_node(node)
-            .and_then(|item| self.fragments.fragments(item).next())
-        else {
+        let Some(item) = self.inputs.item_for_node(node) else {
             return;
         };
         let Some(root) = self
@@ -306,7 +302,7 @@ impl App {
         };
 
         let units = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE).units;
-        self.pre_paint.mark(&self.fragments, fragment);
+        self.pre_paint.mark(&self.inputs, item);
         // A node that no longer matches the layout is resolved on the next
         // layout instead, so the flags are kept on failure.
         if self

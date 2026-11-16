@@ -100,9 +100,9 @@ impl Fixture {
         )
     }
 
-    /// Mark a fragment as needing pre-paint.
-    fn mark(&mut self, key: FragmentKey) {
-        self.pre_paint.mark(&self.fragments, key);
+    /// Mark the item of a node as needing pre-paint.
+    fn mark(&mut self, node: NodeKey) {
+        self.pre_paint.mark_node(&self.inputs, node);
     }
 
     fn item(&self, node: NodeKey) -> LayoutInputKey {
@@ -876,7 +876,7 @@ fn resolving_fails_for_nodes_deleted_since_the_layout_was_built() {
 
     // The layout still holds the deleted node until it is rebuilt, so a
     // fragment of it fails to resolve.
-    f.mark(f.box_of(block));
+    f.mark(block);
     ui.delete(block);
     assert_eq!(f.resolve(&ui, root_fragment), None);
 
@@ -1007,7 +1007,7 @@ fn resolving_marked_fragments_leaves_unmarked_descendants_as_they_are() {
 
     ui.set_props(parent, (hidden(), Transform(Affine::scale(2.0))));
     ui.set_props(child, (hidden(), Transform(Affine::scale(3.0))));
-    f.mark(f.box_of(parent));
+    f.mark(parent);
     f.resolve(&ui, f.root.unwrap()).unwrap();
     f.pre_paint.clear_flags();
 
@@ -1018,7 +1018,7 @@ fn resolving_marked_fragments_leaves_unmarked_descendants_as_they_are() {
     assert_eq!(f.boxed(child), &child_data);
 
     // Marking the child reaches it.
-    f.mark(f.box_of(child));
+    f.mark(child);
     f.resolve(&ui, f.root.unwrap()).unwrap();
 
     assert_eq!(f.clip(child), (true, true));
@@ -1392,18 +1392,18 @@ fn resolves_both_changed_and_marked_fragments() {
     ui.set_props(top, (fixed(120.0, 30.0),));
     f.inputs.mark_node(top, LayoutFlags::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
-    f.mark(f.box_of(marked));
+    f.mark(marked);
 
     assert_eq!(
-        f.pre_paint.flags(f.box_of(marked)),
+        f.pre_paint.flags(f.item(marked)),
         PrePaintFlags::NEED_PRE_PAINT
     );
     assert_eq!(
-        f.pre_paint.flags(f.box_of(wrapper)),
+        f.pre_paint.flags(f.item(wrapper)),
         PrePaintFlags::CHILD_NEED_PRE_PAINT
     );
     assert_eq!(
-        f.pre_paint.flags(fragment_root),
+        f.pre_paint.flags(f.item(root)),
         PrePaintFlags::CHILD_NEED_PRE_PAINT
     );
 
@@ -1414,12 +1414,12 @@ fn resolves_both_changed_and_marked_fragments() {
 
     // The resolver keeps the flags for the caller to clear.
     assert_eq!(
-        f.pre_paint.flags(f.box_of(marked)),
+        f.pre_paint.flags(f.item(marked)),
         PrePaintFlags::NEED_PRE_PAINT
     );
     f.pre_paint.clear_flags();
-    assert!(f.pre_paint.flags(f.box_of(marked)).is_empty());
-    assert!(f.pre_paint.flags(fragment_root).is_empty());
+    assert!(f.pre_paint.flags(f.item(marked)).is_empty());
+    assert!(f.pre_paint.flags(f.item(root)).is_empty());
 }
 
 #[test]
@@ -1443,7 +1443,7 @@ fn fragment_data_generations_follow_changed_values() {
     }
 
     // Resolving to equal values keeps the generations.
-    f.mark(f.box_of(child));
+    f.mark(child);
     f.resolve(&ui, fragment_root).unwrap();
     f.pre_paint.clear_flags();
 
@@ -1454,7 +1454,7 @@ fn fragment_data_generations_follow_changed_values() {
     // A changed value stamps the fragment and the subtrees of its
     // ancestors, leaving the others as they are.
     ui.set_props(child, (Transform(Affine::scale(2.0)),));
-    f.mark(f.box_of(child));
+    f.mark(child);
     f.resolve(&ui, fragment_root).unwrap();
     f.pre_paint.clear_flags();
     let changed = f.pre_paint.generation();
@@ -1497,7 +1497,7 @@ fn stacking_changes_of_marked_and_new_fragments_set_layer_flags() {
 
     // A marked fragment whose stacking stays keeps no flags.
     ui.set_props(raised, (Transform(Affine::translate((5.0, 0.0))),));
-    f.mark(raised_key);
+    f.mark(raised);
     f.resolve(&ui, root_key).unwrap();
     f.pre_paint.clear_flags();
     assert!(f.pre_paint.layer_flags(raised_key).is_empty());
@@ -1506,7 +1506,7 @@ fn stacking_changes_of_marked_and_new_fragments_set_layer_flags() {
     // Changing the z index of a layer it still starts needs a layer.
     ui.remove_prop::<Transform>(raised);
     ui.set_props(raised, (ZIndex(AutoValue::Value(2)),));
-    f.mark(raised_key);
+    f.mark(raised);
     f.resolve(&ui, root_key).unwrap();
     f.pre_paint.clear_flags();
     assert_eq!(f.pre_paint.layer_flags(raised_key), LayerFlags::NEED_LAYER);
@@ -1516,7 +1516,7 @@ fn stacking_changes_of_marked_and_new_fragments_set_layer_flags() {
     // not seen.
     ui.set_props(raised, (ZIndex(AutoValue::Auto),));
     ui.set_props(plain, (ZIndex(AutoValue::Value(1)),));
-    f.mark(raised_key);
+    f.mark(raised);
     f.resolve(&ui, root_key).unwrap();
     f.pre_paint.clear_flags();
     assert_eq!(
@@ -1525,4 +1525,51 @@ fn stacking_changes_of_marked_and_new_fragments_set_layer_flags() {
     );
     assert!(f.pre_paint.layer_flags(plain_key).is_empty());
     assert_eq!(f.boxed(plain).stacking, None);
+}
+
+#[test]
+fn marks_kept_by_item_reach_every_fragment_set_before_the_layout() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let paragraph = ui.create(Node::Box, ());
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    let other = ui.create(Node::Box, (fixed(40.0, 10.0),));
+    ui.append(root, paragraph);
+    ui.append(paragraph, span);
+    text(
+        &mut ui,
+        span,
+        "one two three four five six seven eight nine ten",
+    );
+    ui.append(root, other);
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+    let fragments: Vec<_> = f.fragments.fragments(f.item(span)).collect();
+    assert!(fragments.len() > 1);
+
+    // An inline element has no box fragment to mark. Its item is marked
+    // before a layout that leaves its lines in place.
+    ui.set_props(
+        span,
+        (BorderRadius(LayoutRect::new_all(StyleUnit::Px(2.0))),),
+    );
+    f.mark(span);
+    ui.set_props(other, (fixed(40.0, 20.0),));
+    f.inputs.mark_node(other, LayoutFlags::NEED_BOX_LAYOUT);
+    let fragment_root = f.layout(&ui, root);
+
+    // The layout kept the span's fragments, and the mark still reaches all
+    // of them.
+    assert_eq!(
+        f.fragments.fragments(f.item(span)).collect::<Vec<_>>(),
+        fragments
+    );
+    f.resolve(&ui, fragment_root).unwrap();
+    f.pre_paint.clear_flags();
+
+    for key in fragments {
+        assert!(f.fragment(key).border_radius.is_some());
+    }
+    assert!(f.pre_paint.flags(f.item(span)).is_empty());
 }

@@ -87,13 +87,12 @@ impl Fixture {
         }
     }
 
-    /// Resolve the pre-paint data of a node's box fragment again, after its
+    /// Resolve the pre-paint data of a node again, after its
     /// own paint styles changed, and update the layers under it.
     fn update(&mut self, ui: &Ui, node: NodeKey) {
-        let key = self.box_of(node);
         let fragment_root = self.layers.layers[self.root].owner;
 
-        self.pre_paint.mark(&self.fragments, key);
+        self.pre_paint.mark_node(&self.inputs, node);
         PrePaintTreeResolver::new()
             .resolve(
                 ui,
@@ -790,10 +789,10 @@ fn updates_match_full_builds() {
     // changes z index.
     ui.set_props(deep, (z(-2),));
     ui.set_props(inner, (z(4),));
-    let key = f.box_of(right);
     let fragment_root = f.layers.layers[f.root].owner;
-    for fragment in f.fragments.items.descendants(key) {
-        f.pre_paint.mark(&f.fragments, fragment);
+    let right_item = f.inputs.item_for_node(right).unwrap();
+    for item in f.inputs.items.descendants(right_item) {
+        f.pre_paint.mark(&f.inputs, item);
     }
     PrePaintTreeResolver::new()
         .resolve(
@@ -1077,8 +1076,7 @@ fn layers_of_owners_losing_their_stacking_move_up_from_the_root() {
     // The group stops starting a layer, so its nested layer paints in the
     // root layer, below the sibling.
     ui.set_props(group, (ZIndex(AutoValue::Auto),));
-    let group_fragment = p.box_of(group).unwrap();
-    p.pre_paint.mark(&p.fragments, group_fragment);
+    p.pre_paint.mark_node(&p.inputs, group);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1087,7 +1085,7 @@ fn layers_of_owners_losing_their_stacking_move_up_from_the_root() {
 
     // Starting one again takes the nested layer back.
     ui.set_props(group, (z(2),));
-    p.pre_paint.mark(&p.fragments, group_fragment);
+    p.pre_paint.mark_node(&p.inputs, group);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1112,8 +1110,7 @@ fn changed_z_indices_reorder_layers_from_the_root() {
     assert_eq!(p.children(root_layer), [first_layer, second_layer]);
 
     ui.set_props(first, (z(3),));
-    let fragment = p.box_of(first).unwrap();
-    p.pre_paint.mark(&p.fragments, fragment);
+    p.pre_paint.mark_node(&p.inputs, first);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
