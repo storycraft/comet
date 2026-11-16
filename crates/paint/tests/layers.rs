@@ -1144,3 +1144,102 @@ fn layers_ignore_stacking_changes_nobody_marked() {
     assert_eq!(p.layer_of(raised), None);
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
 }
+
+#[test]
+fn reordered_siblings_reorder_layers_with_equal_z_indices() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let boxes: Vec<_> = (0..3)
+        .map(|_| {
+            let node = ui.create(Node::Box, (fixed(60.0, 20.0), z(1)));
+            ui.append(root, node);
+            node
+        })
+        .collect();
+
+    let mut p = Pipeline::default();
+    let root_layer = p.run(&ui, root);
+    let layers: Vec<_> = boxes
+        .iter()
+        .map(|&node| p.layer_of(node).unwrap())
+        .collect();
+    assert_eq!(p.children(root_layer), layers);
+
+    // Equal z indices paint in tree order, which follows the move.
+    ui.prepend(root, boxes[2]);
+    p.inputs.mark_input_node(root, InputFlags::NEED_CHILDREN);
+    assert_eq!(p.run(&ui, root), root_layer);
+
+    // The moved owner gets a new layer; the others keep theirs.
+    let moved = p.layer_of(boxes[2]).unwrap();
+    assert_ne!(moved, layers[2]);
+    assert_eq!(p.children(root_layer), vec![moved, layers[0], layers[1]]);
+    assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
+}
+
+#[test]
+fn reordered_boxes_reorder_the_layers_inside_them() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let plain = ui.create(Node::Box, (fixed(60.0, 20.0),));
+    let wrapper = ui.create(Node::Box, ());
+    let inner = ui.create(Node::Box, (fixed(60.0, 20.0), z(1)));
+    let sibling = ui.create(Node::Box, (fixed(60.0, 20.0), z(1)));
+    ui.append(root, plain);
+    ui.append(root, wrapper);
+    ui.append(wrapper, inner);
+    ui.append(root, sibling);
+
+    let mut p = Pipeline::default();
+    let root_layer = p.run(&ui, root);
+    let inner_layer = p.layer_of(inner).unwrap();
+    let sibling_layer = p.layer_of(sibling).unwrap();
+    assert_eq!(p.children(root_layer), vec![inner_layer, sibling_layer]);
+
+    // The wrapper starts no layer, but moving it after the sibling moves the
+    // layer inside it too.
+    ui.append(root, wrapper);
+    p.inputs.mark_input_node(root, InputFlags::NEED_CHILDREN);
+    assert_eq!(p.run(&ui, root), root_layer);
+
+    let by_node = [sibling, inner].map(|node| p.layer_of(node).unwrap());
+    assert_eq!(p.children(root_layer), by_node);
+    assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
+}
+
+#[test]
+fn reordered_atomic_inlines_reorder_their_layers() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let atomic = |ui: &mut Ui| {
+        ui.create(
+            Node::Box,
+            (
+                bx::DisplayOuter::Inline,
+                bx::DisplayInner::FlowRoot,
+                fixed(20.0, 20.0),
+                z(1),
+            ),
+        )
+    };
+    let first = atomic(&mut ui);
+    let second = atomic(&mut ui);
+    let text = ui.create(Node::Text, (Text("text".into()),));
+    ui.append(root, first);
+    ui.append(root, text);
+    ui.append(root, second);
+
+    let mut p = Pipeline::default();
+    let root_layer = p.run(&ui, root);
+    let first_layer = p.layer_of(first).unwrap();
+    let second_layer = p.layer_of(second).unwrap();
+    assert_eq!(p.children(root_layer), vec![first_layer, second_layer]);
+
+    ui.prepend(root, second);
+    p.inputs.mark_input_node(root, InputFlags::NEED_CHILDREN);
+    assert_eq!(p.run(&ui, root), root_layer);
+
+    let by_node = [second, first].map(|node| p.layer_of(node).unwrap());
+    assert_eq!(p.children(root_layer), by_node);
+    assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
+}

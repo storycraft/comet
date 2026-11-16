@@ -493,9 +493,12 @@ fn block_child_list_changes_reuse_box_fragments_in_order() {
     f.build(&ui, root);
     f.tree.clear_flags(input_root);
 
+    // The moved child gets a new box fragment; the others keep theirs.
+    let moved = fragment(&f, nodes[1]);
+    assert_ne!(moved, keys[1]);
     assert_eq!(
         f.children(list_fragment),
-        vec![keys[1], keys[0], inserted_key, keys[2]]
+        vec![moved, keys[0], inserted_key, keys[2]]
     );
     assert_eq!(tops(&f, list_fragment), vec![0.0, 10.0, 20.0, 30.0]);
     // Moving to another parent creates a new input item, and so a new box.
@@ -507,7 +510,7 @@ fn block_child_list_changes_reuse_box_fragments_in_order() {
     f.tree.mark_input_node(list, InputFlags::NEED_CHILDREN);
     f.build(&ui, root);
 
-    assert_eq!(f.children(list_fragment), vec![keys[1], keys[0], keys[2]]);
+    assert_eq!(f.children(list_fragment), vec![moved, keys[0], keys[2]]);
     assert_eq!(tops(&f, list_fragment), vec![0.0, 10.0, 20.0]);
     assert!(f.fragments.items.get(inserted_key).is_none());
 }
@@ -1149,4 +1152,65 @@ fn nested_inline_content_changing_kind_changes_its_owners_mode() {
         item_kinds(&fresh, fresh.box_of(paragraph))
     );
     assert!(item_kinds(&f, f.box_of(paragraph)).contains(&"box"));
+}
+
+#[test]
+fn moved_items_get_new_fragments_with_their_layout() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let nodes: Vec<_> = (0..3)
+        .map(|index| {
+            let node = sized_block(&mut ui, 10.0);
+            let content = text(&mut ui, &format!("block {index}"));
+            ui.append(node, content);
+            ui.append(root, node);
+            node
+        })
+        .collect();
+
+    let mut f = Fixture::new();
+    let (input_root, root_fragment) = f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+
+    let fragment = |f: &Fixture, node| {
+        f.fragments
+            .box_fragment(f.tree.item_for_node(node).unwrap())
+            .unwrap()
+    };
+    let keys: Vec<_> = nodes.iter().map(|&node| fragment(&f, node)).collect();
+    let lines = f.children(keys[2]);
+    let item = f.tree.item_for_node(nodes[2]).unwrap();
+
+    // Moving the last block to the front keeps its item and layout, but its
+    // box gets a new key, in its new place.
+    ui.prepend(root, nodes[2]);
+    f.tree.mark_input_node(root, InputFlags::NEED_CHILDREN);
+    f.inputs
+        .build(&ui, &mut f.tree, BuildRequest::new(root, 16.0, VIEWPORT))
+        .unwrap();
+    assert_eq!(
+        f.tree.items[item].flags,
+        LayoutFlags::MOVED,
+        "only the moved item is marked"
+    );
+    f.layout(&ui, input_root);
+    f.tree.clear_flags(input_root);
+
+    let moved = fragment(&f, nodes[2]);
+    assert_eq!(f.tree.item_for_node(nodes[2]), Some(item));
+    assert_ne!(moved, keys[2]);
+    assert!(f.fragments.items.get(keys[2]).is_none());
+    assert_eq!(f.children(root_fragment), vec![moved, keys[0], keys[1]]);
+    assert_eq!(
+        f.fragments.items[moved].geometry_generation,
+        f.fragments.generation()
+    );
+
+    // Its lines were not laid out again, only moved under the new key.
+    assert_eq!(f.children(moved), lines);
+    assert!(f.fragments.inline_layout(moved).is_some());
+
+    // Blocks that kept their place keep their keys.
+    assert_eq!(fragment(&f, nodes[0]), keys[0]);
+    assert_eq!(fragment(&f, nodes[1]), keys[1]);
 }

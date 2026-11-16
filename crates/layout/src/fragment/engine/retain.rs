@@ -3,10 +3,74 @@
 //! Box fragments of live items and anonymous blocks of live owners are
 //! retained with their state. Every other fragment is transient and replaced
 //! when its parent is laid out again.
+//!
+//! Retained fragments of moved items get new keys with their state, so later
+//! steps see them as new in their new tree order.
 
 use super::{Engine, FragmentItem, FragmentKey};
+use crate::input::LayoutInputKey;
 
 impl Engine<'_> {
+    /// Give the box fragments of a moved item and of the items under it new
+    /// keys in place, keeping their layout state and children.
+    ///
+    /// Data later steps keep by fragment, such as paint layers, depends on
+    /// tree order, which a move changes. New keys let them handle the move
+    /// as a deletion and an insertion, while layouts and shaped text are
+    /// kept.
+    pub fn rekey_subtree(&mut self, key: LayoutInputKey) {
+        let tree = self.tree;
+        let mut pending = std::mem::take(&mut self.scratch.moved);
+        pending.clear();
+        pending.push(key);
+
+        while let Some(item) = pending.pop() {
+            if let Some(fragment) = self.fragments.box_fragment(item) {
+                self.rekey(fragment);
+            }
+
+            pending.extend(tree.items.children(item));
+        }
+
+        self.scratch.moved = pending;
+    }
+
+    /// Replace a retained fragment with a copy under a new key, in the same
+    /// place and with the same children and state. The copy counts as
+    /// created in this build.
+    fn rekey(&mut self, old: FragmentKey) {
+        let items = &mut self.fragments.items;
+        let mut fragment = items[old].clone();
+        fragment.geometry_generation = 0;
+        let source = fragment.source;
+        let state = fragment.item.state();
+        let new = items.insert(fragment);
+
+        if items.parent(old).is_some() {
+            items.before(old, new);
+        } else {
+            // Released until its parent attaches it again, such as an atomic
+            // inline waiting for its lines; deleted unless attached.
+            self.scratch.detached.push(new);
+        }
+
+        while let Some(child) = items.first_child(old) {
+            items.append(new, child);
+        }
+
+        items.delete_node(old);
+
+        if let Some(state) = state.and_then(|state| self.fragments.states.get_mut(state)) {
+            state.fragment = new;
+        }
+
+        if self.fragments.first.get(source) == Some(&old) {
+            self.fragments.first.insert(source, new);
+        }
+
+        self.fragments.record_geometry(new);
+    }
+
     /// Whether a fragment is retained: the current box of a live box generating
     /// item, or an anonymous block of a live owner.
     fn is_retained(&self, fragment: FragmentKey) -> bool {

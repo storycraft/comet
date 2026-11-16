@@ -97,7 +97,8 @@ impl LayoutInputTreeBuilder {
     ///
     /// Generated items have every [`LayoutFlags`] set. Existing items are
     /// marked [`LayoutFlags::NEED_FULL_LAYOUT`] when their resolved text style, kind
-    /// or child list changed. Mark changes the builder cannot see, such as
+    /// or child list changed, and children moved among their siblings are
+    /// marked [`LayoutFlags::MOVED`]. Mark changes the builder cannot see, such as
     /// edited text or box styles, as usual. Flags are
     /// left for the consumer of the input tree to clear. Use `item_for_node`
     /// for child results.
@@ -278,6 +279,20 @@ impl LayoutInputTreeBuilder {
                     continue;
                 };
 
+                // Items whose nodes left this parent are deleted first, so
+                // the children after them are not taken as moved.
+                while let Some(stale) = next
+                    && stale != item
+                    && ui
+                        .props(tree.items[stale].node)
+                        .and_then(|props| props.parent())
+                        != Some(node)
+                {
+                    next = tree.items.next_sibling(stale);
+                    tree.delete_item(stale);
+                    changed = true;
+                }
+
                 if next == Some(item) {
                     next = tree.items.next_sibling(item);
                 } else {
@@ -288,6 +303,10 @@ impl LayoutInputTreeBuilder {
                     }
 
                     changed = true;
+
+                    if existing.is_some() {
+                        tree.mark(item, LayoutFlags::MOVED);
+                    }
                 }
 
                 if existing.is_none() {

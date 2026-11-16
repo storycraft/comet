@@ -59,6 +59,13 @@ bitflags! {
         /// text style changed. Includes [`Self::NEED_BOX_LAYOUT`], so check
         /// `contains(NEED_BOX_LAYOUT)` for any change of the box.
         const NEED_FULL_LAYOUT = 1 << 2 | Self::NEED_BOX_LAYOUT.bits();
+
+        /// The item moved among the children of its parent, which is marked
+        /// [`Self::NEED_FULL_LAYOUT`]. The fragment builder gives the box
+        /// fragments of the item and of the items under it new keys, keeping
+        /// their layout state, so later steps see them as new fragments in
+        /// their new tree order. Alone, it lays nothing out again.
+        const MOVED = 1 << 3;
     }
 }
 

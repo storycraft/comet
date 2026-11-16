@@ -448,9 +448,10 @@ fn update_reconciles_children_and_keeps_keys() {
     assert_eq!(tree.item_for_node(inner), Some(inner_key));
     assert_eq!(tree.items[d_key].flags, LayoutFlags::all());
 
-    // Unchanged children are not flagged; the reordered parent is fully dirty.
+    // Unchanged children are not flagged, the moved child is only marked
+    // moved, and the reordered parent is fully dirty.
     assert_eq!(tree.items[a_key].flags, LayoutFlags::empty());
-    assert_eq!(tree.items[b_key].flags, LayoutFlags::empty());
+    assert_eq!(tree.items[b_key].flags, LayoutFlags::MOVED);
     assert_eq!(tree.items[inner_key].flags, LayoutFlags::empty());
     assert_eq!(
         tree.items[key].flags,
@@ -812,7 +813,7 @@ fn update_reconciles_marked_child_lists() {
     assert_eq!(tree.items[text_key].flags, LayoutFlags::all());
     assert!(tree.item_for_node(nested).is_some());
     assert_eq!(tree.items[a_key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
-    assert_eq!(tree.items[b_key].flags, LayoutFlags::empty());
+    assert_eq!(tree.items[b_key].flags, LayoutFlags::MOVED);
     assert_no_input_flags(&tree, key);
     assert_fresh(&ui, root, &tree, key);
 
@@ -871,4 +872,51 @@ fn build_clears_input_flags() {
     tree.mark_input_node(child, InputFlags::NEED_STYLE | InputFlags::NEED_CHILDREN);
     build(&mut builder, &ui, root, &mut tree);
     assert_no_input_flags(&tree, key);
+}
+
+#[test]
+fn only_moved_children_are_marked_moved() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let nodes: Vec<_> = (0..4)
+        .map(|_| {
+            let node = ui.create(Node::Box, ());
+            ui.append(root, node);
+            node
+        })
+        .collect();
+
+    let mut tree = LayoutInputTree::new();
+    let mut builder = LayoutInputTreeBuilder::new();
+    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
+    let keys: Vec<_> = nodes
+        .iter()
+        .map(|&node| tree.item_for_node(node).unwrap())
+        .collect();
+    clean(&mut tree, key);
+
+    // Deleting the first child moves nothing.
+    ui.delete(nodes[0]);
+    tree.mark_input(key, InputFlags::NEED_CHILDREN);
+    build(&mut builder, &ui, root, &mut tree);
+
+    assert_eq!(tree.items.children(key).collect::<Vec<_>>(), keys[1..]);
+    for &item in &keys[1..] {
+        assert_eq!(tree.items[item].flags, LayoutFlags::empty());
+    }
+    assert_eq!(tree.items[key].flags, LayoutFlags::NEED_FULL_LAYOUT);
+
+    // Moving the last child to the front marks only it.
+    clean(&mut tree, key);
+    ui.prepend(root, nodes[3]);
+    tree.mark_input(key, InputFlags::NEED_CHILDREN);
+    build(&mut builder, &ui, root, &mut tree);
+
+    assert_eq!(
+        tree.items.children(key).collect::<Vec<_>>(),
+        vec![keys[3], keys[1], keys[2]]
+    );
+    assert_eq!(tree.items[keys[3]].flags, LayoutFlags::MOVED);
+    assert_eq!(tree.items[keys[1]].flags, LayoutFlags::empty());
+    assert_eq!(tree.items[keys[2]].flags, LayoutFlags::empty());
 }

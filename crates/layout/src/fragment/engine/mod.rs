@@ -50,6 +50,8 @@ pub(crate) struct Scratch {
     /// Box fragments created during this build, whose mode and style are
     /// already resolved.
     created: FxHashSet<FragmentKey>,
+    /// Items under a moved item whose box fragments get new keys.
+    moved: Vec<LayoutInputKey>,
     /// Stack of the direct children of fragments being laid out, shared by
     /// nested [`FragmentEngine`]s.
     pub(super) children: Vec<Child>,
@@ -192,6 +194,13 @@ impl Engine<'_> {
             let flags = item.flags;
             let child_layout = item.child_layout;
             let is_box = self.is_box(key);
+
+            // Its parent, visited before, attached it in its new place.
+            if flags.contains(LayoutFlags::MOVED) {
+                self.rekey_subtree(key);
+            }
+            // Moving alone keeps the layout.
+            let flags = flags - LayoutFlags::MOVED;
 
             // After a viewport change, boxes depending on it are laid out
             // again. Their ancestor boxes carry the bit too, which leads here.
