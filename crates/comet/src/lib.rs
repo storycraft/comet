@@ -222,15 +222,22 @@ impl App {
     /// until a later redraw lays out again.
     fn update_layout(&mut self, viewport: Size<f64>) -> Option<()> {
         // Cleared until the layout succeeds.
-        self.viewport = None;
+        let previous_viewport = self.viewport.take();
         // Cleared until the layers are placed, but passed on to keep their keys.
         let previous_layer_root = self.layer_root.take();
 
-        let input_root = self.input_builder.build(
-            &self.ui,
-            &mut self.inputs,
-            BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport),
-        )?;
+        let request = BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport);
+        let input_root = match previous_viewport {
+            // After a layout at another viewport, only the items whose text
+            // styles depend on the viewport are resolved again.
+            Some(_) => self
+                .input_builder
+                .update_viewport(&self.ui, &mut self.inputs, request),
+            // The first layout, or one after a failure, builds the whole tree.
+            None => self
+                .input_builder
+                .build(&self.ui, &mut self.inputs, request),
+        }?;
 
         let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE);
         let fragment_root = self.fragment_builder.build(

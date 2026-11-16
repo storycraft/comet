@@ -198,6 +198,82 @@ fn viewport_lengths_mark_text_styles_and_their_descendants() {
 }
 
 #[test]
+fn update_viewport_builds_only_viewport_dependent_subtrees() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let plain = ui.create(Node::Box, ());
+    let spaced = ui.create(Node::Box, (bx::LetterSpacing(StyleUnit::Vw(0.01)),));
+    let inherited = ui.create(Node::Text, ());
+    let independent = ui.create(Node::Text, ());
+    let tall = ui.create(Node::Text, (bx::FontSize(StyleUnit::Vh(0.05)),));
+
+    ui.append(root, plain);
+    ui.append(plain, spaced);
+    ui.append(spaced, inherited);
+    ui.append(plain, independent);
+    ui.append(root, tall);
+
+    let mut tree = LayoutInputTree::new();
+    let mut builder = LayoutInputTreeBuilder::new();
+    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
+    clean(&mut tree, key);
+
+    let item = |tree: &LayoutInputTree, node| tree.item_for_node(node).unwrap();
+    assert_eq!(
+        tree.items[item(&tree, spaced)]
+            .text_style
+            .span
+            .letter_spacing,
+        8.0
+    );
+    assert_eq!(
+        tree.items[item(&tree, tall)].text_style.span.font_size,
+        30.0
+    );
+
+    // An unmarked edit outside the viewport dependent subtrees is not seen.
+    ui.set_props(independent, (bx::FontSize(StyleUnit::Px(30.0)),));
+
+    let viewport = Size::new(400.0, 300.0);
+    assert_eq!(
+        builder.update_viewport(&ui, &mut tree, BuildRequest::new(root, 16.0, viewport)),
+        Some(key)
+    );
+
+    let style = |node| tree.items[item(&tree, node)].text_style.clone();
+    let flags = |node| tree.items[item(&tree, node)].flags;
+
+    assert_eq!(style(spaced).span.letter_spacing, 4.0);
+    assert_eq!(style(inherited).span.letter_spacing, 4.0);
+    assert_eq!(style(tall).span.font_size, 15.0);
+    assert_eq!(style(independent).span.font_size, 16.0);
+
+    assert_eq!(
+        flags(spaced),
+        LayoutFlags::NEED_FULL_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
+    );
+    assert_eq!(flags(inherited), LayoutFlags::NEED_FULL_LAYOUT);
+    assert_eq!(flags(tall), LayoutFlags::NEED_FULL_LAYOUT);
+    assert!(flags(independent).is_empty());
+    assert_eq!(flags(plain), LayoutFlags::CHILD_NEED_LAYOUT);
+    assert_eq!(flags(root), LayoutFlags::CHILD_NEED_LAYOUT);
+
+    // The same viewport flags nothing.
+    clean(&mut tree, key);
+    builder.update_viewport(&ui, &mut tree, BuildRequest::new(root, 16.0, viewport));
+    for item in tree.items.descendants(key) {
+        assert!(tree.items[item].flags.is_empty());
+    }
+
+    // Nodes without items are ignored.
+    let unmapped = ui.create(Node::Box, ());
+    assert_eq!(
+        builder.update_viewport(&ui, &mut tree, BuildRequest::new(unmapped, 16.0, viewport)),
+        None
+    );
+}
+
+#[test]
 fn mark_propagates_to_ancestors() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());

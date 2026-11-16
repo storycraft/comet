@@ -8,7 +8,7 @@ use comet_tree::{
 use crate::{
     input::{
         ChildLayout, LayoutFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind, TextStyle,
-        text::{resolve_text_style, root_text_style},
+        text::{TextStyleBits, resolve_text_style, root_text_style},
         tree::LayoutInputTree,
     },
     style::{
@@ -44,6 +44,10 @@ impl BuildRequest {
 #[derive(Default)]
 pub struct LayoutInputTreeBuilder {
     pending: Vec<Task>,
+    /// Items to visit in [`Self::update_viewport`].
+    visit: Vec<LayoutInputKey>,
+    /// Source nodes of the subtrees [`Self::update_viewport`] builds again.
+    viewport_roots: Vec<NodeKey>,
 }
 
 impl LayoutInputTreeBuilder {
@@ -119,6 +123,64 @@ impl LayoutInputTreeBuilder {
         }
 
         Some(key)
+    }
+
+    /// Build again the subtrees under the item of `request.source` whose text
+    /// styles depend on the viewport, after the viewport changed. Starting
+    /// from that item, each topmost item with
+    /// [`TextStyleBits::DEPENDS_VIEWPORT`] is built with `request` for its own
+    /// node, as [`Self::build`]; its descendants inherit the bit and are built
+    /// with it. Other items are kept as they are.
+    ///
+    /// Box styles are not resolved here, so items whose box styles use `vw`
+    /// or `vh` must be marked separately.
+    ///
+    /// Returns the item of `request.source`, or `None` if it has no item.
+    pub fn update_viewport(
+        &mut self,
+        ui: &Ui,
+        tree: &mut LayoutInputTree,
+        request: BuildRequest,
+    ) -> Option<LayoutInputKey> {
+        let source = tree.item_for_node(request.source)?;
+
+        let mut visit = std::mem::take(&mut self.visit);
+        let mut roots = std::mem::take(&mut self.viewport_roots);
+        visit.clear();
+        roots.clear();
+        visit.push(source);
+
+        // Collect the subtree roots first, since building them changes the tree.
+        while let Some(key) = visit.pop() {
+            let item = &tree.items[key];
+
+            if item
+                .text_style
+                .bits
+                .contains(TextStyleBits::DEPENDS_VIEWPORT)
+            {
+                roots.push(item.node);
+            } else {
+                visit.extend(tree.items.children(key));
+            }
+        }
+
+        for &node in &roots {
+            self.build(
+                ui,
+                tree,
+                BuildRequest {
+                    source: node,
+                    ..request
+                },
+            );
+        }
+
+        self.visit = visit;
+        self.viewport_roots = roots;
+
+        // Building a subtree may delete it, but never the source item above it.
+        tree.item_for_node(request.source)
     }
 
     /// Match the item's children to the source children, in order.
