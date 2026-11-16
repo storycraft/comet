@@ -11,6 +11,8 @@
 mod block;
 mod inline;
 mod retain;
+#[cfg(test)]
+mod tests;
 
 use comet_tree::ui::Ui;
 use rustc_hash::FxHashSet;
@@ -19,7 +21,7 @@ use slotmap::{Key, KeyData};
 use super::{
     FragmentItem, FragmentKey, StateKey,
     adapter::{Child, FragmentEngine},
-    state::{Mode, NodeState},
+    state::{Mode, NodeLayoutBits, NodeState},
     tree::FragmentTree,
 };
 use crate::{
@@ -111,11 +113,54 @@ impl Engine<'_> {
         cx
     }
 
-    fn resolve_style(&self, key: LayoutInputKey) -> Style {
-        style::resolve(
+    /// Resolve the box style of an item, with what its layout depends on.
+    fn resolve_style(&self, key: LayoutInputKey) -> (Style, NodeLayoutBits) {
+        let mut bits = NodeLayoutBits::empty();
+        let style = style::resolve_tracked(
             self.ui.props(self.tree.items[key].node),
             &self.style_constraint(key),
-        )
+            &mut |unit| bits |= NodeLayoutBits::of_unit(unit),
+        );
+
+        // TODO: Custom container algorithms may resolve lengths of their own,
+        // so assume they depend on everything.
+        if self.tree.items[key].child_layout == ChildLayout::Container {
+            bits = NodeLayoutBits::all();
+        }
+
+        (style, bits)
+    }
+
+    /// Add `bits` to the box fragments of the ancestors of an item, up to the
+    /// root of the build. Items without boxes, such as inline elements, are
+    /// skipped.
+    fn propagate_bits(&mut self, key: LayoutInputKey, bits: NodeLayoutBits) {
+        if bits.is_empty() || key == self.root {
+            return;
+        }
+
+        let mut ancestor = self.tree.items.parent(key);
+
+        while let Some(key) = ancestor {
+            if let Some(state) = self
+                .fragments
+                .box_fragment(key)
+                .and_then(|fragment| self.fragments.get_state_mut(fragment))
+            {
+                // Bits always reach the root, so ancestors above have them.
+                if state.bits.contains(bits) {
+                    break;
+                }
+
+                state.bits |= bits;
+            }
+
+            if key == self.root {
+                break;
+            }
+
+            ancestor = self.tree.items.parent(key);
+        }
     }
 
     /// The box fragment of a box generating item, created with its state if
@@ -125,13 +170,16 @@ impl Engine<'_> {
             return fragment;
         }
 
-        let state = NodeState::new(self.mode(key), self.resolve_style(key));
+        let (style, bits) = self.resolve_style(key);
+        let mut state = NodeState::new(self.mode(key), style);
+        state.bits = bits;
         let fragment =
             self.fragments
                 .insert_with_state(key, |state| FragmentItem::Box { state }, state);
 
         self.fragments.first.insert(key, fragment);
         self.scratch.created.insert(fragment);
+        self.propagate_bits(key, bits);
 
         fragment
     }
@@ -192,17 +240,21 @@ impl Engine<'_> {
             return;
         };
         let previous = state.mode;
+        let mut bits = NodeLayoutBits::empty();
 
         if let Some((mode, style)) = update {
             state.mode = mode;
 
-            if let Some(style) = style {
+            if let Some((style, style_bits)) = style {
                 state.style = style;
+                state.bits |= style_bits;
+                bits = style_bits;
             }
         }
 
         let mode = state.mode;
         state.invalidate();
+        self.propagate_bits(key, bits);
 
         match mode {
             Mode::Inline => {

@@ -1,5 +1,31 @@
+use bitflags::bitflags;
+
 use super::{FragmentKey, InlineLayout};
-use crate::{input::LayoutInputKey, taffy::style::Style};
+use crate::{input::LayoutInputKey, style::geometry::StyleUnit, taffy::style::Style};
+
+bitflags! {
+    /// What the layout of a box or of its subtree depends on, besides its
+    /// own content. Set when box styles are resolved, and on every ancestor
+    /// box up to the root of the build.
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+    pub(crate) struct NodeLayoutBits: u8 {
+        /// A length resolves against the parent's size, such as a percentage.
+        const DEPENDS_PARENT_SIZE = 1 << 0;
+        /// A length uses `vw` or `vh`.
+        const DEPENDS_VIEWPORT = 1 << 1;
+    }
+}
+
+impl NodeLayoutBits {
+    /// What a length of `unit` depends on.
+    pub fn of_unit(unit: StyleUnit) -> Self {
+        match unit {
+            StyleUnit::Percent(_) => Self::DEPENDS_PARENT_SIZE,
+            unit if unit.is_viewport_relative() => Self::DEPENDS_VIEWPORT,
+            _ => Self::empty(),
+        }
+    }
+}
 
 /// How a box lays out its content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +54,9 @@ pub(crate) struct NodeState {
     pub style: Style,
     /// Unrounded layout of the latest final layout pass.
     pub layout: taffy::Layout,
+    /// What the layout of this box and of its subtree depends on. Bits are
+    /// only added, so they may outlive the styles that set them.
+    pub bits: NodeLayoutBits,
     pub cache: taffy::Cache,
     /// Whether retained text and descendant geometry match the final cache entry.
     pub final_layout_valid: bool,
@@ -46,6 +75,7 @@ impl NodeState {
             mode,
             style,
             layout: Default::default(),
+            bits: NodeLayoutBits::empty(),
             cache: Default::default(),
             final_layout_valid: false,
             baseline: 0.0,
