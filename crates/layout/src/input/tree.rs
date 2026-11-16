@@ -2,7 +2,7 @@ use comet_slotmap_tree::SlotTree;
 use comet_tree::node::NodeKey;
 use rustc_hash::FxHashMap;
 
-use crate::input::{LayoutFlags, LayoutInputItem, LayoutInputKey, text::TextStyleBits};
+use crate::input::{InputFlags, LayoutFlags, LayoutInputItem, LayoutInputKey, text::TextStyleBits};
 
 pub struct LayoutInputTree {
     /// Raw tree storage. Use the tree mutation methods and builder to keep
@@ -86,6 +86,46 @@ impl LayoutInputTree {
             if flags.contains(LayoutFlags::CHILD_NEED_LAYOUT) {
                 pending.extend(self.items.children(key));
             }
+        }
+    }
+
+    /// Insert input `flags` into an item and mark its ancestors
+    /// [`InputFlags::CHILD_NEED_INPUT`], so the next
+    /// [`LayoutInputTreeBuilder::build`](super::builder::LayoutInputTreeBuilder::build)
+    /// from an ancestor resolves the change. Stale keys are ignored.
+    ///
+    /// Use [`InputFlags::NEED_STYLE`] after props of the source node resolved
+    /// into the item changed, such as its text style or display, and
+    /// [`InputFlags::NEED_CHILDREN`] after its child list changed. Mark both
+    /// parents when moving a source node, and the parent when deleting one.
+    pub fn mark_input(&mut self, key: LayoutInputKey, flags: InputFlags) {
+        let Some(item) = self.items.get_mut(key) else {
+            return;
+        };
+
+        item.input_flags.insert(flags);
+
+        let mut ancestor = self.items.parent(key);
+
+        while let Some(key) = ancestor {
+            let item = &mut self.items[key];
+
+            // Ancestors of a marked item are marked already.
+            if item.input_flags.contains(InputFlags::CHILD_NEED_INPUT) {
+                break;
+            }
+
+            item.input_flags.insert(InputFlags::CHILD_NEED_INPUT);
+            ancestor = self.items.parent(key);
+        }
+    }
+
+    /// Insert input `flags` into the item generated for a source node, as
+    /// [`Self::mark_input`]. Unmapped nodes are ignored; mark their parent
+    /// [`InputFlags::NEED_CHILDREN`] when inserting them.
+    pub fn mark_input_node(&mut self, node: NodeKey, flags: InputFlags) {
+        if let Some(key) = self.item_for_node(node) {
+            self.mark_input(key, flags);
         }
     }
 

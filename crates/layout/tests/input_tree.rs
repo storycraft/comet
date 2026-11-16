@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use comet_layout::{
     input::{
-        ChildLayout, LayoutFlags, LayoutInputKey, LayoutInputKind,
+        ChildLayout, InputFlags, LayoutFlags, LayoutInputKey, LayoutInputKind,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         text::TextStyleBits,
         tree::LayoutInputTree,
@@ -205,7 +205,7 @@ fn viewport_lengths_mark_text_styles_and_their_descendants() {
 }
 
 #[test]
-fn update_viewport_builds_only_viewport_dependent_subtrees() {
+fn viewport_change_builds_only_viewport_dependent_subtrees() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let plain = ui.create(Node::Box, ());
@@ -242,10 +242,8 @@ fn update_viewport_builds_only_viewport_dependent_subtrees() {
     ui.set_props(independent, (bx::FontSize(StyleUnit::Px(30.0)),));
 
     let viewport = Size::new(400.0, 300.0);
-    assert_eq!(
-        builder.update_viewport(&ui, &mut tree, BuildRequest::new(root, 16.0, viewport)),
-        Some(key)
-    );
+    let changed = BuildRequest::new(root, 16.0, viewport).with_viewport_changed(true);
+    assert_eq!(builder.build(&ui, &mut tree, changed), Some(key));
 
     let style = |node| tree.items[item(&tree, node)].text_style.clone();
     let flags = |node| tree.items[item(&tree, node)].flags;
@@ -267,17 +265,24 @@ fn update_viewport_builds_only_viewport_dependent_subtrees() {
 
     // The same viewport flags nothing.
     clean(&mut tree, key);
-    builder.update_viewport(&ui, &mut tree, BuildRequest::new(root, 16.0, viewport));
+    builder.build(&ui, &mut tree, changed);
     for item in tree.items.descendants(key) {
         assert!(tree.items[item].flags.is_empty());
     }
+    assert_no_input_flags(&tree, key);
 
-    // Nodes without items are ignored.
-    let unmapped = ui.create(Node::Box, ());
-    assert_eq!(
-        builder.update_viewport(&ui, &mut tree, BuildRequest::new(unmapped, 16.0, viewport)),
-        None
+    // Marked items are resolved in the same build as the viewport change.
+    tree.mark_input_node(independent, InputFlags::NEED_STYLE);
+    let wider = Size::new(800.0, 300.0);
+    builder.build(
+        &ui,
+        &mut tree,
+        BuildRequest::new(root, 16.0, wider).with_viewport_changed(true),
     );
+    let style = |node| tree.items[item(&tree, node)].text_style.clone();
+    assert_eq!(style(spaced).span.letter_spacing, 8.0);
+    assert_eq!(style(independent).span.font_size, 30.0);
+    assert_no_input_flags(&tree, key);
 }
 
 #[test]
@@ -309,18 +314,19 @@ fn viewport_dependent_items_mark_their_ancestors() {
     // A style that stops depending on the viewport keeps the marks of its
     // ancestors, which are only added.
     ui.set_props(spaced, (bx::LetterSpacing(StyleUnit::Px(1.0)),));
+    tree.mark_input_node(spaced, InputFlags::NEED_STYLE);
     build(&mut builder, &ui, root, &mut tree);
     assert_eq!(bits(&tree, spaced), child);
     assert!(bits(&tree, inherited).is_empty());
     assert_eq!(bits(&tree, root), child);
 
-    // Stale marks only lead update_viewport to items it leaves as they are.
+    // Stale marks only lead a viewport change to items it leaves as they are.
     clean(&mut tree, key);
     assert_eq!(
-        builder.update_viewport(
+        builder.build(
             &ui,
             &mut tree,
-            BuildRequest::new(root, 16.0, Size::new(400.0, 300.0))
+            BuildRequest::new(root, 16.0, Size::new(400.0, 300.0)).with_viewport_changed(true)
         ),
         Some(key)
     );
@@ -331,6 +337,7 @@ fn viewport_dependent_items_mark_their_ancestors() {
     // New items mark their ancestors.
     let tall = ui.create(Node::Text, (bx::FontSize(StyleUnit::Vh(0.05)),));
     ui.append(plain, tall);
+    tree.mark_input_node(plain, InputFlags::NEED_CHILDREN);
     build(&mut builder, &ui, root, &mut tree);
     assert_eq!(bits(&tree, tall), depends);
     assert_eq!(bits(&tree, plain), child);
@@ -413,8 +420,7 @@ fn update_reconciles_children_and_keeps_keys() {
     let key = build(&mut builder, &ui, root, &mut tree).unwrap();
     clean(&mut tree, key);
 
-    // Every build re-resolves the subtree, but nothing is flagged when
-    // nothing changed.
+    // Building again without marks changes nothing.
     assert_eq!(build(&mut builder, &ui, root, &mut tree), Some(key));
     for item in tree.items.descendants(key) {
         assert_eq!(tree.items[item].flags, LayoutFlags::empty());
@@ -431,6 +437,7 @@ fn update_reconciles_children_and_keeps_keys() {
     ui.before(a, b);
     ui.delete(c);
     ui.append(root, d);
+    tree.mark_input(key, InputFlags::NEED_CHILDREN);
     assert_eq!(build(&mut builder, &ui, root, &mut tree), Some(key));
 
     let children: Vec<_> = tree.items.children(key).collect();
@@ -469,7 +476,7 @@ fn changed_text_style_updates_descendants() {
     clean(&mut tree, key);
 
     ui.set_props(root, (bx::FontSize(StyleUnit::Px(24.0)),));
-    tree.mark(key, LayoutFlags::NEED_FULL_LAYOUT);
+    tree.mark_input(key, InputFlags::NEED_STYLE);
     build(&mut builder, &ui, root, &mut tree).unwrap();
 
     let item = |node| &tree.items[tree.item_for_node(node).unwrap()];
@@ -504,7 +511,7 @@ fn partial_update_of_descendant_uses_parent_style() {
 
     let child_key = tree.item_for_node(child).unwrap();
     ui.set_props(child, (bx::FontSize(StyleUnit::Em(2.0)),));
-    tree.mark(child_key, LayoutFlags::NEED_FULL_LAYOUT);
+    tree.mark_input(child_key, InputFlags::NEED_STYLE);
 
     assert_eq!(build(&mut builder, &ui, child, &mut tree), Some(child_key));
     assert_eq!(tree.items[child_key].text_style.span.font_size, 40.0);
@@ -513,7 +520,7 @@ fn partial_update_of_descendant_uses_parent_style() {
     clean(&mut tree, key);
     let other_child = ui.create(Node::Text, ());
     ui.append(root, other_child);
-    tree.mark_node(root, LayoutFlags::NEED_FULL_LAYOUT);
+    tree.mark_input_node(root, InputFlags::NEED_CHILDREN);
     assert_eq!(build(&mut builder, &ui, root, &mut tree), Some(key));
 
     let inserted = tree.item_for_node(other_child).unwrap();
@@ -555,7 +562,7 @@ fn rebuilding_a_node_only_updates_its_own_item() {
     clean(&mut tree, key);
 
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
-    tree.mark_node(interruption, LayoutFlags::NEED_FULL_LAYOUT);
+    tree.mark_input_node(interruption, InputFlags::NEED_STYLE);
     assert_eq!(
         build(&mut builder, &ui, interruption, &mut tree),
         Some(interruption_key)
@@ -602,7 +609,7 @@ fn assert_fresh(
 }
 
 #[test]
-fn build_re_resolves_and_flags_clean_subtrees() {
+fn build_resolves_only_marked_items_of_an_existing_tree() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let child = ui.create(Node::Box, (bx::FontSize(StyleUnit::Rem(2.0)),));
@@ -618,50 +625,245 @@ fn build_re_resolves_and_flags_clean_subtrees() {
     let text_key = tree.item_for_node(text).unwrap();
     clean(&mut tree, key);
 
-    // A clean tree picks up the new root font size and viewport. Keys are kept.
+    // Unmarked items keep the units they were resolved with.
     let viewport = Size::new(1000.0, 600.0);
     assert_eq!(
         builder.build(&ui, &mut tree, BuildRequest::new(root, 20.0, viewport)),
         Some(key)
     );
-    assert_eq!(tree.item_for_node(child), Some(child_key));
-    assert_eq!(tree.item_for_node(text), Some(text_key));
-    assert_eq!(tree.items[key].text_style.span.font_size, 20.0);
-    assert_eq!(tree.items[child_key].text_style.span.font_size, 40.0);
-    assert_eq!(tree.items[text_key].text_style.span.letter_spacing, 10.0);
-
-    assert_eq!(
-        tree.items[key].flags,
-        LayoutFlags::NEED_FULL_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
-    );
-    assert_eq!(
-        tree.items[child_key].flags,
-        LayoutFlags::NEED_FULL_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
-    );
-    assert_eq!(tree.items[text_key].flags, LayoutFlags::NEED_FULL_LAYOUT);
-
-    // Building again with the same root font size and viewport resolves equal
-    // items, so nothing is flagged.
-    clean(&mut tree, key);
-    builder.build(&ui, &mut tree, BuildRequest::new(root, 20.0, viewport));
+    assert_eq!(tree.items[child_key].text_style.span.font_size, 32.0);
+    assert_eq!(tree.items[text_key].text_style.span.letter_spacing, 8.0);
     for item in tree.items.descendants(key) {
         assert_eq!(tree.items[item].flags, LayoutFlags::empty());
     }
 
-    // A new viewport flags only the items whose text style resolves
-    // differently.
-    clean(&mut tree, key);
-    let wider = Size::new(500.0, 600.0);
-    builder.build(&ui, &mut tree, BuildRequest::new(root, 20.0, wider));
-
-    assert_eq!(tree.items[key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
-    assert_eq!(tree.items[child_key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
+    // Marked items resolve with the request.
+    tree.mark_input(text_key, InputFlags::NEED_STYLE);
+    builder.build(&ui, &mut tree, BuildRequest::new(root, 16.0, viewport));
+    assert_eq!(tree.items[text_key].text_style.span.letter_spacing, 10.0);
     assert_eq!(tree.items[text_key].flags, LayoutFlags::NEED_FULL_LAYOUT);
-    assert_eq!(tree.items[text_key].text_style.span.letter_spacing, 5.0);
+    assert_eq!(tree.items[child_key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
 
     // Marked content changes are kept.
     clean(&mut tree, key);
     tree.mark(text_key, LayoutFlags::NEED_FULL_LAYOUT);
-    builder.build(&ui, &mut tree, BuildRequest::new(root, 20.0, wider));
+    builder.build(&ui, &mut tree, BuildRequest::new(root, 16.0, viewport));
     assert_eq!(tree.items[text_key].flags, LayoutFlags::NEED_FULL_LAYOUT);
+}
+
+#[test]
+fn build_builds_a_new_tree_without_a_source_item() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let child = ui.create(Node::Box, (bx::FontSize(StyleUnit::Rem(2.0)),));
+    ui.append(root, child);
+
+    let mut tree = LayoutInputTree::new();
+    let mut builder = LayoutInputTreeBuilder::new();
+    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
+    clean(&mut tree, key);
+
+    // A new root font size needs a new tree.
+    tree.delete_item(key);
+    let rebuilt = builder
+        .build(&ui, &mut tree, BuildRequest::new(root, 20.0, VIEWPORT))
+        .unwrap();
+
+    assert_eq!(tree.items.descendants(rebuilt).count(), 2);
+    for item in tree.items.descendants(rebuilt) {
+        assert_eq!(tree.items[item].flags, LayoutFlags::all());
+    }
+    let child_key = tree.item_for_node(child).unwrap();
+    assert_eq!(tree.items[child_key].text_style.span.font_size, 40.0);
+}
+
+fn assert_no_input_flags(tree: &LayoutInputTree, root: LayoutInputKey) {
+    for key in tree.items.descendants(root) {
+        assert_eq!(tree.items[key].input_flags, InputFlags::empty());
+    }
+}
+
+#[test]
+fn mark_input_propagates_to_ancestors() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let child = ui.create(Node::Box, ());
+    let text = ui.create(Node::Text, ());
+    ui.append(root, child);
+    ui.append(child, text);
+
+    let mut tree = LayoutInputTree::new();
+    let key = build(&mut LayoutInputTreeBuilder::new(), &ui, root, &mut tree).unwrap();
+    assert_no_input_flags(&tree, key);
+
+    tree.mark_input_node(text, InputFlags::NEED_STYLE);
+
+    let item = |node| tree.items[tree.item_for_node(node).unwrap()].input_flags;
+    assert_eq!(item(text), InputFlags::NEED_STYLE);
+    assert_eq!(item(child), InputFlags::CHILD_NEED_INPUT);
+    assert_eq!(item(root), InputFlags::CHILD_NEED_INPUT);
+}
+
+#[test]
+fn update_resolves_only_marked_items() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let marked = ui.create(Node::Box, ());
+    let inherited = ui.create(Node::Text, ());
+    let unmarked = ui.create(Node::Text, ());
+
+    ui.append(root, marked);
+    ui.append(marked, inherited);
+    ui.append(root, unmarked);
+
+    let mut tree = LayoutInputTree::new();
+    let mut builder = LayoutInputTreeBuilder::new();
+    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
+    clean(&mut tree, key);
+
+    let item = |tree: &LayoutInputTree, node| tree.items[tree.item_for_node(node).unwrap()].clone();
+
+    // A clean tree is not visited.
+    ui.set_props(unmarked, (bx::FontSize(StyleUnit::Px(30.0)),));
+    assert_eq!(build(&mut builder, &ui, root, &mut tree), Some(key));
+    assert_eq!(item(&tree, unmarked).text_style.span.font_size, 16.0);
+
+    // A marked item is resolved, with its descendants inheriting the change.
+    ui.set_props(marked, (bx::FontSize(StyleUnit::Px(24.0)),));
+    tree.mark_input_node(marked, InputFlags::NEED_STYLE);
+    assert_eq!(build(&mut builder, &ui, root, &mut tree), Some(key));
+
+    assert_eq!(item(&tree, marked).text_style.span.font_size, 24.0);
+    assert_eq!(item(&tree, inherited).text_style.span.font_size, 24.0);
+    assert_eq!(
+        item(&tree, marked).flags,
+        LayoutFlags::NEED_FULL_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
+    );
+    assert_eq!(item(&tree, inherited).flags, LayoutFlags::NEED_FULL_LAYOUT);
+    assert_eq!(item(&tree, root).flags, LayoutFlags::CHILD_NEED_LAYOUT);
+    // The unmarked sibling was skipped.
+    assert_eq!(item(&tree, unmarked).text_style.span.font_size, 16.0);
+    assert_eq!(item(&tree, unmarked).flags, LayoutFlags::empty());
+    assert_no_input_flags(&tree, key);
+}
+
+#[test]
+fn update_stops_where_text_styles_stop_changing() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let child = ui.create(Node::Box, ());
+    ui.append(root, child);
+
+    let mut tree = LayoutInputTree::new();
+    let mut builder = LayoutInputTreeBuilder::new();
+    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
+    clean(&mut tree, key);
+
+    // The root resolves to an equal style, so its unmarked child is kept.
+    ui.set_props(child, (bx::FontSize(StyleUnit::Px(30.0)),));
+    tree.mark_input(key, InputFlags::NEED_STYLE);
+    build(&mut builder, &ui, root, &mut tree);
+
+    let child_key = tree.item_for_node(child).unwrap();
+    assert_eq!(tree.items[child_key].text_style.span.font_size, 16.0);
+    assert_eq!(tree.items[key].flags, LayoutFlags::empty());
+    assert_no_input_flags(&tree, key);
+}
+
+#[test]
+fn update_reconciles_marked_child_lists() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let a = ui.create(Node::Box, ());
+    let b = ui.create(Node::Box, ());
+    let inner = ui.create(Node::Box, ());
+
+    ui.append(root, a);
+    ui.append(root, b);
+    ui.append(a, inner);
+
+    let mut tree = LayoutInputTree::new();
+    let mut builder = LayoutInputTreeBuilder::new();
+    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
+    let a_key = tree.item_for_node(a).unwrap();
+    let b_key = tree.item_for_node(b).unwrap();
+    clean(&mut tree, key);
+
+    // Insert under a nested item, and reorder and insert under the root.
+    let text = ui.create(Node::Text, ());
+    let nested = ui.create(Node::Text, ());
+    ui.append(root, text);
+    ui.before(a, b);
+    ui.append(inner, nested);
+    tree.mark_input(key, InputFlags::NEED_CHILDREN);
+    tree.mark_input_node(inner, InputFlags::NEED_CHILDREN);
+    assert_eq!(build(&mut builder, &ui, root, &mut tree), Some(key));
+
+    let text_key = tree.item_for_node(text).unwrap();
+    assert_eq!(
+        tree.items.children(key).collect::<Vec<_>>(),
+        vec![b_key, a_key, text_key]
+    );
+    assert_eq!(tree.items[text_key].flags, LayoutFlags::all());
+    assert!(tree.item_for_node(nested).is_some());
+    assert_eq!(tree.items[a_key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
+    assert_eq!(tree.items[b_key].flags, LayoutFlags::empty());
+    assert_no_input_flags(&tree, key);
+    assert_fresh(&ui, root, &tree, key);
+
+    // Deleting a node marks its parent.
+    clean(&mut tree, key);
+    ui.delete(a);
+    tree.mark_input(key, InputFlags::NEED_CHILDREN);
+    build(&mut builder, &ui, root, &mut tree);
+    assert_eq!(tree.item_for_node(a), None);
+    assert_eq!(tree.item_for_node(inner), None);
+    assert_fresh(&ui, root, &tree, key);
+}
+
+#[test]
+fn update_reconciles_children_when_child_layout_changes() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let parent = ui.create(Node::Box, ());
+    let text = ui.create(Node::Text, ());
+    ui.append(root, parent);
+    ui.append(parent, text);
+
+    let mut tree = LayoutInputTree::new();
+    let mut builder = LayoutInputTreeBuilder::new();
+    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
+    clean(&mut tree, key);
+
+    // Content display has no child items.
+    ui.set_props(parent, (DisplayInner::Content,));
+    tree.mark_input_node(parent, InputFlags::NEED_STYLE);
+    build(&mut builder, &ui, root, &mut tree);
+    assert_eq!(tree.item_for_node(text), None);
+    assert_fresh(&ui, root, &tree, key);
+
+    // Back to flow, the child is built again.
+    ui.remove_prop::<DisplayInner>(parent);
+    tree.mark_input_node(parent, InputFlags::NEED_STYLE);
+    build(&mut builder, &ui, root, &mut tree);
+    let text_key = tree.item_for_node(text).unwrap();
+    assert_eq!(tree.items[text_key].flags, LayoutFlags::all());
+    assert_fresh(&ui, root, &tree, key);
+    assert_no_input_flags(&tree, key);
+}
+
+#[test]
+fn build_clears_input_flags() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let child = ui.create(Node::Box, ());
+    ui.append(root, child);
+
+    let mut tree = LayoutInputTree::new();
+    let mut builder = LayoutInputTreeBuilder::new();
+    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
+
+    tree.mark_input_node(child, InputFlags::NEED_STYLE | InputFlags::NEED_CHILDREN);
+    build(&mut builder, &ui, root, &mut tree);
+    assert_no_input_flags(&tree, key);
 }

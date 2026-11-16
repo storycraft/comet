@@ -4,6 +4,7 @@ use anyrender::{Paint, Scene, recording::RenderCommand};
 use comet_layout::{
     fragment::{FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
+        InputFlags,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -1033,6 +1034,7 @@ fn layers_follow_layout_changes_from_the_root() {
     // A new box starting a layer, inserted before the others.
     let added = ui.create(Node::Box, (fixed(60.0, 10.0), z(1)));
     ui.prepend(root, added);
+    p.inputs.mark_input_node(root, InputFlags::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1047,6 +1049,7 @@ fn layers_follow_layout_changes_from_the_root() {
     // A deleted owner takes its layer along, and the nested layer of its
     // deleted descendant.
     ui.delete(group);
+    p.inputs.mark_input_node(root, InputFlags::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));

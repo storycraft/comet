@@ -10,7 +10,7 @@ use comet_layout::{
         tree::FragmentTree,
     },
     input::{
-        LayoutFlags,
+        InputFlags, LayoutFlags,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -277,7 +277,7 @@ fn container_children_follow_reorders_and_removals() {
 
     ui.prepend(root, children[2]);
     ui.delete(children[0]);
-    f.inputs.mark_node(root, LayoutFlags::NEED_FULL_LAYOUT);
+    f.inputs.mark_input_node(root, InputFlags::NEED_CHILDREN);
     f.build(&ui, root, 400.0);
 
     // Box fragments of kept children are reused in their new order.

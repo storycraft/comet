@@ -2,7 +2,7 @@ mod common;
 
 use comet_layout::{
     input::{
-        LayoutInputKey, LayoutInputKind,
+        InputFlags, LayoutFlags, LayoutInputKey, LayoutInputKind,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -11,7 +11,10 @@ use comet_layout::{
         geometry::{Size, StyleUnit},
     },
 };
-use comet_tree::{node::Text, ui::Ui};
+use comet_tree::{
+    node::{Node, NodeKey, Text},
+    ui::Ui,
+};
 
 const ROOT_FONT_SIZE: f64 = 16.0;
 const VIEWPORT: Size<f64> = Size::new(800.0, 600.0);
@@ -26,80 +29,90 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut tree = LayoutInputTree::new();
     let mut builder = LayoutInputTreeBuilder::new();
-    let layout_root = builder
-        .build(
-            &ui,
-            &mut tree,
-            BuildRequest::new(root, ROOT_FONT_SIZE, VIEWPORT),
-        )
-        .ok_or("could not build sample UI")?;
+    let layout_root = build(&mut builder, &ui, &mut tree, root, ROOT_FONT_SIZE)?;
 
     println!("Initial layout input tree (every item is flagged):");
     print_tree(&ui, &tree, layout_root);
 
-    // Building a node that already has an item updates it in place, keeping its
-    // key. Only flagged items and their changed descendants are re-resolved.
+    // Building again only resolves the changes marked with input flags.
+    // Keys are kept.
 
-    // Text stays in the UI; rebuilding the text item keeps its key.
+    // Text content is read by the fragment builder, not resolved into the
+    // item, so only the layout flag is set and the input build skips it.
     ui.set_props(greeting, (Text("Updated greeting! ".into()),));
-
-    let greeting_item = builder
-        .build(
-            &ui,
-            &mut tree,
-            BuildRequest::new(greeting, ROOT_FONT_SIZE, VIEWPORT),
-        )
-        .ok_or("could not rebuild the greeting")?;
-
-    println!("\nAfter rebuilding the changed greeting {greeting_item:?}:");
-    print_tree(&ui, &tree, layout_root);
-
-    // An inline-block becomes an atomic inline item with its own flow. Items only
-    // describe their own node, so rebuilding the changed node is enough.
-    ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
-
-    let interruption_item = builder
-        .build(
-            &ui,
-            &mut tree,
-            BuildRequest::new(interruption, ROOT_FONT_SIZE, VIEWPORT),
-        )
-        .ok_or("could not rebuild the interruption")?;
-
-    println!("\nAfter changing the interruption {interruption_item:?} to inline-block:");
-    print_tree(&ui, &tree, layout_root);
-
-    // Text styles are resolved during building and inherited from the parent item.
-    ui.set_props(interruption, (DisplayOuter::Block, DisplayInner::Flow));
-    ui.set_props(interruption, (FontSize(StyleUnit::Em(1.5)),));
-
-    let interruption_item = builder
-        .build(
-            &ui,
-            &mut tree,
-            BuildRequest::new(interruption, ROOT_FONT_SIZE, VIEWPORT),
-        )
-        .ok_or("could not restore the block")?;
+    tree.clear_flags(layout_root);
+    tree.mark_node(greeting, LayoutFlags::NEED_FULL_LAYOUT);
+    build(&mut builder, &ui, &mut tree, root, ROOT_FONT_SIZE)?;
 
     println!(
-        "\nAfter restoring the block and rebuilding {interruption_item:?} with font-size: 1.5em:"
+        "
+After changing the greeting text:"
     );
     print_tree(&ui, &tree, layout_root);
 
-    // Every build re-resolves the whole subtree, so a new root font size is
-    // picked up. Keys are kept.
-    let layout_root = builder
-        .build(
-            &ui,
-            &mut tree,
-            BuildRequest::new(root, 20.0, Size::new(1024.0, 768.0)),
-        )
-        .ok_or("could not re-resolve the tree")?;
+    // An inline-block becomes an atomic inline item with its own flow. Items
+    // only describe their own node, so marking the changed node is enough.
+    ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
+    tree.clear_flags(layout_root);
+    tree.mark_input_node(interruption, InputFlags::NEED_STYLE);
+    build(&mut builder, &ui, &mut tree, root, ROOT_FONT_SIZE)?;
 
-    println!("\nAfter rebuilding with a 20px root font size:");
+    println!(
+        "
+After changing the interruption to inline-block:"
+    );
+    print_tree(&ui, &tree, layout_root);
+
+    // Text styles are resolved during building and inherited from the parent
+    // item. Descendants are resolved again while their styles change.
+    ui.set_props(interruption, (DisplayOuter::Block, DisplayInner::Flow));
+    ui.set_props(interruption, (FontSize(StyleUnit::Em(1.5)),));
+    tree.clear_flags(layout_root);
+    tree.mark_input_node(interruption, InputFlags::NEED_STYLE);
+    build(&mut builder, &ui, &mut tree, root, ROOT_FONT_SIZE)?;
+
+    println!(
+        "
+After restoring the block with font-size: 1.5em:"
+    );
+    print_tree(&ui, &tree, layout_root);
+
+    // Inserting a node marks its parent's child list.
+    let note = ui.create(Node::Text, (Text("A new note.".into()),));
+    ui.append(root, note);
+    tree.clear_flags(layout_root);
+    tree.mark_input_node(root, InputFlags::NEED_CHILDREN);
+    build(&mut builder, &ui, &mut tree, root, ROOT_FONT_SIZE)?;
+
+    println!(
+        "
+After appending a note:"
+    );
+    print_tree(&ui, &tree, layout_root);
+
+    // A new root font size is not tracked, so the tree is built from scratch.
+    tree.clear();
+    let layout_root = build(&mut builder, &ui, &mut tree, root, 20.0)?;
+
+    println!(
+        "
+After rebuilding with a 20px root font size:"
+    );
     print_tree(&ui, &tree, layout_root);
 
     Ok(())
+}
+
+fn build(
+    builder: &mut LayoutInputTreeBuilder,
+    ui: &Ui,
+    tree: &mut LayoutInputTree,
+    root: NodeKey,
+    root_font_size: f64,
+) -> Result<LayoutInputKey, &'static str> {
+    builder
+        .build(ui, tree, BuildRequest::new(root, root_font_size, VIEWPORT))
+        .ok_or("could not build sample UI")
 }
 
 fn print_tree(ui: &Ui, tree: &LayoutInputTree, root: LayoutInputKey) {

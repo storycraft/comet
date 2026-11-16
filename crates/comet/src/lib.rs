@@ -52,6 +52,7 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
         layer_builder: PaintLayerBuilder::new(),
         layer_root: None,
         viewport: None,
+        input_viewport: None,
         hit_tester: PaintHitTester::new(),
         cursor: None,
         hovered: None,
@@ -77,6 +78,9 @@ struct App {
     layer_root: Option<PaintLayerKey>,
     /// Logical viewport of the last successful layout.
     viewport: Option<Size<f64>>,
+    /// Logical viewport `inputs` was resolved with, kept when a later step
+    /// of the layout fails.
+    input_viewport: Option<Size<f64>>,
     // TODO: Temporary hover outline, drawn around the node under the cursor.
     // Replace with real input handling.
     hit_tester: PaintHitTester,
@@ -227,18 +231,18 @@ impl App {
         // layer, so the layers keep their keys.
         self.layer_root = None;
 
-        let request = BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport);
-        let input_root = match previous_viewport {
-            // After a layout at another viewport, only the items whose text
-            // styles depend on the viewport are resolved again.
-            Some(_) => self
-                .input_builder
-                .update_viewport(&self.ui, &mut self.inputs, request),
-            // The first layout, or one after a failure, builds the whole tree.
-            None => self
-                .input_builder
-                .build(&self.ui, &mut self.inputs, request),
-        }?;
+        // The first layout builds the whole tree. Later ones resolve the
+        // marked changes and, after resolving at another viewport, the items
+        // whose text styles depend on it.
+        let request = BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport)
+            .with_viewport_changed(
+                self.input_viewport
+                    .is_some_and(|previous| previous != viewport),
+            );
+        let input_root = self
+            .input_builder
+            .build(&self.ui, &mut self.inputs, request)?;
+        self.input_viewport = Some(viewport);
 
         let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE)
             .with_viewport_changed(previous_viewport.is_some_and(|previous| previous != viewport));

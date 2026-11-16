@@ -2,7 +2,7 @@ use anyrender::{Paint, Scene, recording::RenderCommand};
 use comet_layout::{
     fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
-        LayoutFlags, LayoutInputKey,
+        InputFlags, LayoutFlags, LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -881,7 +881,7 @@ fn resolving_fails_for_nodes_deleted_since_the_layout_was_built() {
     assert_eq!(f.resolve(&ui, root_fragment), None);
 
     // Resolving succeeds again once the layout follows the UI.
-    f.inputs.mark_node(root, LayoutFlags::NEED_FULL_LAYOUT);
+    f.inputs.mark_input_node(root, InputFlags::NEED_CHILDREN);
     let root_fragment = f.layout(&ui, root);
     assert_eq!(f.resolve(&ui, root_fragment), Some(()));
     f.pre_paint.clear_flags();

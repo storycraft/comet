@@ -19,7 +19,10 @@ pub struct LayoutInputItem {
     /// What the text style of the item, or of its descendants, depends on.
     pub bits: TextStyleBits,
     pub child_layout: ChildLayout,
+    /// Changes the fragment builder has not laid out yet.
     pub flags: LayoutFlags,
+    /// Source changes the input builder has not resolved yet.
+    pub input_flags: InputFlags,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -56,6 +59,31 @@ bitflags! {
         /// text style changed. Includes [`Self::NEED_BOX_LAYOUT`], so check
         /// `contains(NEED_BOX_LAYOUT)` for any change of the box.
         const NEED_FULL_LAYOUT = 1 << 2 | Self::NEED_BOX_LAYOUT.bits();
+    }
+}
+
+bitflags! {
+    /// Source changes not resolved into the [`LayoutInputTree`](tree::LayoutInputTree)
+    /// yet, set with [`LayoutInputTree::mark_input`](tree::LayoutInputTree::mark_input)
+    /// and consumed by [`LayoutInputTreeBuilder::build`](builder::LayoutInputTreeBuilder::build).
+    ///
+    /// These are the inputs of the input step, while [`LayoutFlags`] are its
+    /// outputs to the fragment builder. The builder clears the input flags of
+    /// the items it visits.
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    pub struct InputFlags: u8 {
+        /// At least one descendant has input flags.
+        const CHILD_NEED_INPUT = 1 << 0;
+
+        /// A prop of the source node resolved into the item changed, such as
+        /// an inherited text property or its display. The item is resolved
+        /// again, and so are its descendants if its text style changed.
+        const NEED_STYLE = 1 << 1;
+
+        /// The child list of the source node changed: children were
+        /// inserted, removed or moved. The item's children are reconciled
+        /// with the source children.
+        const NEED_CHILDREN = 1 << 2;
     }
 }
 

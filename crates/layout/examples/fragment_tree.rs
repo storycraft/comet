@@ -3,7 +3,7 @@ mod common;
 use comet_layout::{
     fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
-        LayoutFlags,
+        InputFlags, LayoutFlags,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -64,14 +64,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nAfter changing the greeting (box fragments retained):");
     print_tree(&inputs, &fragments, updated);
 
-    // A narrower viewport reflows the lines.
+    // A narrower viewport reflows the lines. Only text styles depending on
+    // the viewport are resolved again.
     viewport = Size::new(180.0, 600.0);
-    constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE);
+    constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE).with_viewport_changed(true);
     input_builder
         .build(
             &ui,
             &mut inputs,
-            BuildRequest::new(root, ROOT_FONT_SIZE, viewport),
+            BuildRequest::new(root, ROOT_FONT_SIZE, viewport).with_viewport_changed(true),
         )
         .ok_or("could not rebuild sample UI")?;
     let resized = fragment_builder
@@ -82,8 +83,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nAfter narrowing the viewport to 180px:");
     print_tree(&inputs, &fragments, resized);
 
+    // Display is resolved into the input item, so the input builder resolves
+    // the marked item again and flags its new kind for the fragment builder.
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
-    inputs.mark_node(interruption, LayoutFlags::NEED_FULL_LAYOUT);
+    inputs.mark_input_node(interruption, InputFlags::NEED_STYLE);
+    constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE);
 
     input_builder
         .build(
