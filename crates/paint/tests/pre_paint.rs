@@ -1214,3 +1214,106 @@ fn invalid_scale_factors_paint_nothing() {
         assert!(f.draw_scaled(&ui, scale_factor).commands.is_empty());
     }
 }
+
+impl Fixture {
+    fn resolve_changed(&mut self, ui: &Ui, root: FragmentKey) {
+        self.resolver
+            .resolve_changed(
+                ui,
+                &self.inputs,
+                &self.fragments,
+                &UNITS,
+                &mut self.pre_paint,
+                root,
+            )
+            .unwrap();
+    }
+
+    /// The pre-paint tree of `root`, resolved from scratch.
+    fn full_resolve(&self, ui: &Ui, root: FragmentKey) -> PrePaintTree {
+        let mut full = PrePaintTree::new();
+        PrePaintTreeResolver::new()
+            .resolve(
+                ui,
+                &self.inputs,
+                &self.fragments,
+                &UNITS,
+                &mut full,
+                root,
+                true,
+            )
+            .unwrap();
+
+        full
+    }
+
+    fn assert_matches_full_resolve(&self, ui: &Ui, root: FragmentKey) {
+        let full = self.full_resolve(ui, root);
+
+        for key in self.fragments.items.descendants(root) {
+            let source = self.fragments.items[key].source;
+
+            assert_eq!(self.pre_paint.fragment(key), full.fragment(key), "{key:?}");
+            assert_eq!(self.pre_paint.get(source), full.get(source), "{source:?}");
+        }
+    }
+}
+
+#[test]
+fn incremental_resolves_follow_changed_fragments_only() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let top = ui.create(Node::Box, (fixed(120.0, 20.0),));
+    let middle = ui.create(
+        Node::Box,
+        (
+            fixed(120.0, 30.0),
+            BorderRadius(LayoutRect::new_all(StyleUnit::Px(4.0))),
+        ),
+    );
+    let bottom = ui.create(Node::Box, (fixed(120.0, 40.0),));
+    ui.append(root, top);
+    ui.append(root, middle);
+    ui.append(root, bottom);
+    text(&mut ui, top, "top");
+    text(&mut ui, bottom, "bottom");
+
+    let mut f = Fixture::default();
+    let fragment_root = f.layout(&ui, root);
+    f.resolve_changed(&ui, fragment_root);
+    f.assert_matches_full_resolve(&ui, fragment_root);
+
+    // A taller top box moves the boxes below it.
+    ui.set_props(top, (fixed(120.0, 50.0),));
+    f.inputs.mark_node(top, LayoutFlags::NEED_BOX_LAYOUT);
+    f.layout(&ui, root);
+    f.resolve_changed(&ui, fragment_root);
+    f.assert_matches_full_resolve(&ui, fragment_root);
+    assert_affine(f.boxed(middle).transform, Affine::translate((0.0, 50.0)));
+
+    // Boxes that did not move or resize are skipped, so an unmarked paint
+    // style edit on one is not seen.
+    let radius = |data: &LayoutInputData| data.border_radius;
+    let before = radius(f.data(middle));
+    ui.set_props(
+        middle,
+        (BorderRadius(LayoutRect::new_all(StyleUnit::Px(8.0))),),
+    );
+    ui.set_props(bottom, (fixed(120.0, 60.0),));
+    f.inputs.mark_node(bottom, LayoutFlags::NEED_BOX_LAYOUT);
+    f.layout(&ui, root);
+    f.resolve_changed(&ui, fragment_root);
+
+    assert_eq!(radius(f.data(middle)), before);
+    assert_ne!(
+        f.full_resolve(&ui, fragment_root)
+            .get(f.item(middle))
+            .unwrap()
+            .border_radius,
+        before
+    );
+    assert_eq!(
+        f.pre_paint.get(f.item(bottom)),
+        f.full_resolve(&ui, fragment_root).get(f.item(bottom))
+    );
+}

@@ -252,16 +252,15 @@ impl App {
         self.inputs.clear_flags(input_root);
         let fragment_root = fragment_root?;
 
-        // Positions and clips follow the layout, which was just built, so
-        // resolve the whole tree again.
-        self.pre_paint_resolver.resolve(
+        // Positions and clips follow the layout, so resolve the fragments it
+        // created, moved or resized.
+        self.pre_paint_resolver.resolve_changed(
             &self.ui,
             &self.inputs,
             &self.fragments,
             &constraint.units,
             &mut self.pre_paint,
             fragment_root,
-            true,
         )?;
 
         // Layers keep their keys, so building from the root again only places

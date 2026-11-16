@@ -21,6 +21,10 @@ use crate::pre_paint::{FragmentData, LayoutInputData};
 pub struct PrePaintTree {
     pub(super) fragment_mapping: SecondaryMap<FragmentKey, FragmentData>,
     pub(super) layout_mapping: SecondaryMap<LayoutInputKey, LayoutInputData>,
+    /// [Generation](FragmentTree::generation) of the fragment tree when
+    /// [`resolve_changed`](super::resolver::PrePaintTreeResolver::resolve_changed)
+    /// last ran, or 0.
+    pub(super) generation: u64,
 }
 
 impl PrePaintTree {
@@ -41,6 +45,7 @@ impl PrePaintTree {
     pub fn clear(&mut self) {
         self.fragment_mapping.clear();
         self.layout_mapping.clear();
+        self.generation = 0;
     }
 
     /// Corner radii of a fragment's border box: the

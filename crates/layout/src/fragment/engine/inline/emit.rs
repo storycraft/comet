@@ -7,8 +7,9 @@ use slotmap::{SecondaryMap, SlotMap};
 use super::{super::Engine, Scratch};
 use crate::{
     fragment::{
-        Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, StateKey, state::NodeState,
-        tree::FragmentTree,
+        Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, StateKey,
+        state::NodeState,
+        tree::{FragmentTree, record_geometry},
     },
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     style::geometry::{Point, Size},
@@ -29,6 +30,8 @@ impl Engine<'_> {
             items,
             states,
             first,
+            changed,
+            generation,
             ..
         } = &mut *self.fragments;
         let Some(InlineLayout { layout, boxes, .. }) = items[fragment]
@@ -50,6 +53,8 @@ impl Engine<'_> {
             boxes,
             span_parents,
             spans,
+            changed,
+            generation: *generation,
             line: 0,
             line_key: fragment,
         };
@@ -121,6 +126,10 @@ struct Emitter<'a> {
     boxes: &'a [LayoutInputKey],
     span_parents: &'a mut FxHashMap<LayoutInputKey, FragmentKey>,
     spans: &'a mut Vec<FragmentKey>,
+    /// Fragments created or moved in this build.
+    changed: &'a mut Vec<FragmentKey>,
+    /// Generation of this build.
+    generation: u64,
     /// Index of the current line in the Parley layout.
     line: usize,
     /// Fragment of the current line.
@@ -135,7 +144,7 @@ impl Emitter<'_> {
         let top = metrics.block_min_coord;
 
         self.line = index;
-        self.line_key = self.items.insert(Fragment::new(
+        self.line_key = self.insert(Fragment::new(
             self.owner,
             FragmentItem::Line { line: index },
             FragmentBox {
@@ -220,17 +229,30 @@ impl Emitter<'_> {
             .and_then(|key| self.states.get(key))
             .map_or(taffy::Rect::ZERO, |state| state.layout.margin);
 
-        self.items[atomic].layout.location = Point::new(
+        let location = Point::new(
             (bx.x + margin.left - left) as f64,
             (bx.y + margin.top - top) as f64,
         );
+
+        if self.items[atomic].layout.location != location {
+            self.items[atomic].layout.location = location;
+            record_geometry(self.items, self.changed, self.generation, atomic);
+        }
         self.items.append(parent, atomic);
+    }
+
+    /// Insert a new fragment, marked as created in this build.
+    fn insert(&mut self, fragment: Fragment) -> FragmentKey {
+        let key = self.items.insert(fragment);
+        record_geometry(self.items, self.changed, self.generation, key);
+
+        key
     }
 
     /// Insert a fragment under the span containing `source`.
     fn push(&mut self, source: LayoutInputKey, item: FragmentItem, layout: FragmentBox) {
         let parent = self.parent(source);
-        let key = self.items.insert(Fragment::new(source, item, layout));
+        let key = self.insert(Fragment::new(source, item, layout));
 
         self.items.append(parent, key);
     }
@@ -263,7 +285,7 @@ impl Emitter<'_> {
         }
 
         // Spans are fitted to their contents after all lines are emitted.
-        let fragment = self.items.insert(Fragment::new(
+        let fragment = self.insert(Fragment::new(
             key,
             FragmentItem::Inline { line: self.line },
             FragmentBox::default(),

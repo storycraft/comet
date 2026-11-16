@@ -26,6 +26,8 @@ pub struct PrePaintTreeResolver {
     fragments: Vec<FragmentKey>,
     /// Layout input items to resolve, after their parents.
     items: Vec<LayoutInputKey>,
+    /// Fragments found changed by [`Self::resolve_changed`].
+    changed: Vec<FragmentKey>,
 }
 
 /// What resolving reads from.
@@ -81,6 +83,76 @@ impl PrePaintTreeResolver {
         // Fragments read the stitched sizes of their items.
         self.resolve_items(sources, tree, fragments.items.get(key)?.source, recursive)?;
         self.resolve_fragments(sources, tree, key, recursive)?;
+        Some(())
+    }
+
+    /// Resolve what fragment builds changed since the last call into `tree`:
+    /// the fragments under `root` that were created, moved or resized, and
+    /// their layout input items. Subtrees without such fragments are skipped,
+    /// using the [generations](FragmentTree::generation) of `fragments`. The
+    /// first call resolves everything.
+    ///
+    /// Changes builds cannot see, such as paint styles or the root font size
+    /// and viewport units they resolve with, are resolved with
+    /// [`Self::resolve`]. Arguments and failures are those of
+    /// [`Self::resolve`].
+    pub fn resolve_changed(
+        &mut self,
+        ui: &Ui,
+        inputs: &LayoutInputTree,
+        fragments: &FragmentTree,
+        units: &UnitResolveContext,
+        tree: &mut PrePaintTree,
+        root: FragmentKey,
+    ) -> Option<()> {
+        let sources = Sources {
+            ui,
+            inputs,
+            fragments,
+            units,
+        };
+        let Self {
+            fragments: pending,
+            items,
+            changed,
+        } = self;
+        let resolved = tree.generation;
+
+        pending.clear();
+        items.clear();
+        changed.clear();
+        pending.push(root);
+
+        while let Some(key) = pending.pop() {
+            let fragment = fragments.items.get(key)?;
+
+            if fragment.subtree_generation <= resolved {
+                continue;
+            }
+
+            if fragment.geometry_generation > resolved || !tree.fragment_mapping.contains_key(key) {
+                changed.push(key);
+                items.push(fragment.source);
+            }
+
+            pending.extend(fragments.items.children(key));
+        }
+
+        // Items read the sizes of all their fragments, and fragments read
+        // their items.
+        items.sort_unstable();
+        items.dedup();
+
+        for &key in items.iter() {
+            tree.layout_mapping.insert(key, sources.resolve_item(key)?);
+        }
+
+        for &key in changed.iter() {
+            tree.fragment_mapping
+                .insert(key, sources.resolve_fragment(key)?);
+        }
+
+        tree.generation = fragments.generation();
         Some(())
     }
 
