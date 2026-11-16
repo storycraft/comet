@@ -26,6 +26,8 @@ pub struct PrePaintTree {
     /// [Generation](FragmentTree::generation) of the fragment tree when
     /// [`resolve`](super::resolver::PrePaintTreeResolver::resolve) last
     /// succeeded, or 0.
+    pub(super) fragment_generation: u64,
+    /// Generation of the latest resolve, increasing with every resolve.
     pub(super) generation: u64,
     /// Invalidation state of fragments. Fragments without an entry are clean.
     pub(super) flags: SecondaryMap<FragmentKey, PrePaintFlags>,
@@ -44,6 +46,16 @@ impl PrePaintTree {
     /// The paint data a layout input item was resolved to.
     pub fn get(&self, key: LayoutInputKey) -> Option<&LayoutInputData> {
         self.layout_mapping.get(key)
+    }
+
+    /// Generation of the latest
+    /// [`resolve`](super::resolver::PrePaintTreeResolver::resolve). Fragment
+    /// data it created or changed has it as its
+    /// [`generation`](FragmentData::generation), and so do the
+    /// [`subtree_generation`](FragmentData::subtree_generation) of their
+    /// ancestors. Only increases, also across [`Self::clear`].
+    pub fn generation(&self) -> u64 {
+        self.generation
     }
 
     /// The invalidation state of a fragment.
@@ -100,7 +112,9 @@ impl PrePaintTree {
         self.fragment_mapping.clear();
         self.layout_mapping.clear();
         self.flags.clear();
-        self.generation = 0;
+        // The generation keeps increasing, so data resolved again is newer
+        // than anything consumers have seen.
+        self.fragment_generation = 0;
     }
 
     /// Corner radii of a fragment's border box: the

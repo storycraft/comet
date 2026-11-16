@@ -223,8 +223,9 @@ impl App {
     fn update_layout(&mut self, viewport: Size<f64>) -> Option<()> {
         // Cleared until the layout succeeds.
         let previous_viewport = self.viewport.take();
-        // Cleared until the layers are placed, but passed on to keep their keys.
-        let previous_layer_root = self.layer_root.take();
+        // Cleared until the layers are placed. The layer tree keeps the root
+        // layer, so the layers keep their keys.
+        self.layer_root = None;
 
         let request = BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport);
         let input_root = match previous_viewport {
@@ -265,13 +266,12 @@ impl App {
         self.pre_paint.clear_flags();
 
         // Layers keep their keys, so building from the root again only places
-        // the layers whose owners changed.
+        // the layers whose fragments changed.
         self.layer_root = Some(self.layer_builder.build(
             &self.fragments,
             &self.pre_paint,
             &mut self.layers,
             fragment_root,
-            previous_layer_root,
         )?);
         self.viewport = Some(viewport);
 

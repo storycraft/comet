@@ -100,4 +100,23 @@ pub struct FragmentData {
     /// or a [`ZIndex`](crate::style::ZIndex) other than auto. An auto z index
     /// counts as 0.
     pub stacking: Option<i32>,
+
+    /// [Generation](tree::PrePaintTree::generation) of the resolve that last
+    /// created or changed this data. Resolving to equal data keeps it.
+    pub generation: u64,
+
+    /// The latest [`Self::generation`] of the fragment and of its
+    /// descendants. Subtrees older than a generation have not changed since.
+    pub subtree_generation: u64,
+}
+
+impl FragmentData {
+    /// Whether the resolved values equal those of `other`, ignoring
+    /// generations.
+    pub fn same_values(&self, other: &Self) -> bool {
+        self.transform == other.transform
+            && self.inverse_transform == other.inverse_transform
+            && self.transform_origin == other.transform_origin
+            && self.stacking == other.stacking
+    }
 }

@@ -54,6 +54,11 @@ impl PrePaintTreeResolver {
     ///   their paint styles changed,
     /// - fragments without data in `tree`.
     ///
+    /// Every call starts a new [generation](PrePaintTree::generation).
+    /// Fragment data created or changed by the call is stamped with it, and
+    /// so is the [subtree generation](FragmentData::subtree_generation) of
+    /// its ancestors. Data resolved to equal values keeps its generation.
+    ///
     /// Subtrees without such fragments are skipped, so the first call, or a
     /// call on an empty `tree`, resolves everything. Data only depends on the
     /// fragment or item itself, so ancestors are not resolved. Flags are not
@@ -93,7 +98,9 @@ impl PrePaintTreeResolver {
             items,
             changed,
         } = self;
-        let resolved = tree.generation;
+        let resolved = tree.fragment_generation;
+        tree.generation += 1;
+        let generation = tree.generation;
 
         pending.clear();
         items.clear();
@@ -132,11 +139,38 @@ impl PrePaintTreeResolver {
         }
 
         for &key in changed.iter() {
-            tree.fragment_mapping
-                .insert(key, sources.resolve_fragment(key)?);
+            let mut data = sources.resolve_fragment(key)?;
+
+            match tree.fragment_mapping.get(key) {
+                Some(old) if old.same_values(&data) => continue,
+                _ => {
+                    data.generation = generation;
+                    data.subtree_generation = generation;
+                }
+            }
+
+            tree.fragment_mapping.insert(key, data);
+
+            // Stamp the ancestors at once: a later failure keeps the stamp,
+            // and resolving again to equal data would not stamp them.
+            let mut ancestor = fragments.items.parent(key);
+
+            while let Some(key) = ancestor {
+                let Some(data) = tree.fragment_mapping.get_mut(key) else {
+                    break;
+                };
+
+                // Ancestors of a stamped fragment are stamped already.
+                if data.subtree_generation == generation {
+                    break;
+                }
+
+                data.subtree_generation = generation;
+                ancestor = fragments.items.parent(key);
+            }
         }
 
-        tree.generation = fragments.generation();
+        tree.fragment_generation = fragments.generation();
         Some(())
     }
 }
@@ -173,6 +207,8 @@ impl Sources<'_> {
             inverse_transform: invert(transform),
             transform_origin,
             stacking: box_props.and_then(stacking),
+            generation: 0,
+            subtree_generation: 0,
         })
     }
 

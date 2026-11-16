@@ -178,7 +178,6 @@ impl Fixture {
                 &self.pre_paint,
                 &mut layers,
                 self.root.unwrap(),
-                None,
             )
             .unwrap();
 
@@ -1247,7 +1246,13 @@ impl Fixture {
         for key in self.fragments.items.descendants(root) {
             let source = self.fragments.items[key].source;
 
-            assert_eq!(self.pre_paint.fragment(key), full.fragment(key), "{key:?}");
+            // Generations differ by design: only the values must match.
+            let (data, expected) = (self.pre_paint.fragment(key), full.fragment(key));
+            assert!(
+                data.zip(expected)
+                    .is_some_and(|(data, expected)| data.same_values(expected)),
+                "{key:?}: {data:?} != {expected:?}"
+            );
             assert_eq!(self.pre_paint.get(source), full.get(source), "{source:?}");
         }
     }
@@ -1363,4 +1368,49 @@ fn resolves_both_changed_and_marked_fragments() {
     f.pre_paint.clear_flags();
     assert!(f.pre_paint.flags(f.box_of(marked)).is_empty());
     assert!(f.pre_paint.flags(fragment_root).is_empty());
+}
+
+#[test]
+fn fragment_data_generations_follow_changed_values() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let parent = ui.create(Node::Box, (fixed(80.0, 40.0),));
+    let child = ui.create(Node::Box, (fixed(20.0, 20.0),));
+    let sibling = ui.create(Node::Box, (fixed(80.0, 40.0),));
+    ui.append(root, parent);
+    ui.append(parent, child);
+    ui.append(root, sibling);
+
+    let mut f = Fixture::default();
+    let fragment_root = f.build(&ui, root);
+    let first = f.pre_paint.generation();
+
+    for key in f.fragments.items.descendants(fragment_root) {
+        assert_eq!(f.fragment(key).generation, first);
+        assert_eq!(f.fragment(key).subtree_generation, first);
+    }
+
+    // Resolving to equal values keeps the generations.
+    f.mark(f.box_of(child));
+    f.resolve(&ui, fragment_root).unwrap();
+    f.pre_paint.clear_flags();
+
+    assert!(f.pre_paint.generation() > first);
+    assert_eq!(f.boxed(child).generation, first);
+    assert_eq!(f.boxed(parent).subtree_generation, first);
+
+    // A changed value stamps the fragment and the subtrees of its
+    // ancestors, leaving the others as they are.
+    ui.set_props(child, (Transform(Affine::scale(2.0)),));
+    f.mark(f.box_of(child));
+    f.resolve(&ui, fragment_root).unwrap();
+    f.pre_paint.clear_flags();
+    let changed = f.pre_paint.generation();
+
+    assert_eq!(f.boxed(child).generation, changed);
+    assert_eq!(f.boxed(child).subtree_generation, changed);
+    assert_eq!(f.boxed(parent).generation, first);
+    assert_eq!(f.boxed(parent).subtree_generation, changed);
+    assert_eq!(f.boxed(root).subtree_generation, changed);
+    assert_eq!(f.boxed(sibling).subtree_generation, first);
 }

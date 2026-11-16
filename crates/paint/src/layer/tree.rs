@@ -14,9 +14,9 @@ use crate::layer::{PaintLayerItem, PaintLayerKey};
 ///
 /// Built and updated by a
 /// [`PaintLayerBuilder`](super::builder::PaintLayerBuilder), which returns
-/// the root layer owned by the root fragment. The tree does not keep it:
-/// callers hold on to it to paint, hit test or walk the layers. Layers keep
-/// their keys across builds for as long as their owner starts one.
+/// the root layer owned by the root fragment, also found with
+/// [`Self::layer_of`]. Layers keep their keys across builds for as long as
+/// their owner starts one.
 #[derive(Debug)]
 pub struct PaintLayerTree {
     /// The layers, each a child of the layer it paints in. Children are kept
@@ -28,6 +28,9 @@ pub struct PaintLayerTree {
     pub layers: SlotTree<PaintLayerKey, PaintLayerItem>,
     /// The layer each owner fragment starts.
     pub(super) by_owner: SecondaryMap<FragmentKey, PaintLayerKey>,
+    /// [Generation](crate::pre_paint::tree::PrePaintTree::generation) of the
+    /// pre-paint tree the layers were last built from, or 0.
+    pub(super) generation: u64,
 }
 
 impl Default for PaintLayerTree {
@@ -35,6 +38,7 @@ impl Default for PaintLayerTree {
         Self {
             layers: SlotTree::new(),
             by_owner: SecondaryMap::new(),
+            generation: 0,
         }
     }
 }
@@ -72,5 +76,6 @@ impl PaintLayerTree {
     pub fn clear(&mut self) {
         self.layers.clear();
         self.by_owner.clear();
+        self.generation = 0;
     }
 }

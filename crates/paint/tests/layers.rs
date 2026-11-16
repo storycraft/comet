@@ -72,7 +72,7 @@ impl Fixture {
         let mut layers = PaintLayerTree::new();
         let mut builder = PaintLayerBuilder::new();
         let root = builder
-            .build(&fragments, &pre_paint, &mut layers, root, None)
+            .build(&fragments, &pre_paint, &mut layers, root)
             .unwrap();
 
         Self {
@@ -109,8 +109,7 @@ impl Fixture {
                 &self.fragments,
                 &self.pre_paint,
                 &mut self.layers,
-                key,
-                Some(self.root),
+                fragment_root,
             )
             .unwrap();
     }
@@ -711,13 +710,7 @@ fn building_again_keeps_layer_keys() {
     let fragment_root = f.layers.layers[f.root].owner;
     f.root = f
         .builder
-        .build(
-            &f.fragments,
-            &f.pre_paint,
-            &mut f.layers,
-            fragment_root,
-            Some(f.root),
-        )
+        .build(&f.fragments, &f.pre_paint, &mut f.layers, fragment_root)
         .unwrap();
 
     assert_eq!(f.root, root_layer);
@@ -812,13 +805,13 @@ fn updates_match_full_builds() {
     f.pre_paint.clear_flags();
     f.root = f
         .builder
-        .build(&f.fragments, &f.pre_paint, &mut f.layers, key, Some(f.root))
+        .build(&f.fragments, &f.pre_paint, &mut f.layers, fragment_root)
         .unwrap();
 
     let fragment_root = f.layers.layers[f.root].owner;
     let mut full = PaintLayerTree::new();
     let full_root = PaintLayerBuilder::new()
-        .build(&f.fragments, &f.pre_paint, &mut full, fragment_root, None)
+        .build(&f.fragments, &f.pre_paint, &mut full, fragment_root)
         .unwrap();
 
     assert_eq!(shape(&f.layers, f.root), shape(&full, full_root));
@@ -883,13 +876,7 @@ fn hit_testers_can_be_reused() {
     // Nor into hits on rebuilt layers.
     let fragment_root = f.layers.layers[f.root].owner;
     f.root = PaintLayerBuilder::new()
-        .build(
-            &f.fragments,
-            &f.pre_paint,
-            &mut f.layers,
-            fragment_root,
-            None,
-        )
+        .build(&f.fragments, &f.pre_paint, &mut f.layers, fragment_root)
         .unwrap();
     assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_of(moved)));
 }
@@ -936,4 +923,165 @@ fn hits_negative_layers_below_contents_from_the_last() {
     assert_eq!(f.hit(20.0, 25.0), Some(f.box_of(flow)));
     assert_eq!(f.hit(5.0, 15.0), Some(f.box_of(raised)));
     assert_eq!(f.hit(50.0, 5.0), Some(f.box_of(root)));
+}
+
+/// Every stage of one UI root, kept to update after UI changes.
+#[derive(Default)]
+struct Pipeline {
+    input_builder: LayoutInputTreeBuilder,
+    fragment_builder: FragmentTreeBuilder,
+    resolver: PrePaintTreeResolver,
+    builder: PaintLayerBuilder,
+    inputs: LayoutInputTree,
+    fragments: FragmentTree,
+    pre_paint: PrePaintTree,
+    layers: PaintLayerTree,
+}
+
+impl Pipeline {
+    /// Build or update every stage, returning the root layer.
+    fn run(&mut self, ui: &Ui, node: NodeKey) -> PaintLayerKey {
+        let input_root = self
+            .input_builder
+            .build(
+                ui,
+                &mut self.inputs,
+                BuildRequest::new(node, 16.0, VIEWPORT),
+            )
+            .unwrap();
+        let root = self
+            .fragment_builder
+            .build(
+                ui,
+                &self.inputs,
+                input_root,
+                &mut self.fragments,
+                &LayoutConstraint::new_root(VIEWPORT, 16.0),
+            )
+            .unwrap();
+        self.inputs.clear_flags(input_root);
+        self.resolver
+            .resolve(
+                ui,
+                &self.inputs,
+                &self.fragments,
+                &UNITS,
+                &mut self.pre_paint,
+                root,
+            )
+            .unwrap();
+        self.pre_paint.clear_flags();
+
+        self.builder
+            .build(&self.fragments, &self.pre_paint, &mut self.layers, root)
+            .unwrap()
+    }
+
+    fn box_of(&self, node: NodeKey) -> Option<FragmentKey> {
+        self.fragments
+            .box_fragment(self.inputs.item_for_node(node)?)
+    }
+
+    fn layer_of(&self, node: NodeKey) -> Option<PaintLayerKey> {
+        self.layers.layer_of(self.box_of(node)?)
+    }
+
+    fn children(&self, layer: PaintLayerKey) -> Vec<PaintLayerKey> {
+        self.layers.layers.children(layer).collect()
+    }
+
+    /// The layers built from scratch for the current trees.
+    fn full_shape(&self, root: PaintLayerKey) -> String {
+        let fragment_root = self.layers.layers[root].owner;
+        let mut full = PaintLayerTree::new();
+        let full_root = PaintLayerBuilder::new()
+            .build(&self.fragments, &self.pre_paint, &mut full, fragment_root)
+            .unwrap();
+
+        shape(&full, full_root)
+    }
+}
+
+#[test]
+fn layers_follow_layout_changes_from_the_root() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let kept = ui.create(Node::Box, (fixed(60.0, 20.0), z(1)));
+    let group = ui.create(Node::Box, (fixed(60.0, 60.0), z(2)));
+    let nested = ui.create(Node::Box, (fixed(20.0, 20.0), z(-1)));
+    ui.append(root, kept);
+    ui.append(root, group);
+    ui.append(group, nested);
+
+    let mut p = Pipeline::default();
+    let root_layer = p.run(&ui, root);
+    let kept_layer = p.layer_of(kept).unwrap();
+    let nested_layer = p.layer_of(nested).unwrap();
+    assert_eq!(p.layers.layers.len(), 4);
+
+    // Nothing changed: the layers stay as they are.
+    assert_eq!(p.run(&ui, root), root_layer);
+    assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
+
+    // A new box starting a layer, inserted before the others.
+    let added = ui.create(Node::Box, (fixed(60.0, 10.0), z(1)));
+    ui.prepend(root, added);
+    assert_eq!(p.run(&ui, root), root_layer);
+
+    assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
+    assert_eq!(p.layers.layers.len(), 5);
+    assert_eq!(p.layer_of(kept), Some(kept_layer));
+    assert_eq!(p.layer_of(nested), Some(nested_layer));
+    assert_eq!(
+        p.children(root_layer)[..2],
+        [p.layer_of(added).unwrap(), kept_layer]
+    );
+
+    // A deleted owner takes its layer along, and the nested layer of its
+    // deleted descendant.
+    ui.delete(group);
+    assert_eq!(p.run(&ui, root), root_layer);
+
+    assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
+    assert_eq!(p.layers.layers.len(), 3);
+    assert_eq!(p.layer_of(kept), Some(kept_layer));
+    assert!(p.layers.layers.get(nested_layer).is_none());
+}
+
+#[test]
+fn layers_of_owners_losing_their_stacking_move_up_from_the_root() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let group = ui.create(Node::Box, (fixed(60.0, 60.0), z(2)));
+    let nested = ui.create(Node::Box, (fixed(20.0, 20.0), z(-1)));
+    let sibling = ui.create(Node::Box, (fixed(60.0, 20.0), z(1)));
+    ui.append(root, group);
+    ui.append(group, nested);
+    ui.append(root, sibling);
+
+    let mut p = Pipeline::default();
+    let root_layer = p.run(&ui, root);
+    let nested_layer = p.layer_of(nested).unwrap();
+    let sibling_layer = p.layer_of(sibling).unwrap();
+
+    // The group stops starting a layer, so its nested layer paints in the
+    // root layer, below the sibling.
+    ui.set_props(group, (ZIndex(AutoValue::Auto),));
+    let group_fragment = p.box_of(group).unwrap();
+    p.pre_paint.mark(&p.fragments, group_fragment);
+    assert_eq!(p.run(&ui, root), root_layer);
+
+    assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
+    assert_eq!(p.layer_of(group), None);
+    assert_eq!(p.children(root_layer), [nested_layer, sibling_layer]);
+
+    // Starting one again takes the nested layer back.
+    ui.set_props(group, (z(2),));
+    p.pre_paint.mark(&p.fragments, group_fragment);
+    assert_eq!(p.run(&ui, root), root_layer);
+
+    assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
+    let group_layer = p.layer_of(group).unwrap();
+    assert_eq!(p.children(root_layer), [sibling_layer, group_layer]);
+    assert_eq!(p.children(group_layer), [nested_layer]);
 }

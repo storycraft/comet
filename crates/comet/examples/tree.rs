@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("could not resolve pre-paint tree")?;
     let mut layers = PaintLayerTree::new();
     let layer_root = PaintLayerBuilder::new()
-        .build(&fragments, &pre_paint, &mut layers, root, None)
+        .build(&fragments, &pre_paint, &mut layers, root)
         .ok_or("could not build paint layer tree")?;
 
     let mut pending = vec![(root, 0)];
