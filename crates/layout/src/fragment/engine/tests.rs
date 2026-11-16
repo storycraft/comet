@@ -301,3 +301,92 @@ fn viewport_changes_reach_boxes_inside_inline_elements() {
     // The span between the root and the badge is not flagged.
     assert_eq!(layout(&mut f, 800.0, true), 80.0);
 }
+
+/// Lay out `root` in a viewport of `width`, without flagging anything.
+fn layout_at(f: &mut Fixture, ui: &Ui, root: NodeKey, width: f64) {
+    let viewport = Size::new(width, 600.0);
+    let input_root = f
+        .inputs
+        .build(ui, &mut f.tree, BuildRequest::new(root, 16.0, viewport))
+        .unwrap();
+    f.builder
+        .build(
+            ui,
+            &f.tree,
+            input_root,
+            &mut f.fragments,
+            &LayoutConstraint::new_root(viewport, 16.0),
+        )
+        .unwrap();
+    f.tree.clear_flags(input_root);
+}
+
+#[test]
+fn fixed_size_boxes_reuse_their_layout_when_the_parent_size_changes() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let fixed = ui.create(
+        Node::Box,
+        (bx::Size(Size::new(
+            AutoValue::Value(StyleUnit::Px(300.0)),
+            AutoValue::Value(StyleUnit::Px(100.0)),
+        )),),
+    );
+    let text = ui.create(Node::Text, (Text("kept lines".into()),));
+    ui.append(root, fixed);
+    ui.append(fixed, text);
+
+    let mut f = Fixture::new();
+    layout_at(&mut f, &ui, root, 400.0);
+    let fixed_fragment = f
+        .fragments
+        .box_fragment(f.tree.item_for_node(fixed).unwrap())
+        .unwrap();
+    let lines: Vec<_> = f.fragments.items.children(fixed_fragment).collect();
+    assert!(!lines.is_empty());
+
+    // The root is laid out in the new viewport, but the fixed box is served
+    // from its cache, so its lines are not emitted again.
+    layout_at(&mut f, &ui, root, 500.0);
+
+    assert_eq!(
+        f.fragments
+            .items
+            .children(fixed_fragment)
+            .collect::<Vec<_>>(),
+        lines
+    );
+    assert_eq!(
+        f.fragments.items[fixed_fragment].layout.size,
+        Size::new(300.0, 100.0)
+    );
+}
+
+#[test]
+fn boxes_depending_on_the_parent_size_lay_out_again() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let half = ui.create(
+        Node::Box,
+        (bx::Size(Size::new(
+            AutoValue::Value(StyleUnit::Percent(0.5)),
+            AutoValue::Value(StyleUnit::Px(100.0)),
+        )),),
+    );
+    ui.append(root, half);
+
+    let mut f = Fixture::new();
+    let width = |f: &Fixture| {
+        let fragment = f
+            .fragments
+            .box_fragment(f.tree.item_for_node(half).unwrap())
+            .unwrap();
+        f.fragments.items[fragment].layout.size.width
+    };
+
+    layout_at(&mut f, &ui, root, 400.0);
+    assert_eq!(width(&f), 200.0);
+
+    layout_at(&mut f, &ui, root, 600.0);
+    assert_eq!(width(&f), 300.0);
+}

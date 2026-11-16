@@ -5,7 +5,7 @@ use taffy::{CacheTree, LayoutPartialTree, TraversePartialTree};
 use super::{
     FragmentKey, StateKey,
     engine::{Engine, node_id, state_of},
-    state::Mode,
+    state::{Mode, NodeLayoutBits, NodeState},
 };
 use crate::{
     style::geometry::{Point, Size},
@@ -265,7 +265,7 @@ impl CacheTree for Engine<'_> {
             return None;
         }
 
-        state.cache.get(input)
+        state.cache.get(&cache_key(state, input))
     }
 
     fn cache_store(
@@ -277,7 +277,7 @@ impl CacheTree for Engine<'_> {
         let Some(state) = self.fragments.states.get_mut(state_of(id)) else {
             return;
         };
-        state.cache.store(input, output);
+        state.cache.store(&cache_key(state, input), output);
 
         if input.run_mode == taffy::RunMode::PerformLayout {
             state.final_layout_valid = true;
@@ -288,5 +288,26 @@ impl CacheTree for Engine<'_> {
         if let Some(state) = self.fragments.states.get_mut(state_of(id)) {
             state.cache.clear();
         }
+    }
+}
+
+/// The cache key of a layout input. A box with both dimensions known and no
+/// lengths resolving against its parent lays out the same in any available
+/// space, so the available space and the parent size are left out. Its
+/// layout is then reused when only its parent's size changes.
+fn cache_key(state: &NodeState, input: &taffy::LayoutInput) -> taffy::LayoutInput {
+    match input.known_dimensions {
+        taffy::Size {
+            width: Some(width),
+            height: Some(height),
+        } if !state.bits.contains(NodeLayoutBits::DEPENDS_PARENT_SIZE) => taffy::LayoutInput {
+            available_space: taffy::Size {
+                width: taffy::AvailableSpace::Definite(width),
+                height: taffy::AvailableSpace::Definite(height),
+            },
+            parent_size: taffy::Size::NONE,
+            ..*input
+        },
+        _ => *input,
     }
 }
