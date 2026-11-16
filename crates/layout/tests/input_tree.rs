@@ -180,21 +180,28 @@ fn viewport_lengths_mark_text_styles_and_their_descendants() {
 
     let mut tree = LayoutInputTree::new();
     build(&mut LayoutInputTreeBuilder::new(), &ui, root, &mut tree).unwrap();
-    let bits = |node| {
-        tree.items[tree.item_for_node(node).unwrap()]
-            .text_style
-            .bits
-    };
+    let bits = |node| tree.items[tree.item_for_node(node).unwrap()].bits;
+    let child = TextStyleBits::CHILD_DEPENDS_VIEWPORT;
 
-    assert_eq!(bits(spaced), TextStyleBits::DEPENDS_VIEWPORT);
+    // Viewport dependent descendants mark their ancestors up to the root.
+    assert_eq!(bits(spaced), TextStyleBits::DEPENDS_VIEWPORT | child);
     assert_eq!(bits(tall), TextStyleBits::DEPENDS_VIEWPORT);
     // Descendants inherit values resolved with the viewport.
     assert_eq!(bits(inherited), TextStyleBits::DEPENDS_VIEWPORT);
     assert_eq!(bits(overridden), TextStyleBits::DEPENDS_VIEWPORT);
 
     // `rem`, `em` and percentages do not depend on the viewport.
-    assert!(bits(root).is_empty());
+    assert_eq!(bits(root), child);
     assert!(bits(plain).is_empty());
+
+    // Rebuilding keeps the marks, without flagging anything.
+    let key = tree.item_for_node(root).unwrap();
+    clean(&mut tree, key);
+    build(&mut LayoutInputTreeBuilder::new(), &ui, root, &mut tree).unwrap();
+    assert_eq!(tree.items[key].bits, child);
+    for item in tree.items.descendants(key) {
+        assert!(tree.items[item].flags.is_empty());
+    }
 }
 
 #[test]
@@ -274,7 +281,7 @@ fn update_viewport_builds_only_viewport_dependent_subtrees() {
 }
 
 #[test]
-fn tree_counts_viewport_dependent_items() {
+fn viewport_dependent_items_mark_their_ancestors() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let spaced = ui.create(Node::Box, (bx::LetterSpacing(StyleUnit::Vw(0.01)),));
@@ -288,16 +295,26 @@ fn tree_counts_viewport_dependent_items() {
     let mut tree = LayoutInputTree::new();
     let mut builder = LayoutInputTreeBuilder::new();
     let key = build(&mut builder, &ui, root, &mut tree).unwrap();
+    let bits = |tree: &LayoutInputTree, node| tree.items[tree.item_for_node(node).unwrap()].bits;
+    let depends = TextStyleBits::DEPENDS_VIEWPORT;
+    let child = TextStyleBits::CHILD_DEPENDS_VIEWPORT;
 
-    // The styled box and the child inheriting from it.
-    assert_eq!(tree.viewport_dependent_count(), 2);
+    // The styled box and the child inheriting from it depend on the
+    // viewport; their ancestors are marked.
+    assert_eq!(bits(&tree, spaced), depends | child);
+    assert_eq!(bits(&tree, inherited), depends);
+    assert_eq!(bits(&tree, root), child);
+    assert!(bits(&tree, plain).is_empty());
 
-    // A style that stops depending on the viewport is no longer counted.
+    // A style that stops depending on the viewport keeps the marks of its
+    // ancestors, which are only added.
     ui.set_props(spaced, (bx::LetterSpacing(StyleUnit::Px(1.0)),));
     build(&mut builder, &ui, root, &mut tree);
-    assert_eq!(tree.viewport_dependent_count(), 0);
+    assert_eq!(bits(&tree, spaced), child);
+    assert!(bits(&tree, inherited).is_empty());
+    assert_eq!(bits(&tree, root), child);
 
-    // With nothing to update, update_viewport visits and flags nothing.
+    // Stale marks only lead update_viewport to items it leaves as they are.
     clean(&mut tree, key);
     assert_eq!(
         builder.update_viewport(
@@ -311,18 +328,12 @@ fn tree_counts_viewport_dependent_items() {
         assert!(tree.items[item].flags.is_empty());
     }
 
-    // New and deleted items update the count.
+    // New items mark their ancestors.
     let tall = ui.create(Node::Text, (bx::FontSize(StyleUnit::Vh(0.05)),));
     ui.append(plain, tall);
     build(&mut builder, &ui, root, &mut tree);
-    assert_eq!(tree.viewport_dependent_count(), 1);
-
-    ui.delete(plain);
-    build(&mut builder, &ui, root, &mut tree);
-    assert_eq!(tree.viewport_dependent_count(), 0);
-
-    tree.clear();
-    assert_eq!(tree.viewport_dependent_count(), 0);
+    assert_eq!(bits(&tree, tall), depends);
+    assert_eq!(bits(&tree, plain), child);
 }
 
 #[test]

@@ -98,12 +98,18 @@ impl LayoutInputTreeBuilder {
             return None;
         };
 
-        let parent_style = match target.and_then(|key| tree.items.parent(key)) {
-            Some(parent) => tree.items[parent].text_style.clone(),
+        let (parent_style, parent_bits) = match target.and_then(|key| tree.items.parent(key)) {
+            Some(parent) => (
+                tree.items[parent].text_style.clone(),
+                tree.items[parent].bits,
+            ),
             // A source with a UI parent always has a parent item, so the tree
             // does not mirror the UI.
             None if props.parent().is_some() => return None,
-            None => Arc::new(root_text_style(root_font_size)),
+            None => (
+                Arc::new(root_text_style(root_font_size)),
+                TextStyleBits::empty(),
+            ),
         };
 
         self.pending.clear();
@@ -114,7 +120,14 @@ impl LayoutInputTreeBuilder {
             viewport,
         };
 
-        let key = self.update(ui, tree, source, target, &parent_style, &cx)?;
+        let key = self.update(ui, tree, source, target, (&parent_style, parent_bits), &cx)?;
+
+        if tree.items[key]
+            .bits
+            .contains(TextStyleBits::DEPENDS_VIEWPORT)
+        {
+            tree.propagate_viewport(key);
+        }
 
         self.pending.push(Task { key, node: source });
 
@@ -136,7 +149,8 @@ impl LayoutInputTreeBuilder {
     /// or `vh` must be marked separately.
     ///
     /// Returns the item of `request.source`, or `None` if it has no item.
-    /// Nothing is visited when no item in the tree depends on the viewport.
+    /// Only subtrees marked [`TextStyleBits::CHILD_DEPENDS_VIEWPORT`] are
+    /// visited, so nothing is when no item depends on the viewport.
     pub fn update_viewport(
         &mut self,
         ui: &Ui,
@@ -144,8 +158,9 @@ impl LayoutInputTreeBuilder {
         request: BuildRequest,
     ) -> Option<LayoutInputKey> {
         let source = tree.item_for_node(request.source)?;
+        let viewport = TextStyleBits::DEPENDS_VIEWPORT | TextStyleBits::CHILD_DEPENDS_VIEWPORT;
 
-        if tree.viewport_dependent_count() == 0 {
+        if !tree.items[source].bits.intersects(viewport) {
             return Some(source);
         }
 
@@ -159,13 +174,9 @@ impl LayoutInputTreeBuilder {
         while let Some(key) = visit.pop() {
             let item = &tree.items[key];
 
-            if item
-                .text_style
-                .bits
-                .contains(TextStyleBits::DEPENDS_VIEWPORT)
-            {
+            if item.bits.contains(TextStyleBits::DEPENDS_VIEWPORT) {
                 roots.push(item.node);
-            } else {
+            } else if item.bits.contains(TextStyleBits::CHILD_DEPENDS_VIEWPORT) {
                 visit.extend(tree.items.children(key));
             }
         }
@@ -201,13 +212,16 @@ impl LayoutInputTreeBuilder {
 
         if tree.items[key].child_layout != ChildLayout::None {
             let parent_style = tree.items[key].text_style.clone();
+            let parent_bits = tree.items[key].bits;
 
             for child in ui.children(node) {
                 let existing = tree
                     .item_for_node(child)
                     .filter(|&item| tree.items.parent(item) == Some(key));
 
-                let Some(item) = self.update(ui, tree, child, existing, &parent_style, cx) else {
+                let Some(item) =
+                    self.update(ui, tree, child, existing, (&parent_style, parent_bits), cx)
+                else {
                     continue;
                 };
 
@@ -226,6 +240,13 @@ impl LayoutInputTreeBuilder {
                 if existing.is_none() {
                     // Propagate the new item's flags to the ancestors.
                     tree.mark(item, LayoutFlags::NEED_FULL_LAYOUT);
+                }
+
+                if tree.items[item]
+                    .bits
+                    .contains(TextStyleBits::DEPENDS_VIEWPORT)
+                {
+                    tree.propagate_viewport(item);
                 }
 
                 self.pending.push(Task {
@@ -253,18 +274,19 @@ impl LayoutInputTreeBuilder {
         tree: &mut LayoutInputTree,
         node: NodeKey,
         existing: Option<LayoutInputKey>,
-        parent_style: &Arc<TextStyle>,
+        (parent_style, parent_bits): (&Arc<TextStyle>, TextStyleBits),
         cx: &UnitResolveContext,
     ) -> Option<LayoutInputKey> {
         let props = ui.props(node)?;
         let (kind, child_layout) = classify(props.kind(), props);
-        let text_style = resolve_text_style(props, cx, parent_style);
+        let (text_style, bits) = resolve_text_style(props, cx, parent_style, parent_bits);
 
         let Some(key) = existing else {
             return Some(tree.add_item(LayoutInputItem {
                 kind,
                 node,
                 text_style,
+                bits,
                 child_layout,
                 flags: LayoutFlags::all(),
             }));
@@ -279,7 +301,9 @@ impl LayoutInputTreeBuilder {
         item.kind = kind;
         item.child_layout = child_layout;
         // Always take the new allocation so equal styles keep sharing it.
-        tree.replace_text_style(key, text_style);
+        item.text_style = text_style;
+        // Descendants keep their marks; they are only ever added.
+        item.bits = bits | (item.bits & TextStyleBits::CHILD_DEPENDS_VIEWPORT);
 
         // Content is only refragmented when the resolved item changed.
         if changed {

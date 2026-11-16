@@ -17,13 +17,18 @@ use crate::style::{
 pub type SpanStyle = ::parley::TextStyle<'static, 'static, Option<LayoutInputKey>>;
 
 bitflags! {
-    /// What a resolved [`TextStyle`] depends on.
+    /// What the resolved [`TextStyle`] of an item, or of its descendants,
+    /// depends on. Kept on the item, apart from the shared style.
     #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
     pub struct TextStyleBits: u8 {
         /// A length of the style uses `vw` or `vh`, so the style resolves
         /// differently when the viewport size changes. Inherited from the
-        /// parent's style, since inherited values were resolved with it.
+        /// parent, since inherited values were resolved with it.
         const DEPENDS_VIEWPORT = 1 << 0;
+        /// A descendant item is [`Self::DEPENDS_VIEWPORT`]. Set on every
+        /// ancestor of such an item, up to the root. Only added, so it may
+        /// outlive the descendants that set it.
+        const CHILD_DEPENDS_VIEWPORT = 1 << 1;
     }
 }
 
@@ -33,8 +38,6 @@ bitflags! {
 pub struct TextStyle {
     pub span: SpanStyle,
     pub align: Alignment,
-    /// What the resolved style depends on.
-    pub bits: TextStyleBits,
 }
 
 /// Default style for a root without a source parent. Its font size is the root font size.
@@ -60,18 +63,22 @@ fn resolve_length(value: StyleUnit, cx: &UnitResolveContext, percentage_basis: f
 /// overwritten. `font-size` resolves `em` and percentages against the parent's
 /// font size, while every other length resolves against the resolved font size.
 /// The parent allocation is shared when no property changes the style.
+///
+/// Returns the style with its [`TextStyleBits::DEPENDS_VIEWPORT`] bit, set
+/// when a length uses `vw` or `vh` or when `parent_bits` has it.
 pub fn resolve_text_style(
     props: Props,
     cx: &UnitResolveContext,
     parent: &Arc<TextStyle>,
-) -> Arc<TextStyle> {
+    parent_bits: TextStyleBits,
+) -> (Arc<TextStyle>, TextStyleBits) {
     let mut style = parent.clone();
     let mut cx = UnitResolveContext {
         font_size: style.span.font_size as f64,
         ..cx.clone()
     };
-    // Starts from the parent's bits, which every inherited value carries.
-    let mut bits = style.bits;
+    // Every inherited value was resolved with the parent's dependencies.
+    let mut bits = parent_bits & TextStyleBits::DEPENDS_VIEWPORT;
     let mut length = |value: StyleUnit, cx: &UnitResolveContext, percentage_basis: f64| {
         if value.is_viewport_relative() {
             bits |= TextStyleBits::DEPENDS_VIEWPORT;
@@ -144,7 +151,5 @@ pub fn resolve_text_style(
         set!(align, value.0);
     }
 
-    set!(bits, bits);
-
-    style
+    (style, bits)
 }

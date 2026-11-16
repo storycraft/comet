@@ -8,7 +8,7 @@ use bitflags::bitflags;
 use comet_tree::node::NodeKey;
 use slotmap::new_key_type;
 
-pub use text::{SpanStyle, TextStyle};
+pub use text::{SpanStyle, TextStyle, TextStyleBits};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutInputItem {
@@ -16,6 +16,8 @@ pub struct LayoutInputItem {
     pub node: NodeKey,
     /// Inherited text properties. Equal styles share an allocation.
     pub text_style: Arc<TextStyle>,
+    /// What the text style of the item, or of its descendants, depends on.
+    pub bits: TextStyleBits,
     pub child_layout: ChildLayout,
     pub flags: LayoutFlags,
 }
