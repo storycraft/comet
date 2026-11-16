@@ -1,5 +1,5 @@
 use comet_layout::{
-    fragment::{FragmentKey, tree::FragmentTree},
+    fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
     input::{LayoutInputKey, tree::LayoutInputTree},
     style::{
         bx::Overflow,
@@ -136,8 +136,7 @@ impl PrePaintTreeResolver {
             }
         }
 
-        // Items read the sizes of all their fragments, and fragments read
-        // their items.
+        // Items with several fragments to resolve are resolved once.
         items.sort_unstable();
         items.dedup();
 
@@ -226,6 +225,7 @@ impl Sources<'_> {
             inverse_transform: invert(transform),
             transform_origin,
             stacking: box_props.and_then(stacking),
+            border_radius: self.border_radius(fragment, props),
             generation: 0,
             subtree_generation: 0,
         })
@@ -247,7 +247,33 @@ impl Sources<'_> {
         Point::new(origin.x, origin.y)
     }
 
-    /// Resolve the data of one item from the UI and its fragments.
+    /// Corner radii of a fragment's border box, from its item's `props`,
+    /// resolved against the fragment's size, with the corners joining a
+    /// linked fragment square. `None` for fragments painting no box and
+    /// items setting no radius.
+    fn border_radius(&self, fragment: &Fragment, props: Props<'_>) -> Option<RoundedRectRadii> {
+        if matches!(
+            fragment.item,
+            FragmentItem::Line { .. } | FragmentItem::AnonymousBlock { .. }
+        ) {
+            return None;
+        }
+
+        let BorderRadius(radius) = props.get_cloned()?;
+        let mut units = self.units.clone();
+        units.font_size = self.inputs.items[fragment.source].text_style.span.font_size as f64;
+
+        Some(split_radii(
+            fragment,
+            border_radius(
+                radius,
+                &units,
+                Size::new(fragment.layout.size.width, fragment.layout.size.height),
+            ),
+        ))
+    }
+
+    /// Resolve the data of one item from the UI.
     fn resolve_item(&self, key: LayoutInputKey) -> Option<LayoutInputData> {
         let item = &self.inputs.items[key];
         let props = self.ui.props(item.node)?;
@@ -256,56 +282,32 @@ impl Sources<'_> {
         let mut units = self.units.clone();
         units.font_size = item.text_style.span.font_size as f64;
 
-        let stitched_size = self.stitched_size(key);
         // Outline lengths have no percentage basis.
         let outline =
             |value: Option<StyleUnit>| value.map_or(0.0, |value| value.resolve(&units, 0.0));
 
         Some(LayoutInputData {
-            stitched_size,
             clip: (
                 overflow.x != OverflowMode::Visible,
                 overflow.y != OverflowMode::Visible,
             ),
-            border_radius: props
-                .get_cloned()
-                .map(|BorderRadius(radius)| border_radius(radius, &units)),
             outline_width: outline(props.get_cloned().map(|OutlineWidth(width)| width)).max(0.0),
             outline_offset: outline(props.get_cloned().map(|OutlineOffset(offset)| offset)),
         })
     }
-
-    /// The size of the fragments an item generates and links together, placed
-    /// end to end: box fragments below each other, inline and glyph run
-    /// fragments side by side. Items without fragments have an empty size.
-    fn stitched_size(&self, key: LayoutInputKey) -> Size {
-        self.fragments
-            .fragments(key)
-            .fold(Size::ZERO, |stitched, fragment| {
-                let fragment = &self.fragments.items[fragment];
-                let size = fragment.layout.size;
-
-                if fragment.item.is_box() {
-                    Size::new(
-                        stitched.width.max(size.width),
-                        stitched.height + size.height,
-                    )
-                } else {
-                    Size::new(
-                        stitched.width + size.width,
-                        stitched.height.max(size.height),
-                    )
-                }
-            })
-    }
 }
 
-/// The corner radii of an item's border box. Percentages have no basis yet
-/// and resolve to 0.
-fn border_radius(radius: Rect<StyleUnit>, units: &UnitResolveContext) -> RoundedRectRadii {
+/// The corner radii of a border box of `size`. Percentages resolve against
+/// its smaller side.
+fn border_radius(
+    radius: Rect<StyleUnit>,
+    units: &UnitResolveContext,
+    size: Size,
+) -> RoundedRectRadii {
     // TODO:: horizontal, vertical curve value for round rect, with
-    // percentages of the box size.
-    let resolve = |value: StyleUnit| value.resolve(units, 0.0).max(0.0);
+    // percentages of the width and height.
+    let basis = size.width.min(size.height);
+    let resolve = |value: StyleUnit| value.resolve(units, basis).max(0.0);
 
     RoundedRectRadii::new(
         resolve(radius.left_top.y),
@@ -313,6 +315,36 @@ fn border_radius(radius: Rect<StyleUnit>, units: &UnitResolveContext) -> Rounded
         resolve(radius.right_bottom.y),
         resolve(radius.left_top.x),
     )
+}
+
+/// The corner radii of a fragment of an item with `radii`, with the corners
+/// joining a linked fragment square.
+fn split_radii(fragment: &Fragment, mut radii: RoundedRectRadii) -> RoundedRectRadii {
+    // Box fragments continue below their previous fragment, inline and glyph
+    // run fragments to its right.
+    let vertical = fragment.item.is_box();
+
+    if fragment.link.prev.is_some() {
+        radii.top_left = 0.0;
+
+        if vertical {
+            radii.top_right = 0.0;
+        } else {
+            radii.bottom_left = 0.0;
+        }
+    }
+
+    if fragment.link.next.is_some() {
+        radii.bottom_right = 0.0;
+
+        if vertical {
+            radii.bottom_left = 0.0;
+        } else {
+            radii.top_right = 0.0;
+        }
+    }
+
+    radii
 }
 
 /// The z index of the paint layer a box starts, or `None` if it paints in

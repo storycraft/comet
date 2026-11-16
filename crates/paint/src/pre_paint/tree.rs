@@ -1,10 +1,10 @@
 use std::ops::Index;
 
 use comet_layout::{
-    fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
+    fragment::{FragmentKey, tree::FragmentTree},
     input::LayoutInputKey,
 };
-use kurbo::{Point, Rect, RoundedRectRadii, Shape};
+use kurbo::{Point, Rect, Shape};
 use slotmap::SecondaryMap;
 
 use crate::pre_paint::{FragmentData, LayerFlags, LayoutInputData, PrePaintFlags};
@@ -176,36 +176,9 @@ impl PrePaintTree {
         self.cleared_generation = self.generation;
     }
 
-    /// Corner radii of a fragment's border box: the
-    /// [border radius](LayoutInputData::border_radius) of its item, with the
-    /// corners joining a linked fragment square. Box fragments continue below
-    /// their previous fragment, inline and glyph run fragments to its right.
-    ///
-    /// `None` for fragments painting no box, such as line boxes and anonymous
-    /// blocks, items setting no radius, and fragments or items missing from
-    /// `fragments` or `self`.
-    pub fn border_radius(
-        &self,
-        fragments: &FragmentTree,
-        key: FragmentKey,
-    ) -> Option<RoundedRectRadii> {
-        let fragment = fragments.items.get(key)?;
-
-        if matches!(
-            fragment.item,
-            FragmentItem::Line { .. } | FragmentItem::AnonymousBlock { .. }
-        ) {
-            return None;
-        }
-
-        let radii = self.get(fragment.source)?.border_radius?;
-
-        Some(split_radii(fragment, radii))
-    }
-
     /// Whether `point`, in the local coordinates of a fragment, hits the
     /// fragment itself: it falls in its border box, rounded with its
-    /// [border radius](Self::border_radius).
+    /// [border radius](FragmentData::border_radius).
     ///
     /// Fragments not in `fragments`, or not resolved in `self`, are never
     /// hit.
@@ -214,13 +187,13 @@ impl PrePaintTree {
             return false;
         };
 
-        if self.fragment(key).is_none() {
+        let Some(data) = self.fragment(key) else {
             return false;
-        }
+        };
 
         let size = fragment.layout.size;
         let rect = Rect::from_origin_size(Point::ORIGIN, (size.width, size.height));
-        let Some(radii) = self.border_radius(fragments, key) else {
+        let Some(radii) = data.border_radius else {
             return rect.contains(point);
         };
 
@@ -242,34 +215,4 @@ impl Index<LayoutInputKey> for PrePaintTree {
     fn index(&self, key: LayoutInputKey) -> &LayoutInputData {
         &self.layout_mapping[key]
     }
-}
-
-/// The corner radii of a fragment of an item with `radii`, with the corners
-/// joining a linked fragment square.
-fn split_radii(fragment: &Fragment, mut radii: RoundedRectRadii) -> RoundedRectRadii {
-    // Box fragments continue below their previous fragment, inline and glyph
-    // run fragments to its right.
-    let vertical = fragment.item.is_box();
-
-    if fragment.link.prev.is_some() {
-        radii.top_left = 0.0;
-
-        if vertical {
-            radii.top_right = 0.0;
-        } else {
-            radii.bottom_left = 0.0;
-        }
-    }
-
-    if fragment.link.next.is_some() {
-        radii.bottom_right = 0.0;
-
-        if vertical {
-            radii.bottom_left = 0.0;
-        } else {
-            radii.top_right = 0.0;
-        }
-    }
-
-    radii
 }

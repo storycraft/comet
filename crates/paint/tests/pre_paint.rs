@@ -118,7 +118,7 @@ impl Fixture {
     }
 
     fn border_radius(&self, key: FragmentKey) -> Option<RoundedRectRadii> {
-        self.pre_paint.border_radius(&self.fragments, key)
+        self.pre_paint.fragment(key)?.border_radius
     }
 
     fn fragment(&self, key: FragmentKey) -> &FragmentData {
@@ -274,7 +274,7 @@ fn fragments_resolve_transforms_relative_to_their_parents() {
     assert_eq!(f.transform(root_fragment), Affine::IDENTITY);
     assert_eq!(f.transform(f.box_of(block)), Affine::translate((5.0, 5.0)));
 
-    // Boxes stitch their own fragment: lines owned by the block do not count.
+    // The block is transformed around the centre of its own border box.
     let block_fragment = f.fragment(f.box_of(block));
     assert_eq!(block_fragment.transform_origin, Point::new(20.0, 10.0));
     assert_eq!(
@@ -282,8 +282,6 @@ fn fragments_resolve_transforms_relative_to_their_parents() {
         Some(Affine::translate((-5.0, -5.0)))
     );
     assert_eq!(f.clip(block), (false, false));
-    assert_eq!(f.data(block).stitched_size, kurbo::Size::new(40.0, 20.0));
-    assert_eq!(f.data(root).stitched_size, kurbo::Size::new(120.0, 30.0));
 
     // Each glyph run has its own origin, at its centre.
     let runs: Vec<_> = f.fragments.fragments(f.item(content)).collect();
@@ -294,7 +292,7 @@ fn fragments_resolve_transforms_relative_to_their_parents() {
 }
 
 #[test]
-fn wrapped_inline_elements_stitch_their_fragments_across_lines() {
+fn wrapped_inline_elements_transform_each_fragment_around_its_centre() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
@@ -311,14 +309,6 @@ fn wrapped_inline_elements_stitch_their_fragments_across_lines() {
     let rects = f.linked_rects(span);
     assert!(rects.len() > 1);
 
-    // Stitched side by side, as if on one line.
-    let stitched = kurbo::Size::new(
-        rects.iter().map(Rect::width).sum(),
-        rects.iter().map(Rect::height).fold(0.0, f64::max),
-    );
-
-    assert_eq!(f.data(span).stitched_size, stitched);
-
     // Each fragment is transformed around its own centre.
     let fragments: Vec<_> = f.fragments.fragments(f.item(span)).collect();
     for (key, rect) in fragments.into_iter().zip(rects) {
@@ -327,7 +317,7 @@ fn wrapped_inline_elements_stitch_their_fragments_across_lines() {
 }
 
 #[test]
-fn items_keep_whole_radii_and_resolve_percentages_to_zero() {
+fn split_fragments_square_joins_and_resolve_percentages_against_their_own_size() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let span = ui.create(
@@ -344,8 +334,17 @@ fn items_keep_whole_radii_and_resolve_percentages_to_zero() {
             BorderRadius(LayoutRect::new_all(StyleUnit::Percent(0.5))),
         ),
     );
+    let split = ui.create(
+        Node::Box,
+        (
+            bx::DisplayOuter::Inline,
+            BorderRadius(LayoutRect::new_all(StyleUnit::Percent(0.5))),
+        ),
+    );
     ui.append(root, span);
     ui.append(root, relative);
+    ui.append(root, split);
+    text(&mut ui, split, "one two three four five six seven");
     text(
         &mut ui,
         span,
@@ -358,21 +357,43 @@ fn items_keep_whole_radii_and_resolve_percentages_to_zero() {
     let fragments: Vec<_> = f.fragments.fragments(f.item(span)).collect();
     assert!(fragments.len() > 1);
 
-    // The item keeps every corner, and its fragments square the joins.
-    assert_eq!(
-        f.data(span).border_radius,
-        Some(RoundedRectRadii::from(6.0))
-    );
+    // Fragments square the corners at their joins.
     assert_eq!(
         f.border_radius(fragments[0]),
         Some(RoundedRectRadii::new(6.0, 0.0, 0.0, 6.0))
     );
-
-    // Percentages have no basis.
     assert_eq!(
-        f.data(relative).border_radius,
-        Some(RoundedRectRadii::from(0.0))
+        f.border_radius(*fragments.last().unwrap()),
+        Some(RoundedRectRadii::new(0.0, 6.0, 6.0, 0.0))
     );
+    for &fragment in &fragments[1..fragments.len() - 1] {
+        assert_eq!(f.border_radius(fragment), Some(RoundedRectRadii::from(0.0)));
+    }
+
+    // Percentages resolve against the smaller side of each fragment.
+    assert_eq!(
+        f.border_radius(f.box_of(relative)),
+        Some(RoundedRectRadii::from(10.0))
+    );
+
+    let split_fragments: Vec<_> = f.fragments.fragments(f.item(split)).collect();
+    assert!(split_fragments.len() > 1);
+    for (index, &fragment) in split_fragments.iter().enumerate() {
+        let size = f.fragments.items[fragment].layout.size;
+        let radius = size.width.min(size.height) * 0.5;
+        assert!(radius > 0.0);
+        let left = if index == 0 { radius } else { 0.0 };
+        let right = if index == split_fragments.len() - 1 {
+            radius
+        } else {
+            0.0
+        };
+
+        assert_eq!(
+            f.border_radius(fragment),
+            Some(RoundedRectRadii::new(left, right, right, left))
+        );
+    }
 }
 
 #[test]
@@ -418,10 +439,11 @@ fn fragment_boxes_resolve_their_border_radii() {
         assert_eq!(f.border_radius(line), None);
     }
 
-    // Units resolve with the item's font size, percentages to 0.
+    // Units resolve with the item's font size, percentages against the
+    // smaller side.
     assert_eq!(
         f.border_radius(f.box_of(rounded)),
-        Some(RoundedRectRadii::new(3.0, 4.0, 8.0, 0.0))
+        Some(RoundedRectRadii::new(3.0, 4.0, 8.0, 10.0))
     );
 
     // Only the outer corners of wrapped fragments are rounded.
@@ -1066,7 +1088,7 @@ fn outlines_stroke_outside_the_offset_box() {
 }
 
 #[test]
-fn outlines_of_split_fragments_keep_their_item_radii() {
+fn outlines_of_split_fragments_follow_their_fragment_radii() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let span = ui.create(
@@ -1102,13 +1124,16 @@ fn outlines_of_split_fragments_keep_their_item_radii() {
     assert!(fragments.len() > 1);
     assert_eq!(outlines.len(), fragments.len());
 
-    // Every corner of every fragment's outline is rounded with the item's
-    // radius, grown by half the outline width.
-    for (outline, key) in outlines.into_iter().zip(fragments) {
+    // Each fragment's outline is rounded with its own radii, grown by half
+    // the outline width, so the corners at the joins stay square.
+    let last = fragments.len() - 1;
+    for (index, (outline, key)) in outlines.into_iter().zip(fragments).enumerate() {
         let size = f.fragments.items[key].layout.size;
+        let left = if index == 0 { 5.0 } else { 0.0 };
+        let right = if index == last { 5.0 } else { 0.0 };
         let expected = Rect::from_origin_size(Point::ORIGIN, (size.width, size.height))
             .inflate(1.0, 1.0)
-            .to_rounded_rect(5.0)
+            .to_rounded_rect(RoundedRectRadii::new(left, right, right, left))
             .to_path(scene.tolerance);
 
         assert_eq!(outline.elements().len(), expected.elements().len());
@@ -1292,8 +1317,8 @@ fn incremental_resolves_follow_changed_fragments_only() {
 
     // Boxes that did not move or resize are skipped, so an unmarked paint
     // style edit on one is not seen.
-    let radius = |data: &LayoutInputData| data.border_radius;
-    let before = radius(f.data(middle));
+    let radius = |data: &FragmentData| data.border_radius;
+    let before = radius(f.boxed(middle));
     ui.set_props(
         middle,
         (BorderRadius(LayoutRect::new_all(StyleUnit::Px(8.0))),),
@@ -1303,10 +1328,10 @@ fn incremental_resolves_follow_changed_fragments_only() {
     f.layout(&ui, root);
     f.resolve_changed(&ui, fragment_root);
 
-    assert_eq!(radius(f.data(middle)), before);
+    assert_eq!(radius(f.boxed(middle)), before);
     assert_ne!(
         f.full_resolve(&ui, fragment_root)
-            .get(f.item(middle))
+            .fragment(f.box_of(middle))
             .unwrap()
             .border_radius,
         before
@@ -1358,7 +1383,7 @@ fn resolves_both_changed_and_marked_fragments() {
     f.resolve_changed(&ui, fragment_root);
     f.assert_matches_full_resolve(&ui, fragment_root);
     assert_affine(f.boxed(wrapper).transform, Affine::translate((0.0, 30.0)));
-    assert!(f.data(marked).border_radius.is_some());
+    assert!(f.boxed(marked).border_radius.is_some());
 
     // The resolver keeps the flags for the caller to clear.
     assert_eq!(

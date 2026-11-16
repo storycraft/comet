@@ -522,7 +522,10 @@ impl CometPainter {
             return;
         };
         let data = pre_paint.get(fragment.source);
-        let radii = pre_paint.border_radius(tree, key).unwrap_or_default();
+        let radii = pre_paint
+            .fragment(key)
+            .and_then(|data| data.border_radius)
+            .unwrap_or_default();
         let rect = local_rect(fragment);
         let bounds = box_bounds(fragment, data, rect);
         let transform = transforms.transform;
@@ -603,7 +606,10 @@ fn push_clip(
 
     // Clipping on both axes follows the rounded corners of the box.
     // TODO:: horizontal, vertical curve clip for round rect.
-    let radii = sources.pre_paint.border_radius(sources.tree, key);
+    let radii = sources
+        .pre_paint
+        .fragment(key)
+        .and_then(|data| data.border_radius);
 
     match radii.filter(|_| axes == (true, true)) {
         Some(radii) => scene.push_clip_layer(
@@ -647,7 +653,8 @@ fn draw_backdrop(
 
     let radii = sources
         .pre_paint
-        .border_radius(sources.tree, key)
+        .fragment(key)
+        .and_then(|data| data.border_radius)
         .unwrap_or_default();
 
     scene.push_layer(
@@ -783,19 +790,18 @@ fn draw_box(
             transform,
             &fill.0,
             None,
-            &outline_path(rect, data, width),
+            &outline_path(rect, radii, data.outline_offset, width),
         );
     }
 }
 
 /// The path an outline of `width` is stroked along: each edge of the border
-/// box `rect` moved out by the outline offset and half the width, rounded
-/// with the item's
-/// border radii grown by the same distance. Square corners stay square, and a
+/// box `rect` moved out by `offset` and half the width, rounded with the
+/// fragment's border `radii` grown by the same distance. Square corners stay square, and a
 /// negative offset shrinks the box no further than its centre.
-fn outline_path(rect: Rect, data: &LayoutInputData, width: f64) -> RoundedRect {
+fn outline_path(rect: Rect, radii: RoundedRectRadii, offset: f64, width: f64) -> RoundedRect {
     let shrink = rect.width().min(rect.height()) / 2.0;
-    let distance = (data.outline_offset + width / 2.0).max(-shrink);
+    let distance = (offset + width / 2.0).max(-shrink);
     let grow = |radius: f64| {
         if radius > 0.0 {
             (radius + distance).max(0.0)
@@ -803,8 +809,6 @@ fn outline_path(rect: Rect, data: &LayoutInputData, width: f64) -> RoundedRect {
             0.0
         }
     };
-    let radii = data.border_radius.unwrap_or_default();
-
     (rect + Insets::uniform(distance)).to_rounded_rect(RoundedRectRadii::new(
         grow(radii.top_left),
         grow(radii.top_right),
