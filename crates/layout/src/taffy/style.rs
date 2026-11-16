@@ -5,6 +5,7 @@ use super::conv;
 use crate::style::{
     LayoutConstraint,
     bx::{self, DisplayInner},
+    geometry::{AutoValue, StyleUnit},
 };
 
 /// Box style adapter shared by layout algorithms.
@@ -31,6 +32,16 @@ pub struct Style {
 
 /// Box properties never inherit. Anonymous boxes use the declared defaults.
 pub fn resolve(props: Option<Props>, cx: &LayoutConstraint) -> Style {
+    resolve_tracked(props, cx, &mut |_| {})
+}
+
+/// Resolve a box style as [`resolve`], passing the unit of every length it
+/// reads to `track`.
+pub fn resolve_tracked(
+    props: Option<Props>,
+    cx: &LayoutConstraint,
+    track: &mut dyn FnMut(StyleUnit),
+) -> Style {
     macro_rules! value {
         ($prop:ident) => {
             props
@@ -48,17 +59,43 @@ pub fn resolve(props: Option<Props>, cx: &LayoutConstraint) -> Style {
         position: value!(Position),
         box_sizing: value!(BoxSizing),
         overflow: conv::to_point(value!(Overflow), |v| v),
-        inset: conv::to_rect(value!(Inset), |v| conv::length_auto(v, cx)),
-        size: conv::to_size(value!(Size), |v| conv::dimension(v, cx)),
-        min_size: conv::to_size(value!(MinSize), |v| conv::length_auto(v, cx)),
-        max_size: conv::to_size(value!(MaxSize), |v| conv::length_auto(v, cx)),
+        inset: conv::to_rect(value!(Inset), |v| {
+            conv::length_auto(tracked_auto(v, track), cx)
+        }),
+        size: conv::to_size(value!(Size), |v| {
+            conv::dimension(tracked_auto(v, track), cx)
+        }),
+        min_size: conv::to_size(value!(MinSize), |v| {
+            conv::length_auto(tracked_auto(v, track), cx)
+        }),
+        max_size: conv::to_size(value!(MaxSize), |v| {
+            conv::length_auto(tracked_auto(v, track), cx)
+        }),
         aspect_ratio: props
             .and_then(Props::get_cloned)
             .map(|bx::AspectRatio(ratio)| ratio),
-        margin: conv::to_rect(value!(Margin), |v| conv::length_auto(v, cx)),
-        padding: conv::to_rect(value!(Padding), |v| conv::length(v, cx)),
-        border: conv::to_rect(value!(Border), |v| conv::length(v, cx)),
+        margin: conv::to_rect(value!(Margin), |v| {
+            conv::length_auto(tracked_auto(v, track), cx)
+        }),
+        padding: conv::to_rect(value!(Padding), |v| conv::length(tracked(v, track), cx)),
+        border: conv::to_rect(value!(Border), |v| conv::length(tracked(v, track), cx)),
     }
+}
+
+fn tracked(unit: StyleUnit, track: &mut dyn FnMut(StyleUnit)) -> StyleUnit {
+    track(unit);
+    unit
+}
+
+fn tracked_auto(
+    value: AutoValue<StyleUnit>,
+    track: &mut dyn FnMut(StyleUnit),
+) -> AutoValue<StyleUnit> {
+    if let AutoValue::Value(unit) = value {
+        track(unit);
+    }
+
+    value
 }
 
 impl CoreStyle for Style {

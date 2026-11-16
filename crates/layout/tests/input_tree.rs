@@ -274,6 +274,58 @@ fn update_viewport_builds_only_viewport_dependent_subtrees() {
 }
 
 #[test]
+fn tree_counts_viewport_dependent_items() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let spaced = ui.create(Node::Box, (bx::LetterSpacing(StyleUnit::Vw(0.01)),));
+    let inherited = ui.create(Node::Text, ());
+    let plain = ui.create(Node::Box, (bx::FontSize(StyleUnit::Rem(2.0)),));
+
+    ui.append(root, spaced);
+    ui.append(spaced, inherited);
+    ui.append(root, plain);
+
+    let mut tree = LayoutInputTree::new();
+    let mut builder = LayoutInputTreeBuilder::new();
+    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
+
+    // The styled box and the child inheriting from it.
+    assert_eq!(tree.viewport_dependent_count(), 2);
+
+    // A style that stops depending on the viewport is no longer counted.
+    ui.set_props(spaced, (bx::LetterSpacing(StyleUnit::Px(1.0)),));
+    build(&mut builder, &ui, root, &mut tree);
+    assert_eq!(tree.viewport_dependent_count(), 0);
+
+    // With nothing to update, update_viewport visits and flags nothing.
+    clean(&mut tree, key);
+    assert_eq!(
+        builder.update_viewport(
+            &ui,
+            &mut tree,
+            BuildRequest::new(root, 16.0, Size::new(400.0, 300.0))
+        ),
+        Some(key)
+    );
+    for item in tree.items.descendants(key) {
+        assert!(tree.items[item].flags.is_empty());
+    }
+
+    // New and deleted items update the count.
+    let tall = ui.create(Node::Text, (bx::FontSize(StyleUnit::Vh(0.05)),));
+    ui.append(plain, tall);
+    build(&mut builder, &ui, root, &mut tree);
+    assert_eq!(tree.viewport_dependent_count(), 1);
+
+    ui.delete(plain);
+    build(&mut builder, &ui, root, &mut tree);
+    assert_eq!(tree.viewport_dependent_count(), 0);
+
+    tree.clear();
+    assert_eq!(tree.viewport_dependent_count(), 0);
+}
+
+#[test]
 fn mark_propagates_to_ancestors() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());

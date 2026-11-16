@@ -136,6 +136,7 @@ impl LayoutInputTreeBuilder {
     /// or `vh` must be marked separately.
     ///
     /// Returns the item of `request.source`, or `None` if it has no item.
+    /// Nothing is visited when no item in the tree depends on the viewport.
     pub fn update_viewport(
         &mut self,
         ui: &Ui,
@@ -143,6 +144,10 @@ impl LayoutInputTreeBuilder {
         request: BuildRequest,
     ) -> Option<LayoutInputKey> {
         let source = tree.item_for_node(request.source)?;
+
+        if tree.viewport_dependent_count() == 0 {
+            return Some(source);
+        }
 
         let mut visit = std::mem::take(&mut self.visit);
         let mut roots = std::mem::take(&mut self.viewport_roots);
@@ -271,10 +276,10 @@ impl LayoutInputTreeBuilder {
             || item.kind != kind
             || item.child_layout != child_layout;
 
-        // Always take the new allocation so equal styles keep sharing it.
-        item.text_style = text_style;
         item.kind = kind;
         item.child_layout = child_layout;
+        // Always take the new allocation so equal styles keep sharing it.
+        tree.replace_text_style(key, text_style);
 
         // Content is only refragmented when the resolved item changed.
         if changed {

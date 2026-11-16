@@ -1,16 +1,22 @@
+use std::sync::Arc;
+
 use comet_slotmap_tree::SlotTree;
 use comet_tree::node::NodeKey;
 use rustc_hash::FxHashMap;
 
-use crate::input::{LayoutFlags, LayoutInputItem, LayoutInputKey};
+use crate::input::{LayoutFlags, LayoutInputItem, LayoutInputKey, TextStyle, text::TextStyleBits};
 
 pub struct LayoutInputTree {
     /// Raw tree storage. Use the tree mutation methods and builder to keep
-    /// source mappings synchronized.
+    /// source mappings and the count of viewport dependent items synchronized.
     pub items: SlotTree<LayoutInputKey, LayoutInputItem>,
 
     /// 1:1 mapping from [`NodeKey`] to [`LayoutInputKey`]
     map: FxHashMap<NodeKey, LayoutInputKey>,
+
+    /// Number of items whose text style is
+    /// [`TextStyleBits::DEPENDS_VIEWPORT`].
+    viewport_dependent: usize,
 }
 
 impl LayoutInputTree {
@@ -18,7 +24,16 @@ impl LayoutInputTree {
         Self {
             items: SlotTree::new(),
             map: FxHashMap::default(),
+            viewport_dependent: 0,
         }
+    }
+
+    /// Number of items whose text style depends on the viewport, as
+    /// [`TextStyleBits::DEPENDS_VIEWPORT`]. Kept by the builder and the tree
+    /// mutation methods; text styles written into `items` directly are not
+    /// counted.
+    pub fn viewport_dependent_count(&self) -> usize {
+        self.viewport_dependent
     }
 
     /// Find the item generated for a source node.
@@ -92,10 +107,25 @@ impl LayoutInputTree {
     /// Insert a detached item and map its source node to it.
     pub(crate) fn add_item(&mut self, item: LayoutInputItem) -> LayoutInputKey {
         let node = item.node;
+        self.viewport_dependent += depends_on_viewport(&item.text_style) as usize;
         let key = self.items.insert(item);
         self.map.insert(node, key);
 
         key
+    }
+
+    /// Replace the text style of an item, keeping the count of viewport
+    /// dependent items. Returns the previous style.
+    pub(crate) fn replace_text_style(
+        &mut self,
+        key: LayoutInputKey,
+        style: Arc<TextStyle>,
+    ) -> Arc<TextStyle> {
+        let item = &mut self.items[key];
+        self.viewport_dependent += depends_on_viewport(&style) as usize;
+        self.viewport_dependent -= depends_on_viewport(&item.text_style) as usize;
+
+        std::mem::replace(&mut item.text_style, style)
     }
 
     /// Delete a subtree and remove its source mappings.
@@ -103,7 +133,9 @@ impl LayoutInputTree {
         self.items.get(key)?;
 
         for key in self.items.descendants(key) {
-            let node = self.items[key].node;
+            let item = &self.items[key];
+            let node = item.node;
+            self.viewport_dependent -= depends_on_viewport(&item.text_style) as usize;
 
             if self.map.get(&node) == Some(&key) {
                 self.map.remove(&node);
@@ -116,7 +148,12 @@ impl LayoutInputTree {
     pub fn clear(&mut self) {
         self.items.clear();
         self.map.clear();
+        self.viewport_dependent = 0;
     }
+}
+
+fn depends_on_viewport(style: &TextStyle) -> bool {
+    style.bits.contains(TextStyleBits::DEPENDS_VIEWPORT)
 }
 
 impl Default for LayoutInputTree {
