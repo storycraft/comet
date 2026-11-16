@@ -70,6 +70,22 @@ impl<'e, 'a> FragmentEngine<'e, 'a> {
         }
     }
 
+    /// Engine for Taffy's root pass over `fragment`, without buffering its
+    /// children. The root pass only reads the fragment's style and lays it
+    /// out through the cached child layout, which never traverses its
+    /// children here: a cache miss lays the fragment out with an engine of
+    /// its own. A cached root then costs nothing per child.
+    pub fn root_pass(engine: &'e mut Engine<'a>, fragment: FragmentKey, state: StateKey) -> Self {
+        let start = engine.scratch.children.len();
+
+        Self {
+            engine,
+            fragment,
+            state,
+            children: start..start,
+        }
+    }
+
     pub fn fragment(&self) -> FragmentKey {
         self.fragment
     }

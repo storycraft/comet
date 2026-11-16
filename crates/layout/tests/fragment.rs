@@ -1048,3 +1048,105 @@ fn rebuilds_break_lines_again_without_shaping() {
     assert!(f.children(root_fragment).len() > 1);
     assert_eq!(f.fragments.items[root_fragment].layout.size.width, 80.0);
 }
+
+/// Kinds of the fragments under `key`, in tree order, comparable across
+/// fragment trees.
+fn item_kinds(f: &Fixture, key: FragmentKey) -> Vec<&'static str> {
+    f.items(key)
+        .into_iter()
+        .map(|item| match item {
+            FragmentItem::Box { .. } => "box",
+            FragmentItem::AnonymousBlock { .. } => "anonymous",
+            FragmentItem::Line { .. } => "line",
+            FragmentItem::GlyphRun { .. } => "glyphs",
+            FragmentItem::Inline { .. } => "inline",
+        })
+        .collect()
+}
+
+/// Re-layout `root` after marking `node` restyled, and check that the
+/// children of `parent` match a fresh layout.
+fn restyle_matches_fresh(f: &mut Fixture, ui: &Ui, root: NodeKey, node: NodeKey, parent: NodeKey) {
+    f.tree.mark_input_node(node, InputFlags::NEED_STYLE);
+    let (input_root, _) = f.build(ui, root);
+    f.tree.clear_flags(input_root);
+
+    let mut fresh = Fixture::new();
+    fresh.build(ui, root);
+
+    assert_eq!(
+        item_kinds(f, f.box_of(parent)),
+        item_kinds(&fresh, fresh.box_of(parent))
+    );
+}
+
+#[test]
+fn children_changing_kind_change_their_parents_mode() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let block = sized_block(&mut ui, 20.0);
+    let changing = ui.create(Node::Box, ());
+    let content = text(&mut ui, "changing");
+    ui.append(root, block);
+    ui.append(root, changing);
+    ui.append(changing, content);
+
+    let mut f = Fixture::new();
+    let (input_root, root_fragment) = f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+    assert_eq!(item_kinds(&f, root_fragment), vec!["box", "box"]);
+
+    // A block child becoming inline makes its parent's content mixed.
+    ui.set_props(changing, (bx::DisplayOuter::Inline,));
+    restyle_matches_fresh(&mut f, &ui, root, changing, root);
+    assert_eq!(item_kinds(&f, root_fragment), vec!["box", "anonymous"]);
+
+    // And back to block boxes only.
+    ui.set_props(changing, (bx::DisplayOuter::Block,));
+    restyle_matches_fresh(&mut f, &ui, root, changing, root);
+    assert_eq!(item_kinds(&f, root_fragment), vec!["box", "box"]);
+}
+
+#[test]
+fn nested_inline_content_changing_kind_changes_its_owners_mode() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let paragraph = ui.create(Node::Box, ());
+    let before = text(&mut ui, "before ");
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    let nested = ui.create(Node::Box, ());
+    let inside = text(&mut ui, "inside");
+    ui.append(root, paragraph);
+    ui.append(paragraph, before);
+    ui.append(paragraph, span);
+    ui.append(span, nested);
+    ui.append(nested, inside);
+
+    let mut f = Fixture::new();
+    let (input_root, _) = f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+    // The block inside the span interrupts the paragraph's inline content.
+    assert_eq!(
+        item_kinds(&f, f.box_of(paragraph)),
+        vec!["anonymous", "box"]
+    );
+
+    // As an inline element, nothing interrupts it: the paragraph holds lines.
+    ui.set_props(nested, (bx::DisplayOuter::Inline,));
+    restyle_matches_fresh(&mut f, &ui, root, nested, paragraph);
+    assert_eq!(item_kinds(&f, f.box_of(paragraph)), vec!["line"]);
+
+    // Inserting a block into the span interrupts it again.
+    let interruption = sized_block(&mut ui, 10.0);
+    ui.append(span, interruption);
+    f.tree.mark_input_node(span, InputFlags::NEED_CHILDREN);
+    let (input_root, _) = f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+    let mut fresh = Fixture::new();
+    fresh.build(&ui, root);
+    assert_eq!(
+        item_kinds(&f, f.box_of(paragraph)),
+        item_kinds(&fresh, fresh.box_of(paragraph))
+    );
+    assert!(item_kinds(&f, f.box_of(paragraph)).contains(&"box"));
+}

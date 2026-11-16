@@ -129,7 +129,7 @@ impl LayoutInputTreeBuilder {
                 tree.delete_item(key);
 
                 if let Some(parent) = parent {
-                    tree.mark(parent, LayoutFlags::NEED_FULL_LAYOUT);
+                    tree.mark_child_list(parent);
                 }
             }
 
@@ -314,7 +314,7 @@ impl LayoutInputTreeBuilder {
         }
 
         if changed {
-            tree.mark(key, LayoutFlags::NEED_FULL_LAYOUT);
+            tree.mark_child_list(key);
         }
     }
 
@@ -368,7 +368,7 @@ impl LayoutInputTreeBuilder {
         }
 
         if changed {
-            tree.mark(key, LayoutFlags::NEED_FULL_LAYOUT);
+            tree.mark_child_list(key);
         }
     }
 
@@ -454,7 +454,8 @@ impl LayoutInputTreeBuilder {
             style: style_changed || (item.bits ^ bits).contains(TextStyleBits::DEPENDS_VIEWPORT),
             child_layout: item.child_layout != child_layout,
         };
-        let changed = style_changed || item.kind != kind || change.child_layout;
+        let kind_changed = item.kind != kind;
+        let changed = style_changed || kind_changed || change.child_layout;
 
         item.kind = kind;
         item.child_layout = child_layout;
@@ -468,6 +469,11 @@ impl LayoutInputTreeBuilder {
         // Content is only refragmented when the resolved item changed.
         if changed {
             tree.mark(key, LayoutFlags::NEED_FULL_LAYOUT);
+        }
+
+        // The box owning the item's content lays it out by its kind.
+        if kind_changed {
+            tree.mark_content_owner(key);
         }
 
         Some((key, change))

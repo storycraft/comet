@@ -577,14 +577,17 @@ fn rebuilding_a_node_only_updates_its_own_item() {
         ChildLayout::Block
     );
     assert_eq!(tree.items[paragraph_key].child_layout, ChildLayout::Block);
+    // The paragraph owns the span's inline content, so it lays out the
+    // interruption by its kind and is marked. The span is not.
     assert_eq!(
         tree.items[paragraph_key].flags,
-        LayoutFlags::CHILD_NEED_LAYOUT
+        LayoutFlags::NEED_FULL_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
     );
     assert_eq!(tree.items[span_key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
     assert_fresh(&ui, root, &tree, key);
 
-    // Deleting a node flags its parent's child list.
+    // Deleting a node flags its parent's child list, and the owner of the
+    // inline element's content.
     clean(&mut tree, key);
     ui.delete(interruption);
     assert_eq!(build(&mut builder, &ui, interruption, &mut tree), None);
@@ -592,8 +595,10 @@ fn rebuilding_a_node_only_updates_its_own_item() {
     assert_eq!(tree.items[span_key].flags, LayoutFlags::NEED_FULL_LAYOUT);
     assert_eq!(
         tree.items[paragraph_key].flags,
-        LayoutFlags::CHILD_NEED_LAYOUT
+        LayoutFlags::NEED_FULL_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
     );
+    // Block children only mark their parent.
+    assert_eq!(tree.items[key].flags, LayoutFlags::CHILD_NEED_LAYOUT);
     assert_fresh(&ui, root, &tree, key);
 }
 

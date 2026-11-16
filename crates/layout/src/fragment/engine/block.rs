@@ -24,7 +24,7 @@ impl Engine<'_> {
         };
 
         taffy::compute_root_layout(
-            &mut FragmentEngine::new(self, fragment, state),
+            &mut FragmentEngine::root_pass(self, fragment, state),
             node_id(state),
             available,
         );

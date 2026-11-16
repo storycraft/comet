@@ -243,8 +243,10 @@ impl Engine<'_> {
     /// attached again when they are emitted.
     ///
     /// Boxes created in this build are already resolved. The style of a box
-    /// is kept when only its descendants are flagged, but its mode is not:
-    /// children changing kind only flag their parent's descendants.
+    /// is kept unless its box is dirty, and its mode unless it is
+    /// [`LayoutFlags::NEED_FULL_LAYOUT`]: the mode depends on the kinds of
+    /// its children and inline content, and the input builder marks the box
+    /// when those or the inline content's child lists change.
     ///
     /// Box style changes alone keep shaped text and child fragments. Inline
     /// content is shaped again only when an item in it is [`LayoutFlags::NEED_FULL_LAYOUT`].
@@ -262,22 +264,23 @@ impl Engine<'_> {
         let created = self.scratch.created.contains(&fragment);
         let box_dirty = force || viewport || flags.contains(LayoutFlags::NEED_BOX_LAYOUT);
         let dirty = force || flags.contains(LayoutFlags::NEED_FULL_LAYOUT);
-        let update =
-            (!created).then(|| (self.mode(key), box_dirty.then(|| self.resolve_style(key))));
+        // Finding the mode walks the children and inline content.
+        let mode = (!created && dirty).then(|| self.mode(key));
+        let style = (!created && box_dirty).then(|| self.resolve_style(key));
         let Some(state) = self.fragments.get_state_mut(fragment) else {
             return;
         };
         let previous = state.mode;
         let mut bits = NodeLayoutBits::empty();
 
-        if let Some((mode, style)) = update {
+        if let Some(mode) = mode {
             state.mode = mode;
+        }
 
-            if let Some((style, style_bits)) = style {
-                state.style = style;
-                state.bits |= style_bits;
-                bits = style_bits;
-            }
+        if let Some((style, style_bits)) = style {
+            state.style = style;
+            state.bits |= style_bits;
+            bits = style_bits;
         }
 
         let mode = state.mode;

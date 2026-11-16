@@ -2,7 +2,9 @@ use comet_slotmap_tree::SlotTree;
 use comet_tree::node::NodeKey;
 use rustc_hash::FxHashMap;
 
-use crate::input::{InputFlags, LayoutFlags, LayoutInputItem, LayoutInputKey, text::TextStyleBits};
+use crate::input::{
+    InputFlags, LayoutFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind, text::TextStyleBits,
+};
 
 pub struct LayoutInputTree {
     /// Raw tree storage. Use the tree mutation methods and builder to keep
@@ -54,6 +56,39 @@ impl LayoutInputTree {
 
             item.flags.insert(LayoutFlags::CHILD_NEED_LAYOUT);
             ancestor = self.items.parent(key);
+        }
+    }
+
+    /// Mark [`LayoutFlags::NEED_FULL_LAYOUT`] the nearest ancestor of an item
+    /// that is not an inline element: the box whose children, or whose
+    /// inline content, include the item. Its layout mode depends on the kinds
+    /// of those items, so mark it when an item changes kind, or when an
+    /// inline element's child list changes.
+    pub(crate) fn mark_content_owner(&mut self, key: LayoutInputKey) {
+        let mut owner = self.items.parent(key);
+
+        while let Some(key) = owner
+            && self.items[key].kind == LayoutInputKind::Inline
+        {
+            owner = self.items.parent(key);
+        }
+
+        if let Some(owner) = owner {
+            self.mark(owner, LayoutFlags::NEED_FULL_LAYOUT);
+        }
+    }
+
+    /// Mark an item whose child list changed [`LayoutFlags::NEED_FULL_LAYOUT`],
+    /// and the box owning its content too when it is an inline element.
+    pub(crate) fn mark_child_list(&mut self, key: LayoutInputKey) {
+        self.mark(key, LayoutFlags::NEED_FULL_LAYOUT);
+
+        if self
+            .items
+            .get(key)
+            .is_some_and(|item| item.kind == LayoutInputKind::Inline)
+        {
+            self.mark_content_owner(key);
         }
     }
 
