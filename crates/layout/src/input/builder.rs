@@ -257,6 +257,16 @@ impl LayoutInputTreeBuilder {
     ) {
         let mut next = tree.items.first_child(key);
         let mut changed = false;
+        // Whether a child generates a box depends on its parent's child
+        // layout, such as every child of a container, so kept children are
+        // laid out again when it changed.
+        let child_layout_changed = matches!(
+            visit,
+            Visit::Update {
+                reconcile: true,
+                ..
+            }
+        );
 
         if tree.items[key].child_layout != ChildLayout::None {
             let parent_style = tree.items[key].text_style.clone();
@@ -309,8 +319,8 @@ impl LayoutInputTreeBuilder {
                     }
                 }
 
-                if existing.is_none() {
-                    // Propagate the new item's flags to the ancestors.
+                if existing.is_none() || child_layout_changed {
+                    // Propagate the flags of new items to the ancestors.
                     tree.mark(item, LayoutFlags::NEED_FULL_LAYOUT);
                 }
 

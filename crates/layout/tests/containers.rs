@@ -393,3 +393,67 @@ fn size_probes_do_not_leave_probe_geometry_in_cached_final_layouts() {
     assert_eq!(width(&f, inner), 300.0);
     assert_eq!(width(&f, leaf), 300.0);
 }
+
+/// The fragments under `key` in tree order, with their depth, kind and size.
+fn outline(f: &Fixture, key: FragmentKey, depth: usize, out: &mut Vec<String>) {
+    let fragment = &f.fragments.items[key];
+    let kind = match fragment.item {
+        FragmentItem::Box { .. } => "box",
+        FragmentItem::AnonymousBlock { .. } => "anonymous",
+        FragmentItem::Line { .. } => "line",
+        FragmentItem::GlyphRun { .. } => "glyphs",
+        FragmentItem::Inline { .. } => "inline",
+    };
+    out.push(format!("{depth} {kind} {}", fragment.layout.size));
+
+    for child in f.fragments.items.children(key) {
+        outline(f, child, depth + 1, out);
+    }
+}
+
+fn outlined(f: &Fixture, key: FragmentKey) -> Vec<String> {
+    let mut out = Vec::new();
+    outline(f, key, 0, &mut out);
+    out
+}
+
+#[test]
+fn children_gaining_or_losing_boxes_with_their_parents_layout_match_a_fresh_build() {
+    let width = Arc::new(AtomicU32::new(100));
+    let calls = Arc::new(AtomicU32::new(0));
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    // An inline element only generates a box as a child of a container.
+    let span = ui.create(Node::Box, (DisplayOuter::Inline,));
+    let inner = ui.create(Node::Box, ());
+    let text = ui.create(Node::Text, (Text("inside".into()),));
+    ui.append(root, span);
+    ui.append(span, inner);
+    ui.append(inner, text);
+
+    let mut f = Fixture::default();
+    f.build(&ui, root, 400.0);
+
+    let check = |f: &mut Fixture, ui: &Ui| {
+        f.inputs.mark_input_node(root, InputFlags::NEED_STYLE);
+        let fragment = f.build(ui, root, 400.0);
+
+        let mut fresh = Fixture::default();
+        let fresh_fragment = fresh.build(ui, root, 400.0);
+        assert_eq!(outlined(f, fragment), outlined(&fresh, fresh_fragment));
+    };
+
+    // The span gains a box, holding its own content.
+    ui.set_props(root, (row(&width, &calls),));
+    check(&mut f, &ui);
+    assert!(f.has_glyphs(f.box_fragment(span)));
+
+    // And loses it again, its content joining the root's.
+    drop(ui.remove_prop::<DisplayInner>(root));
+    check(&mut f, &ui);
+    assert!(
+        f.fragments
+            .box_fragment(f.inputs.item_for_node(span).unwrap())
+            .is_none()
+    );
+}
