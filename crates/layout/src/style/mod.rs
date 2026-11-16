@@ -13,6 +13,10 @@ pub struct LayoutConstraint {
 
     pub parent_size: Size<f64>,
     pub available_size: Size<f64>,
+
+    /// Whether the viewport differs from the previous layout. Boxes depending
+    /// on the viewport then resolve their styles and are laid out again.
+    pub viewport_changed: bool,
 }
 
 impl LayoutConstraint {
@@ -26,7 +30,14 @@ impl LayoutConstraint {
 
             parent_size: root_size,
             available_size: root_size,
+            viewport_changed: false,
         }
+    }
+
+    /// Set [`Self::viewport_changed`].
+    pub const fn with_viewport_changed(mut self, viewport_changed: bool) -> Self {
+        self.viewport_changed = viewport_changed;
+        self
     }
 
     pub const fn child(
@@ -44,6 +55,7 @@ impl LayoutConstraint {
 
             parent_size: percentage_resolution_size,
             available_size,
+            viewport_changed: self.viewport_changed,
         }
     }
 }

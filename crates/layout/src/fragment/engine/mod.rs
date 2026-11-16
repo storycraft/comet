@@ -197,23 +197,48 @@ impl Engine<'_> {
             let item = &self.tree.items[key];
             let flags = item.flags;
             let child_layout = item.child_layout;
+            let is_box = self.is_box(key);
 
-            if !force && flags.is_empty() {
+            // After a viewport change, boxes depending on it are laid out
+            // again. Their ancestor boxes carry the bit too, which leads here.
+            // Viewport dependent text styles are flagged by the input builder.
+            let viewport = is_box
+                && self.constraint.viewport_changed
+                && self
+                    .fragments
+                    .box_fragment(key)
+                    .and_then(|fragment| self.fragments.get_state(fragment))
+                    .is_some_and(|state| state.bits.contains(NodeLayoutBits::DEPENDS_VIEWPORT));
+
+            if !force && !viewport && flags.is_empty() {
                 continue;
             }
 
-            if self.is_box(key) {
-                self.invalidate_box(key, flags, force);
+            if is_box {
+                self.invalidate_box(key, flags, force, viewport);
             } else if let Some(fragment) = self.fragments.box_fragment(key) {
                 // The item no longer generates a box.
                 self.drop_state(fragment);
                 self.release(fragment);
             }
 
-            if (force || flags.contains(LayoutFlags::CHILD_NEED_LAYOUT))
+            if (force || viewport || flags.contains(LayoutFlags::CHILD_NEED_LAYOUT))
                 && child_layout != ChildLayout::None
             {
                 stack.extend(self.tree.items.children(key));
+            }
+
+            // Inline elements carry no bits and are only visited when flagged,
+            // so boxes inside them are checked from their owner. Those
+            // without the bit are skipped when visited.
+            if viewport
+                && self
+                    .fragments
+                    .box_fragment(key)
+                    .and_then(|fragment| self.fragments.get_state(fragment))
+                    .is_some_and(|state| matches!(state.mode, Mode::Inline | Mode::MixedInline))
+            {
+                self.push_nested_inline_boxes(key, &mut stack);
             }
         }
 
@@ -229,10 +254,19 @@ impl Engine<'_> {
     ///
     /// Box style changes alone keep shaped text and child fragments. Inline
     /// content is shaped again only when an item in it is [`LayoutFlags::NEED_FULL_LAYOUT`].
-    fn invalidate_box(&mut self, key: LayoutInputKey, flags: LayoutFlags, force: bool) {
+    ///
+    /// `viewport` lays out a box depending on a changed viewport again, as if
+    /// its box style changed.
+    fn invalidate_box(
+        &mut self,
+        key: LayoutInputKey,
+        flags: LayoutFlags,
+        force: bool,
+        viewport: bool,
+    ) {
         let fragment = self.ensure_box(key);
         let created = self.scratch.created.contains(&fragment);
-        let box_dirty = force || flags.contains(LayoutFlags::NEED_BOX_LAYOUT);
+        let box_dirty = force || viewport || flags.contains(LayoutFlags::NEED_BOX_LAYOUT);
         let dirty = force || flags.contains(LayoutFlags::NEED_FULL_LAYOUT);
         let update =
             (!created).then(|| (self.mode(key), box_dirty.then(|| self.resolve_style(key))));

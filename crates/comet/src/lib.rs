@@ -239,7 +239,8 @@ impl App {
                 .build(&self.ui, &mut self.inputs, request),
         }?;
 
-        let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE);
+        let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE)
+            .with_viewport_changed(previous_viewport.is_some_and(|previous| previous != viewport));
         let fragment_root = self.fragment_builder.build(
             &self.ui,
             &self.inputs,

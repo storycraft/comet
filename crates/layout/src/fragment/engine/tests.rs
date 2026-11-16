@@ -135,3 +135,169 @@ fn containers_depend_on_everything() {
     assert_eq!(f.bits(wrapper), NodeLayoutBits::all());
     assert_eq!(f.bits(root), NodeLayoutBits::all());
 }
+
+/// A container algorithm that counts its layouts.
+struct Counted(Arc<std::sync::atomic::AtomicU32>);
+
+impl ContainerLayout for Counted {
+    fn layout(
+        &self,
+        _: &mut ContainerContext<'_, '_>,
+        input: taffy::LayoutInput,
+    ) -> taffy::LayoutOutput {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        taffy::LayoutOutput::from_outer_size(taffy::Size {
+            width: input.known_dimensions.width.unwrap_or(0.0),
+            height: input.known_dimensions.height.unwrap_or(0.0),
+        })
+    }
+}
+
+#[test]
+fn viewport_changes_skip_cached_layouts_of_viewport_dependent_boxes() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    let calls = Arc::new(AtomicU32::new(0));
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    // Fixed size, so the container's layout input never changes.
+    let wrapper = ui.create(
+        Node::Box,
+        (bx::Size(Size::new(
+            AutoValue::Value(StyleUnit::Px(100.0)),
+            AutoValue::Value(StyleUnit::Px(50.0)),
+        )),),
+    );
+    let container = ui.create(
+        Node::Box,
+        (bx::DisplayInner::Container(Arc::new(Counted(
+            calls.clone(),
+        ))),),
+    );
+    ui.append(root, wrapper);
+    ui.append(wrapper, container);
+
+    let mut f = Fixture::new();
+    let layout = |f: &mut Fixture, width: f64, viewport_changed: bool| {
+        let viewport = Size::new(width, 600.0);
+        let input_root = f
+            .inputs
+            .build(&ui, &mut f.tree, BuildRequest::new(root, 16.0, viewport))
+            .unwrap();
+        f.builder
+            .build(
+                &ui,
+                &f.tree,
+                input_root,
+                &mut f.fragments,
+                &LayoutConstraint::new_root(viewport, 16.0).with_viewport_changed(viewport_changed),
+            )
+            .unwrap();
+        f.tree.clear_flags(input_root);
+
+        calls.swap(0, Ordering::Relaxed)
+    };
+
+    assert!(layout(&mut f, 400.0, false) > 0);
+    assert_eq!(f.bits(container), NodeLayoutBits::all());
+
+    // The cache serves the container while the viewport is not marked changed.
+    assert_eq!(layout(&mut f, 500.0, false), 0);
+    // A changed viewport lays out viewport dependent boxes again.
+    assert!(layout(&mut f, 600.0, true) > 0);
+}
+
+#[test]
+fn viewport_changes_resolve_viewport_dependent_styles_again() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let half = ui.create(
+        Node::Box,
+        (bx::Size(Size::new(
+            AutoValue::Value(StyleUnit::Vw(0.5)),
+            AutoValue::Value(StyleUnit::Px(10.0)),
+        )),),
+    );
+    ui.append(root, half);
+
+    let mut f = Fixture::new();
+    let layout = |f: &mut Fixture, width: f64, viewport_changed: bool| {
+        let viewport = Size::new(width, 600.0);
+        let input_root = f
+            .inputs
+            .build(&ui, &mut f.tree, BuildRequest::new(root, 16.0, viewport))
+            .unwrap();
+        f.builder
+            .build(
+                &ui,
+                &f.tree,
+                input_root,
+                &mut f.fragments,
+                &LayoutConstraint::new_root(viewport, 16.0).with_viewport_changed(viewport_changed),
+            )
+            .unwrap();
+        f.tree.clear_flags(input_root);
+
+        let fragment = f
+            .fragments
+            .box_fragment(f.tree.item_for_node(half).unwrap())
+            .unwrap();
+        f.fragments.items[fragment].layout.size.width
+    };
+
+    assert_eq!(layout(&mut f, 400.0, false), 200.0);
+    // Unmarked, the style keeps the width resolved with the old viewport.
+    assert_eq!(layout(&mut f, 600.0, false), 200.0);
+    assert_eq!(layout(&mut f, 800.0, true), 400.0);
+}
+
+#[test]
+fn viewport_changes_reach_boxes_inside_inline_elements() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let before = ui.create(Node::Text, (Text("before ".into()),));
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    let badge = ui.create(
+        Node::Box,
+        (
+            bx::DisplayOuter::Inline,
+            bx::DisplayInner::FlowRoot,
+            bx::Size(Size::new(
+                AutoValue::Value(StyleUnit::Vw(0.1)),
+                AutoValue::Value(StyleUnit::Px(10.0)),
+            )),
+        ),
+    );
+    ui.append(root, before);
+    ui.append(root, span);
+    ui.append(span, badge);
+
+    let mut f = Fixture::new();
+    let layout = |f: &mut Fixture, width: f64, viewport_changed: bool| {
+        let viewport = Size::new(width, 600.0);
+        let input_root = f
+            .inputs
+            .build(&ui, &mut f.tree, BuildRequest::new(root, 16.0, viewport))
+            .unwrap();
+        f.builder
+            .build(
+                &ui,
+                &f.tree,
+                input_root,
+                &mut f.fragments,
+                &LayoutConstraint::new_root(viewport, 16.0).with_viewport_changed(viewport_changed),
+            )
+            .unwrap();
+        f.tree.clear_flags(input_root);
+
+        let fragment = f
+            .fragments
+            .box_fragment(f.tree.item_for_node(badge).unwrap())
+            .unwrap();
+        f.fragments.items[fragment].layout.size.width
+    };
+
+    assert_eq!(layout(&mut f, 400.0, false), 40.0);
+    // The span between the root and the badge is not flagged.
+    assert_eq!(layout(&mut f, 800.0, true), 80.0);
+}

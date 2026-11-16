@@ -17,6 +17,23 @@ impl Engine<'_> {
         InlineEvents::new(self.tree, key).any(|op| matches!(op, Op::Block(_)))
     }
 
+    /// Push the atomic inline and block boxes inside the inline elements of an
+    /// item's inline content. Boxes directly under the item are its children.
+    pub(in crate::fragment::engine) fn push_nested_inline_boxes(
+        &self,
+        owner: LayoutInputKey,
+        out: &mut Vec<LayoutInputKey>,
+    ) {
+        out.extend(
+            InlineEvents::new(self.tree, owner).filter_map(|op| match op {
+                Op::Box(key) | Op::Block(key) if self.tree.items.parent(key) != Some(owner) => {
+                    Some(key)
+                }
+                _ => None,
+            }),
+        );
+    }
+
     /// Whether an item in the inline content of an item changed in a way that
     /// requires shaping again. Box style changes of atomic inlines and flags
     /// only propagated from descendants keep the shaped text: atomic inline
