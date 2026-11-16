@@ -11,7 +11,7 @@ use comet_tree::ui::{Props, Ui};
 use kurbo::{Affine, Point, RoundedRectRadii, Size};
 
 use crate::{
-    pre_paint::{FragmentData, LayoutInputData, PrePaintFlags, tree::PrePaintTree},
+    pre_paint::{FragmentData, LayerFlags, LayoutInputData, PrePaintFlags, tree::PrePaintTree},
     style::{
         BackdropFilter, BorderRadius, Filter, Opacity, OutlineOffset, OutlineWidth, Transform,
         TransformOrigin, ZIndex,
@@ -54,6 +54,12 @@ impl PrePaintTreeResolver {
     ///   their paint styles changed,
     /// - fragments without data in `tree`.
     ///
+    /// Fragments resolved because they were marked or had no data, whose
+    /// [stacking](FragmentData::stacking) changed, get
+    /// [`LayerFlags::NEED_LAYER`] or [`LayerFlags::NEED_NO_LAYER`], and their
+    /// ancestors [`LayerFlags::CHILD_LAYER_UPDATE`], for the next layer
+    /// build. A new fragment counts as starting no layer before.
+    ///
     /// Every call starts a new [generation](PrePaintTree::generation).
     /// Fragment data created or changed by the call is stamped with it, and
     /// so is the [subtree generation](FragmentData::subtree_generation) of
@@ -62,7 +68,8 @@ impl PrePaintTreeResolver {
     /// Subtrees without such fragments are skipped, so the first call, or a
     /// call on an empty `tree`, resolves everything. Data only depends on the
     /// fragment or item itself, so ancestors are not resolved. Flags are not
-    /// cleared; call [`PrePaintTree::clear_flags`] after resolving.
+    /// cleared; call [`PrePaintTree::clear_flags`] after resolving, and
+    /// [`PrePaintTree::clear_layer_flags`] after building layers.
     ///
     /// Changes builds cannot see, such as paint styles, must be marked. The
     /// root font size and viewport units data resolves with are not tracked:
@@ -140,15 +147,27 @@ impl PrePaintTreeResolver {
 
         for &key in changed.iter() {
             let mut data = sources.resolve_fragment(key)?;
+            let old = tree.fragment_mapping.get(key);
 
-            match tree.fragment_mapping.get(key) {
-                Some(old) if old.same_values(&data) => continue,
-                _ => {
-                    data.generation = generation;
-                    data.subtree_generation = generation;
-                }
+            if old.is_some_and(|old| old.same_values(&data)) {
+                continue;
             }
 
+            // Layer changes are tracked for marked and new fragments.
+            let old_stacking = old.and_then(|old| old.stacking);
+            let tracked = old.is_none() || tree.flags(key).contains(PrePaintFlags::NEED_PRE_PAINT);
+
+            if tracked && old_stacking != data.stacking {
+                let change = if data.stacking.is_some() {
+                    LayerFlags::NEED_LAYER
+                } else {
+                    LayerFlags::NEED_NO_LAYER
+                };
+                tree.mark_layer(fragments, key, change);
+            }
+
+            data.generation = generation;
+            data.subtree_generation = generation;
             tree.fragment_mapping.insert(key, data);
 
             // Stamp the ancestors at once: a later failure keeps the stamp,

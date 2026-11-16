@@ -19,12 +19,12 @@ use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     pre_paint::{
-        FragmentData, LayoutInputData, PrePaintFlags, resolver::PrePaintTreeResolver,
+        FragmentData, LayerFlags, LayoutInputData, PrePaintFlags, resolver::PrePaintTreeResolver,
         tree::PrePaintTree,
     },
     style::{
         BorderRadius, Fill, OutlineFill, OutlineOffset, OutlineWidth, TextColor, Transform,
-        TransformOrigin,
+        TransformOrigin, ZIndex,
     },
 };
 use comet_tree::{
@@ -1413,4 +1413,64 @@ fn fragment_data_generations_follow_changed_values() {
     assert_eq!(f.boxed(parent).subtree_generation, changed);
     assert_eq!(f.boxed(root).subtree_generation, changed);
     assert_eq!(f.boxed(sibling).subtree_generation, first);
+}
+
+#[test]
+fn stacking_changes_of_marked_and_new_fragments_set_layer_flags() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let group = ui.create(Node::Box, (fixed(60.0, 60.0),));
+    let raised = ui.create(Node::Box, (fixed(20.0, 20.0), ZIndex(AutoValue::Value(1))));
+    let plain = ui.create(Node::Box, (fixed(20.0, 20.0),));
+    ui.append(root, group);
+    ui.append(group, raised);
+    ui.append(root, plain);
+
+    let mut f = Fixture::default();
+    let root_key = f.build(&ui, root);
+    let (group_key, raised_key, plain_key) = (f.box_of(group), f.box_of(raised), f.box_of(plain));
+
+    // New fragments count as starting no layer before.
+    assert_eq!(f.pre_paint.layer_flags(raised_key), LayerFlags::NEED_LAYER);
+    assert_eq!(
+        f.pre_paint.layer_flags(group_key),
+        LayerFlags::CHILD_LAYER_UPDATE
+    );
+    assert_eq!(
+        f.pre_paint.layer_flags(root_key),
+        LayerFlags::CHILD_LAYER_UPDATE
+    );
+    assert!(f.pre_paint.layer_flags(plain_key).is_empty());
+    f.pre_paint.clear_layer_flags();
+
+    // A marked fragment whose stacking stays keeps no flags.
+    ui.set_props(raised, (Transform(Affine::translate((5.0, 0.0))),));
+    f.mark(raised_key);
+    f.resolve(&ui, root_key).unwrap();
+    f.pre_paint.clear_flags();
+    assert!(f.pre_paint.layer_flags(raised_key).is_empty());
+    assert!(f.pre_paint.layer_flags(root_key).is_empty());
+
+    // Changing the z index of a layer it still starts needs a layer.
+    ui.remove_prop::<Transform>(raised);
+    ui.set_props(raised, (ZIndex(AutoValue::Value(2)),));
+    f.mark(raised_key);
+    f.resolve(&ui, root_key).unwrap();
+    f.pre_paint.clear_flags();
+    assert_eq!(f.pre_paint.layer_flags(raised_key), LayerFlags::NEED_LAYER);
+    f.pre_paint.clear_layer_flags();
+
+    // Stopping replaces it with no layer, and unmarked stacking changes are
+    // not seen.
+    ui.set_props(raised, (ZIndex(AutoValue::Auto),));
+    ui.set_props(plain, (ZIndex(AutoValue::Value(1)),));
+    f.mark(raised_key);
+    f.resolve(&ui, root_key).unwrap();
+    f.pre_paint.clear_flags();
+    assert_eq!(
+        f.pre_paint.layer_flags(raised_key),
+        LayerFlags::NEED_NO_LAYER
+    );
+    assert!(f.pre_paint.layer_flags(plain_key).is_empty());
+    assert_eq!(f.boxed(plain).stacking, None);
 }

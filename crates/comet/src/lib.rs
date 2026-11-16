@@ -266,13 +266,14 @@ impl App {
         self.pre_paint.clear_flags();
 
         // Layers keep their keys, so building from the root again only places
-        // the layers whose fragments changed.
+        // the layers whose fragments gained, lost or reordered a layer.
         self.layer_root = Some(self.layer_builder.build(
             &self.fragments,
             &self.pre_paint,
             &mut self.layers,
             fragment_root,
         )?);
+        self.pre_paint.clear_layer_flags();
         self.viewport = Some(viewport);
 
         Some(())

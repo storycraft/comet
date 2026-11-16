@@ -2,7 +2,7 @@ use comet_layout::fragment::{FragmentKey, tree::FragmentTree};
 
 use crate::{
     layer::{PaintLayerItem, PaintLayerKey, tree::PaintLayerTree},
-    pre_paint::tree::PrePaintTree,
+    pre_paint::{LayerFlags, tree::PrePaintTree},
 };
 
 /// Builds and updates a [`PaintLayerTree`] for a fragment tree, from the
@@ -15,7 +15,7 @@ pub struct PaintLayerBuilder {
     pass: u32,
     /// Fragments to place, with the layer they paint in.
     pending: Vec<Visit>,
-    /// Fragments to check for changes, with the layer of their nearest
+    /// Fragments to check for layer flags, with the layer of their nearest
     /// ancestor starting one.
     changes: Vec<Visit>,
     /// Layers to place the child layers of again, with their depths.
@@ -43,21 +43,25 @@ impl PaintLayerBuilder {
     /// whatever `root`'s stacking.
     ///
     /// When `tree` already holds the root layer of `root`, only the layers
-    /// whose fragments changed since the last build are placed again, found
-    /// with the [generations](crate::pre_paint::FragmentData::generation) of
-    /// `pre_paint`: a layer's child layers are placed again when fragment
-    /// data painting in it was created or changed, or when one of its child
+    /// with changes are placed again, found from the root with the
+    /// [layer flags](crate::pre_paint::LayerFlags) of `pre_paint`: a layer's
+    /// child layers are placed again when a fragment painting in it is
+    /// flagged [`NEED_LAYER`](LayerFlags::NEED_LAYER) or
+    /// [`NEED_NO_LAYER`](LayerFlags::NEED_NO_LAYER), or when one of its child
     /// layers lost its owner. Layers started by new fragments are built, and
     /// layers whose owner no longer starts one are deleted, their child
-    /// layers moving to the layer they paint in. Subtrees without changes
-    /// are skipped.
+    /// layers moving to the layer they paint in. Subtrees without
+    /// [`CHILD_LAYER_UPDATE`](LayerFlags::CHILD_LAYER_UPDATE) are skipped.
     ///
     /// Otherwise, such as on the first build, after a new root, or with a
-    /// `pre_paint` older than the last build, every layer is built and layers
-    /// of other fragments are deleted.
+    /// `pre_paint` older than the last build or
+    /// [cleared](PrePaintTree::cleared_generation) since, every layer is
+    /// built and layers of other fragments are deleted.
     ///
     /// Build from the same `pre_paint` every time, after resolving it for
-    /// `fragments`. Fragments without pre-paint data start no layer.
+    /// `fragments`. Layer flags are not cleared; call
+    /// [`PrePaintTree::clear_layer_flags`] after building. Fragments without
+    /// pre-paint data start no layer.
     /// Layers whose owner still starts one keep their keys. Returns `None`
     /// if `root` is not in `fragments`.
     pub fn build(
@@ -74,7 +78,7 @@ impl PaintLayerBuilder {
         let root_layer = match tree.layer_of(root) {
             Some(layer)
                 if tree.layers.parent(layer).is_none()
-                    && tree.generation != 0
+                    && pre_paint.cleared_generation() < tree.generation
                     && tree.generation <= pre_paint.generation() =>
             {
                 self.update(fragments, pre_paint, tree, root, layer);
@@ -123,8 +127,7 @@ impl PaintLayerBuilder {
         root_layer
     }
 
-    /// Place the child layers of the layers whose fragments changed since
-    /// the tree's generation again.
+    /// Place the child layers of the layers with flagged fragments again.
     fn update(
         &mut self,
         fragments: &FragmentTree,
@@ -133,7 +136,6 @@ impl PaintLayerBuilder {
         root: FragmentKey,
         root_layer: PaintLayerKey,
     ) {
-        let built = tree.generation;
         self.dirty.clear();
 
         // Layers whose owners were deleted are not reached from the
@@ -146,9 +148,9 @@ impl PaintLayerBuilder {
             }
         }
 
-        // A fragment created, moved or restyled changes the order or the
-        // set of the child layers of the layer it paints in, found from the
-        // layers its ancestors started before this build.
+        // A fragment gaining, losing or reordering its layer changes the
+        // child layers of the layer it paints in, found from the layers its
+        // ancestors started before this build.
         self.changes.clear();
         self.changes.push(Visit {
             fragment: root,
@@ -156,16 +158,17 @@ impl PaintLayerBuilder {
         });
 
         while let Some(Visit { fragment, layer }) = self.changes.pop() {
-            let data = pre_paint.fragment(fragment);
+            let flags = pre_paint.layer_flags(fragment);
 
-            if data.is_some_and(|data| data.subtree_generation <= built) {
-                continue;
+            // The root layer has z index 0, whatever the root's stacking.
+            if fragment != root
+                && flags.intersects(LayerFlags::NEED_LAYER | LayerFlags::NEED_NO_LAYER)
+            {
+                self.dirty.push((0, layer));
             }
 
-            // Fragments without data were never resolved, so they count as
-            // changed, with their subtrees.
-            if fragment != root && data.is_none_or(|data| data.generation > built) {
-                self.dirty.push((0, layer));
+            if !flags.contains(LayerFlags::CHILD_LAYER_UPDATE) {
+                continue;
             }
 
             let layer = tree.layer_of(fragment).unwrap_or(layer);

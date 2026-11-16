@@ -74,6 +74,7 @@ impl Fixture {
         let root = builder
             .build(&fragments, &pre_paint, &mut layers, root)
             .unwrap();
+        pre_paint.clear_layer_flags();
 
         Self {
             inputs,
@@ -112,6 +113,7 @@ impl Fixture {
                 fragment_root,
             )
             .unwrap();
+        self.pre_paint.clear_layer_flags();
     }
 
     fn box_of(&self, node: NodeKey) -> FragmentKey {
@@ -807,6 +809,7 @@ fn updates_match_full_builds() {
         .builder
         .build(&f.fragments, &f.pre_paint, &mut f.layers, fragment_root)
         .unwrap();
+    f.pre_paint.clear_layer_flags();
 
     let fragment_root = f.layers.layers[f.root].owner;
     let mut full = PaintLayerTree::new();
@@ -972,9 +975,13 @@ impl Pipeline {
             .unwrap();
         self.pre_paint.clear_flags();
 
-        self.builder
+        let layer = self
+            .builder
             .build(&self.fragments, &self.pre_paint, &mut self.layers, root)
-            .unwrap()
+            .unwrap();
+        self.pre_paint.clear_layer_flags();
+
+        layer
     }
 
     fn box_of(&self, node: NodeKey) -> Option<FragmentKey> {
@@ -1084,4 +1091,53 @@ fn layers_of_owners_losing_their_stacking_move_up_from_the_root() {
     let group_layer = p.layer_of(group).unwrap();
     assert_eq!(p.children(root_layer), [sibling_layer, group_layer]);
     assert_eq!(p.children(group_layer), [nested_layer]);
+}
+
+#[test]
+fn changed_z_indices_reorder_layers_from_the_root() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let first = ui.create(Node::Box, (fixed(60.0, 20.0), z(1)));
+    let second = ui.create(Node::Box, (fixed(60.0, 20.0), z(2)));
+    ui.append(root, first);
+    ui.append(root, second);
+
+    let mut p = Pipeline::default();
+    let root_layer = p.run(&ui, root);
+    let first_layer = p.layer_of(first).unwrap();
+    let second_layer = p.layer_of(second).unwrap();
+    assert_eq!(p.children(root_layer), [first_layer, second_layer]);
+
+    ui.set_props(first, (z(3),));
+    let fragment = p.box_of(first).unwrap();
+    p.pre_paint.mark(&p.fragments, fragment);
+    assert_eq!(p.run(&ui, root), root_layer);
+
+    assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
+    assert_eq!(p.children(root_layer), [second_layer, first_layer]);
+    assert_eq!(p.layers.layers[first_layer].z_index, 3);
+}
+
+#[test]
+fn layers_ignore_stacking_changes_nobody_marked() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let raised = ui.create(Node::Box, (fixed(60.0, 20.0), z(1)));
+    ui.append(root, raised);
+
+    let mut p = Pipeline::default();
+    let root_layer = p.run(&ui, root);
+    let raised_layer = p.layer_of(raised).unwrap();
+
+    // Not marked: layout alone does not see paint styles, so the layer
+    // stays until the fragment is marked.
+    ui.set_props(raised, (ZIndex(AutoValue::Auto),));
+    assert_eq!(p.run(&ui, root), root_layer);
+    assert_eq!(p.layer_of(raised), Some(raised_layer));
+
+    // Clearing the pre-paint tree builds every layer again.
+    p.pre_paint.clear();
+    assert_eq!(p.run(&ui, root), root_layer);
+    assert_eq!(p.layer_of(raised), None);
+    assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
 }

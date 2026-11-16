@@ -30,6 +30,31 @@ bitflags! {
     }
 }
 
+bitflags! {
+    /// Layer changes of a fragment, set by the
+    /// [`PrePaintTreeResolver`](resolver::PrePaintTreeResolver) in
+    /// [`PrePaintTree`](tree::PrePaintTree) and consumed by the
+    /// [`PaintLayerBuilder`](crate::layer::builder::PaintLayerBuilder).
+    ///
+    /// Only set for fragments resolved because they were marked
+    /// [`PrePaintFlags::NEED_PRE_PAINT`] or had no data yet, such as new
+    /// fragments, when their [stacking](FragmentData::stacking) changed.
+    /// Fragments resolved again only because a fragment build moved or
+    /// resized them keep their stacking.
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    pub struct LayerFlags: u8 {
+        /// At least one descendant fragment needs a layer update.
+        const CHILD_LAYER_UPDATE = 1 << 0;
+
+        /// The fragment starts a layer it did not, or starts one with a
+        /// different z index.
+        const NEED_LAYER = 1 << 1;
+
+        /// The fragment no longer starts the layer it did.
+        const NEED_NO_LAYER = 1 << 2;
+    }
+}
+
 /// Paint data of a layout input item, shared by all fragments it generates.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutInputData {
