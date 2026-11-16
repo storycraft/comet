@@ -522,10 +522,7 @@ impl CometPainter {
             return;
         };
         let data = pre_paint.get(fragment.source);
-        let radii = pre_paint
-            .fragment(key)
-            .and_then(|data| data.border_radius)
-            .unwrap_or_default();
+        let paint_data = pre_paint.fragment(key);
         let rect = local_rect(fragment);
         let bounds = box_bounds(fragment, data, rect);
         let transform = transforms.transform;
@@ -545,12 +542,16 @@ impl CometPainter {
                     .is_some_and(|item| item.kind != LayoutInputKind::Text)
                     && visible(bounds)
                 {
-                    draw_box(ui, inputs, fragment, data, radii, rect, transform, scene);
+                    draw_box(
+                        ui, inputs, fragment, data, paint_data, rect, transform, scene,
+                    );
                 }
             }
             FragmentItem::Inline { .. } => {
                 if visible(bounds) {
-                    draw_box(ui, inputs, fragment, data, radii, rect, transform, scene);
+                    draw_box(
+                        ui, inputs, fragment, data, paint_data, rect, transform, scene,
+                    );
                 }
             }
             // Anonymous blocks only position their lines.
@@ -558,7 +559,9 @@ impl CometPainter {
             FragmentItem::Line { .. } => {}
             FragmentItem::GlyphRun { line, item } => {
                 if visible(bounds) {
-                    draw_box(ui, inputs, fragment, data, radii, rect, transform, scene);
+                    draw_box(
+                        ui, inputs, fragment, data, paint_data, rect, transform, scene,
+                    );
                 }
 
                 if let Some(owner) = inline_owner {
@@ -609,7 +612,8 @@ fn push_clip(
     let radii = sources
         .pre_paint
         .fragment(key)
-        .and_then(|data| data.border_radius);
+        .filter(|data| data.border_radius.is_some())
+        .map(|data| data.border_radii(fragment));
 
     match radii.filter(|_| axes == (true, true)) {
         Some(radii) => scene.push_clip_layer(
@@ -651,18 +655,17 @@ fn draw_backdrop(
         return;
     }
 
-    let radii = sources
+    let border = sources
         .pre_paint
         .fragment(key)
-        .and_then(|data| data.border_radius)
-        .unwrap_or_default();
+        .map_or(rect.to_rounded_rect(0.0), |data| data.border_rect(fragment));
 
     scene.push_layer(
         peniko::Fill::NonZero,
         BlendMode::default(),
         1.0,
         transform,
-        &rect.to_rounded_rect(radii),
+        &border,
         None,
         Some(filter),
     );
@@ -738,16 +741,17 @@ fn node(inputs: &LayoutInputTree, fragment: &Fragment) -> Option<NodeKey> {
 }
 
 /// Paint the background, border and outline of a fragment's border box
-/// `rect`. The background and border are rounded with the fragment's corner
-/// `radii`, and the outline with the radii of its whole item in `data`, even
-/// for a split fragment.
+/// `rect`. The background and border are rounded with the fragment's
+/// [border radii](FragmentData::border_radii) from `paint_data`, square at
+/// the joins of a split fragment, and the outline with all four corners of
+/// its [border radius](FragmentData::border_radius).
 #[allow(clippy::too_many_arguments)]
 fn draw_box(
     ui: &Ui,
     inputs: &LayoutInputTree,
     fragment: &Fragment,
     data: Option<&LayoutInputData>,
-    radii: RoundedRectRadii,
+    paint_data: Option<&FragmentData>,
     rect: Rect,
     transform: Affine,
     scene: &mut impl PaintScene,
@@ -755,6 +759,9 @@ fn draw_box(
     let Some(props) = node(inputs, fragment).and_then(|node| ui.props(node)) else {
         return;
     };
+    let radii = paint_data.map_or(RoundedRectRadii::from(0.0), |data| {
+        data.border_radii(fragment)
+    });
 
     if let Some(fill) = props.get::<Fill>() {
         scene.fill(
@@ -790,14 +797,21 @@ fn draw_box(
             transform,
             &fill.0,
             None,
-            &outline_path(rect, radii, data.outline_offset, width),
+            &outline_path(
+                rect,
+                paint_data
+                    .and_then(|data| data.border_radius)
+                    .unwrap_or_default(),
+                data.outline_offset,
+                width,
+            ),
         );
     }
 }
 
 /// The path an outline of `width` is stroked along: each edge of the border
-/// box `rect` moved out by `offset` and half the width, rounded with the
-/// fragment's border `radii` grown by the same distance. Square corners stay square, and a
+/// box `rect` moved out by `offset` and half the width, rounded with all four
+/// border `radii` grown by the same distance. Square corners stay square, and a
 /// negative offset shrinks the box no further than its centre.
 fn outline_path(rect: Rect, radii: RoundedRectRadii, offset: f64, width: f64) -> RoundedRect {
     let shrink = rect.width().min(rect.height()) / 2.0;

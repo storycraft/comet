@@ -13,7 +13,8 @@ pub mod resolver;
 pub mod tree;
 
 use bitflags::bitflags;
-use kurbo::{Affine, Point, RoundedRectRadii};
+use comet_layout::fragment::Fragment;
+use kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii};
 
 bitflags! {
     /// Invalidation state of a fragment, maintained by
@@ -114,9 +115,10 @@ pub struct FragmentData {
     /// Corner radii of the fragment's border box, resolved from its item's
     /// [`BorderRadius`](crate::style::BorderRadius) with its font size,
     /// against the fragment's own size: percentages resolve against its
-    /// smaller side. Corners joining a linked fragment are square: box fragments
-    /// continue below their previous fragment, inline and glyph run fragments
-    /// to its right.
+    /// smaller side. All four corners are resolved, also for split
+    /// fragments, such as for outlines. Backgrounds, borders, clips and hit
+    /// testing square the corners joining a linked fragment, see
+    /// [`Self::border_radii`].
     ///
     /// `None` for fragments painting no box, such as line boxes and anonymous
     /// blocks, or items setting no radius.
@@ -141,4 +143,55 @@ impl FragmentData {
             && self.stacking == other.stacking
             && self.border_radius == other.border_radius
     }
+
+    /// Corner radii of the border of `fragment`, the fragment this data was
+    /// resolved for: its [border radius](Self::border_radius), with the
+    /// corners joining a linked fragment square. Box fragments continue below
+    /// their previous fragment, inline and glyph run fragments to its right.
+    /// Square if it has no border radius.
+    pub fn border_radii(&self, fragment: &Fragment) -> RoundedRectRadii {
+        self.border_radius
+            .map_or(RoundedRectRadii::from(0.0), |radii| {
+                split_radii(fragment, radii)
+            })
+    }
+
+    /// The border box of `fragment`, the fragment this data was resolved
+    /// for, in its local coordinates, rounded with its
+    /// [border radii](Self::border_radii).
+    pub fn border_rect(&self, fragment: &Fragment) -> RoundedRect {
+        let size = fragment.layout.size;
+
+        Rect::from_origin_size(Point::ORIGIN, (size.width, size.height))
+            .to_rounded_rect(self.border_radii(fragment))
+    }
+}
+
+/// `radii` of `fragment`, with the corners joining a linked fragment square.
+fn split_radii(fragment: &Fragment, mut radii: RoundedRectRadii) -> RoundedRectRadii {
+    // Box fragments continue below their previous fragment, inline and glyph
+    // run fragments to its right.
+    let vertical = fragment.item.is_box();
+
+    if fragment.link.prev.is_some() {
+        radii.top_left = 0.0;
+
+        if vertical {
+            radii.top_right = 0.0;
+        } else {
+            radii.bottom_left = 0.0;
+        }
+    }
+
+    if fragment.link.next.is_some() {
+        radii.bottom_right = 0.0;
+
+        if vertical {
+            radii.bottom_left = 0.0;
+        } else {
+            radii.top_right = 0.0;
+        }
+    }
+
+    radii
 }

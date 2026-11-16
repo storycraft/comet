@@ -248,9 +248,8 @@ impl Sources<'_> {
     }
 
     /// Corner radii of a fragment's border box, from its item's `props`,
-    /// resolved against the fragment's size, with the corners joining a
-    /// linked fragment square. `None` for fragments painting no box and
-    /// items setting no radius.
+    /// resolved against the fragment's size, all four corners rounded.
+    /// `None` for fragments painting no box and items setting no radius.
     fn border_radius(&self, fragment: &Fragment, props: Props<'_>) -> Option<RoundedRectRadii> {
         if matches!(
             fragment.item,
@@ -263,13 +262,10 @@ impl Sources<'_> {
         let mut units = self.units.clone();
         units.font_size = self.inputs.items[fragment.source].text_style.span.font_size as f64;
 
-        Some(split_radii(
-            fragment,
-            border_radius(
-                radius,
-                &units,
-                Size::new(fragment.layout.size.width, fragment.layout.size.height),
-            ),
+        Some(border_radius(
+            radius,
+            &units,
+            Size::new(fragment.layout.size.width, fragment.layout.size.height),
         ))
     }
 
@@ -315,36 +311,6 @@ fn border_radius(
         resolve(radius.right_bottom.y),
         resolve(radius.left_top.x),
     )
-}
-
-/// The corner radii of a fragment of an item with `radii`, with the corners
-/// joining a linked fragment square.
-fn split_radii(fragment: &Fragment, mut radii: RoundedRectRadii) -> RoundedRectRadii {
-    // Box fragments continue below their previous fragment, inline and glyph
-    // run fragments to its right.
-    let vertical = fragment.item.is_box();
-
-    if fragment.link.prev.is_some() {
-        radii.top_left = 0.0;
-
-        if vertical {
-            radii.top_right = 0.0;
-        } else {
-            radii.bottom_left = 0.0;
-        }
-    }
-
-    if fragment.link.next.is_some() {
-        radii.bottom_right = 0.0;
-
-        if vertical {
-            radii.bottom_left = 0.0;
-        } else {
-            radii.top_right = 0.0;
-        }
-    }
-
-    radii
 }
 
 /// The z index of the paint layer a box starts, or `None` if it paints in

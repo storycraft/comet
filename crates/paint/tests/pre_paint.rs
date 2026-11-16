@@ -121,6 +121,15 @@ impl Fixture {
         self.pre_paint.fragment(key)?.border_radius
     }
 
+    /// The border radii of a fragment, square at its joins, or `None` if it
+    /// has no border radius.
+    fn border_radii(&self, key: FragmentKey) -> Option<RoundedRectRadii> {
+        let data = self.pre_paint.fragment(key)?;
+        data.border_radius?;
+
+        Some(data.border_radii(&self.fragments.items[key]))
+    }
+
     fn fragment(&self, key: FragmentKey) -> &FragmentData {
         self.pre_paint.fragment(key).unwrap()
     }
@@ -357,18 +366,35 @@ fn split_fragments_square_joins_and_resolve_percentages_against_their_own_size()
     let fragments: Vec<_> = f.fragments.fragments(f.item(span)).collect();
     assert!(fragments.len() > 1);
 
-    // Fragments square the corners at their joins.
+    // Every fragment resolves all four corners, and its border squares the
+    // corners at its joins.
+    for &fragment in &fragments {
+        assert_eq!(f.border_radius(fragment), Some(RoundedRectRadii::from(6.0)));
+    }
     assert_eq!(
-        f.border_radius(fragments[0]),
+        f.border_radii(fragments[0]),
         Some(RoundedRectRadii::new(6.0, 0.0, 0.0, 6.0))
     );
     assert_eq!(
-        f.border_radius(*fragments.last().unwrap()),
+        f.border_radii(*fragments.last().unwrap()),
         Some(RoundedRectRadii::new(0.0, 6.0, 6.0, 0.0))
     );
     for &fragment in &fragments[1..fragments.len() - 1] {
-        assert_eq!(f.border_radius(fragment), Some(RoundedRectRadii::from(0.0)));
+        assert_eq!(f.border_radii(fragment), Some(RoundedRectRadii::from(0.0)));
     }
+
+    // Hit testing follows the border: the joined corner is square, the outer
+    // one rounded.
+    let first = fragments[0];
+    let width = f.fragments.items[first].layout.size.width;
+    assert!(
+        f.pre_paint
+            .hit_local(&f.fragments, first, Point::new(width - 0.5, 0.5))
+    );
+    assert!(
+        !f.pre_paint
+            .hit_local(&f.fragments, first, Point::new(0.5, 0.5))
+    );
 
     // Percentages resolve against the smaller side of each fragment.
     assert_eq!(
@@ -391,6 +417,10 @@ fn split_fragments_square_joins_and_resolve_percentages_against_their_own_size()
 
         assert_eq!(
             f.border_radius(fragment),
+            Some(RoundedRectRadii::from(radius))
+        );
+        assert_eq!(
+            f.border_radii(fragment),
             Some(RoundedRectRadii::new(left, right, right, left))
         );
     }
@@ -446,7 +476,7 @@ fn fragment_boxes_resolve_their_border_radii() {
         Some(RoundedRectRadii::new(3.0, 4.0, 8.0, 10.0))
     );
 
-    // Only the outer corners of wrapped fragments are rounded.
+    // Only the outer corners of wrapped fragments' borders are rounded.
     let fragments: Vec<_> = f.fragments.fragments(f.item(span)).collect();
     assert!(fragments.len() > 1);
 
@@ -459,7 +489,7 @@ fn fragment_boxes_resolve_their_border_radii() {
         };
 
         assert_eq!(
-            f.border_radius(fragment),
+            f.border_radii(fragment),
             Some(RoundedRectRadii::new(left, right, right, left))
         );
     }
@@ -1088,7 +1118,7 @@ fn outlines_stroke_outside_the_offset_box() {
 }
 
 #[test]
-fn outlines_of_split_fragments_follow_their_fragment_radii() {
+fn outlines_of_split_fragments_round_all_four_corners() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let span = ui.create(
@@ -1124,16 +1154,13 @@ fn outlines_of_split_fragments_follow_their_fragment_radii() {
     assert!(fragments.len() > 1);
     assert_eq!(outlines.len(), fragments.len());
 
-    // Each fragment's outline is rounded with its own radii, grown by half
-    // the outline width, so the corners at the joins stay square.
-    let last = fragments.len() - 1;
-    for (index, (outline, key)) in outlines.into_iter().zip(fragments).enumerate() {
+    // Every corner of every fragment's outline is rounded, also at the
+    // joins, grown by half the outline width.
+    for (outline, key) in outlines.into_iter().zip(fragments) {
         let size = f.fragments.items[key].layout.size;
-        let left = if index == 0 { 5.0 } else { 0.0 };
-        let right = if index == last { 5.0 } else { 0.0 };
         let expected = Rect::from_origin_size(Point::ORIGIN, (size.width, size.height))
             .inflate(1.0, 1.0)
-            .to_rounded_rect(RoundedRectRadii::new(left, right, right, left))
+            .to_rounded_rect(5.0)
             .to_path(scene.tolerance);
 
         assert_eq!(outline.elements().len(), expected.elements().len());

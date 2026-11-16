@@ -4,7 +4,7 @@ use comet_layout::{
     fragment::{FragmentKey, tree::FragmentTree},
     input::LayoutInputKey,
 };
-use kurbo::{Point, Rect, Shape};
+use kurbo::{Point, Shape};
 use slotmap::SecondaryMap;
 
 use crate::pre_paint::{FragmentData, LayerFlags, LayoutInputData, PrePaintFlags};
@@ -177,8 +177,9 @@ impl PrePaintTree {
     }
 
     /// Whether `point`, in the local coordinates of a fragment, hits the
-    /// fragment itself: it falls in its border box, rounded with its
-    /// [border radius](FragmentData::border_radius).
+    /// fragment itself: it falls in its
+    /// [border rect](FragmentData::border_rect), square at the joins of a
+    /// split fragment.
     ///
     /// Fragments not in `fragments`, or not resolved in `self`, are never
     /// hit.
@@ -191,13 +192,7 @@ impl PrePaintTree {
             return false;
         };
 
-        let size = fragment.layout.size;
-        let rect = Rect::from_origin_size(Point::ORIGIN, (size.width, size.height));
-        let Some(radii) = data.border_radius else {
-            return rect.contains(point);
-        };
-
-        rect.to_rounded_rect(radii).contains(point)
+        data.border_rect(fragment).contains(point)
     }
 }
 
