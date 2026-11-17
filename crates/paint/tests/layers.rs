@@ -4,7 +4,7 @@ use anyrender::{Paint, Scene, recording::RenderCommand};
 use comet_layout::{
     fragment::{FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
-        InputFlags,
+        InputFlags, LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -68,14 +68,13 @@ impl Fixture {
         PrePaintTreeResolver::new()
             .resolve(ui, &inputs, &fragments, &UNITS, &mut pre_paint, root)
             .unwrap();
-        inputs.clear_flags(input_root);
 
         let mut layers = PaintLayerTree::new();
         let mut builder = PaintLayerBuilder::new();
         let root = builder
-            .build(&fragments, &pre_paint, &mut layers, root)
+            .build(&fragments, &inputs, &pre_paint, &mut layers, input_root)
             .unwrap();
-        pre_paint.clear_layer_flags();
+        inputs.clear_flags(input_root);
 
         Self {
             inputs,
@@ -104,17 +103,22 @@ impl Fixture {
             )
             .unwrap();
         let input_root = self.fragments.items[fragment_root].source;
-        self.inputs.clear_flags(input_root);
         self.root = self
             .builder
             .build(
                 &self.fragments,
+                &self.inputs,
                 &self.pre_paint,
                 &mut self.layers,
-                fragment_root,
+                input_root,
             )
             .unwrap();
-        self.pre_paint.clear_layer_flags();
+        self.inputs.clear_flags(input_root);
+    }
+
+    /// The layout input item of the root layer's owner.
+    fn input_root(&self) -> LayoutInputKey {
+        self.fragments.items[self.layers.layers[self.root].owner].source
     }
 
     fn box_of(&self, node: NodeKey) -> FragmentKey {
@@ -710,10 +714,16 @@ fn building_again_keeps_layer_keys() {
     assert_eq!(f.children(f.root), [moved_layer]);
 
     // Building from the root keeps them too.
-    let fragment_root = f.layers.layers[f.root].owner;
+    let input_root = f.input_root();
     f.root = f
         .builder
-        .build(&f.fragments, &f.pre_paint, &mut f.layers, fragment_root)
+        .build(
+            &f.fragments,
+            &f.inputs,
+            &f.pre_paint,
+            &mut f.layers,
+            input_root,
+        )
         .unwrap();
 
     assert_eq!(f.root, root_layer);
@@ -807,17 +817,21 @@ fn updates_match_full_builds() {
         )
         .unwrap();
     let input_root = f.fragments.items[fragment_root].source;
-    f.inputs.clear_flags(input_root);
     f.root = f
         .builder
-        .build(&f.fragments, &f.pre_paint, &mut f.layers, fragment_root)
+        .build(
+            &f.fragments,
+            &f.inputs,
+            &f.pre_paint,
+            &mut f.layers,
+            input_root,
+        )
         .unwrap();
-    f.pre_paint.clear_layer_flags();
+    f.inputs.clear_flags(input_root);
 
-    let fragment_root = f.layers.layers[f.root].owner;
     let mut full = PaintLayerTree::new();
     let full_root = PaintLayerBuilder::new()
-        .build(&f.fragments, &f.pre_paint, &mut full, fragment_root)
+        .build(&f.fragments, &f.inputs, &f.pre_paint, &mut full, input_root)
         .unwrap();
 
     assert_eq!(shape(&f.layers, f.root), shape(&full, full_root));
@@ -880,9 +894,15 @@ fn hit_testers_can_be_reused() {
     assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_of(moved)));
 
     // Nor into hits on rebuilt layers.
-    let fragment_root = f.layers.layers[f.root].owner;
+    let input_root = f.input_root();
     f.root = PaintLayerBuilder::new()
-        .build(&f.fragments, &f.pre_paint, &mut f.layers, fragment_root)
+        .build(
+            &f.fragments,
+            &f.inputs,
+            &f.pre_paint,
+            &mut f.layers,
+            input_root,
+        )
         .unwrap();
     assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_of(moved)));
 }
@@ -975,13 +995,18 @@ impl Pipeline {
                 root,
             )
             .unwrap();
-        self.inputs.clear_flags(input_root);
 
         let layer = self
             .builder
-            .build(&self.fragments, &self.pre_paint, &mut self.layers, root)
+            .build(
+                &self.fragments,
+                &self.inputs,
+                &self.pre_paint,
+                &mut self.layers,
+                input_root,
+            )
             .unwrap();
-        self.pre_paint.clear_layer_flags();
+        self.inputs.clear_flags(input_root);
 
         layer
     }
@@ -1001,10 +1026,16 @@ impl Pipeline {
 
     /// The layers built from scratch for the current trees.
     fn full_shape(&self, root: PaintLayerKey) -> String {
-        let fragment_root = self.layers.layers[root].owner;
+        let input_root = self.fragments.items[self.layers.layers[root].owner].source;
         let mut full = PaintLayerTree::new();
         let full_root = PaintLayerBuilder::new()
-            .build(&self.fragments, &self.pre_paint, &mut full, fragment_root)
+            .build(
+                &self.fragments,
+                &self.inputs,
+                &self.pre_paint,
+                &mut full,
+                input_root,
+            )
             .unwrap();
 
         shape(&full, full_root)

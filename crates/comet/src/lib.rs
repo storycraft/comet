@@ -273,19 +273,22 @@ impl App {
             &mut self.pre_paint,
             fragment_root,
         );
-        // Flags were consumed by the fragment build and the pre-paint resolve.
-        self.inputs.clear_flags(input_root);
-        resolved?;
 
         // Layers keep their keys, so building from the root again only places
         // the layers whose fragments gained, lost or reordered a layer.
-        self.layer_root = Some(self.layer_builder.build(
-            &self.fragments,
-            &self.pre_paint,
-            &mut self.layers,
-            fragment_root,
-        )?);
-        self.pre_paint.clear_layer_flags();
+        let layer_root = resolved.and_then(|()| {
+            self.layer_builder.build(
+                &self.fragments,
+                &self.inputs,
+                &self.pre_paint,
+                &mut self.layers,
+                input_root,
+            )
+        });
+        // Flags were consumed by the fragment build, the pre-paint resolve and
+        // the layer build.
+        self.inputs.clear_flags(input_root);
+        self.layer_root = Some(layer_root?);
         self.viewport = Some(viewport);
 
         Some(())

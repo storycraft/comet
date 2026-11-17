@@ -38,7 +38,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = FragmentTreeBuilder::new()
         .build(&ui, &inputs, input_root, &mut fragments, &constraint)
         .ok_or("could not build fragment tree")?;
-    inputs.clear_flags(input_root);
     let mut pre_paint = PrePaintTree::new();
     PrePaintTreeResolver::new()
         .resolve(
@@ -52,8 +51,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("could not resolve pre-paint tree")?;
     let mut layers = PaintLayerTree::new();
     let layer_root = PaintLayerBuilder::new()
-        .build(&fragments, &pre_paint, &mut layers, root)
+        .build(&fragments, &inputs, &pre_paint, &mut layers, input_root)
         .ok_or("could not build paint layer tree")?;
+    inputs.clear_flags(input_root);
 
     let mut pending = vec![(root, 0)];
 

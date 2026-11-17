@@ -1,8 +1,11 @@
-use comet_layout::fragment::{FragmentKey, tree::FragmentTree};
+use comet_layout::{
+    fragment::{FragmentKey, tree::FragmentTree},
+    input::{InputFlags, LayoutInputKey, tree::LayoutInputTree},
+};
 
 use crate::{
     layer::{PaintLayerItem, PaintLayerKey, tree::PaintLayerTree},
-    pre_paint::{LayerFlags, tree::PrePaintTree},
+    pre_paint::tree::PrePaintTree,
 };
 
 /// Builds and updates a [`PaintLayerTree`] for a fragment tree, from the
@@ -15,9 +18,8 @@ pub struct PaintLayerBuilder {
     pass: u32,
     /// Fragments to place, with the layer they paint in.
     pending: Vec<Visit>,
-    /// Fragments to check for layer flags, with the layer of their nearest
-    /// ancestor starting one.
-    changes: Vec<Visit>,
+    /// Layout input items to check for layer changes.
+    items: Vec<LayoutInputKey>,
     /// Layers to place the child layers of again, with their depths.
     dirty: Vec<(usize, PaintLayerKey)>,
     /// Child layers detached from the layers being rebuilt. Those not
@@ -38,50 +40,51 @@ impl PaintLayerBuilder {
         Self::default()
     }
 
-    /// Build the layers of the fragments under `root` into `tree`, and
-    /// return the root layer, owned by `root`. The root layer has z index 0,
-    /// whatever `root`'s stacking.
+    /// Build the layers of the fragments generated under the layout input
+    /// item `root` into `tree`, and return the root layer, owned by the box
+    /// fragment of `root`. The root fragment always starts the root layer,
+    /// with z index 0, whatever its stacking.
     ///
-    /// When `tree` already holds the root layer of `root`, only the layers
-    /// with changes are placed again, found from the root with the
-    /// [layer flags](crate::pre_paint::LayerFlags) of `pre_paint`: a layer's
-    /// child layers are placed again when a fragment painting in it is
-    /// flagged [`NEED_LAYER`](LayerFlags::NEED_LAYER) or
-    /// [`NEED_NO_LAYER`](LayerFlags::NEED_NO_LAYER), or when one of its child
-    /// layers lost its owner. Layers started by new fragments are built, and
-    /// layers whose owner no longer starts one are deleted, their child
-    /// layers moving to the layer they paint in. Subtrees without
-    /// [`CHILD_LAYER_UPDATE`](LayerFlags::CHILD_LAYER_UPDATE) are skipped.
+    /// When `tree` already holds the root layer of the root fragment, only
+    /// the layers with changes are placed again. Items are visited from
+    /// `root`, going into the children of an item whose
+    /// [`LayoutInputItem::child_flags`](comet_layout::input::LayoutInputItem::child_flags)
+    /// have [`InputFlags::NEED_PRE_PAINT`]. For each item whose
+    /// [`LayoutInputItem::flags`](comet_layout::input::LayoutInputItem::flags)
+    /// have it, the [stacking](crate::pre_paint::FragmentData::stacking) of
+    /// each of its fragments is compared with the layer the fragment starts:
+    /// when it gains, loses or changes the z index of its layer, the child
+    /// layers of the layer it paints in are placed again. So are those of a
+    /// layer one of whose child layers lost its owner. Layers started by new
+    /// fragments are built, and layers whose owner no longer starts one are
+    /// deleted, their child layers moving to the layer they paint in.
     ///
     /// Otherwise, such as on the first build or after a new root, every layer
-    /// is built and layers of other fragments are deleted. After
-    /// [clearing](PrePaintTree::clear) `pre_paint`, also
-    /// [clear](PaintLayerTree::clear) `tree`: layer flags do not cover what
-    /// changed before.
+    /// is built and layers of other fragments are deleted.
     ///
     /// Build from the same `pre_paint` every time, after resolving it for
-    /// `fragments`. Layer flags are not cleared; call
-    /// [`PrePaintTree::clear_layer_flags`] after building. Fragments without
-    /// pre-paint data start no layer.
-    /// Layers whose owner still starts one keep their keys. Returns `None`
-    /// if `root` is not in `fragments`.
+    /// `fragments`, and before clearing the input flags. Fragments without
+    /// pre-paint data start no layer. Layers whose owner still starts one
+    /// keep their keys. Returns `None` if `root` has no box fragment in
+    /// `fragments`.
     pub fn build(
         &mut self,
         fragments: &FragmentTree,
+        inputs: &LayoutInputTree,
         pre_paint: &PrePaintTree,
         tree: &mut PaintLayerTree,
-        root: FragmentKey,
+        root: LayoutInputKey,
     ) -> Option<PaintLayerKey> {
-        fragments.items.get(root)?;
+        let root_fragment = fragments.box_fragment(root)?;
         self.pass = self.pass.wrapping_add(1);
         self.detached.clear();
 
-        let root_layer = match tree.layer_of(root) {
+        let root_layer = match tree.layer_of(root_fragment) {
             Some(layer) if tree.layers.parent(layer).is_none() => {
-                self.update(fragments, pre_paint, tree, root, layer);
+                self.update(fragments, inputs, pre_paint, tree, root, layer);
                 layer
             }
-            _ => self.build_root(fragments, pre_paint, tree, root),
+            _ => self.build_root(fragments, pre_paint, tree, root_fragment),
         };
 
         self.delete_detached(tree);
@@ -123,15 +126,17 @@ impl PaintLayerBuilder {
         root_layer
     }
 
-    /// Place the child layers of the layers with flagged fragments again.
+    /// Place the child layers of the layers with layer changes again.
     fn update(
         &mut self,
         fragments: &FragmentTree,
+        inputs: &LayoutInputTree,
         pre_paint: &PrePaintTree,
         tree: &mut PaintLayerTree,
-        root: FragmentKey,
+        root: LayoutInputKey,
         root_layer: PaintLayerKey,
     ) {
+        let root_fragment = tree.layers[root_layer].owner;
         self.dirty.clear();
 
         // Layers whose owners were deleted are not reached from the
@@ -147,32 +152,41 @@ impl PaintLayerBuilder {
         // A fragment gaining, losing or reordering its layer changes the
         // child layers of the layer it paints in, found from the layers its
         // ancestors started before this build.
-        self.changes.clear();
-        self.changes.push(Visit {
-            fragment: root,
-            layer: root_layer,
-        });
+        self.items.clear();
+        self.items.push(root);
 
-        while let Some(Visit { fragment, layer }) = self.changes.pop() {
-            let flags = pre_paint.layer_flags(fragment);
-
-            // The root layer has z index 0, whatever the root's stacking.
-            if fragment != root
-                && flags.intersects(LayerFlags::NEED_LAYER | LayerFlags::NEED_NO_LAYER)
-            {
-                self.dirty.push((0, layer));
-            }
-
-            if !flags.contains(LayerFlags::CHILD_LAYER_UPDATE) {
+        while let Some(key) = self.items.pop() {
+            let Some(item) = inputs.items.get(key) else {
                 continue;
+            };
+
+            if item.flags.contains(InputFlags::NEED_PRE_PAINT) {
+                for fragment in fragments.fragments(key) {
+                    // The root layer has z index 0, whatever the root's
+                    // stacking.
+                    if fragment == root_fragment {
+                        continue;
+                    }
+
+                    let stacking = pre_paint.fragment(fragment).and_then(|data| data.stacking);
+                    let current = tree
+                        .layer_of(fragment)
+                        .map(|layer| tree.layers[layer].z_index);
+
+                    if stacking != current
+                        && let Some(layer) = fragments
+                            .items
+                            .parent(fragment)
+                            .and_then(|parent| tree.enclosing(fragments, parent))
+                    {
+                        self.dirty.push((0, layer));
+                    }
+                }
             }
 
-            let layer = tree.layer_of(fragment).unwrap_or(layer);
-            self.changes
-                .extend(fragments.items.children(fragment).map(|child| Visit {
-                    fragment: child,
-                    layer,
-                }));
+            if item.child_flags.contains(InputFlags::NEED_PRE_PAINT) {
+                self.items.extend(inputs.items.children(key));
+            }
         }
 
         for (depth, layer) in &mut self.dirty {

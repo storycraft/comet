@@ -148,7 +148,13 @@ fn draw(
         .unwrap();
     let mut layers = PaintLayerTree::new();
     let layer_root = PaintLayerBuilder::new()
-        .build(tree, &pre_paint, &mut layers, root)
+        .build(
+            tree,
+            inputs,
+            &pre_paint,
+            &mut layers,
+            tree.items[root].source,
+        )
         .unwrap();
     painter.draw(
         ui, inputs, tree, &pre_paint, &layers, layer_root, viewport, 1.0, scene,

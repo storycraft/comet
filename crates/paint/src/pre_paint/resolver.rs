@@ -11,7 +11,7 @@ use comet_tree::ui::{Props, Ui};
 use kurbo::{Affine, Point, RoundedRectRadii, Size};
 
 use crate::{
-    pre_paint::{FragmentData, LayerFlags, LayoutInputData, tree::PrePaintTree},
+    pre_paint::{FragmentData, LayoutInputData, tree::PrePaintTree},
     style::{
         BackdropFilter, BorderRadius, Filter, Opacity, OutlineOffset, OutlineWidth, Transform,
         TransformOrigin, ZIndex,
@@ -58,16 +58,9 @@ impl PrePaintTreeResolver {
     /// are not visited, even when they have no data, so mark their items
     /// after [clearing](PrePaintTree::clear) `tree`.
     ///
-    /// Fragments resolved because their item was marked or they had no data,
-    /// whose [stacking](FragmentData::stacking) changed, get
-    /// [`LayerFlags::NEED_LAYER`] or [`LayerFlags::NEED_NO_LAYER`], and their
-    /// ancestors [`LayerFlags::CHILD_LAYER_UPDATE`], for the next layer
-    /// build. A new fragment counts as starting no layer before.
-    ///
     /// Data only depends on the fragment or item itself, so ancestors are not
-    /// resolved. Input flags are not cleared; call
-    /// [`LayoutInputTree::clear_flags`] after resolving, and
-    /// [`PrePaintTree::clear_layer_flags`] after building layers.
+    /// resolved. Input flags are not cleared; the layer build reads them too,
+    /// so call [`LayoutInputTree::clear_flags`] after building layers.
     ///
     /// Changes builds cannot see, such as paint styles, must be marked. The
     /// root font size and viewport units data resolves with are not tracked:
@@ -136,23 +129,9 @@ impl PrePaintTreeResolver {
             let data = sources.resolve_fragment(key)?;
             let old = tree.fragment_mapping.get(key);
 
-            if old == Some(&data) {
-                continue;
+            if old != Some(&data) {
+                tree.fragment_mapping.insert(key, data);
             }
-
-            // Every resolved fragment is marked or new.
-            let old_stacking = old.and_then(|old| old.stacking);
-
-            if old_stacking != data.stacking {
-                let change = if data.stacking.is_some() {
-                    LayerFlags::NEED_LAYER
-                } else {
-                    LayerFlags::NEED_NO_LAYER
-                };
-                tree.mark_layer(fragments, key, change);
-            }
-
-            tree.fragment_mapping.insert(key, data);
         }
 
         Some(())

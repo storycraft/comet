@@ -14,34 +14,10 @@
 pub mod resolver;
 pub mod tree;
 
-use bitflags::bitflags;
 use comet_layout::fragment::Fragment;
 #[cfg(doc)]
 use comet_layout::input::InputFlags;
 use kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii};
-
-bitflags! {
-    /// Layer changes of a fragment, set by the
-    /// [`PrePaintTreeResolver`](resolver::PrePaintTreeResolver) in
-    /// [`PrePaintTree`](tree::PrePaintTree) and consumed by the
-    /// [`PaintLayerBuilder`](crate::layer::builder::PaintLayerBuilder).
-    ///
-    /// Set for fragments resolved because their item was marked
-    /// [`InputFlags::NEED_PRE_PAINT`] or they had no data yet, such as new
-    /// fragments, when their [stacking](FragmentData::stacking) changed.
-    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-    pub struct LayerFlags: u8 {
-        /// At least one descendant fragment needs a layer update.
-        const CHILD_LAYER_UPDATE = 1 << 0;
-
-        /// The fragment starts a layer it did not, or starts one with a
-        /// different z index.
-        const NEED_LAYER = 1 << 1;
-
-        /// The fragment no longer starts the layer it did.
-        const NEED_NO_LAYER = 1 << 2;
-    }
-}
 
 /// Paint data of a layout input item, shared by all fragments it generates.
 #[derive(Debug, Clone, PartialEq)]
