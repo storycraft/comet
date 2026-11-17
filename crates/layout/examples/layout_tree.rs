@@ -125,7 +125,7 @@ fn print_tree(ui: &Ui, tree: &LayoutInputTree, root: LayoutInputKey) {
         let indent = "  ".repeat(depth);
         println!(
             "{indent}{key:?} {:?}({:?}) children={:?} font_size={} flags={:?}",
-            item.kind, item.node, item.child_layout, item.text_style.span.font_size, item.flags2
+            item.kind, item.node, item.child_layout, item.text_style.span.font_size, item.flags
         );
 
         if item.kind == LayoutInputKind::Text {

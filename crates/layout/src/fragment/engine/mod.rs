@@ -25,7 +25,7 @@ use super::{
     tree::FragmentTree,
 };
 use crate::{
-    input::{ChildLayout, LayoutFlags, LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
+    input::{ChildLayout, InputFlags, LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     style::LayoutConstraint,
     taffy::style::{self, Style},
 };
@@ -50,8 +50,6 @@ pub(crate) struct Scratch {
     /// Box fragments created during this build, whose mode and style are
     /// already resolved.
     created: FxHashSet<FragmentKey>,
-    /// Items under a moved item whose box fragments get new keys.
-    moved: Vec<LayoutInputKey>,
     /// Stack of the direct children of fragments being laid out, shared by
     /// nested [`FragmentEngine`]s.
     pub(super) children: Vec<Child>,
@@ -183,7 +181,11 @@ impl Engine<'_> {
     }
 
     /// Visit flagged items from the root. Cached layouts of flagged items are
-    /// dropped and their fragment children are synchronized. Flags are kept.
+    /// dropped and their fragment children are synchronized. Subtrees are
+    /// visited only when their root's [`LayoutInputItem::child_flags`] have
+    /// [`InputFlags::NEED_BOX_LAYOUT`]. Flags are kept.
+    ///
+    /// [`LayoutInputItem::child_flags`]: crate::input::LayoutInputItem::child_flags
     pub fn invalidate(&mut self) {
         // Without retained fragments every item is treated as flagged.
         let force = self.fragments.box_fragment(self.root).is_none();
@@ -194,15 +196,10 @@ impl Engine<'_> {
         while let Some(key) = stack.pop() {
             let item = &self.tree.items[key];
             let flags = item.flags;
+            // `NEED_BOX_LAYOUT` is part of every flag laying out a box.
+            let descend = item.child_flags.contains(InputFlags::NEED_BOX_LAYOUT);
             let child_layout = item.child_layout;
             let is_box = self.is_box(key);
-
-            // Its parent, visited before, attached it in its new place.
-            if flags.contains(LayoutFlags::MOVED) {
-                self.rekey_subtree(key);
-            }
-            // Moving alone keeps the layout.
-            let flags = flags - LayoutFlags::MOVED;
 
             // After a viewport change, boxes depending on it are laid out
             // again. Their ancestor boxes carry the bit too, which leads here.
@@ -215,7 +212,8 @@ impl Engine<'_> {
                     .and_then(|fragment| self.fragments.get_state(fragment))
                     .is_some_and(|state| state.bits.contains(NodeLayoutBits::DEPENDS_VIEWPORT));
 
-            if !force && !viewport && flags.is_empty() {
+            // Ancestors of flagged items are laid out again too.
+            if !force && !viewport && flags.is_empty() && !descend {
                 continue;
             }
 
@@ -227,9 +225,7 @@ impl Engine<'_> {
                 self.release(fragment);
             }
 
-            if (force || viewport || flags.contains(LayoutFlags::CHILD_NEED_LAYOUT))
-                && child_layout != ChildLayout::None
-            {
+            if (force || viewport || descend) && child_layout != ChildLayout::None {
                 stack.extend(self.tree.items.children(key));
             }
 
@@ -255,26 +251,26 @@ impl Engine<'_> {
     ///
     /// Boxes created in this build are already resolved. The style of a box
     /// is kept unless its box is dirty, and its mode unless it is
-    /// [`LayoutFlags::NEED_FULL_LAYOUT`]: the mode depends on the kinds of
+    /// [`InputFlags::NEED_FULL_LAYOUT`]: the mode depends on the kinds of
     /// its children and inline content, and the input builder marks the box
     /// when those or the inline content's child lists change.
     ///
     /// Box style changes alone keep shaped text and child fragments. Inline
-    /// content is shaped again only when an item in it is [`LayoutFlags::NEED_FULL_LAYOUT`].
+    /// content is shaped again only when an item in it is [`InputFlags::NEED_FULL_LAYOUT`].
     ///
     /// `viewport` lays out a box depending on a changed viewport again, as if
     /// its box style changed.
     fn invalidate_box(
         &mut self,
         key: LayoutInputKey,
-        flags: LayoutFlags,
+        flags: InputFlags,
         force: bool,
         viewport: bool,
     ) {
         let fragment = self.ensure_box(key);
         let created = self.scratch.created.contains(&fragment);
-        let box_dirty = force || viewport || flags.contains(LayoutFlags::NEED_BOX_LAYOUT);
-        let dirty = force || flags.contains(LayoutFlags::NEED_FULL_LAYOUT);
+        let box_dirty = force || viewport || flags.contains(InputFlags::NEED_BOX_LAYOUT);
+        let dirty = force || flags.contains(InputFlags::NEED_FULL_LAYOUT);
         // Finding the mode walks the children and inline content.
         let mode = (!created && dirty).then(|| self.mode(key));
         let style = (!created && box_dirty).then(|| self.resolve_style(key));

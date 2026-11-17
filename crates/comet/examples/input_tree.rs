@@ -56,7 +56,7 @@ fn print_tree(tree: &LayoutInputTree, root: LayoutInputKey) {
             item.node,
             item.child_layout,
             item.text_style.span.font_size,
-            item.flags2
+            item.flags
         );
 
         pending.extend(

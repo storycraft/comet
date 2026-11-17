@@ -41,7 +41,7 @@ impl LayoutInputTree {
         self.map.get(&node).copied()
     }
 
-    /// Insert `flags` into the [`LayoutInputItem::flags2`] of an item and
+    /// Insert `flags` into the [`LayoutInputItem::flags`] of an item and
     /// into the [`LayoutInputItem::child_flags`] of its ancestors. Stale keys
     /// are ignored.
     ///
@@ -54,7 +54,7 @@ impl LayoutInputTree {
             return;
         };
 
-        item.flags2.insert(flags);
+        item.flags.insert(flags);
         self.mark_parents(key, flags);
     }
 
@@ -85,7 +85,7 @@ impl LayoutInputTree {
         }
     }
 
-    /// Clear the [`LayoutInputItem::flags2`] and
+    /// Clear the [`LayoutInputItem::flags`] and
     /// [`LayoutInputItem::child_flags`] of an item and of all of its
     /// descendants. Run it once every step consumed the flags.
     ///
@@ -102,7 +102,7 @@ impl LayoutInputTree {
         while let Some(key) = pending.pop() {
             let item = &mut self.items[key];
             let child_flags = std::mem::take(&mut item.child_flags);
-            item.flags2 = InputFlags::empty();
+            item.flags = InputFlags::empty();
 
             // Flagged descendants always have flagged ancestors.
             if !child_flags.is_empty() {

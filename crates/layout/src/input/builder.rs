@@ -7,8 +7,7 @@ use comet_tree::{
 
 use crate::{
     input::{
-        ChildLayout, InputFlags, LayoutFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind,
-        TextStyle,
+        ChildLayout, InputFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind, TextStyle,
         text::{resolve_text_style, root_text_style},
         tree::LayoutInputTree,
     },
@@ -60,7 +59,7 @@ impl LayoutInputTreeBuilder {
     /// update its existing item with the source changes marked with
     /// [`LayoutInputTree::mark`]. Only subtrees whose
     /// [`LayoutInputItem::child_flags`] have [`InputFlags::NEED_CHILDREN`]
-    /// are visited. For each visited item, by its [`LayoutInputItem::flags2`]:
+    /// are visited. For each visited item, by its [`LayoutInputItem::flags`]:
     ///
     /// - [`InputFlags::NEED_FULL_LAYOUT`] resolves the item again, including
     ///   its text style, and marks every child with it, so the style
@@ -167,7 +166,7 @@ impl LayoutInputTreeBuilder {
             tree.delete_item(key);
             return;
         };
-        let flags = tree.items[key].flags2;
+        let flags = tree.items[key].flags;
         let full = flags.contains(InputFlags::NEED_FULL_LAYOUT);
         // Subtrees are visited only for descendants needing it. A full layout
         // marks every child, so it visits them all.
@@ -336,7 +335,7 @@ impl LayoutInputTreeBuilder {
 /// Whether the item or its subtree has something to build.
 fn needs_visit(item: &LayoutInputItem) -> bool {
     // `NEED_FULL_LAYOUT` includes `NEED_CHILDREN`.
-    item.flags2.contains(InputFlags::NEED_CHILDREN)
+    item.flags.contains(InputFlags::NEED_CHILDREN)
         || item.child_flags.contains(InputFlags::NEED_CHILDREN)
 }
 
@@ -357,7 +356,7 @@ fn resolve(
 }
 
 /// A resolved, detached item for `node`. New items, and the subtrees under
-/// them, need a full layout, so both [`LayoutInputItem::flags2`] and
+/// them, need a full layout, so both [`LayoutInputItem::flags`] and
 /// [`LayoutInputItem::child_flags`] have [`InputFlags::NEED_FULL_LAYOUT`].
 fn new_item(
     node: NodeKey,
@@ -369,12 +368,11 @@ fn new_item(
 
     LayoutInputItem {
         child_flags: InputFlags::NEED_FULL_LAYOUT,
-        flags2: InputFlags::NEED_FULL_LAYOUT,
+        flags: InputFlags::NEED_FULL_LAYOUT,
         kind,
         node,
         text_style,
         child_layout,
-        flags: LayoutFlags::empty(),
     }
 }
 

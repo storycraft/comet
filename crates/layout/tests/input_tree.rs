@@ -58,13 +58,13 @@ fn assert_fresh(
 
 fn assert_clean(tree: &LayoutInputTree, root: LayoutInputKey) {
     for key in tree.items.descendants(root) {
-        assert!(tree.items[key].flags2.is_empty());
+        assert!(tree.items[key].flags.is_empty());
         assert!(tree.items[key].child_flags.is_empty());
     }
 }
 
 fn flags2(tree: &LayoutInputTree, node: comet_tree::node::NodeKey) -> InputFlags {
-    tree.items[tree.item_for_node(node).unwrap()].flags2
+    tree.items[tree.item_for_node(node).unwrap()].flags
 }
 
 fn child_flags(tree: &LayoutInputTree, node: comet_tree::node::NodeKey) -> InputFlags {
@@ -113,7 +113,7 @@ fn fresh_tree_mirrors_ui_with_full_layout_flags() {
     );
 
     for item in tree.items.descendants(key) {
-        assert_eq!(tree.items[item].flags2, FULL);
+        assert_eq!(tree.items[item].flags, FULL);
         assert_eq!(tree.item_for_node(tree.items[item].node), Some(item));
     }
 
@@ -455,11 +455,11 @@ fn update_reconciles_children_and_keeps_keys() {
     assert_eq!(tree.item_for_node(inner), Some(inner_key));
 
     // Only the new child is flagged; the flags are left for later steps.
-    assert_eq!(tree.items[d_key].flags2, FULL);
-    assert!(tree.items[a_key].flags2.is_empty());
-    assert!(tree.items[b_key].flags2.is_empty());
-    assert!(tree.items[inner_key].flags2.is_empty());
-    assert_eq!(tree.items[key].flags2, CHILDREN);
+    assert_eq!(tree.items[d_key].flags, FULL);
+    assert!(tree.items[a_key].flags.is_empty());
+    assert!(tree.items[b_key].flags.is_empty());
+    assert!(tree.items[inner_key].flags.is_empty());
+    assert_eq!(tree.items[key].flags, CHILDREN);
     assert_eq!(tree.items[key].child_flags, FULL);
     assert_fresh(&ui, root, &tree, key);
 }
@@ -495,13 +495,13 @@ fn full_layout_resolves_and_marks_the_subtree() {
     assert_eq!(item(fixed).text_style.span.font_size, 10.0);
 
     // Every item under the marked one is marked.
-    assert_eq!(item(child).flags2, FULL);
-    assert_eq!(item(text).flags2, FULL);
-    assert_eq!(item(fixed).flags2, FULL);
-    assert!(item(root).flags2.is_empty());
+    assert_eq!(item(child).flags, FULL);
+    assert_eq!(item(text).flags, FULL);
+    assert_eq!(item(fixed).flags, FULL);
+    assert!(item(root).flags.is_empty());
     assert_eq!(item(root).child_flags, FULL);
     // The unmarked sibling was skipped.
-    assert!(item(sibling).flags2.is_empty());
+    assert!(item(sibling).flags.is_empty());
 
     assert_fresh(&ui, root, &tree, key);
 }
@@ -534,10 +534,10 @@ fn partial_update_of_descendant_uses_parent_style() {
 
     let inserted = tree.item_for_node(other_child).unwrap();
     assert_eq!(tree.items.parent(inserted), Some(key));
-    assert_eq!(tree.items[inserted].flags2, FULL);
+    assert_eq!(tree.items[inserted].flags, FULL);
     assert_eq!(tree.items[inserted].text_style.span.font_size, 20.0);
     assert_eq!(tree.item_for_node(child), Some(child_key));
-    assert!(tree.items[child_key].flags2.is_empty());
+    assert!(tree.items[child_key].flags.is_empty());
 
     // A descendant without a parent item means the tree does not mirror the UI.
     let mut other = LayoutInputTree::new();
@@ -593,7 +593,7 @@ fn rebuilding_a_node_updates_its_kind_and_deleting_marks_its_parent() {
     ui.delete(interruption);
     assert_eq!(build(&mut builder, &ui, interruption, &mut tree), None);
     assert_eq!(tree.item_for_node(interruption), None);
-    assert_eq!(tree.items[span_key].flags2, CHILDREN);
+    assert_eq!(tree.items[span_key].flags, CHILDREN);
     assert_eq!(tree.items[paragraph_key].child_flags, CHILDREN);
     assert_eq!(tree.items[key].child_flags, CHILDREN);
     assert_fresh(&ui, root, &tree, key);
@@ -630,14 +630,14 @@ fn build_resolves_only_marked_items_of_an_existing_tree() {
     tree.mark(text_key, FULL);
     builder.build(&ui, &mut tree, BuildRequest::new(root, 16.0, viewport));
     assert_eq!(tree.items[text_key].text_style.span.letter_spacing, 10.0);
-    assert_eq!(tree.items[text_key].flags2, FULL);
+    assert_eq!(tree.items[text_key].flags, FULL);
     assert_eq!(tree.items[child_key].child_flags, FULL);
 
     // Flags the builder does not consume are kept.
     tree.clear_flags(key);
     tree.mark(text_key, InputFlags::NEED_BOX_LAYOUT);
     builder.build(&ui, &mut tree, BuildRequest::new(root, 16.0, viewport));
-    assert_eq!(tree.items[text_key].flags2, InputFlags::NEED_BOX_LAYOUT);
+    assert_eq!(tree.items[text_key].flags, InputFlags::NEED_BOX_LAYOUT);
 }
 
 #[test]
@@ -659,7 +659,7 @@ fn build_builds_a_new_tree_without_a_source_item() {
 
     assert_eq!(tree.items.descendants(rebuilt).count(), 2);
     for item in tree.items.descendants(rebuilt) {
-        assert_eq!(tree.items[item].flags2, FULL);
+        assert_eq!(tree.items[item].flags, FULL);
     }
     let child_key = tree.item_for_node(child).unwrap();
     assert_eq!(tree.items[child_key].text_style.span.font_size, 40.0);
@@ -699,11 +699,11 @@ fn update_reconciles_marked_child_lists() {
         tree.items.children(key).collect::<Vec<_>>(),
         vec![b_key, a_key, text_key]
     );
-    assert_eq!(tree.items[text_key].flags2, FULL);
+    assert_eq!(tree.items[text_key].flags, FULL);
     assert_eq!(flags2(&tree, nested), FULL);
-    assert!(tree.items[a_key].flags2.is_empty());
+    assert!(tree.items[a_key].flags.is_empty());
     assert_eq!(tree.items[a_key].child_flags, FULL);
-    assert!(tree.items[b_key].flags2.is_empty());
+    assert!(tree.items[b_key].flags.is_empty());
     assert_fresh(&ui, root, &tree, key);
 
     // Deleting a node marks its parent.
@@ -743,7 +743,7 @@ fn update_reconciles_children_when_child_layout_changes() {
     tree.mark_node(parent, FULL);
     build(&mut builder, &ui, root, &mut tree);
     let text_key = tree.item_for_node(text).unwrap();
-    assert_eq!(tree.items[text_key].flags2, FULL);
+    assert_eq!(tree.items[text_key].flags, FULL);
     assert_fresh(&ui, root, &tree, key);
 }
 
@@ -774,9 +774,9 @@ fn deleting_and_moving_children_keeps_the_others_unflagged() {
 
     assert_eq!(tree.items.children(key).collect::<Vec<_>>(), keys[1..]);
     for &item in &keys[1..] {
-        assert!(tree.items[item].flags2.is_empty());
+        assert!(tree.items[item].flags.is_empty());
     }
-    assert_eq!(tree.items[key].flags2, CHILDREN);
+    assert_eq!(tree.items[key].flags, CHILDREN);
 
     tree.clear_flags(key);
     ui.prepend(root, nodes[3]);
@@ -788,6 +788,6 @@ fn deleting_and_moving_children_keeps_the_others_unflagged() {
         vec![keys[3], keys[1], keys[2]]
     );
     for &item in &keys[1..] {
-        assert!(tree.items[item].flags2.is_empty());
+        assert!(tree.items[item].flags.is_empty());
     }
 }

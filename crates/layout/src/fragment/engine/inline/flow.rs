@@ -7,7 +7,7 @@ use super::{
     events::{InlineEvents, Op},
 };
 use crate::{
-    input::{LayoutFlags, LayoutInputKey},
+    input::{InputFlags, LayoutInputKey},
     taffy::style,
 };
 
@@ -42,7 +42,7 @@ impl Engine<'_> {
         InlineEvents::new(self.tree, key).any(|op| match op {
             Op::Push(key) | Op::Text(key) | Op::Box(key) | Op::Empty(key) => self.tree.items[key]
                 .flags
-                .contains(LayoutFlags::NEED_FULL_LAYOUT),
+                .contains(InputFlags::NEED_FULL_LAYOUT),
             Op::Block(_) | Op::Pop => false,
         })
     }
@@ -64,10 +64,7 @@ impl Engine<'_> {
         // Content changes shape a run again; other flags, such as box style
         // changes of atomic inlines, only lay it out again.
         let dirty = |key: LayoutInputKey| {
-            force
-                || tree.items[key]
-                    .flags
-                    .contains(LayoutFlags::NEED_FULL_LAYOUT)
+            force || tree.items[key].flags.contains(InputFlags::NEED_FULL_LAYOUT)
         };
         let flagged = |key: LayoutInputKey| force || !tree.items[key].flags.is_empty();
 
@@ -83,7 +80,7 @@ impl Engine<'_> {
         let owner_dirty = force
             || tree.items[owner]
                 .flags
-                .contains(LayoutFlags::NEED_FULL_LAYOUT);
+                .contains(InputFlags::NEED_FULL_LAYOUT);
         // Inline elements open at the current position, which runs reopen.
         let mut open: Vec<LayoutInputKey> = Vec::new();
         let mut run = Run {
