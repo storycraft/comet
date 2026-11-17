@@ -4,6 +4,6 @@ pub use crate::layer::{
 };
 pub use crate::painter::CometPainter;
 pub use crate::pre_paint::{
-    FragmentData, LayoutInputData, resolver::PrePaintTreeResolver, tree::PrePaintTree,
+    FragmentData, LayoutInputData, builder::PrePaintTreeBuilder, tree::PrePaintTree,
 };
 pub use crate::style::*;

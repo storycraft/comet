@@ -11,7 +11,7 @@
 //! Inherited paint styles, such as text colors, are looked up while painting
 //! instead.
 
-pub mod resolver;
+pub mod builder;
 pub mod tree;
 
 use comet_layout::fragment::Fragment;

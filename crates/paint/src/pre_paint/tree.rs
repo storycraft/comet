@@ -15,7 +15,7 @@ use crate::pre_paint::{FragmentData, LayoutInputData};
 /// relative to their parents, and of the layout input items they were built
 /// from.
 ///
-/// Filled by a [`PrePaintTreeResolver`](super::resolver::PrePaintTreeResolver),
+/// Filled by a [`PrePaintTreeBuilder`](super::resolver::PrePaintTreeBuilder),
 /// which resolves the fragments of the layout input items marked
 /// [`InputFlags::NEED_PRE_PAINT`] and the fragments without data.
 /// Keys are generational, so data left behind by deleted fragments and items

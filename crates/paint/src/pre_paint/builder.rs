@@ -18,10 +18,10 @@ use crate::{
     },
 };
 
-/// Resolves a [`PrePaintTree`] for a fragment tree. Keep it to reuse its
+/// Builds a [`PrePaintTree`] for a fragment tree. Keep it to reuse its
 /// buffers across resolves.
 #[derive(Default)]
-pub struct PrePaintTreeResolver {
+pub struct PrePaintTreeBuilder {
     /// Fragments to visit.
     pending: Vec<FragmentKey>,
     /// Layout input items to resolve.
@@ -39,12 +39,12 @@ struct Sources<'a> {
     units: &'a UnitResolveContext,
 }
 
-impl PrePaintTreeResolver {
+impl PrePaintTreeBuilder {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Resolve into `tree` the fragments under `root` that need it, and
+    /// Builds into `tree` the fragments under `root` that need it, and
     /// their layout input items:
     /// - fragments of items whose [`LayoutInputItem::flags`](comet_layout::input::LayoutInputItem::flags) have
     ///   [`InputFlags::NEED_PRE_PAINT`], which layout changes include, or
@@ -80,7 +80,7 @@ impl PrePaintTreeResolver {
     /// `fragments` were built. Rebuild them, then resolve again. Data resolved
     /// before the failure stays in `tree`, so `tree` may be partly updated,
     /// but the next call resolves the same fragments again.
-    pub fn resolve(
+    pub fn build(
         &mut self,
         ui: &Ui,
         inputs: &LayoutInputTree,

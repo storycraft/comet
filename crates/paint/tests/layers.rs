@@ -18,7 +18,7 @@ use comet_paint::{
     hit::PaintHitTester,
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
-    pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
+    pre_paint::{builder::PrePaintTreeBuilder, tree::PrePaintTree},
     style::{BackdropFilter, BorderRadius, Fill, Filter, Opacity, Transform, ZIndex},
 };
 use comet_tree::{
@@ -65,8 +65,8 @@ impl Fixture {
             .unwrap();
 
         let mut pre_paint = PrePaintTree::new();
-        PrePaintTreeResolver::new()
-            .resolve(ui, &inputs, &fragments, &UNITS, &mut pre_paint, root)
+        PrePaintTreeBuilder::new()
+            .build(ui, &inputs, &fragments, &UNITS, &mut pre_paint, root)
             .unwrap();
 
         let mut layers = PaintLayerTree::new();
@@ -92,8 +92,8 @@ impl Fixture {
         let fragment_root = self.layers.layers[self.root].owner;
 
         self.inputs.mark_node(node, InputFlags::NEED_PRE_PAINT);
-        PrePaintTreeResolver::new()
-            .resolve(
+        PrePaintTreeBuilder::new()
+            .build(
                 ui,
                 &self.inputs,
                 &self.fragments,
@@ -806,8 +806,8 @@ fn updates_match_full_builds() {
     for item in items {
         f.inputs.mark(item, InputFlags::NEED_PRE_PAINT);
     }
-    PrePaintTreeResolver::new()
-        .resolve(
+    PrePaintTreeBuilder::new()
+        .build(
             &ui,
             &f.inputs,
             &f.fragments,
@@ -956,7 +956,7 @@ fn hits_negative_layers_below_contents_from_the_last() {
 struct Pipeline {
     input_builder: LayoutInputTreeBuilder,
     fragment_builder: FragmentTreeBuilder,
-    resolver: PrePaintTreeResolver,
+    resolver: PrePaintTreeBuilder,
     builder: PaintLayerBuilder,
     inputs: LayoutInputTree,
     fragments: FragmentTree,
@@ -986,7 +986,7 @@ impl Pipeline {
             )
             .unwrap();
         self.resolver
-            .resolve(
+            .build(
                 ui,
                 &self.inputs,
                 &self.fragments,

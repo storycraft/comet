@@ -19,7 +19,7 @@ use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     pre_paint::{
-        FragmentData, LayoutInputData, resolver::PrePaintTreeResolver, tree::PrePaintTree,
+        FragmentData, LayoutInputData, builder::PrePaintTreeBuilder, tree::PrePaintTree,
     },
     style::{
         BorderRadius, Fill, OutlineFill, OutlineOffset, OutlineWidth, TextColor, Transform,
@@ -47,7 +47,7 @@ struct Fixture {
     inputs: LayoutInputTree,
     fragments: FragmentTree,
     pre_paint: PrePaintTree,
-    resolver: PrePaintTreeResolver,
+    resolver: PrePaintTreeBuilder,
     input_builder: LayoutInputTreeBuilder,
     builder: FragmentTreeBuilder,
     root: Option<FragmentKey>,
@@ -99,7 +99,7 @@ impl Fixture {
     }
 
     fn resolve(&mut self, ui: &Ui, key: FragmentKey) -> Option<()> {
-        self.resolver.resolve(
+        self.resolver.build(
             ui,
             &self.inputs,
             &self.fragments,
@@ -1295,8 +1295,8 @@ impl Fixture {
     /// The pre-paint tree of `root`, resolved from scratch.
     fn full_resolve(&self, ui: &Ui, root: FragmentKey) -> PrePaintTree {
         let mut full = PrePaintTree::new();
-        PrePaintTreeResolver::new()
-            .resolve(ui, &self.inputs, &self.fragments, &UNITS, &mut full, root)
+        PrePaintTreeBuilder::new()
+            .build(ui, &self.inputs, &self.fragments, &UNITS, &mut full, root)
             .unwrap();
 
         full

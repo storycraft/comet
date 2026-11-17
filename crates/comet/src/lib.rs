@@ -18,7 +18,7 @@ use comet_paint::{
     hit::PaintHitTester,
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
-    pre_paint::{resolver::PrePaintTreeResolver, tree::PrePaintTree},
+    pre_paint::{builder::PrePaintTreeBuilder, tree::PrePaintTree},
     style::{OutlineFill, OutlineOffset, OutlineWidth},
 };
 use comet_tree::{node::NodeKey, ui::Ui};
@@ -48,7 +48,7 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
         inputs: LayoutInputTree::new(),
         fragments: FragmentTree::new(),
         pre_paint: PrePaintTree::new(),
-        pre_paint_resolver: PrePaintTreeResolver::new(),
+        pre_paint_resolver: PrePaintTreeBuilder::new(),
         layers: PaintLayerTree::new(),
         layer_builder: PaintLayerBuilder::new(),
         layer_root: None,
@@ -71,7 +71,7 @@ struct App {
     inputs: LayoutInputTree,
     fragments: FragmentTree,
     pre_paint: PrePaintTree,
-    pre_paint_resolver: PrePaintTreeResolver,
+    pre_paint_resolver: PrePaintTreeBuilder,
     layers: PaintLayerTree,
     layer_builder: PaintLayerBuilder,
     /// Root layer of `layers`, from the last layout. `None` until a layout
@@ -265,7 +265,7 @@ impl App {
         // Positions and clips follow the layout, so resolve the fragments of
         // the items it laid out, flagged `NEED_PRE_PAINT` with their layout
         // flags.
-        let resolved = self.pre_paint_resolver.resolve(
+        let resolved = self.pre_paint_resolver.build(
             &self.ui,
             &self.inputs,
             &self.fragments,
@@ -317,7 +317,7 @@ impl App {
         // The flag is kept for the next layout, which clears every flag after
         // resolving. Only the fragment builder could clear it otherwise, and
         // a node that no longer matches the layout is resolved then instead.
-        let _ = self.pre_paint_resolver.resolve(
+        let _ = self.pre_paint_resolver.build(
             &self.ui,
             &self.inputs,
             &self.fragments,
