@@ -62,8 +62,9 @@ impl LayoutInputTreeBuilder {
     /// are visited. For each visited item, by its [`LayoutInputItem::flags`]:
     ///
     /// - [`InputFlags::NEED_FULL_LAYOUT`] resolves the item again, including
-    ///   its text style, and marks every child with it, so the style
-    ///   propagates to the whole subtree,
+    ///   its text style. When its text style or child layout changed, every
+    ///   child is marked with it, so the style propagates down until items
+    ///   resolve as before,
     /// - [`InputFlags::NEED_CHILDREN`], which the former includes, reconciles
     ///   its children with the source children, deleting the stale ones and
     ///   marking the item [`InputFlags::NEED_FULL_LAYOUT`] when any is gone.
@@ -164,12 +165,10 @@ impl LayoutInputTreeBuilder {
         };
         let flags = tree.items[key].flags;
         let full = flags.contains(InputFlags::NEED_FULL_LAYOUT);
-        // Subtrees are visited only for descendants needing it. A full layout
-        // marks every child, so it visits them all.
-        let descend = full
-            || tree.items[key]
-                .child_flags
-                .contains(InputFlags::NEED_CHILDREN);
+        // Whether every child is marked `NEED_FULL_LAYOUT`: children inherit
+        // the resolved style, and whether they generate boxes depends on the
+        // child layout. Children of an item resolving as before keep theirs.
+        let mut cascade = false;
 
         if full {
             let parent_style = match tree.items.parent(key) {
@@ -180,6 +179,8 @@ impl LayoutInputTreeBuilder {
 
             let item = &mut tree.items[key];
             let kind_changed = item.kind != kind;
+            cascade = item.child_layout != child_layout
+                || !(Arc::ptr_eq(&item.text_style, &text_style) || item.text_style == text_style);
             item.kind = kind;
             item.child_layout = child_layout;
             // Always take the new allocation so equal styles keep sharing it.
@@ -190,6 +191,13 @@ impl LayoutInputTreeBuilder {
             }
         }
 
+        // Subtrees are visited only for descendants needing it, or to
+        // cascade a changed style to every child.
+        let descend = cascade
+            || tree.items[key]
+                .child_flags
+                .contains(InputFlags::NEED_CHILDREN);
+
         // Children are checked against the source children only when the
         // child list is marked. `NEED_FULL_LAYOUT` includes `NEED_CHILDREN`.
         if flags.contains(InputFlags::NEED_CHILDREN) {
@@ -199,7 +207,7 @@ impl LayoutInputTreeBuilder {
                 mark_content_owner(tree, key);
             }
 
-            self.reconcile_children(ui, tree, key, node, full, descend, cx);
+            self.reconcile_children(ui, tree, key, node, cascade, descend, cx);
             return;
         }
 
@@ -218,7 +226,7 @@ impl LayoutInputTreeBuilder {
     /// Match the item's children to the source children, in order. Stale
     /// children are deleted, and the subtrees of new ones are built and
     /// attached. With `full`, kept children are marked
-    /// [`InputFlags::NEED_FULL_LAYOUT`] to inherit the resolved style; with
+    /// [`InputFlags::NEED_FULL_LAYOUT`] to inherit the changed style; with
     /// `descend`, those needing a visit are queued.
     #[allow(clippy::too_many_arguments)]
     fn reconcile_children(

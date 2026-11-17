@@ -508,6 +508,58 @@ fn full_layout_resolves_and_marks_the_subtree() {
 }
 
 #[test]
+fn full_layout_stops_cascading_where_styles_resolve_as_before() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let outer = ui.create(Node::Box, ());
+    let inner = ui.create(Node::Box, (bx::FontSize(StyleUnit::Px(10.0)),));
+    let text = ui.create(Node::Text, ());
+    let marked = ui.create(Node::Text, ());
+
+    ui.append(root, outer);
+    ui.append(outer, inner);
+    ui.append(inner, text);
+    ui.append(inner, marked);
+
+    let mut tree = LayoutInputTree::new();
+    let mut builder = LayoutInputTreeBuilder::new();
+    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
+    tree.clear_flags(key);
+
+    // A display change resolving to the same style and child layout marks
+    // no child.
+    ui.set_props(outer, (DisplayOuter::Block,));
+    tree.mark_node(outer, FULL);
+    build(&mut builder, &ui, root, &mut tree).unwrap();
+
+    assert_eq!(flags2(&tree, outer), FULL);
+    assert!(flags2(&tree, inner).is_empty());
+    assert!(flags2(&tree, text).is_empty());
+    assert!(child_flags(&tree, outer).is_empty());
+    assert_fresh(&ui, root, &tree, key);
+    tree.clear_flags(key);
+
+    // A changed font size cascades until a child sets its own: the inner box
+    // resolves as before, so its children keep their flags, but a marked
+    // child under it is still resolved.
+    ui.set_props(outer, (bx::FontSize(StyleUnit::Px(24.0)),));
+    ui.set_props(marked, (bx::FontSize(StyleUnit::Px(12.0)),));
+    tree.mark_node(outer, FULL);
+    tree.mark_node(marked, FULL);
+    build(&mut builder, &ui, root, &mut tree).unwrap();
+
+    let item = |node| &tree.items[tree.item_for_node(node).unwrap()];
+
+    assert_eq!(item(outer).text_style.span.font_size, 24.0);
+    assert_eq!(item(inner).flags, FULL);
+    assert_eq!(item(inner).text_style.span.font_size, 10.0);
+    assert!(item(text).flags.is_empty());
+    assert_eq!(item(marked).flags, FULL);
+    assert_eq!(item(marked).text_style.span.font_size, 12.0);
+    assert_fresh(&ui, root, &tree, key);
+}
+
+#[test]
 fn partial_update_of_descendant_uses_parent_style() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, (bx::FontSize(StyleUnit::Px(20.0)),));
