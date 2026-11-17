@@ -66,7 +66,7 @@ impl Fixture {
 
         let mut pre_paint = PrePaintTree::new();
         PrePaintTreeBuilder::new()
-            .build(ui, &inputs, &fragments, &UNITS, &mut pre_paint, root)
+            .build(ui, &inputs, &fragments, &UNITS, &mut pre_paint, root, false)
             .unwrap();
 
         let mut layers = PaintLayerTree::new();
@@ -100,6 +100,7 @@ impl Fixture {
                 &UNITS,
                 &mut self.pre_paint,
                 fragment_root,
+                false,
             )
             .unwrap();
         let input_root = self.fragments.items[fragment_root].source;
@@ -814,6 +815,7 @@ fn updates_match_full_builds() {
             &UNITS,
             &mut f.pre_paint,
             fragment_root,
+            false,
         )
         .unwrap();
     let input_root = f.fragments.items[fragment_root].source;
@@ -993,6 +995,7 @@ impl Pipeline {
                 &UNITS,
                 &mut self.pre_paint,
                 root,
+                false,
             )
             .unwrap();
 

@@ -7,7 +7,7 @@ use comet_layout::{
     input::LayoutInputKey,
 };
 use kurbo::{Point, Shape};
-use slotmap::SecondaryMap;
+use slotmap::{SecondaryMap, SparseSecondaryMap};
 
 use crate::pre_paint::{FragmentData, LayoutInputData};
 
@@ -27,6 +27,11 @@ use crate::pre_paint::{FragmentData, LayoutInputData};
 pub struct PrePaintTree {
     pub(super) fragment_mapping: SecondaryMap<FragmentKey, FragmentData>,
     pub(super) layout_mapping: SecondaryMap<LayoutInputKey, LayoutInputData>,
+    /// Items whose paint values, or those of their fragments, use `vw` or
+    /// `vh`, resolved again when the viewport changes. Few items use them,
+    /// so the map is sparse. Keyed by item, since the fragments of an item
+    /// share its props, and line fragments are replaced by layouts.
+    pub(super) viewport_dependents: SparseSecondaryMap<LayoutInputKey, ()>,
 }
 
 impl PrePaintTree {
@@ -44,9 +49,16 @@ impl PrePaintTree {
         self.layout_mapping.get(key)
     }
 
+    /// Whether the paint values of an item, or of its fragments, were
+    /// resolved with `vw` or `vh` lengths.
+    pub fn depends_viewport(&self, key: LayoutInputKey) -> bool {
+        self.viewport_dependents.contains_key(key)
+    }
+
     pub fn clear(&mut self) {
         self.fragment_mapping.clear();
         self.layout_mapping.clear();
+        self.viewport_dependents.clear();
     }
 
     /// Whether `point`, in the local coordinates of a fragment, hits the

@@ -144,7 +144,7 @@ fn draw(
 ) {
     let mut pre_paint = PrePaintTree::new();
     PrePaintTreeBuilder::new()
-        .build(ui, inputs, tree, units, &mut pre_paint, root)
+        .build(ui, inputs, tree, units, &mut pre_paint, root, false)
         .unwrap();
     let mut layers = PaintLayerTree::new();
     let layer_root = PaintLayerBuilder::new()

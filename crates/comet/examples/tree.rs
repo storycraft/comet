@@ -47,6 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &constraint.units,
             &mut pre_paint,
             root,
+            false,
         )
         .ok_or("could not resolve pre-paint tree")?;
     let mut layers = PaintLayerTree::new();

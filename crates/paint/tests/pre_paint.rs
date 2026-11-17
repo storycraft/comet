@@ -108,6 +108,7 @@ impl Fixture {
             &UNITS,
             &mut self.pre_paint,
             key,
+            false,
         )
     }
 
@@ -1298,7 +1299,7 @@ impl Fixture {
     fn full_resolve(&self, ui: &Ui, root: FragmentKey) -> PrePaintTree {
         let mut full = PrePaintTree::new();
         PrePaintTreeBuilder::new()
-            .build(ui, &self.inputs, &self.fragments, &UNITS, &mut full, root)
+            .build(ui, &self.inputs, &self.fragments, &UNITS, &mut full, root, false)
             .unwrap();
 
         full
@@ -1470,4 +1471,82 @@ fn marks_kept_by_item_reach_every_fragment_set_before_the_layout() {
         assert!(f.fragment(key).border_radius.is_some());
     }
     assert!(f.inputs.items[f.item(span)].flags.is_empty());
+}
+
+#[test]
+fn viewport_changes_resolve_viewport_dependent_paint_values_again() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let relative = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 20.0),
+            BorderRadius(LayoutRect::new_all(StyleUnit::Vw(0.1))),
+            OutlineWidth(StyleUnit::Vw(0.05)),
+        ),
+    );
+    let absolute = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 20.0),
+            BorderRadius(LayoutRect::new_all(StyleUnit::Px(3.0))),
+        ),
+    );
+    ui.append(root, relative);
+    ui.append(root, absolute);
+
+    let mut f = Fixture::default();
+    let fragment_root = f.build(&ui, root);
+    let radius = |f: &Fixture, node| f.boxed(node).border_radius.unwrap().top_left;
+
+    // 10vw and 5vw of the 120px wide viewport.
+    assert_eq!(radius(&f, relative), 12.0);
+    assert_eq!(f.data(relative).outline_width, 6.0);
+    assert!(f.pre_paint.depends_viewport(f.item(relative)));
+    assert!(!f.pre_paint.depends_viewport(f.item(absolute)));
+    assert!(!f.pre_paint.depends_viewport(f.item(root)));
+
+    let wide = LayoutConstraint::new_root(Size::new(200.0, 400.0), 16.0).units;
+    let mut resolve = |f: &mut Fixture, ui: &Ui, units, viewport_changed| {
+        f.resolver
+            .build(
+                ui,
+                &f.inputs,
+                &f.fragments,
+                units,
+                &mut f.pre_paint,
+                fragment_root,
+                viewport_changed,
+            )
+            .unwrap();
+    };
+
+    // Without the change, nothing is resolved again.
+    resolve(&mut f, &ui, &wide, false);
+    assert_eq!(radius(&f, relative), 12.0);
+
+    // With it, only the dependents are, against the wider viewport.
+    let absolute_data = f.boxed(absolute).clone();
+    resolve(&mut f, &ui, &wide, true);
+    assert_eq!(radius(&f, relative), 20.0);
+    assert_eq!(f.data(relative).outline_width, 10.0);
+    assert_eq!(f.boxed(absolute), &absolute_data);
+    assert!(f.pre_paint.depends_viewport(f.item(relative)));
+
+    // Dropping the viewport units stops tracking the item.
+    ui.set_props(
+        relative,
+        (
+            BorderRadius(LayoutRect::new_all(StyleUnit::Px(2.0))),
+            OutlineWidth(StyleUnit::Px(1.0)),
+        ),
+    );
+    f.mark(relative);
+    resolve(&mut f, &ui, &wide, false);
+    f.clear_flags();
+    assert_eq!(radius(&f, relative), 2.0);
+    assert!(!f.pre_paint.depends_viewport(f.item(relative)));
+
+    resolve(&mut f, &ui, &UNITS, true);
+    assert_eq!(radius(&f, relative), 2.0);
 }

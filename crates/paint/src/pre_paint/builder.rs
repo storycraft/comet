@@ -67,10 +67,13 @@ impl PrePaintTreeBuilder {
     /// resolved. Input flags are not cleared; the layer build reads them too,
     /// so call [`LayoutInputTree::clear_flags`] after building layers.
     ///
-    /// Changes builds cannot see, such as paint styles, must be marked. The
-    /// root font size and viewport units data resolves with are not tracked:
-    /// resolve into a new or [cleared](PrePaintTree::clear) tree when they
-    /// change.
+    /// Changes builds cannot see, such as paint styles, must be marked.
+    ///
+    /// With `viewport_changed`, every item whose paint values, or those of
+    /// its fragments, use `vw` or `vh` is resolved again with its fragments
+    /// under `root`. Pass it when the viewport in `units` differs from the
+    /// last successful call. The root font size is not tracked: resolve into a new
+    /// or [cleared](PrePaintTree::clear) tree when it changes.
     ///
     /// `inputs` is the input tree `fragments` were built from, and `tree`
     /// belongs to them. `units` resolves border radii and transform origins,
@@ -89,6 +92,7 @@ impl PrePaintTreeBuilder {
         units: &UnitResolveContext,
         tree: &mut PrePaintTree,
         root: FragmentKey,
+        viewport_changed: bool,
     ) -> Option<()> {
         let sources = Sources {
             ui,
@@ -140,6 +144,21 @@ impl PrePaintTreeBuilder {
             }
         }
 
+        // Paint values using `vw` or `vh`. Their keys are kept, so a failed
+        // call resolves them again; resolving an item removes it once it no
+        // longer uses them.
+        if viewport_changed {
+            tree.viewport_dependents
+                .retain(|key, _| inputs.items.get(key).is_some());
+
+            for key in tree.viewport_dependents.keys() {
+                items.push(key);
+                changed.extend(fragments.fragments(key).filter(|&fragment| {
+                    whole_tree || is_inclusive_descendant(fragments, fragment, root)
+                }));
+            }
+        }
+
         changed.sort_unstable();
         changed.dedup();
 
@@ -149,6 +168,14 @@ impl PrePaintTreeBuilder {
 
         for &key in items.iter() {
             tree.layout_mapping.insert(key, sources.resolve_item(key)?);
+
+            // Props alone decide it, and resolving an item reads them again.
+            let props = ui.props(inputs.items[key].node)?;
+            if depends_viewport(props) {
+                tree.viewport_dependents.insert(key, ());
+            } else {
+                tree.viewport_dependents.remove(key);
+            }
         }
 
         for &key in changed.iter() {
@@ -162,6 +189,35 @@ impl PrePaintTreeBuilder {
 
         Some(())
     }
+}
+
+/// Whether a paint value resolved from `props`, for an item or its
+/// fragments, uses `vw` or `vh`.
+fn depends_viewport(props: Props<'_>) -> bool {
+    let viewport = StyleUnit::is_viewport_relative;
+    let rect = |rect: Rect<StyleUnit>| {
+        [
+            rect.left_top.x,
+            rect.left_top.y,
+            rect.right_bottom.x,
+            rect.right_bottom.y,
+        ]
+        .into_iter()
+        .any(viewport)
+    };
+
+    props
+        .get_cloned()
+        .is_some_and(|BorderRadius(radius)| rect(radius))
+        || props
+            .get_cloned()
+            .is_some_and(|TransformOrigin(origin)| viewport(origin.x) || viewport(origin.y))
+        || props
+            .get_cloned()
+            .is_some_and(|OutlineWidth(width)| viewport(width))
+        || props
+            .get_cloned()
+            .is_some_and(|OutlineOffset(offset)| viewport(offset))
 }
 
 /// Whether `key` is `root` or one of its descendants.

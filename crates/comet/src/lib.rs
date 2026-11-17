@@ -4,9 +4,9 @@ use std::sync::Arc;
 use anyrender::Paint;
 use anyrender::WindowRenderer;
 use anyrender_vello::VelloWindowRenderer;
-use comet_layout::style::geometry::StyleUnit;
+use comet_layout::style::geometry::{StyleUnit, UnitResolveContext};
 use comet_layout::{
-    fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
+    fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
         InputFlags,
         builder::{BuildRequest, LayoutInputTreeBuilder},
@@ -54,6 +54,7 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
         layer_root: None,
         viewport: None,
         input_viewport: None,
+        pre_paint_viewport: None,
         hit_tester: PaintHitTester::new(),
         cursor: None,
         hovered: None,
@@ -82,6 +83,9 @@ struct App {
     /// Logical viewport `inputs` was resolved with, kept when a later step
     /// of the layout fails.
     input_viewport: Option<Size<f64>>,
+    /// Logical viewport `pre_paint` was last resolved with, kept when a
+    /// resolve fails, so the next one resolves viewport units again.
+    pre_paint_viewport: Option<Size<f64>>,
     // TODO: Temporary hover outline, drawn around the node under the cursor.
     // Replace with real input handling.
     hit_tester: PaintHitTester,
@@ -264,18 +268,7 @@ impl App {
 
         // Positions and clips follow the layout, so resolve the fragments it
         // created, moved or resized, and those of the marked items.
-        let resolved = self.pre_paint_resolver.build(
-            &self.ui,
-            &self.inputs,
-            &self.fragments,
-            &constraint.units,
-            &mut self.pre_paint,
-            fragment_root,
-        );
-        // Changed fragments are kept on failure, for the next layout.
-        if resolved.is_some() {
-            self.fragments.clear_changed();
-        }
+        let resolved = self.resolve_pre_paint(&constraint.units, fragment_root);
 
         // Layers keep their keys, so building from the root again only places
         // the layers whose fragments gained, lost or reordered a layer.
@@ -293,6 +286,30 @@ impl App {
         self.inputs.clear_flags(input_root);
         self.layer_root = Some(layer_root?);
         self.viewport = Some(viewport);
+
+        Some(())
+    }
+
+    /// Resolve the pre-paint tree for the fragments under `root`, with paint
+    /// values using viewport units resolved again when `units` has another
+    /// viewport than the last successful resolve. Changed fragments and the
+    /// viewport are kept on failure, for the next resolve.
+    fn resolve_pre_paint(&mut self, units: &UnitResolveContext, root: FragmentKey) -> Option<()> {
+        let viewport_changed = self
+            .pre_paint_viewport
+            .is_some_and(|previous| previous != units.viewport);
+
+        self.pre_paint_resolver.build(
+            &self.ui,
+            &self.inputs,
+            &self.fragments,
+            units,
+            &mut self.pre_paint,
+            root,
+            viewport_changed,
+        )?;
+        self.fragments.clear_changed();
+        self.pre_paint_viewport = Some(units.viewport);
 
         Some(())
     }
@@ -320,14 +337,7 @@ impl App {
         // The flag is kept for the next layout, which clears every flag after
         // resolving. Only the fragment builder could clear it otherwise, and
         // a node that no longer matches the layout is resolved then instead.
-        let _ = self.pre_paint_resolver.build(
-            &self.ui,
-            &self.inputs,
-            &self.fragments,
-            &units,
-            &mut self.pre_paint,
-            root,
-        );
+        let _ = self.resolve_pre_paint(&units, root);
     }
 
     /// Outline the node under the cursor, from the last frame's layout, and
