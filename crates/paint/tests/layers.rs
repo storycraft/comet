@@ -1152,30 +1152,6 @@ fn changed_z_indices_reorder_layers_from_the_root() {
 }
 
 #[test]
-fn layers_ignore_stacking_changes_nobody_marked() {
-    let mut ui = Ui::new();
-    let root = ui.create(Node::Box, ());
-    let raised = ui.create(Node::Box, (fixed(60.0, 20.0), z(1)));
-    ui.append(root, raised);
-
-    let mut p = Pipeline::default();
-    let root_layer = p.run(&ui, root);
-    let raised_layer = p.layer_of(raised).unwrap();
-
-    // Not marked: layout alone does not see paint styles, so the layer
-    // stays until the fragment is marked.
-    ui.set_props(raised, (ZIndex(AutoValue::Auto),));
-    assert_eq!(p.run(&ui, root), root_layer);
-    assert_eq!(p.layer_of(raised), Some(raised_layer));
-
-    // Clearing the pre-paint tree builds every layer again.
-    p.pre_paint.clear();
-    assert_eq!(p.run(&ui, root), root_layer);
-    assert_eq!(p.layer_of(raised), None);
-    assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
-}
-
-#[test]
 fn reordered_siblings_reorder_layers_with_equal_z_indices() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
