@@ -12,6 +12,9 @@ pub use text::{SpanStyle, TextStyle, TextStyleBits};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutInputItem {
+    // pub child_flags: InputFlags2,
+    // pub flags2: InputFlags2,
+
     pub kind: LayoutInputKind,
     pub node: NodeKey,
     /// Inherited text properties. Equal styles share an allocation.
@@ -91,6 +94,19 @@ bitflags! {
         /// inserted, removed or moved. The item's children are reconciled
         /// with the source children.
         const NEED_CHILDREN = 1 << 2;
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    pub struct InputFlags2: u8 {
+        const NEED_CHILDREN = 1 << 0;
+
+        const NEED_PRE_PAINT = 1 << 1;
+
+        const NEED_BOX_LAYOUT = 1 << 2 | Self::NEED_PRE_PAINT.bits();
+    
+        const NEED_FULL_LAYOUT = 1 << 3 | Self::NEED_BOX_LAYOUT.bits() | Self::NEED_CHILDREN.bits();
     }
 }
 
