@@ -459,7 +459,8 @@ fn update_reconciles_children_and_keeps_keys() {
     assert!(tree.items[a_key].flags.is_empty());
     assert!(tree.items[b_key].flags.is_empty());
     assert!(tree.items[inner_key].flags.is_empty());
-    assert_eq!(tree.items[key].flags, CHILDREN);
+    // A child is gone, so the parent is dirty.
+    assert_eq!(tree.items[key].flags, FULL);
     assert_eq!(tree.items[key].child_flags, FULL);
     assert_fresh(&ui, root, &tree, key);
 }
@@ -588,14 +589,14 @@ fn rebuilding_a_node_updates_its_kind_and_deleting_marks_its_parent() {
     );
     assert_fresh(&ui, root, &tree, key);
 
-    // Deleting a node marks its parent's child list.
+    // Deleting a node marks its parent dirty.
     tree.clear_flags(key);
     ui.delete(interruption);
     assert_eq!(build(&mut builder, &ui, interruption, &mut tree), None);
     assert_eq!(tree.item_for_node(interruption), None);
-    assert_eq!(tree.items[span_key].flags, CHILDREN);
-    assert_eq!(tree.items[paragraph_key].child_flags, CHILDREN);
-    assert_eq!(tree.items[key].child_flags, CHILDREN);
+    assert_eq!(tree.items[span_key].flags, FULL);
+    assert_eq!(tree.items[paragraph_key].child_flags, FULL);
+    assert_eq!(tree.items[key].child_flags, FULL);
     assert_fresh(&ui, root, &tree, key);
 }
 
@@ -776,7 +777,7 @@ fn deleting_and_moving_children_keeps_the_others_unflagged() {
     for &item in &keys[1..] {
         assert!(tree.items[item].flags.is_empty());
     }
-    assert_eq!(tree.items[key].flags, CHILDREN);
+    assert_eq!(tree.items[key].flags, FULL);
 
     tree.clear_flags(key);
     ui.prepend(root, nodes[3]);

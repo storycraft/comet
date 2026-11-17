@@ -280,21 +280,19 @@ fn container_children_follow_reorders_and_removals() {
     f.inputs.mark_node(root, InputFlags::NEED_CHILDREN);
     f.build(&ui, root, 400.0);
 
-    // Box fragments of kept children are reused in their new order. The
-    // moved child gets a new box fragment.
-    let moved = f.box_fragment(children[2]);
-    assert_ne!(moved, keys[2]);
+    // Box fragments of kept children are reused in their new order,
+    // including the moved one.
+    assert_eq!(f.box_fragment(children[2]), keys[2]);
     assert_eq!(
         f.fragments
             .items
             .children(fragment_root)
             .collect::<Vec<_>>(),
-        vec![moved, keys[1]]
+        vec![keys[2], keys[1]]
     );
-    assert_eq!(f.fragments.items[moved].layout.location.x, 0.0);
+    assert_eq!(f.fragments.items[keys[2]].layout.location.x, 0.0);
     assert_eq!(f.fragments.items[keys[1]].layout.location.x, 50.0);
     assert!(f.fragments.items.get(keys[0]).is_none());
-    assert!(f.fragments.items.get(keys[2]).is_none());
 }
 
 /// Probes its only child's size at a width read from `probe`, then lays it

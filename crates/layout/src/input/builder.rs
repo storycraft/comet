@@ -65,7 +65,8 @@ impl LayoutInputTreeBuilder {
     ///   its text style, and marks every child with it, so the style
     ///   propagates to the whole subtree,
     /// - [`InputFlags::NEED_CHILDREN`], which the former includes, reconciles
-    ///   its children with the source children, deleting the stale ones.
+    ///   its children with the source children, deleting the stale ones and
+    ///   marking the item [`InputFlags::NEED_FULL_LAYOUT`] when any is gone.
     ///   The whole subtree of each new child is built at once, every item
     ///   marked [`InputFlags::NEED_FULL_LAYOUT`], and attached.
     ///
@@ -80,7 +81,8 @@ impl LayoutInputTreeBuilder {
     /// [`InputFlags::NEED_CHILDREN`].
     ///
     /// Returns the item generated for `source`. Returns `None` and deletes its item
-    /// if `source` is not in the UI. Also returns `None` without changes when
+    /// if `source` is not in the UI, marking its parent
+    /// [`InputFlags::NEED_FULL_LAYOUT`]. Also returns `None` without changes when
     /// `source` has a UI parent but its item has no parent item, since the tree
     /// no longer mirrors the UI. Build from the UI root first.
     ///
@@ -105,13 +107,7 @@ impl LayoutInputTreeBuilder {
 
         let Some(props) = ui.props(source) else {
             if let Some(key) = target {
-                let parent = tree.items.parent(key);
-
-                tree.delete_item(key);
-
-                if let Some(parent) = parent {
-                    tree.mark(parent, InputFlags::NEED_CHILDREN);
-                }
+                delete_child(tree, key);
             }
 
             return None;
@@ -163,7 +159,7 @@ impl LayoutInputTreeBuilder {
         let node = tree.items[key].node;
         let Some(props) = ui.props(node) else {
             // The source node was deleted without marking its parent.
-            tree.delete_item(key);
+            delete_child(tree, key);
             return;
         };
         let flags = tree.items[key].flags;
@@ -255,7 +251,7 @@ impl LayoutInputTreeBuilder {
                         != Some(node)
                 {
                     next = tree.items.next_sibling(stale);
-                    tree.delete_item(stale);
+                    delete_child(tree, stale);
                 }
 
                 if next == Some(item) {
@@ -277,7 +273,7 @@ impl LayoutInputTreeBuilder {
 
         while let Some(item) = next {
             next = tree.items.next_sibling(item);
-            tree.delete_item(item);
+            delete_child(tree, item);
         }
     }
 
@@ -329,6 +325,20 @@ impl LayoutInputTreeBuilder {
         }
 
         Some(root)
+    }
+}
+
+/// Delete an item and its subtree, and mark its parent
+/// [`InputFlags::NEED_FULL_LAYOUT`]: its child list changed, so later steps
+/// lay it out again. The builder resolved the parent already, so the mark
+/// does not restyle its children in this build.
+fn delete_child(tree: &mut LayoutInputTree, key: LayoutInputKey) {
+    let parent = tree.items.parent(key);
+
+    tree.delete_item(key);
+
+    if let Some(parent) = parent {
+        tree.mark(parent, InputFlags::NEED_FULL_LAYOUT);
     }
 }
 
