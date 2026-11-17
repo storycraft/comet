@@ -49,7 +49,10 @@ impl PaintLayerBuilder {
     /// the layers with changes are placed again. Items are visited from
     /// `root`, going into the children of an item whose
     /// [`LayoutInputItem::child_flags`](comet_layout::input::LayoutInputItem::child_flags)
-    /// have [`InputFlags::NEED_PRE_PAINT`]. For each item whose
+    /// have [`InputFlags::NEED_PRE_PAINT`] or [`InputFlags::NEED_CHILDREN`].
+    /// The child layers of the layer enclosing an item marked
+    /// [`InputFlags::NEED_CHILDREN`] are placed again, in their new order.
+    /// For each item whose
     /// [`LayoutInputItem::flags`](comet_layout::input::LayoutInputItem::flags)
     /// have it, the [stacking](crate::pre_paint::FragmentData::stacking) of
     /// each of its fragments is compared with the layer the fragment starts:
@@ -184,7 +187,23 @@ impl PaintLayerBuilder {
                 }
             }
 
-            if item.child_flags.contains(InputFlags::NEED_PRE_PAINT) {
+            // Children inserted, removed or reordered can reorder the layers
+            // they start, which are child layers of the layer enclosing the
+            // item's fragments: its own layer if it starts one.
+            if item.flags.contains(InputFlags::NEED_CHILDREN)
+                && let Some(layer) = fragments
+                    .fragments(key)
+                    .next()
+                    .and_then(|fragment| tree.enclosing(fragments, fragment))
+            {
+                self.dirty.push((0, layer));
+            }
+
+            // A child list change alone carries no `NEED_PRE_PAINT`.
+            if item
+                .child_flags
+                .intersects(InputFlags::NEED_PRE_PAINT | InputFlags::NEED_CHILDREN)
+            {
                 self.items.extend(inputs.items.children(key));
             }
         }

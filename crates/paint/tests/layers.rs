@@ -1200,10 +1200,12 @@ fn reordered_siblings_reorder_layers_with_equal_z_indices() {
     p.inputs.mark_node(root, InputFlags::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
-    // The moved owner gets a new layer; the others keep theirs.
-    let moved = p.layer_of(boxes[2]).unwrap();
-    assert_ne!(moved, layers[2]);
-    assert_eq!(p.children(root_layer), vec![moved, layers[0], layers[1]]);
+    // Every owner keeps its layer, in the new order.
+    assert_eq!(p.layer_of(boxes[2]), Some(layers[2]));
+    assert_eq!(
+        p.children(root_layer),
+        vec![layers[2], layers[0], layers[1]]
+    );
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
 }
 
