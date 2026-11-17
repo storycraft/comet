@@ -6,8 +6,7 @@ pub use crate::fragment::{
     state::NodeLayoutBits, tree::FragmentTree,
 };
 pub use crate::input::{
-    ChildLayout, InputFlags, LayoutFlags, LayoutInputItem, LayoutInputKey,
-    LayoutInputKind,
+    ChildLayout, InputFlags, LayoutFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind,
     builder::{BuildRequest, LayoutInputTreeBuilder},
     tree::LayoutInputTree,
 };

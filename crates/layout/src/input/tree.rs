@@ -55,7 +55,12 @@ impl LayoutInputTree {
         };
 
         item.flags2.insert(flags);
+        self.mark_parents(key, flags);
+    }
 
+    /// Insert `flags` into the [`LayoutInputItem::child_flags`] of every
+    /// ancestor of an item, as [`Self::mark`] does after marking the item.
+    pub(crate) fn mark_parents(&mut self, key: LayoutInputKey, flags: InputFlags) {
         let mut ancestor = self.items.parent(key);
 
         while let Some(key) = ancestor {

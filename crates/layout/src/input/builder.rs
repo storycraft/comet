@@ -44,7 +44,11 @@ impl BuildRequest {
 /// Builds a [`LayoutInputTree`] that mirrors the source UI 1:1.
 #[derive(Default)]
 pub struct LayoutInputTreeBuilder {
+    /// Existing items to visit.
     pending: Vec<LayoutInputKey>,
+    /// Items of a new subtree whose children are not built yet, with their
+    /// source nodes.
+    subtree: Vec<(LayoutInputKey, NodeKey)>,
 }
 
 impl LayoutInputTreeBuilder {
@@ -62,8 +66,9 @@ impl LayoutInputTreeBuilder {
     ///   its text style, and marks every child with it, so the style
     ///   propagates to the whole subtree,
     /// - [`InputFlags::NEED_CHILDREN`], which the former includes, reconciles
-    ///   its children with the source children, deleting the stale ones and
-    ///   adding new ones marked [`InputFlags::NEED_FULL_LAYOUT`].
+    ///   its children with the source children, deleting the stale ones.
+    ///   The whole subtree of each new child is built at once, every item
+    ///   marked [`InputFlags::NEED_FULL_LAYOUT`], and attached.
     ///
     /// Items whose text styles depend on the viewport are not resolved again
     /// when it changes; invalidate them with
@@ -119,27 +124,23 @@ impl LayoutInputTreeBuilder {
             return None;
         }
 
-        let key = match target {
-            Some(key) => key,
-            None => {
-                let style = Arc::new(root_text_style(root_font_size));
-                let key = tree.add_item(new_item(source, props, style));
+        let cx = UnitResolveContext {
+            root_font_size,
+            font_size: root_font_size,
+            viewport,
+        };
 
-                tree.mark(key, InputFlags::NEED_FULL_LAYOUT);
-                key
-            }
+        // Without an item, the source is built like a new child.
+        let Some(key) = target else {
+            let style = Arc::new(root_text_style(root_font_size));
+
+            return self.build_subtree(ui, tree, source, &style, &cx);
         };
 
         // Nothing under a clean item changed.
         if !needs_visit(&tree.items[key]) {
             return Some(key);
         }
-
-        let cx = UnitResolveContext {
-            root_font_size,
-            font_size: root_font_size,
-            viewport,
-        };
 
         self.pending.clear();
         self.pending.push(key);
@@ -151,8 +152,8 @@ impl LayoutInputTreeBuilder {
         Some(key)
     }
 
-    /// Resolve the item and reconcile its children as its flags require, then
-    /// queue the children to visit.
+    /// Resolve the item and reconcile its children as its flags require,
+    /// queueing the children to visit.
     fn visit(
         &mut self,
         ui: &Ui,
@@ -168,29 +169,167 @@ impl LayoutInputTreeBuilder {
         };
         let flags = tree.items[key].flags2;
         let full = flags.contains(InputFlags::NEED_FULL_LAYOUT);
+        // Subtrees are visited only for descendants needing it. A full layout
+        // marks every child, so it visits them all.
+        let descend = full
+            || tree.items[key]
+                .child_flags
+                .contains(InputFlags::NEED_CHILDREN);
 
         if full {
-            resolve(tree, key, props, cx);
+            let parent_style = match tree.items.parent(key) {
+                Some(parent) => tree.items[parent].text_style.clone(),
+                None => Arc::new(root_text_style(cx.root_font_size)),
+            };
+            let (kind, child_layout, text_style) = resolve(props, &parent_style, cx);
+
+            let item = &mut tree.items[key];
+            item.kind = kind;
+            item.child_layout = child_layout;
+            // Always take the new allocation so equal styles keep sharing it.
+            tree.set_text_style(key, text_style);
         }
 
+        // Children are checked against the source children only when the
+        // child list is marked. `NEED_FULL_LAYOUT` includes `NEED_CHILDREN`.
         if flags.contains(InputFlags::NEED_CHILDREN) {
-            reconcile_children(ui, tree, key, node);
+            self.reconcile_children(ui, tree, key, node, full, descend, cx);
+            return;
+        }
+
+        if !descend {
+            return;
         }
 
         let mut next = tree.items.first_child(key);
 
         while let Some(child) = next {
             next = tree.items.next_sibling(child);
+            self.queue(tree, child, false);
+        }
+    }
 
-            // Children inherit the resolved style.
-            if full {
-                tree.mark(child, InputFlags::NEED_FULL_LAYOUT);
-            }
+    /// Match the item's children to the source children, in order. Stale
+    /// children are deleted, and the subtrees of new ones are built and
+    /// attached. With `full`, kept children are marked
+    /// [`InputFlags::NEED_FULL_LAYOUT`] to inherit the resolved style; with
+    /// `descend`, those needing a visit are queued.
+    #[allow(clippy::too_many_arguments)]
+    fn reconcile_children(
+        &mut self,
+        ui: &Ui,
+        tree: &mut LayoutInputTree,
+        key: LayoutInputKey,
+        node: NodeKey,
+        full: bool,
+        descend: bool,
+        cx: &UnitResolveContext,
+    ) {
+        let mut next = tree.items.first_child(key);
 
-            if needs_visit(&tree.items[child]) {
-                self.pending.push(child);
+        if tree.items[key].child_layout != ChildLayout::None {
+            let parent_style = tree.items[key].text_style.clone();
+
+            for child in ui.children(node) {
+                let existing = tree
+                    .item_for_node(child)
+                    .filter(|&item| tree.items.parent(item) == Some(key));
+                let item = match existing {
+                    Some(item) => item,
+                    None => {
+                        let Some(item) = self.build_subtree(ui, tree, child, &parent_style, cx)
+                        else {
+                            continue;
+                        };
+
+                        item
+                    }
+                };
+
+                // Items whose nodes left this parent are deleted first, so
+                // the children after them are not taken as moved.
+                while let Some(stale) = next
+                    && stale != item
+                    && ui
+                        .props(tree.items[stale].node)
+                        .and_then(|props| props.parent())
+                        != Some(node)
+                {
+                    next = tree.items.next_sibling(stale);
+                    tree.delete_item(stale);
+                }
+
+                if next == Some(item) {
+                    next = tree.items.next_sibling(item);
+                } else if let Some(next) = next {
+                    tree.items.before(next, item);
+                } else {
+                    tree.items.append(key, item);
+                }
+
+                match existing {
+                    Some(item) if descend => self.queue(tree, item, full),
+                    Some(_) => {}
+                    // Built already, with its flags.
+                    None => tree.mark_parents(item, InputFlags::NEED_FULL_LAYOUT),
+                }
             }
         }
+
+        while let Some(item) = next {
+            next = tree.items.next_sibling(item);
+            tree.delete_item(item);
+        }
+    }
+
+    /// Mark an existing child [`InputFlags::NEED_FULL_LAYOUT`] with `full`,
+    /// and queue it if its subtree has something to build.
+    fn queue(&mut self, tree: &mut LayoutInputTree, key: LayoutInputKey, full: bool) {
+        if full {
+            tree.mark(key, InputFlags::NEED_FULL_LAYOUT);
+        }
+
+        if needs_visit(&tree.items[key]) {
+            self.pending.push(key);
+        }
+    }
+
+    /// Build the whole subtree of `node` as a detached tree, its root
+    /// inheriting `parent_style`. Every item is created with
+    /// [`InputFlags::NEED_FULL_LAYOUT`]. Returns its root, or `None` if
+    /// `node` is not in the UI.
+    fn build_subtree(
+        &mut self,
+        ui: &Ui,
+        tree: &mut LayoutInputTree,
+        node: NodeKey,
+        parent_style: &Arc<TextStyle>,
+        cx: &UnitResolveContext,
+    ) -> Option<LayoutInputKey> {
+        let root = tree.add_item(new_item(node, ui.props(node)?, parent_style, cx));
+
+        self.subtree.clear();
+        self.subtree.push((root, node));
+
+        while let Some((key, node)) = self.subtree.pop() {
+            if tree.items[key].child_layout == ChildLayout::None {
+                continue;
+            }
+
+            let style = tree.items[key].text_style.clone();
+
+            for child in ui.children(node) {
+                let Some(props) = ui.props(child) else {
+                    continue;
+                };
+                let item = tree.add_item(new_item(child, props, &style, cx));
+
+                tree.items.append(key, item);
+                self.subtree.push((item, child));
+            }
+        }
+
+        Some(root)
     }
 }
 
@@ -201,91 +340,41 @@ fn needs_visit(item: &LayoutInputItem) -> bool {
         || item.child_flags.contains(InputFlags::NEED_CHILDREN)
 }
 
-/// A detached item for `node` with `text_style`, which a visit with
-/// [`InputFlags::NEED_FULL_LAYOUT`] resolves.
-fn new_item(node: NodeKey, props: Props, text_style: Arc<TextStyle>) -> LayoutInputItem {
+/// Resolve the source props of an item: its kind, child layout and the text
+/// style inherited from `parent_style`.
+fn resolve(
+    props: Props,
+    parent_style: &Arc<TextStyle>,
+    cx: &UnitResolveContext,
+) -> (LayoutInputKind, ChildLayout, Arc<TextStyle>) {
     let (kind, child_layout) = classify(props.kind(), props);
 
+    (
+        kind,
+        child_layout,
+        resolve_text_style(props, cx, parent_style),
+    )
+}
+
+/// A resolved, detached item for `node`. New items, and the subtrees under
+/// them, need a full layout, so both [`LayoutInputItem::flags2`] and
+/// [`LayoutInputItem::child_flags`] have [`InputFlags::NEED_FULL_LAYOUT`].
+fn new_item(
+    node: NodeKey,
+    props: Props,
+    parent_style: &Arc<TextStyle>,
+    cx: &UnitResolveContext,
+) -> LayoutInputItem {
+    let (kind, child_layout, text_style) = resolve(props, parent_style, cx);
+
     LayoutInputItem {
-        child_flags: InputFlags::empty(),
-        flags2: InputFlags::empty(),
+        child_flags: InputFlags::NEED_FULL_LAYOUT,
+        flags2: InputFlags::NEED_FULL_LAYOUT,
         kind,
         node,
         text_style,
         child_layout,
         flags: LayoutFlags::empty(),
-    }
-}
-
-/// Resolve the source props of an item: its kind, child layout and the text
-/// style inherited from its parent item.
-fn resolve(tree: &mut LayoutInputTree, key: LayoutInputKey, props: Props, cx: &UnitResolveContext) {
-    let parent_style = match tree.items.parent(key) {
-        Some(parent) => tree.items[parent].text_style.clone(),
-        None => Arc::new(root_text_style(cx.root_font_size)),
-    };
-    let (kind, child_layout) = classify(props.kind(), props);
-    let text_style = resolve_text_style(props, cx, &parent_style);
-
-    let item = &mut tree.items[key];
-    item.kind = kind;
-    item.child_layout = child_layout;
-    // Always take the new allocation so equal styles keep sharing it.
-    tree.set_text_style(key, text_style);
-}
-
-/// Match the item's children to the source children, in order. Stale
-/// children are deleted, and new ones are added marked
-/// [`InputFlags::NEED_FULL_LAYOUT`].
-fn reconcile_children(ui: &Ui, tree: &mut LayoutInputTree, key: LayoutInputKey, node: NodeKey) {
-    let mut next = tree.items.first_child(key);
-
-    if tree.items[key].child_layout != ChildLayout::None {
-        let parent_style = tree.items[key].text_style.clone();
-
-        for child in ui.children(node) {
-            let Some(props) = ui.props(child) else {
-                continue;
-            };
-            let existing = tree
-                .item_for_node(child)
-                .filter(|&item| tree.items.parent(item) == Some(key));
-            let item = match existing {
-                Some(item) => item,
-                None => tree.add_item(new_item(child, props, parent_style.clone())),
-            };
-
-            // Items whose nodes left this parent are deleted first, so
-            // the children after them are not taken as moved.
-            while let Some(stale) = next
-                && stale != item
-                && ui
-                    .props(tree.items[stale].node)
-                    .and_then(|props| props.parent())
-                    != Some(node)
-            {
-                next = tree.items.next_sibling(stale);
-                tree.delete_item(stale);
-            }
-
-            if next == Some(item) {
-                next = tree.items.next_sibling(item);
-            } else if let Some(next) = next {
-                tree.items.before(next, item);
-            } else {
-                tree.items.append(key, item);
-            }
-
-            if existing.is_none() {
-                // Once attached, so the flags reach the ancestors.
-                tree.mark(item, InputFlags::NEED_FULL_LAYOUT);
-            }
-        }
-    }
-
-    while let Some(item) = next {
-        next = tree.items.next_sibling(item);
-        tree.delete_item(item);
     }
 }
 

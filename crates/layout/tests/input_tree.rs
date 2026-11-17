@@ -117,11 +117,11 @@ fn fresh_tree_mirrors_ui_with_full_layout_flags() {
         assert_eq!(tree.item_for_node(tree.items[item].node), Some(item));
     }
 
-    // Parents carry the flags of their children; leaves carry none.
-    assert_eq!(child_flags(&tree, root), FULL);
-    assert_eq!(child_flags(&tree, span), FULL);
-    assert!(child_flags(&tree, text).is_empty());
-    assert!(child_flags(&tree, content).is_empty());
+    // New items are created with full flags, leaves included.
+    for item in tree.items.descendants(key) {
+        assert_eq!(tree.items[item].child_flags, FULL);
+    }
+    assert_eq!(child_flags(&tree, text), FULL);
 
     assert_eq!(tree.item_for_node(hidden), None);
 }
