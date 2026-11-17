@@ -4,7 +4,7 @@ use comet_slotmap_tree::SlotTree;
 use comet_tree::node::NodeKey;
 use rustc_hash::FxHashMap;
 
-use crate::input::{InputFlags2, LayoutInputItem, LayoutInputKey, TextStyle, text::TextStyleBits};
+use crate::input::{InputFlags, LayoutInputItem, LayoutInputKey, TextStyle, text::TextStyleBits};
 
 pub struct LayoutInputTree {
     /// Raw tree storage. Use the tree mutation methods and builder to keep
@@ -45,11 +45,11 @@ impl LayoutInputTree {
     /// into the [`LayoutInputItem::child_flags`] of its ancestors. Stale keys
     /// are ignored.
     ///
-    /// Use [`InputFlags2::NEED_FULL_LAYOUT`] after props of the source node
+    /// Use [`InputFlags::NEED_FULL_LAYOUT`] after props of the source node
     /// resolved into the item changed, such as its text style or display, and
-    /// [`InputFlags2::NEED_CHILDREN`] after its child list changed. Mark both
+    /// [`InputFlags::NEED_CHILDREN`] after its child list changed. Mark both
     /// parents when moving a source node, and the parent when deleting one.
-    pub fn mark(&mut self, key: LayoutInputKey, flags: InputFlags2) {
+    pub fn mark(&mut self, key: LayoutInputKey, flags: InputFlags) {
         let Some(item) = self.items.get_mut(key) else {
             return;
         };
@@ -73,8 +73,8 @@ impl LayoutInputTree {
 
     /// Insert `flags` into the item generated for a source node, as
     /// [`Self::mark`]. Unmapped nodes are ignored; mark their parent
-    /// [`InputFlags2::NEED_CHILDREN`] when inserting them.
-    pub fn mark_node(&mut self, node: NodeKey, flags: InputFlags2) {
+    /// [`InputFlags::NEED_CHILDREN`] when inserting them.
+    pub fn mark_node(&mut self, node: NodeKey, flags: InputFlags) {
         if let Some(key) = self.item_for_node(node) {
             self.mark(key, flags);
         }
@@ -97,7 +97,7 @@ impl LayoutInputTree {
         while let Some(key) = pending.pop() {
             let item = &mut self.items[key];
             let child_flags = std::mem::take(&mut item.child_flags);
-            item.flags2 = InputFlags2::empty();
+            item.flags2 = InputFlags::empty();
 
             // Flagged descendants always have flagged ancestors.
             if !child_flags.is_empty() {
@@ -119,7 +119,7 @@ impl LayoutInputTree {
         let mut pending = vec![root];
         while let Some(key) = pending.pop() {
             if depends_viewport(&self.items[key].text_style) {
-                self.mark(key, InputFlags2::NEED_FULL_LAYOUT);
+                self.mark(key, InputFlags::NEED_FULL_LAYOUT);
             }
 
             pending.extend(self.items.children(key));

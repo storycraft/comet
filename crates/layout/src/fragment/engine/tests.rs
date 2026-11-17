@@ -9,7 +9,7 @@ use crate::{
     container::{ContainerContext, ContainerLayout},
     fragment::{builder::FragmentTreeBuilder, state::NodeLayoutBits, tree::FragmentTree},
     input::{
-        InputFlags2,
+        InputFlags,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -113,7 +113,7 @@ fn style_units_set_viewport_bits_up_to_the_root() {
 
     // A box style edit adds the bits of its new style to the ancestors.
     ui.set_props(plain, (width(StyleUnit::Vh(0.5)),));
-    f.tree.mark_node(plain, InputFlags2::NEED_BOX_LAYOUT);
+    f.tree.mark_node(plain, InputFlags::NEED_BOX_LAYOUT);
     f.build(&ui, root);
 
     assert_eq!(f.bits(plain), NodeLayoutBits::DEPENDS_VIEWPORT);
@@ -466,7 +466,7 @@ fn boxes_depending_on_the_parent_size_lay_out_again() {
 
 #[test]
 fn builds_record_the_generation_of_changed_fragments() {
-    use crate::input::InputFlags2;
+    use crate::input::InputFlags;
 
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
@@ -516,7 +516,7 @@ fn builds_record_the_generation_of_changed_fragments() {
 
     // Resizing the last box marks it and the subtrees containing it.
     ui.set_props(b, (fixed(80.0),));
-    f.tree.mark_node(b, InputFlags2::NEED_BOX_LAYOUT);
+    f.tree.mark_node(b, InputFlags::NEED_BOX_LAYOUT);
     layout_at(&mut f, &ui, root, 500.0);
     let changed = f.fragments.generation();
     assert_eq!(generations(&f, b), (changed, changed));

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use comet_layout::{
     input::{
-        ChildLayout, InputFlags2, LayoutInputKey, LayoutInputKind,
+        ChildLayout, InputFlags, LayoutInputKey, LayoutInputKind,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         text::TextStyleBits,
         tree::LayoutInputTree,
@@ -15,8 +15,8 @@ use comet_layout::{
 use comet_tree::{node::Node, ui::Ui};
 
 const VIEWPORT: Size<f64> = Size::new(800.0, 600.0);
-const FULL: InputFlags2 = InputFlags2::NEED_FULL_LAYOUT;
-const CHILDREN: InputFlags2 = InputFlags2::NEED_CHILDREN;
+const FULL: InputFlags = InputFlags::NEED_FULL_LAYOUT;
+const CHILDREN: InputFlags = InputFlags::NEED_CHILDREN;
 
 fn build(
     builder: &mut LayoutInputTreeBuilder,
@@ -63,11 +63,11 @@ fn assert_clean(tree: &LayoutInputTree, root: LayoutInputKey) {
     }
 }
 
-fn flags2(tree: &LayoutInputTree, node: comet_tree::node::NodeKey) -> InputFlags2 {
+fn flags2(tree: &LayoutInputTree, node: comet_tree::node::NodeKey) -> InputFlags {
     tree.items[tree.item_for_node(node).unwrap()].flags2
 }
 
-fn child_flags(tree: &LayoutInputTree, node: comet_tree::node::NodeKey) -> InputFlags2 {
+fn child_flags(tree: &LayoutInputTree, node: comet_tree::node::NodeKey) -> InputFlags {
     tree.items[tree.item_for_node(node).unwrap()].child_flags
 }
 
@@ -356,13 +356,13 @@ fn mark_propagates_child_flags_to_ancestors() {
     tree.clear_flags(key);
 
     let leaf_key = tree.item_for_node(leaf).unwrap();
-    tree.mark(leaf_key, InputFlags2::NEED_BOX_LAYOUT);
+    tree.mark(leaf_key, InputFlags::NEED_BOX_LAYOUT);
 
-    assert_eq!(flags2(&tree, leaf), InputFlags2::NEED_BOX_LAYOUT);
+    assert_eq!(flags2(&tree, leaf), InputFlags::NEED_BOX_LAYOUT);
     assert!(child_flags(&tree, leaf).is_empty());
     assert!(flags2(&tree, left).is_empty());
-    assert_eq!(child_flags(&tree, left), InputFlags2::NEED_BOX_LAYOUT);
-    assert_eq!(child_flags(&tree, root), InputFlags2::NEED_BOX_LAYOUT);
+    assert_eq!(child_flags(&tree, left), InputFlags::NEED_BOX_LAYOUT);
+    assert_eq!(child_flags(&tree, root), InputFlags::NEED_BOX_LAYOUT);
     assert!(child_flags(&tree, right).is_empty());
 
     // Further flags are added to the ancestors too.
@@ -370,15 +370,15 @@ fn mark_propagates_child_flags_to_ancestors() {
     assert_eq!(flags2(&tree, right), CHILDREN);
     assert_eq!(
         child_flags(&tree, root),
-        InputFlags2::NEED_BOX_LAYOUT | CHILDREN
+        InputFlags::NEED_BOX_LAYOUT | CHILDREN
     );
-    assert_eq!(child_flags(&tree, left), InputFlags2::NEED_BOX_LAYOUT);
+    assert_eq!(child_flags(&tree, left), InputFlags::NEED_BOX_LAYOUT);
 
     // A full change includes the others.
     tree.mark(leaf_key, FULL);
     assert_eq!(flags2(&tree, leaf), FULL);
     assert_eq!(child_flags(&tree, left), FULL);
-    assert!(FULL.contains(InputFlags2::NEED_BOX_LAYOUT | CHILDREN));
+    assert!(FULL.contains(InputFlags::NEED_BOX_LAYOUT | CHILDREN));
 
     // Unmapped nodes are ignored.
     let unmapped = ui.create(Node::Box, ());
@@ -635,9 +635,9 @@ fn build_resolves_only_marked_items_of_an_existing_tree() {
 
     // Flags the builder does not consume are kept.
     tree.clear_flags(key);
-    tree.mark(text_key, InputFlags2::NEED_BOX_LAYOUT);
+    tree.mark(text_key, InputFlags::NEED_BOX_LAYOUT);
     builder.build(&ui, &mut tree, BuildRequest::new(root, 16.0, viewport));
-    assert_eq!(tree.items[text_key].flags2, InputFlags2::NEED_BOX_LAYOUT);
+    assert_eq!(tree.items[text_key].flags2, InputFlags::NEED_BOX_LAYOUT);
 }
 
 #[test]

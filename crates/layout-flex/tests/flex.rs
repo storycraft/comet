@@ -5,7 +5,7 @@ use comet_layout::{
         FragmentBox, FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree,
     },
     input::{
-        InputFlags2, LayoutInputKey,
+        InputFlags, LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -384,12 +384,12 @@ fn nested_flex_and_incremental_style_changes_match_fresh_layout() {
             );
             ui.set_props(b, (flex::FlexGrow(2.0),));
             let (nested, b) = (retained.item(nested), retained.item(b));
-            retained.inputs.mark(nested, InputFlags2::NEED_FULL_LAYOUT);
-            retained.inputs.mark(b, InputFlags2::NEED_FULL_LAYOUT);
+            retained.inputs.mark(nested, InputFlags::NEED_FULL_LAYOUT);
+            retained.inputs.mark(b, InputFlags::NEED_FULL_LAYOUT);
         } else if step == 2 {
             ui.prepend(nested, b);
             let nested = retained.item(nested);
-            retained.inputs.mark(nested, InputFlags2::NEED_CHILDREN);
+            retained.inputs.mark(nested, InputFlags::NEED_CHILDREN);
         }
 
         let current = retained.build(&ui, root);

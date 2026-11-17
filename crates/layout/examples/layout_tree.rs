@@ -2,7 +2,7 @@ mod common;
 
 use comet_layout::{
     input::{
-        InputFlags2, LayoutInputKey, LayoutInputKind,
+        InputFlags, LayoutInputKey, LayoutInputKind,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // item, so only the layout flag is set and the input build skips it.
     ui.set_props(greeting, (Text("Updated greeting! ".into()),));
     tree.clear_flags(layout_root);
-    tree.mark_node(greeting, InputFlags2::NEED_FULL_LAYOUT);
+    tree.mark_node(greeting, InputFlags::NEED_FULL_LAYOUT);
     build(&mut builder, &ui, &mut tree, root, ROOT_FONT_SIZE)?;
 
     println!(
@@ -54,7 +54,7 @@ After changing the greeting text:"
     // only describe their own node, so marking the changed node is enough.
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
     tree.clear_flags(layout_root);
-    tree.mark_node(interruption, InputFlags2::NEED_FULL_LAYOUT);
+    tree.mark_node(interruption, InputFlags::NEED_FULL_LAYOUT);
     build(&mut builder, &ui, &mut tree, root, ROOT_FONT_SIZE)?;
 
     println!(
@@ -68,7 +68,7 @@ After changing the interruption to inline-block:"
     ui.set_props(interruption, (DisplayOuter::Block, DisplayInner::Flow));
     ui.set_props(interruption, (FontSize(StyleUnit::Em(1.5)),));
     tree.clear_flags(layout_root);
-    tree.mark_node(interruption, InputFlags2::NEED_FULL_LAYOUT);
+    tree.mark_node(interruption, InputFlags::NEED_FULL_LAYOUT);
     build(&mut builder, &ui, &mut tree, root, ROOT_FONT_SIZE)?;
 
     println!(
@@ -81,7 +81,7 @@ After restoring the block with font-size: 1.5em:"
     let note = ui.create(Node::Text, (Text("A new note.".into()),));
     ui.append(root, note);
     tree.clear_flags(layout_root);
-    tree.mark_node(root, InputFlags2::NEED_CHILDREN);
+    tree.mark_node(root, InputFlags::NEED_CHILDREN);
     build(&mut builder, &ui, &mut tree, root, ROOT_FONT_SIZE)?;
 
     println!(

@@ -15,9 +15,9 @@ pub struct LayoutInputItem {
     /// Union of the [`Self::flags2`] of every descendant. Kept on the
     /// ancestors of an item by [`LayoutInputTree::mark`](tree::LayoutInputTree::mark),
     /// so subtrees without the flags are skipped.
-    pub child_flags: InputFlags2,
+    pub child_flags: InputFlags,
     /// Changes of this item not consumed yet.
-    pub flags2: InputFlags2,
+    pub flags2: InputFlags,
     pub kind: LayoutInputKind,
     pub node: NodeKey,
     /// Inherited text properties. Equal styles share an allocation.
@@ -78,7 +78,7 @@ bitflags! {
     /// with [`LayoutInputTree::clear_flags`](tree::LayoutInputTree::clear_flags)
     /// once every step consumed them.
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-    pub struct InputFlags2: u8 {
+    pub struct InputFlags: u8 {
         /// The child list of the source node changed: children were
         /// inserted, removed or moved. The input builder reconciles the
         /// item's children with the source children.

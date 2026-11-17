@@ -7,7 +7,7 @@ use comet_tree::{
 
 use crate::{
     input::{
-        ChildLayout, InputFlags2, LayoutFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind,
+        ChildLayout, InputFlags, LayoutFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind,
         TextStyle,
         text::{resolve_text_style, root_text_style},
         tree::LayoutInputTree,
@@ -55,15 +55,15 @@ impl LayoutInputTreeBuilder {
     /// Build a new tree for `request.source` when the node has no item, or
     /// update its existing item with the source changes marked with
     /// [`LayoutInputTree::mark`]. Only subtrees whose
-    /// [`LayoutInputItem::child_flags`] have [`InputFlags2::NEED_CHILDREN`]
+    /// [`LayoutInputItem::child_flags`] have [`InputFlags::NEED_CHILDREN`]
     /// are visited. For each visited item, by its [`LayoutInputItem::flags2`]:
     ///
-    /// - [`InputFlags2::NEED_FULL_LAYOUT`] resolves the item again, including
+    /// - [`InputFlags::NEED_FULL_LAYOUT`] resolves the item again, including
     ///   its text style, and marks every child with it, so the style
     ///   propagates to the whole subtree,
-    /// - [`InputFlags2::NEED_CHILDREN`], which the former includes, reconciles
+    /// - [`InputFlags::NEED_CHILDREN`], which the former includes, reconciles
     ///   its children with the source children, deleting the stale ones and
-    ///   adding new ones marked [`InputFlags2::NEED_FULL_LAYOUT`].
+    ///   adding new ones marked [`InputFlags::NEED_FULL_LAYOUT`].
     ///
     /// Items whose text styles depend on the viewport are not resolved again
     /// when it changes; invalidate them with
@@ -73,7 +73,7 @@ impl LayoutInputTreeBuilder {
     ///
     /// Keys are reused, and unmarked source changes are not seen. To insert a
     /// new node under an existing item, mark its parent
-    /// [`InputFlags2::NEED_CHILDREN`].
+    /// [`InputFlags::NEED_CHILDREN`].
     ///
     /// Returns the item generated for `source`. Returns `None` and deletes its item
     /// if `source` is not in the UI. Also returns `None` without changes when
@@ -106,7 +106,7 @@ impl LayoutInputTreeBuilder {
                 tree.delete_item(key);
 
                 if let Some(parent) = parent {
-                    tree.mark(parent, InputFlags2::NEED_CHILDREN);
+                    tree.mark(parent, InputFlags::NEED_CHILDREN);
                 }
             }
 
@@ -125,7 +125,7 @@ impl LayoutInputTreeBuilder {
                 let style = Arc::new(root_text_style(root_font_size));
                 let key = tree.add_item(new_item(source, props, style));
 
-                tree.mark(key, InputFlags2::NEED_FULL_LAYOUT);
+                tree.mark(key, InputFlags::NEED_FULL_LAYOUT);
                 key
             }
         };
@@ -167,13 +167,13 @@ impl LayoutInputTreeBuilder {
             return;
         };
         let flags = tree.items[key].flags2;
-        let full = flags.contains(InputFlags2::NEED_FULL_LAYOUT);
+        let full = flags.contains(InputFlags::NEED_FULL_LAYOUT);
 
         if full {
             resolve(tree, key, props, cx);
         }
 
-        if flags.contains(InputFlags2::NEED_CHILDREN) {
+        if flags.contains(InputFlags::NEED_CHILDREN) {
             reconcile_children(ui, tree, key, node);
         }
 
@@ -184,7 +184,7 @@ impl LayoutInputTreeBuilder {
 
             // Children inherit the resolved style.
             if full {
-                tree.mark(child, InputFlags2::NEED_FULL_LAYOUT);
+                tree.mark(child, InputFlags::NEED_FULL_LAYOUT);
             }
 
             if needs_visit(&tree.items[child]) {
@@ -197,18 +197,18 @@ impl LayoutInputTreeBuilder {
 /// Whether the item or its subtree has something to build.
 fn needs_visit(item: &LayoutInputItem) -> bool {
     // `NEED_FULL_LAYOUT` includes `NEED_CHILDREN`.
-    item.flags2.contains(InputFlags2::NEED_CHILDREN)
-        || item.child_flags.contains(InputFlags2::NEED_CHILDREN)
+    item.flags2.contains(InputFlags::NEED_CHILDREN)
+        || item.child_flags.contains(InputFlags::NEED_CHILDREN)
 }
 
 /// A detached item for `node` with `text_style`, which a visit with
-/// [`InputFlags2::NEED_FULL_LAYOUT`] resolves.
+/// [`InputFlags::NEED_FULL_LAYOUT`] resolves.
 fn new_item(node: NodeKey, props: Props, text_style: Arc<TextStyle>) -> LayoutInputItem {
     let (kind, child_layout) = classify(props.kind(), props);
 
     LayoutInputItem {
-        child_flags: InputFlags2::empty(),
-        flags2: InputFlags2::empty(),
+        child_flags: InputFlags::empty(),
+        flags2: InputFlags::empty(),
         kind,
         node,
         text_style,
@@ -236,7 +236,7 @@ fn resolve(tree: &mut LayoutInputTree, key: LayoutInputKey, props: Props, cx: &U
 
 /// Match the item's children to the source children, in order. Stale
 /// children are deleted, and new ones are added marked
-/// [`InputFlags2::NEED_FULL_LAYOUT`].
+/// [`InputFlags::NEED_FULL_LAYOUT`].
 fn reconcile_children(ui: &Ui, tree: &mut LayoutInputTree, key: LayoutInputKey, node: NodeKey) {
     let mut next = tree.items.first_child(key);
 
@@ -278,7 +278,7 @@ fn reconcile_children(ui: &Ui, tree: &mut LayoutInputTree, key: LayoutInputKey, 
 
             if existing.is_none() {
                 // Once attached, so the flags reach the ancestors.
-                tree.mark(item, InputFlags2::NEED_FULL_LAYOUT);
+                tree.mark(item, InputFlags::NEED_FULL_LAYOUT);
             }
         }
     }
