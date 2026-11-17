@@ -9,7 +9,7 @@ use crate::{
     fragment::{
         Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, StateKey,
         state::NodeState,
-        tree::{FragmentTree, record_geometry},
+        tree::FragmentTree,
     },
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     style::geometry::{Point, Size},
@@ -31,7 +31,6 @@ impl Engine<'_> {
             states,
             first,
             changed,
-            generation,
             ..
         } = &mut *self.fragments;
         let Some(InlineLayout { layout, boxes, .. }) = items[fragment]
@@ -54,7 +53,6 @@ impl Engine<'_> {
             span_parents,
             spans,
             changed,
-            generation: *generation,
             line: 0,
             line_key: fragment,
         };
@@ -128,8 +126,6 @@ struct Emitter<'a> {
     spans: &'a mut Vec<FragmentKey>,
     /// Fragments created or moved in this build.
     changed: &'a mut Vec<FragmentKey>,
-    /// Generation of this build.
-    generation: u64,
     /// Index of the current line in the Parley layout.
     line: usize,
     /// Fragment of the current line.
@@ -236,7 +232,7 @@ impl Emitter<'_> {
 
         if self.items[atomic].layout.location != location {
             self.items[atomic].layout.location = location;
-            record_geometry(self.items, self.changed, self.generation, atomic);
+            self.changed.push(atomic);
         }
         self.items.append(parent, atomic);
     }
@@ -244,7 +240,7 @@ impl Emitter<'_> {
     /// Insert a new fragment, marked as created in this build.
     fn insert(&mut self, fragment: Fragment) -> FragmentKey {
         let key = self.items.insert(fragment);
-        record_geometry(self.items, self.changed, self.generation, key);
+        self.changed.push(key);
 
         key
     }

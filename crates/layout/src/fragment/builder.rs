@@ -40,6 +40,10 @@ impl FragmentTreeBuilder {
     /// Box fragments of block level and atomic inline items, and anonymous
     /// blocks of unchanged runs, keep their keys across builds. Line, inline and
     /// glyph run fragments of laid out lines are replaced.
+    ///
+    /// The fragments the build created, moved or resized are added to
+    /// [`FragmentTree::changed`], kept until
+    /// [`FragmentTree::clear_changed`].
     pub fn build(
         &mut self,
         ui: &Ui,
@@ -68,10 +72,12 @@ impl FragmentTreeBuilder {
                 engine.sweep();
             }
 
+            // Fragments listed before may be gone.
+            engine.fragments.finish_build();
+
             return None;
         }
 
-        engine.fragments.begin_generation();
         engine.invalidate();
 
         let fragment = engine.ensure_box(root);
@@ -82,7 +88,7 @@ impl FragmentTreeBuilder {
             }),
         );
         engine.sweep();
-        engine.fragments.finish_generation();
+        engine.fragments.finish_build();
 
         #[cfg(debug_assertions)]
         engine.check();

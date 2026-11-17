@@ -16,9 +16,9 @@ pub struct FragmentTree {
     /// First fragment of each item: its box, or its first inline or glyph
     /// run fragment.
     pub(crate) first: SecondaryMap<LayoutInputKey, FragmentKey>,
-    /// Generation of the latest build, increasing with every build.
-    pub(crate) generation: u64,
-    /// Fragments created or moved or resized in the current build.
+    /// Fragments created, moved or resized since the last
+    /// [`Self::clear_changed`]. Deleted fragments and duplicates are dropped
+    /// once a build finishes.
     pub(crate) changed: Vec<FragmentKey>,
 }
 
@@ -55,12 +55,21 @@ impl FragmentTree {
             .or_else(|| self.get_inline(self.items.parent(key)?))
     }
 
-    /// Generation of the latest build. Fragments it created, moved or resized
-    /// have it as their [`geometry_generation`](super::Fragment::geometry_generation),
-    /// and so do the [`subtree_generation`](super::Fragment::subtree_generation)
-    /// of their ancestors.
-    pub fn generation(&self) -> u64 {
-        self.generation
+    /// The fragments created, moved or resized by the builds since the last
+    /// [`Self::clear_changed`], each once, sorted by key. Every key is live:
+    /// fragments deleted since they were listed, such as lines laid out
+    /// again, are left out. Changes of padding, border or baseline alone are
+    /// not recorded.
+    ///
+    /// Builds add to the list, so the next step can consume the changes of
+    /// several builds, such as after it failed. Clear it once consumed.
+    pub fn changed(&self) -> &[FragmentKey] {
+        &self.changed
+    }
+
+    /// Clear [`Self::changed`], once the next step consumed it.
+    pub fn clear_changed(&mut self) {
+        self.changed.clear();
     }
 
     pub fn clear(&mut self) {
@@ -70,39 +79,18 @@ impl FragmentTree {
         self.changed.clear();
     }
 
-    /// Start the generation of a new build.
-    pub(crate) fn begin_generation(&mut self) {
-        self.generation += 1;
-        self.changed.clear();
-    }
-
-    /// Mark a fragment as created, moved or resized in the current build.
+    /// Record a fragment as created, moved or resized in the current build.
     pub(crate) fn record_geometry(&mut self, key: FragmentKey) {
-        record_geometry(&mut self.items, &mut self.changed, self.generation, key);
+        self.changed.push(key);
     }
 
-    /// Set the subtree generation of the fragments changed in this build and
-    /// of their ancestors, once the tree is final.
-    pub(crate) fn finish_generation(&mut self) {
-        let generation = self.generation;
-
-        for key in self.changed.drain(..) {
-            let mut current = Some(key);
-
-            while let Some(key) = current {
-                let Some(fragment) = self.items.get_mut(key) else {
-                    break;
-                };
-
-                // Ancestors of a marked fragment are marked already.
-                if fragment.subtree_generation == generation {
-                    break;
-                }
-
-                fragment.subtree_generation = generation;
-                current = self.items.parent(key);
-            }
-        }
+    /// Finish the changes of a build, once the tree is final: drop the
+    /// fragments deleted since they were recorded, and the duplicates.
+    pub(crate) fn finish_build(&mut self) {
+        let items = &self.items;
+        self.changed.retain(|&key| items.get(key).is_some());
+        self.changed.sort_unstable();
+        self.changed.dedup();
     }
 
     /// Insert a box or anonymous block fragment with its layout state, linking
@@ -157,20 +145,5 @@ impl FragmentTree {
     /// Remove the inline layout owned by a fragment.
     pub(crate) fn take_inline(&mut self, fragment: FragmentKey) -> Option<Box<InlineLayout>> {
         self.get_state_mut(fragment)?.inline.take()
-    }
-}
-
-/// Mark a fragment of `items` as created, moved or resized in `generation`.
-pub(crate) fn record_geometry(
-    items: &mut SlotTree<FragmentKey, Fragment>,
-    changed: &mut Vec<FragmentKey>,
-    generation: u64,
-    key: FragmentKey,
-) {
-    if let Some(fragment) = items.get_mut(key)
-        && fragment.geometry_generation != generation
-    {
-        fragment.geometry_generation = generation;
-        changed.push(key);
     }
 }

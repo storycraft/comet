@@ -96,12 +96,6 @@ pub struct Fragment {
     pub item: FragmentItem,
     pub layout: FragmentBox,
     pub link: FragmentLink,
-    /// [Generation](tree::FragmentTree::generation) of the build that last
-    /// created the fragment or changed its location or size.
-    pub geometry_generation: u64,
-    /// The latest [`Self::geometry_generation`] of the fragment and of its
-    /// descendants. Subtrees older than a generation have not changed since.
-    pub subtree_generation: u64,
 }
 
 impl Fragment {
@@ -111,8 +105,6 @@ impl Fragment {
             item,
             layout,
             link: FragmentLink::default(),
-            geometry_generation: 0,
-            subtree_generation: 0,
         }
     }
 }

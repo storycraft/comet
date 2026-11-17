@@ -15,9 +15,11 @@ use crate::pre_paint::{FragmentData, LayoutInputData};
 /// relative to their parents, and of the layout input items they were built
 /// from.
 ///
-/// Filled by a [`PrePaintTreeBuilder`](super::resolver::PrePaintTreeBuilder),
+/// Filled by a [`PrePaintTreeBuilder`](super::builder::PrePaintTreeBuilder),
 /// which resolves the fragments of the layout input items marked
-/// [`InputFlags::NEED_PRE_PAINT`] and the fragments without data.
+/// [`InputFlags::NEED_PRE_PAINT`], the fragments the latest fragment build
+/// changed, listed by [`FragmentTree::changed`], and the fragments without
+/// data.
 /// Keys are generational, so data left behind by deleted fragments and items
 /// is never returned for the fragments and items reusing their slots, and is
 /// overwritten when those are resolved.
@@ -25,9 +27,6 @@ use crate::pre_paint::{FragmentData, LayoutInputData};
 pub struct PrePaintTree {
     pub(super) fragment_mapping: SecondaryMap<FragmentKey, FragmentData>,
     pub(super) layout_mapping: SecondaryMap<LayoutInputKey, LayoutInputData>,
-    /// [Generation](comet_layout::fragment::tree::FragmentTree::generation)
-    /// of the fragment tree when a resolve last succeeded, or 0.
-    pub(super) fragment_generation: u64,
 }
 
 impl PrePaintTree {
@@ -48,8 +47,6 @@ impl PrePaintTree {
     pub fn clear(&mut self) {
         self.fragment_mapping.clear();
         self.layout_mapping.clear();
-        // Every fragment is newer, so the next resolve resolves them all.
-        self.fragment_generation = 0;
     }
 
     /// Whether `point`, in the local coordinates of a fragment, hits the

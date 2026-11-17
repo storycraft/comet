@@ -7,7 +7,7 @@ use taffy::style::CoreStyle;
 use super::{Engine, FragmentEngine, FragmentKey, Mode, StateKey, node_id, state_of};
 use crate::{
     container::ContainerContext,
-    fragment::tree::{FragmentTree, record_geometry},
+    fragment::tree::FragmentTree,
     input::LayoutInputKind,
     style::{bx::DisplayInner, geometry::Point},
 };
@@ -84,7 +84,6 @@ impl Engine<'_> {
             items,
             states,
             changed,
-            generation,
             ..
         } = &mut *self.fragments;
         let Some(containing_state) = items[containing]
@@ -122,7 +121,7 @@ impl Engine<'_> {
 
             if items[hoisted].layout.location != location {
                 items[hoisted].layout.location = location;
-                record_geometry(items, changed, *generation, hoisted);
+                changed.push(hoisted);
             }
         }
     }

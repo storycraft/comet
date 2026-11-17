@@ -262,9 +262,8 @@ impl App {
             return None;
         };
 
-        // Positions and clips follow the layout, so resolve the fragments of
-        // the items it laid out, flagged `NEED_PRE_PAINT` with their layout
-        // flags.
+        // Positions and clips follow the layout, so resolve the fragments it
+        // created, moved or resized, and those of the marked items.
         let resolved = self.pre_paint_resolver.build(
             &self.ui,
             &self.inputs,
@@ -273,6 +272,10 @@ impl App {
             &mut self.pre_paint,
             fragment_root,
         );
+        // Changed fragments are kept on failure, for the next layout.
+        if resolved.is_some() {
+            self.fragments.clear_changed();
+        }
 
         // Layers keep their keys, so building from the root again only places
         // the layers whose fragments gained, lost or reordered a layer.

@@ -49,18 +49,19 @@ impl PrePaintTreeBuilder {
     /// - fragments of items whose [`LayoutInputItem::flags`](comet_layout::input::LayoutInputItem::flags) have
     ///   [`InputFlags::NEED_PRE_PAINT`], which layout changes include, or
     ///   which were marked with it, such as after their paint styles changed,
-    /// - fragments that fragment builds created, moved or resized since the
-    ///   last successful call, found with their
-    ///   [generations](comet_layout::fragment::Fragment::geometry_generation),
+    /// - fragments that fragment builds created, moved or resized, listed by
+    ///   [`FragmentTree::changed`],
     /// - fragments without data in `tree`.
     ///
     /// Fragments are visited from `root`, going into the children of a
     /// fragment only when its item's
     /// [`LayoutInputItem::child_flags`](comet_layout::input::LayoutInputItem::child_flags)
-    /// have [`InputFlags::NEED_PRE_PAINT`], or when its
-    /// [subtree generation](comet_layout::fragment::Fragment::subtree_generation)
-    /// is newer than the last successful call. A [cleared](PrePaintTree::clear)
-    /// `tree` resolves every fragment.
+    /// have [`InputFlags::NEED_PRE_PAINT`], or when it has no data in `tree`.
+    /// A [cleared](PrePaintTree::clear) `tree` resolves every fragment.
+    ///
+    /// [`FragmentTree::changed`] is not cleared; call
+    /// [`FragmentTree::clear_changed`] once a build succeeds, so the next
+    /// one does not resolve those fragments again.
     ///
     /// Data only depends on the fragment or item itself, so ancestors are not
     /// resolved. Input flags are not cleared; the layer build reads them too,
@@ -100,7 +101,6 @@ impl PrePaintTreeBuilder {
             items,
             changed,
         } = self;
-        let resolved = tree.fragment_generation;
         pending.clear();
         items.clear();
         changed.clear();
@@ -109,23 +109,39 @@ impl PrePaintTreeBuilder {
         while let Some(key) = pending.pop() {
             let fragment = fragments.items.get(key)?;
             let item = inputs.items.get(fragment.source)?;
+            let missing = !tree.fragment_mapping.contains_key(key);
 
-            if item.flags.contains(InputFlags::NEED_PRE_PAINT)
-                || !tree.fragment_mapping.contains_key(key)
-            {
+            if item.flags.contains(InputFlags::NEED_PRE_PAINT) || missing {
                 changed.push(key);
                 items.push(fragment.source);
-            } else if fragment.geometry_generation > resolved {
-                // Item data does not depend on the layout.
-                changed.push(key);
             }
 
-            if item.child_flags.contains(InputFlags::NEED_PRE_PAINT)
-                || fragment.subtree_generation > resolved
-            {
+            if item.child_flags.contains(InputFlags::NEED_PRE_PAINT) || missing {
                 pending.extend(fragments.items.children(key));
             }
         }
+
+        // Fragments the layout created, moved or resized under `root`. Item
+        // data does not depend on the layout, so it is only resolved for new
+        // items.
+        let whole_tree = fragments.items.parent(root).is_none();
+
+        for &key in fragments.changed() {
+            let fragment = fragments.items.get(key)?;
+
+            if !whole_tree && !is_inclusive_descendant(fragments, key, root) {
+                continue;
+            }
+
+            changed.push(key);
+
+            if !tree.layout_mapping.contains_key(fragment.source) {
+                items.push(fragment.source);
+            }
+        }
+
+        changed.sort_unstable();
+        changed.dedup();
 
         // Items with several fragments to resolve are resolved once.
         items.sort_unstable();
@@ -144,9 +160,13 @@ impl PrePaintTreeBuilder {
             }
         }
 
-        tree.fragment_generation = fragments.generation();
         Some(())
     }
+}
+
+/// Whether `key` is `root` or one of its descendants.
+fn is_inclusive_descendant(fragments: &FragmentTree, key: FragmentKey, root: FragmentKey) -> bool {
+    std::iter::successors(Some(key), |&key| fragments.items.parent(key)).any(|key| key == root)
 }
 
 impl Sources<'_> {
