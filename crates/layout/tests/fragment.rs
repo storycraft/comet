@@ -493,12 +493,11 @@ fn block_child_list_changes_reuse_box_fragments_in_order() {
     f.build(&ui, root);
     f.tree.clear_flags(input_root);
 
-    // The moved child gets a new box fragment; the others keep theirs.
-    let moved = fragment(&f, nodes[1]);
-    assert_ne!(moved, keys[1]);
+    // Every child keeps its box fragment, in the new order.
+    assert_eq!(fragment(&f, nodes[1]), keys[1]);
     assert_eq!(
         f.children(list_fragment),
-        vec![moved, keys[0], inserted_key, keys[2]]
+        vec![keys[1], keys[0], inserted_key, keys[2]]
     );
     assert_eq!(tops(&f, list_fragment), vec![0.0, 10.0, 20.0, 30.0]);
     // Moving to another parent creates a new input item, and so a new box.
@@ -510,7 +509,7 @@ fn block_child_list_changes_reuse_box_fragments_in_order() {
     f.tree.mark_node(list, InputFlags::NEED_CHILDREN);
     f.build(&ui, root);
 
-    assert_eq!(f.children(list_fragment), vec![moved, keys[0], keys[2]]);
+    assert_eq!(f.children(list_fragment), vec![keys[1], keys[0], keys[2]]);
     assert_eq!(tops(&f, list_fragment), vec![0.0, 10.0, 20.0]);
     assert!(f.fragments.items.get(inserted_key).is_none());
 }

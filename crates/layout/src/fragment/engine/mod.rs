@@ -40,6 +40,15 @@ pub(crate) fn state_of(id: taffy::NodeId) -> StateKey {
     KeyData::from_ffi(id.into()).into()
 }
 
+/// Whether the content of an item with `flags` changed: its child list, or,
+/// with [`InputFlags::NEED_FULL_LAYOUT`], which includes
+/// [`InputFlags::NEED_CHILDREN`], its kind, text style or content. Its box
+/// finds its mode and attaches its children again, and inline content
+/// including it is shaped again.
+pub(in crate::fragment::engine) fn content_changed(flags: InputFlags) -> bool {
+    flags.contains(InputFlags::NEED_CHILDREN)
+}
+
 /// Buffers retained by the builder between builds.
 #[derive(Default)]
 pub(crate) struct Scratch {
@@ -183,7 +192,8 @@ impl Engine<'_> {
     /// Visit flagged items from the root. Cached layouts of flagged items are
     /// dropped and their fragment children are synchronized. Subtrees are
     /// visited only when their root's [`LayoutInputItem::child_flags`] have
-    /// [`InputFlags::NEED_BOX_LAYOUT`]. Flags are kept.
+    /// [`InputFlags::NEED_BOX_LAYOUT`] or [`InputFlags::NEED_CHILDREN`].
+    /// Flags are kept.
     ///
     /// [`LayoutInputItem::child_flags`]: crate::input::LayoutInputItem::child_flags
     pub fn invalidate(&mut self) {
@@ -196,8 +206,10 @@ impl Engine<'_> {
         while let Some(key) = stack.pop() {
             let item = &self.tree.items[key];
             let flags = item.flags;
-            // `NEED_BOX_LAYOUT` is part of every flag laying out a box.
-            let descend = item.child_flags.contains(InputFlags::NEED_BOX_LAYOUT);
+            // `NEED_BOX_LAYOUT` is part of every flag laying out a box, and a
+            // child list change alone carries `NEED_CHILDREN` only.
+            let descend = item.child_flags.contains(InputFlags::NEED_BOX_LAYOUT)
+                || item.child_flags.contains(InputFlags::NEED_CHILDREN);
             let child_layout = item.child_layout;
             let is_box = self.is_box(key);
 
@@ -250,13 +262,12 @@ impl Engine<'_> {
     /// attached again when they are emitted.
     ///
     /// Boxes created in this build are already resolved. The style of a box
-    /// is kept unless its box is dirty, and its mode unless it is
-    /// [`InputFlags::NEED_FULL_LAYOUT`]: the mode depends on the kinds of
-    /// its children and inline content, and the input builder marks the box
-    /// when those or the inline content's child lists change.
+    /// is kept unless its box is dirty, and its mode unless its
+    /// [content changed](content_changed): the mode depends on the kinds of
+    /// its children and inline content.
     ///
     /// Box style changes alone keep shaped text and child fragments. Inline
-    /// content is shaped again only when an item in it is [`InputFlags::NEED_FULL_LAYOUT`].
+    /// content is shaped again only when the content of an item in it changed.
     ///
     /// `viewport` lays out a box depending on a changed viewport again, as if
     /// its box style changed.
@@ -270,7 +281,7 @@ impl Engine<'_> {
         let fragment = self.ensure_box(key);
         let created = self.scratch.created.contains(&fragment);
         let box_dirty = force || viewport || flags.contains(InputFlags::NEED_BOX_LAYOUT);
-        let dirty = force || flags.contains(InputFlags::NEED_FULL_LAYOUT);
+        let dirty = force || content_changed(flags);
         // Finding the mode walks the children and inline content.
         let mode = (!created && dirty).then(|| self.mode(key));
         let style = (!created && box_dirty).then(|| self.resolve_style(key));

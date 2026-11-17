@@ -3,13 +3,10 @@
 use comet_tree::node::Text;
 
 use super::{
-    super::{Engine, FragmentItem, FragmentKey, Mode, NodeState},
+    super::{Engine, FragmentItem, FragmentKey, Mode, NodeState, content_changed},
     events::{InlineEvents, Op},
 };
-use crate::{
-    input::{InputFlags, LayoutInputKey},
-    taffy::style,
-};
+use crate::{input::LayoutInputKey, taffy::style};
 
 impl Engine<'_> {
     /// Whether block boxes interrupt the inline content of an item.
@@ -40,9 +37,9 @@ impl Engine<'_> {
     /// metrics are updated without shaping.
     pub(in crate::fragment::engine) fn inline_content_dirty(&self, key: LayoutInputKey) -> bool {
         InlineEvents::new(self.tree, key).any(|op| match op {
-            Op::Push(key) | Op::Text(key) | Op::Box(key) | Op::Empty(key) => self.tree.items[key]
-                .flags
-                .contains(InputFlags::NEED_FULL_LAYOUT),
+            Op::Push(key) | Op::Text(key) | Op::Box(key) | Op::Empty(key) => {
+                content_changed(self.tree.items[key].flags)
+            }
             Op::Block(_) | Op::Pop => false,
         })
     }
@@ -63,9 +60,7 @@ impl Engine<'_> {
         let ui = self.ui;
         // Content changes shape a run again; other flags, such as box style
         // changes of atomic inlines, only lay it out again.
-        let dirty = |key: LayoutInputKey| {
-            force || tree.items[key].flags.contains(InputFlags::NEED_FULL_LAYOUT)
-        };
+        let dirty = |key: LayoutInputKey| force || content_changed(tree.items[key].flags);
         let flagged = |key: LayoutInputKey| force || !tree.items[key].flags.is_empty();
 
         let mut runs: Vec<FragmentKey> = self
@@ -77,10 +72,7 @@ impl Engine<'_> {
         runs.reverse();
         self.release_children(fragment);
 
-        let owner_dirty = force
-            || tree.items[owner]
-                .flags
-                .contains(InputFlags::NEED_FULL_LAYOUT);
+        let owner_dirty = force || content_changed(tree.items[owner].flags);
         // Inline elements open at the current position, which runs reopen.
         let mut open: Vec<LayoutInputKey> = Vec::new();
         let mut run = Run {
