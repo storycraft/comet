@@ -4,10 +4,7 @@ use comet_slotmap_tree::SlotTree;
 use comet_tree::node::NodeKey;
 use rustc_hash::FxHashMap;
 
-use crate::input::{
-    InputFlags, LayoutFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind, TextStyle,
-    text::TextStyleBits,
-};
+use crate::input::{InputFlags2, LayoutInputItem, LayoutInputKey, TextStyle, text::TextStyleBits};
 
 pub struct LayoutInputTree {
     /// Raw tree storage. Use the tree mutation methods and builder to keep
@@ -44,83 +41,52 @@ impl LayoutInputTree {
         self.map.get(&node).copied()
     }
 
-    /// Insert `flags` into an item and propagate descendant dirtiness to its
-    /// ancestors. Stale keys are ignored.
+    /// Insert `flags` into the [`LayoutInputItem::flags2`] of an item and
+    /// into the [`LayoutInputItem::child_flags`] of its ancestors. Stale keys
+    /// are ignored.
     ///
-    /// Use [`LayoutFlags::NEED_FULL_LAYOUT`] when the item's content, child list or text
-    /// style changed. Mark the parent for insertions, and both parents when
-    /// moving a source node. Use [`LayoutFlags::NEED_BOX_LAYOUT`] when only its box
-    /// style changed, such as its size, padding, margin or insets, to keep its
-    /// shaped text and child fragments.
-    pub fn mark(&mut self, key: LayoutInputKey, flags: LayoutFlags) {
+    /// Use [`InputFlags2::NEED_FULL_LAYOUT`] after props of the source node
+    /// resolved into the item changed, such as its text style or display, and
+    /// [`InputFlags2::NEED_CHILDREN`] after its child list changed. Mark both
+    /// parents when moving a source node, and the parent when deleting one.
+    pub fn mark(&mut self, key: LayoutInputKey, flags: InputFlags2) {
         let Some(item) = self.items.get_mut(key) else {
             return;
         };
 
-        item.flags.insert(flags);
+        item.flags2.insert(flags);
 
         let mut ancestor = self.items.parent(key);
 
         while let Some(key) = ancestor {
             let item = &mut self.items[key];
 
-            if item.flags.contains(LayoutFlags::CHILD_NEED_LAYOUT) {
+            // Ancestors of a marked item are marked already.
+            if item.child_flags.contains(flags) {
                 break;
             }
 
-            item.flags.insert(LayoutFlags::CHILD_NEED_LAYOUT);
+            item.child_flags.insert(flags);
             ancestor = self.items.parent(key);
         }
     }
 
-    /// Mark [`LayoutFlags::NEED_FULL_LAYOUT`] the nearest ancestor of an item
-    /// that is not an inline element: the box whose children, or whose
-    /// inline content, include the item. Its layout mode depends on the kinds
-    /// of those items, so mark it when an item changes kind, or when an
-    /// inline element's child list changes.
-    pub(crate) fn mark_content_owner(&mut self, key: LayoutInputKey) {
-        let mut owner = self.items.parent(key);
-
-        while let Some(key) = owner
-            && self.items[key].kind == LayoutInputKind::Inline
-        {
-            owner = self.items.parent(key);
-        }
-
-        if let Some(owner) = owner {
-            self.mark(owner, LayoutFlags::NEED_FULL_LAYOUT);
-        }
-    }
-
-    /// Mark an item whose child list changed [`LayoutFlags::NEED_FULL_LAYOUT`],
-    /// and the box owning its content too when it is an inline element.
-    pub(crate) fn mark_child_list(&mut self, key: LayoutInputKey) {
-        self.mark(key, LayoutFlags::NEED_FULL_LAYOUT);
-
-        if self
-            .items
-            .get(key)
-            .is_some_and(|item| item.kind == LayoutInputKind::Inline)
-        {
-            self.mark_content_owner(key);
-        }
-    }
-
     /// Insert `flags` into the item generated for a source node, as
-    /// [`Self::mark`]. Unmapped nodes are ignored; mark their parent when
-    /// inserting new content.
-    pub fn mark_node(&mut self, node: NodeKey, flags: LayoutFlags) {
+    /// [`Self::mark`]. Unmapped nodes are ignored; mark their parent
+    /// [`InputFlags2::NEED_CHILDREN`] when inserting them.
+    pub fn mark_node(&mut self, node: NodeKey, flags: InputFlags2) {
         if let Some(key) = self.item_for_node(node) {
             self.mark(key, flags);
         }
     }
 
-    /// Clear the flags of an item and all of its descendants. Run it after
-    /// consuming the flags, such as after building fragments.
+    /// Clear the [`LayoutInputItem::flags2`] and
+    /// [`LayoutInputItem::child_flags`] of an item and of all of its
+    /// descendants. Run it once every step consumed the flags.
     ///
-    /// Only flagged subtrees are visited. Flags of ancestors are kept, so clear
-    /// from the root unless other subtrees still need to be consumed.
-    /// Stale keys are ignored.
+    /// Only subtrees with child flags are visited. Flags of ancestors are
+    /// kept, so clear from the root unless other subtrees still need to be
+    /// consumed. Stale keys are ignored.
     pub fn clear_flags(&mut self, key: LayoutInputKey) {
         if self.items.get(key).is_none() {
             return;
@@ -129,52 +95,14 @@ impl LayoutInputTree {
         let mut pending = vec![key];
 
         while let Some(key) = pending.pop() {
-            let flags = std::mem::take(&mut self.items[key].flags);
+            let item = &mut self.items[key];
+            let child_flags = std::mem::take(&mut item.child_flags);
+            item.flags2 = InputFlags2::empty();
 
             // Flagged descendants always have flagged ancestors.
-            if flags.contains(LayoutFlags::CHILD_NEED_LAYOUT) {
+            if !child_flags.is_empty() {
                 pending.extend(self.items.children(key));
             }
-        }
-    }
-
-    /// Insert input `flags` into an item and mark its ancestors
-    /// [`InputFlags::CHILD_NEED_INPUT`], so the next
-    /// [`LayoutInputTreeBuilder::build`](super::builder::LayoutInputTreeBuilder::build)
-    /// from an ancestor resolves the change. Stale keys are ignored.
-    ///
-    /// Use [`InputFlags::NEED_STYLE`] after props of the source node resolved
-    /// into the item changed, such as its text style or display, and
-    /// [`InputFlags::NEED_CHILDREN`] after its child list changed. Mark both
-    /// parents when moving a source node, and the parent when deleting one.
-    pub fn mark_input(&mut self, key: LayoutInputKey, flags: InputFlags) {
-        let Some(item) = self.items.get_mut(key) else {
-            return;
-        };
-
-        item.input_flags.insert(flags);
-
-        let mut ancestor = self.items.parent(key);
-
-        while let Some(key) = ancestor {
-            let item = &mut self.items[key];
-
-            // Ancestors of a marked item are marked already.
-            if item.input_flags.contains(InputFlags::CHILD_NEED_INPUT) {
-                break;
-            }
-
-            item.input_flags.insert(InputFlags::CHILD_NEED_INPUT);
-            ancestor = self.items.parent(key);
-        }
-    }
-
-    /// Insert input `flags` into the item generated for a source node, as
-    /// [`Self::mark_input`]. Unmapped nodes are ignored; mark their parent
-    /// [`InputFlags::NEED_CHILDREN`] when inserting them.
-    pub fn mark_input_node(&mut self, node: NodeKey, flags: InputFlags) {
-        if let Some(key) = self.item_for_node(node) {
-            self.mark_input(key, flags);
         }
     }
 
@@ -191,7 +119,7 @@ impl LayoutInputTree {
         let mut pending = vec![root];
         while let Some(key) = pending.pop() {
             if depends_viewport(&self.items[key].text_style) {
-                // TODO:: mark InputFlags2::NEED_FULL_LAYOUT
+                self.mark(key, InputFlags2::NEED_FULL_LAYOUT);
             }
 
             pending.extend(self.items.children(key));

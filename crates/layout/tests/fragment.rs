@@ -1,7 +1,7 @@
 use comet_layout::{
     fragment::{FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
-        InputFlags, LayoutFlags, LayoutInputKey,
+        InputFlags2, LayoutFlags, LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -365,7 +365,7 @@ fn editing_one_run_keeps_the_fragments_of_other_runs() {
     let second_lines = f.children(children[2]);
 
     ui.set_props(after, (Text("after, but longer".into()),));
-    f.tree.mark_node(after, LayoutFlags::NEED_FULL_LAYOUT);
+    f.tree.mark_node(after, InputFlags2::NEED_FULL_LAYOUT);
     f.layout(&ui, input_root);
     f.tree.clear_flags(input_root);
 
@@ -376,7 +376,7 @@ fn editing_one_run_keeps_the_fragments_of_other_runs() {
 
     // Removing the block merges the runs into one inline formatting context.
     ui.delete(block);
-    f.tree.mark_input_node(root, InputFlags::NEED_CHILDREN);
+    f.tree.mark_node(root, InputFlags2::NEED_CHILDREN);
     f.build(&ui, root);
 
     assert_eq!(f.items(root_fragment), vec![FragmentItem::Line { line: 0 }]);
@@ -418,7 +418,7 @@ fn updates_reuse_box_fragments_and_layouts() {
         content,
         (Text("a much longer text that has to wrap over several lines because the viewport is only four hundred pixels wide".into()),),
     );
-    f.tree.mark_node(content, LayoutFlags::NEED_FULL_LAYOUT);
+    f.tree.mark_node(content, InputFlags2::NEED_FULL_LAYOUT);
 
     assert_eq!(f.build(&ui, root), (input_root, root_fragment));
     assert_eq!(
@@ -474,7 +474,7 @@ fn block_child_list_changes_reuse_box_fragments_in_order() {
     // Insert in the middle.
     let inserted = sized_block(&mut ui, 10.0);
     ui.before(nodes[2], inserted);
-    f.tree.mark_input_node(list, InputFlags::NEED_CHILDREN);
+    f.tree.mark_node(list, InputFlags2::NEED_CHILDREN);
     f.build(&ui, root);
     f.tree.clear_flags(input_root);
 
@@ -488,8 +488,8 @@ fn block_child_list_changes_reuse_box_fragments_in_order() {
     // Reorder, and move the last child to another parent.
     ui.prepend(list, nodes[1]);
     ui.append(other, nodes[3]);
-    f.tree.mark_input_node(list, InputFlags::NEED_CHILDREN);
-    f.tree.mark_input_node(other, InputFlags::NEED_CHILDREN);
+    f.tree.mark_node(list, InputFlags2::NEED_CHILDREN);
+    f.tree.mark_node(other, InputFlags2::NEED_CHILDREN);
     f.build(&ui, root);
     f.tree.clear_flags(input_root);
 
@@ -507,7 +507,7 @@ fn block_child_list_changes_reuse_box_fragments_in_order() {
 
     // Remove from the middle.
     ui.delete(inserted);
-    f.tree.mark_input_node(list, InputFlags::NEED_CHILDREN);
+    f.tree.mark_node(list, InputFlags2::NEED_CHILDREN);
     f.build(&ui, root);
 
     assert_eq!(f.children(list_fragment), vec![moved, keys[0], keys[2]]);
@@ -529,7 +529,7 @@ fn removed_items_drop_their_fragments() {
     f.tree.clear_flags(input_root);
 
     ui.delete(block);
-    f.tree.mark_input_node(root, InputFlags::NEED_CHILDREN);
+    f.tree.mark_node(root, InputFlags2::NEED_CHILDREN);
     f.build(&ui, root);
 
     assert!(f.children(root_fragment).is_empty());
@@ -642,7 +642,7 @@ fn fragments_iterate_linked_fragments_of_an_item() {
 
     // Removed items yield nothing.
     ui.delete(span);
-    f.tree.mark_input_node(root, InputFlags::NEED_CHILDREN);
+    f.tree.mark_node(root, InputFlags2::NEED_CHILDREN);
     f.build(&ui, root);
 
     assert_eq!(f.fragments.fragments(span_key).count(), 0);
@@ -773,7 +773,7 @@ fn text_align_is_inherited_and_updates_descendants() {
 
     // Only the ancestor is marked; the change reaches the inline layout below.
     ui.set_props(root, (bx::TextAlign(TextAlign::Right),));
-    f.tree.mark_input_node(root, InputFlags::NEED_STYLE);
+    f.tree.mark_node(root, InputFlags2::NEED_FULL_LAYOUT);
     f.build(&ui, root);
 
     let paragraph_key = f.tree.item_for_node(paragraph).unwrap();
@@ -937,7 +937,7 @@ fn box_style_changes_keep_shaped_text() {
         paragraph,
         (bx::Padding(Rect::new_all(StyleUnit::Px(10.0))),),
     );
-    f.tree.mark_node(paragraph, LayoutFlags::NEED_BOX_LAYOUT);
+    f.tree.mark_node(paragraph, InputFlags2::NEED_BOX_LAYOUT);
     f.build(&ui, root);
     f.tree.clear_flags(input_root);
 
@@ -951,7 +951,7 @@ fn box_style_changes_keep_shaped_text() {
     );
 
     // Content changes shape the text again.
-    f.tree.mark_node(content, LayoutFlags::NEED_FULL_LAYOUT);
+    f.tree.mark_node(content, InputFlags2::NEED_FULL_LAYOUT);
     f.build(&ui, root);
 
     assert_eq!(f.shaped_text(paragraph_fragment), "changed");
@@ -975,7 +975,7 @@ fn atomic_inline_box_changes_keep_the_paragraph_shaped() {
 
     ui.set_props(before, (Text("edited ".into()),));
     ui.set_props(badge, (fixed_size(30.0, 10.0),));
-    f.tree.mark_node(badge, LayoutFlags::NEED_BOX_LAYOUT);
+    f.tree.mark_node(badge, InputFlags2::NEED_BOX_LAYOUT);
     f.build(&ui, root);
 
     assert_eq!(f.shaped_text(root_fragment), shaped);
@@ -1015,7 +1015,7 @@ fn atomic_inline_box_changes_lay_out_only_their_run() {
 
     ui.set_props(second, (Text("edited ".into()),));
     ui.set_props(badge, (fixed_size(30.0, 10.0),));
-    f.tree.mark_node(badge, LayoutFlags::NEED_BOX_LAYOUT);
+    f.tree.mark_node(badge, InputFlags2::NEED_BOX_LAYOUT);
     f.layout(&ui, input_root);
 
     // The run is laid out again without shaping; the other run is untouched.
@@ -1070,7 +1070,7 @@ fn item_kinds(f: &Fixture, key: FragmentKey) -> Vec<&'static str> {
 /// Re-layout `root` after marking `node` restyled, and check that the
 /// children of `parent` match a fresh layout.
 fn restyle_matches_fresh(f: &mut Fixture, ui: &Ui, root: NodeKey, node: NodeKey, parent: NodeKey) {
-    f.tree.mark_input_node(node, InputFlags::NEED_STYLE);
+    f.tree.mark_node(node, InputFlags2::NEED_FULL_LAYOUT);
     let (input_root, _) = f.build(ui, root);
     f.tree.clear_flags(input_root);
 
@@ -1142,7 +1142,7 @@ fn nested_inline_content_changing_kind_changes_its_owners_mode() {
     // Inserting a block into the span interrupts it again.
     let interruption = sized_block(&mut ui, 10.0);
     ui.append(span, interruption);
-    f.tree.mark_input_node(span, InputFlags::NEED_CHILDREN);
+    f.tree.mark_node(span, InputFlags2::NEED_CHILDREN);
     let (input_root, _) = f.build(&ui, root);
     f.tree.clear_flags(input_root);
     let mut fresh = Fixture::new();
@@ -1184,7 +1184,7 @@ fn moved_items_get_new_fragments_with_their_layout() {
     // Moving the last block to the front keeps its item and layout, but its
     // box gets a new key, in its new place.
     ui.prepend(root, nodes[2]);
-    f.tree.mark_input_node(root, InputFlags::NEED_CHILDREN);
+    f.tree.mark_node(root, InputFlags2::NEED_CHILDREN);
     f.inputs
         .build(&ui, &mut f.tree, BuildRequest::new(root, 16.0, VIEWPORT))
         .unwrap();

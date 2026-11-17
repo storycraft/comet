@@ -4,7 +4,7 @@ use anyrender::{Paint, Scene, recording::RenderCommand};
 use comet_layout::{
     fragment::{FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
-        InputFlags,
+        InputFlags2,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -1033,7 +1033,7 @@ fn layers_follow_layout_changes_from_the_root() {
     // A new box starting a layer, inserted before the others.
     let added = ui.create(Node::Box, (fixed(60.0, 10.0), z(1)));
     ui.prepend(root, added);
-    p.inputs.mark_input_node(root, InputFlags::NEED_CHILDREN);
+    p.inputs.mark_node(root, InputFlags2::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1048,7 +1048,7 @@ fn layers_follow_layout_changes_from_the_root() {
     // A deleted owner takes its layer along, and the nested layer of its
     // deleted descendant.
     ui.delete(group);
-    p.inputs.mark_input_node(root, InputFlags::NEED_CHILDREN);
+    p.inputs.mark_node(root, InputFlags2::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1164,7 +1164,7 @@ fn reordered_siblings_reorder_layers_with_equal_z_indices() {
 
     // Equal z indices paint in tree order, which follows the move.
     ui.prepend(root, boxes[2]);
-    p.inputs.mark_input_node(root, InputFlags::NEED_CHILDREN);
+    p.inputs.mark_node(root, InputFlags2::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     // The moved owner gets a new layer; the others keep theirs.
@@ -1196,7 +1196,7 @@ fn reordered_boxes_reorder_the_layers_inside_them() {
     // The wrapper starts no layer, but moving it after the sibling moves the
     // layer inside it too.
     ui.append(root, wrapper);
-    p.inputs.mark_input_node(root, InputFlags::NEED_CHILDREN);
+    p.inputs.mark_node(root, InputFlags2::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     let by_node = [sibling, inner].map(|node| p.layer_of(node).unwrap());
@@ -1233,7 +1233,7 @@ fn reordered_atomic_inlines_reorder_their_layers() {
     assert_eq!(p.children(root_layer), vec![first_layer, second_layer]);
 
     ui.prepend(root, second);
-    p.inputs.mark_input_node(root, InputFlags::NEED_CHILDREN);
+    p.inputs.mark_node(root, InputFlags2::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     let by_node = [second, first].map(|node| p.layer_of(node).unwrap());

@@ -2,7 +2,7 @@ mod common;
 
 use comet_layout::{
     input::{
-        LayoutFlags, LayoutInputKey,
+        InputFlags2, LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     ui.prop::<Text>(text).ok_or("missing sample text")?;
     ui.set_props(text, (Text("Updated text".into()),));
-    tree.mark_node(text, LayoutFlags::NEED_FULL_LAYOUT);
+    tree.mark_node(text, InputFlags2::NEED_FULL_LAYOUT);
 
     let updated = builder
         .build(&ui, &mut tree, request)
@@ -56,7 +56,7 @@ fn print_tree(tree: &LayoutInputTree, root: LayoutInputKey) {
             item.node,
             item.child_layout,
             item.text_style.span.font_size,
-            item.flags
+            item.flags2
         );
 
         pending.extend(

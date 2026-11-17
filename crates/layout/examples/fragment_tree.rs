@@ -3,7 +3,7 @@ mod common;
 use comet_layout::{
     fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
-        InputFlags, LayoutFlags,
+        InputFlags2,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Updated greeting with enough text to wrap over several lines. ".into(),
         ),),
     );
-    inputs.mark_node(greeting, LayoutFlags::NEED_FULL_LAYOUT);
+    inputs.mark_node(greeting, InputFlags2::NEED_FULL_LAYOUT);
 
     let updated = fragment_builder
         .build(&ui, &inputs, input_root, &mut fragments, &constraint)
@@ -87,7 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Display is resolved into the input item, so the input builder resolves
     // the marked item again and flags its new kind for the fragment builder.
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
-    inputs.mark_input_node(interruption, InputFlags::NEED_STYLE);
+    inputs.mark_node(interruption, InputFlags2::NEED_FULL_LAYOUT);
     constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE);
 
     input_builder

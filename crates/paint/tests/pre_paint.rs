@@ -2,7 +2,7 @@ use anyrender::{Paint, Scene, recording::RenderCommand};
 use comet_layout::{
     fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
-        InputFlags, LayoutFlags, LayoutInputKey,
+        InputFlags2, LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -793,7 +793,7 @@ fn resolving_follows_the_layout() {
     let root_data = f.boxed(root).clone();
 
     ui.set_props(top, (fixed(10.0, 30.0),));
-    f.inputs.mark_node(top, LayoutFlags::NEED_BOX_LAYOUT);
+    f.inputs.mark_node(top, InputFlags2::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
 
     // Resolved data is kept until it is resolved again.
@@ -881,7 +881,7 @@ fn resolving_fails_for_nodes_deleted_since_the_layout_was_built() {
     assert_eq!(f.resolve(&ui, root_fragment), None);
 
     // Resolving succeeds again once the layout follows the UI.
-    f.inputs.mark_input_node(root, InputFlags::NEED_CHILDREN);
+    f.inputs.mark_node(root, InputFlags2::NEED_CHILDREN);
     let root_fragment = f.layout(&ui, root);
     assert_eq!(f.resolve(&ui, root_fragment), Some(()));
     f.pre_paint.clear_flags();
@@ -1336,7 +1336,7 @@ fn incremental_resolves_follow_changed_fragments_only() {
 
     // A taller top box moves the boxes below it.
     ui.set_props(top, (fixed(120.0, 50.0),));
-    f.inputs.mark_node(top, LayoutFlags::NEED_BOX_LAYOUT);
+    f.inputs.mark_node(top, InputFlags2::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
     f.resolve_changed(&ui, fragment_root);
     f.assert_matches_full_resolve(&ui, fragment_root);
@@ -1351,7 +1351,7 @@ fn incremental_resolves_follow_changed_fragments_only() {
         (BorderRadius(LayoutRect::new_all(StyleUnit::Px(8.0))),),
     );
     ui.set_props(bottom, (fixed(120.0, 60.0),));
-    f.inputs.mark_node(bottom, LayoutFlags::NEED_BOX_LAYOUT);
+    f.inputs.mark_node(bottom, InputFlags2::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
     f.resolve_changed(&ui, fragment_root);
 
@@ -1390,7 +1390,7 @@ fn resolves_both_changed_and_marked_fragments() {
         (BorderRadius(LayoutRect::new_all(StyleUnit::Px(6.0))),),
     );
     ui.set_props(top, (fixed(120.0, 30.0),));
-    f.inputs.mark_node(top, LayoutFlags::NEED_BOX_LAYOUT);
+    f.inputs.mark_node(top, InputFlags2::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
     f.mark(marked);
 
@@ -1556,7 +1556,7 @@ fn marks_kept_by_item_reach_every_fragment_set_before_the_layout() {
     );
     f.mark(span);
     ui.set_props(other, (fixed(40.0, 20.0),));
-    f.inputs.mark_node(other, LayoutFlags::NEED_BOX_LAYOUT);
+    f.inputs.mark_node(other, InputFlags2::NEED_BOX_LAYOUT);
     let fragment_root = f.layout(&ui, root);
 
     // The layout kept the span's fragments, and the mark still reaches all

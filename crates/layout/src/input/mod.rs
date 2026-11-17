@@ -12,17 +12,20 @@ pub use text::{SpanStyle, TextStyle, TextStyleBits};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutInputItem {
-    // pub child_flags: InputFlags2,
-    // pub flags2: InputFlags2,
+    /// Union of the [`Self::flags2`] of every descendant. Kept on the
+    /// ancestors of an item by [`LayoutInputTree::mark`](tree::LayoutInputTree::mark),
+    /// so subtrees without the flags are skipped.
+    pub child_flags: InputFlags2,
+    /// Changes of this item not consumed yet.
+    pub flags2: InputFlags2,
     pub kind: LayoutInputKind,
     pub node: NodeKey,
     /// Inherited text properties. Equal styles share an allocation.
     pub text_style: Arc<TextStyle>,
     pub child_layout: ChildLayout,
-    /// Changes the fragment builder has not laid out yet.
+    /// Changes the fragment builder has not laid out yet. No longer written
+    /// by the input module; replaced by [`Self::flags2`].
     pub flags: LayoutFlags,
-    /// Source changes the input builder has not resolved yet.
-    pub input_flags: InputFlags,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -70,39 +73,24 @@ bitflags! {
 }
 
 bitflags! {
-    /// Source changes not resolved into the [`LayoutInputTree`](tree::LayoutInputTree)
-    /// yet, set with [`LayoutInputTree::mark_input`](tree::LayoutInputTree::mark_input)
-    /// and consumed by [`LayoutInputTreeBuilder::build`](builder::LayoutInputTreeBuilder::build).
-    ///
-    /// These are the inputs of the input step, while [`LayoutFlags`] are its
-    /// outputs to the fragment builder. The builder clears the input flags of
-    /// the items it visits.
-    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-    pub struct InputFlags: u8 {
-        /// At least one descendant has input flags.
-        const CHILD_NEED_INPUT = 1 << 0;
-
-        /// A prop of the source node resolved into the item changed, such as
-        /// an inherited text property or its display. The item is resolved
-        /// again, and so are its descendants if its text style changed.
-        const NEED_STYLE = 1 << 1;
-
-        /// The child list of the source node changed: children were
-        /// inserted, removed or moved. The item's children are reconciled
-        /// with the source children.
-        const NEED_CHILDREN = 1 << 2;
-    }
-}
-
-bitflags! {
+    /// Changes of an item, set with
+    /// [`LayoutInputTree::mark`](tree::LayoutInputTree::mark) and cleared
+    /// with [`LayoutInputTree::clear_flags`](tree::LayoutInputTree::clear_flags)
+    /// once every step consumed them.
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
     pub struct InputFlags2: u8 {
+        /// The child list of the source node changed: children were
+        /// inserted, removed or moved. The input builder reconciles the
+        /// item's children with the source children.
         const NEED_CHILDREN = 1 << 0;
 
         const NEED_PRE_PAINT = 1 << 1;
 
         const NEED_BOX_LAYOUT = 1 << 2 | Self::NEED_PRE_PAINT.bits();
 
+        /// A prop of the source node resolved into the item changed, or the
+        /// item is new. The input builder resolves the item again, reconciles
+        /// its children and marks every child with this flag.
         const NEED_FULL_LAYOUT = 1 << 3 | Self::NEED_BOX_LAYOUT.bits() | Self::NEED_CHILDREN.bits();
     }
 }
