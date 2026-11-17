@@ -1,9 +1,12 @@
+use std::sync::Arc;
+
 use comet_slotmap_tree::SlotTree;
 use comet_tree::node::NodeKey;
 use rustc_hash::FxHashMap;
 
 use crate::input::{
-    InputFlags, LayoutFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind, text::TextStyleBits,
+    InputFlags, LayoutFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind, TextStyle,
+    text::TextStyleBits,
 };
 
 pub struct LayoutInputTree {
@@ -13,6 +16,10 @@ pub struct LayoutInputTree {
 
     /// 1:1 mapping from [`NodeKey`] to [`LayoutInputKey`]
     map: FxHashMap<NodeKey, LayoutInputKey>,
+
+    /// Number of items whose text style is
+    /// [`TextStyleBits::DEPENDS_VIEWPORT`].
+    viewport_dependents: usize,
 }
 
 impl LayoutInputTree {
@@ -20,7 +27,14 @@ impl LayoutInputTree {
         Self {
             items: SlotTree::new(),
             map: FxHashMap::default(),
+            viewport_dependents: 0,
         }
+    }
+
+    /// Number of items whose text style is
+    /// [`TextStyleBits::DEPENDS_VIEWPORT`].
+    pub fn viewport_dependents(&self) -> usize {
+        self.viewport_dependents
     }
 
     /// Find the item generated for a source node.
@@ -164,28 +178,50 @@ impl LayoutInputTree {
         }
     }
 
-    /// Mark the ancestors of a viewport dependent item with
-    /// [`TextStyleBits::CHILD_DEPENDS_VIEWPORT`], up to the root. Call it once
-    /// the item is attached.
-    pub(crate) fn propagate_viewport(&mut self, key: LayoutInputKey) {
-        let mut ancestor = self.items.parent(key);
+    /// Invalidate the items under `root`, including itself, whose text
+    /// styles are [`TextStyleBits::DEPENDS_VIEWPORT`], so they resolve again
+    /// with a changed viewport. Call it before building after the viewport
+    /// changed. Returns at once without viewport dependents. Stale keys are
+    /// ignored.
+    pub fn invalidate_viewport(&mut self, root: LayoutInputKey) {
+        if self.viewport_dependents == 0 || self.items.get(root).is_none() {
+            return;
+        }
 
-        while let Some(key) = ancestor {
-            let item = &mut self.items[key];
-
-            // Ancestors of a marked item are marked already.
-            if item.bits.contains(TextStyleBits::CHILD_DEPENDS_VIEWPORT) {
-                break;
+        let mut pending = vec![root];
+        while let Some(key) = pending.pop() {
+            if depends_viewport(&self.items[key].text_style) {
+                // TODO:: mark InputFlags2::NEED_FULL_LAYOUT
             }
 
-            item.bits.insert(TextStyleBits::CHILD_DEPENDS_VIEWPORT);
-            ancestor = self.items.parent(key);
+            pending.extend(self.items.children(key));
         }
+    }
+
+    /// Replace the text style of an item, counting viewport dependents.
+    pub(crate) fn set_text_style(&mut self, key: LayoutInputKey, text_style: Arc<TextStyle>) {
+        let item = &mut self.items[key];
+
+        match (
+            depends_viewport(&item.text_style),
+            depends_viewport(&text_style),
+        ) {
+            (false, true) => self.viewport_dependents += 1,
+            (true, false) => self.viewport_dependents -= 1,
+            _ => {}
+        }
+
+        item.text_style = text_style;
     }
 
     /// Insert a detached item and map its source node to it.
     pub(crate) fn add_item(&mut self, item: LayoutInputItem) -> LayoutInputKey {
         let node = item.node;
+
+        if depends_viewport(&item.text_style) {
+            self.viewport_dependents += 1;
+        }
+
         let key = self.items.insert(item);
         self.map.insert(node, key);
 
@@ -197,7 +233,12 @@ impl LayoutInputTree {
         self.items.get(key)?;
 
         for key in self.items.descendants(key) {
-            let node = self.items[key].node;
+            let item = &self.items[key];
+            let node = item.node;
+
+            if depends_viewport(&item.text_style) {
+                self.viewport_dependents -= 1;
+            }
 
             if self.map.get(&node) == Some(&key) {
                 self.map.remove(&node);
@@ -210,7 +251,12 @@ impl LayoutInputTree {
     pub fn clear(&mut self) {
         self.items.clear();
         self.map.clear();
+        self.viewport_dependents = 0;
     }
+}
+
+fn depends_viewport(style: &TextStyle) -> bool {
+    style.bits.contains(TextStyleBits::DEPENDS_VIEWPORT)
 }
 
 impl Default for LayoutInputTree {

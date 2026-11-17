@@ -14,13 +14,10 @@ pub use text::{SpanStyle, TextStyle, TextStyleBits};
 pub struct LayoutInputItem {
     // pub child_flags: InputFlags2,
     // pub flags2: InputFlags2,
-
     pub kind: LayoutInputKind,
     pub node: NodeKey,
     /// Inherited text properties. Equal styles share an allocation.
     pub text_style: Arc<TextStyle>,
-    /// What the text style of the item, or of its descendants, depends on.
-    pub bits: TextStyleBits,
     pub child_layout: ChildLayout,
     /// Changes the fragment builder has not laid out yet.
     pub flags: LayoutFlags,
@@ -105,7 +102,7 @@ bitflags! {
         const NEED_PRE_PAINT = 1 << 1;
 
         const NEED_BOX_LAYOUT = 1 << 2 | Self::NEED_PRE_PAINT.bits();
-    
+
         const NEED_FULL_LAYOUT = 1 << 3 | Self::NEED_BOX_LAYOUT.bits() | Self::NEED_CHILDREN.bits();
     }
 }

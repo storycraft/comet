@@ -180,113 +180,36 @@ fn viewport_lengths_mark_text_styles_and_their_descendants() {
 
     let mut tree = LayoutInputTree::new();
     build(&mut LayoutInputTreeBuilder::new(), &ui, root, &mut tree).unwrap();
-    let bits = |node| tree.items[tree.item_for_node(node).unwrap()].bits;
-    let child = TextStyleBits::CHILD_DEPENDS_VIEWPORT;
+    let bits = |tree: &LayoutInputTree, node| {
+        tree.items[tree.item_for_node(node).unwrap()]
+            .text_style
+            .bits
+    };
 
-    // Viewport dependent descendants mark their ancestors up to the root.
-    assert_eq!(bits(spaced), TextStyleBits::DEPENDS_VIEWPORT | child);
-    assert_eq!(bits(tall), TextStyleBits::DEPENDS_VIEWPORT);
+    assert_eq!(bits(&tree, spaced), TextStyleBits::DEPENDS_VIEWPORT);
+    assert_eq!(bits(&tree, tall), TextStyleBits::DEPENDS_VIEWPORT);
     // Descendants inherit values resolved with the viewport.
-    assert_eq!(bits(inherited), TextStyleBits::DEPENDS_VIEWPORT);
-    assert_eq!(bits(overridden), TextStyleBits::DEPENDS_VIEWPORT);
+    assert_eq!(bits(&tree, inherited), TextStyleBits::DEPENDS_VIEWPORT);
+    assert_eq!(bits(&tree, overridden), TextStyleBits::DEPENDS_VIEWPORT);
 
     // `rem`, `em` and percentages do not depend on the viewport.
-    assert_eq!(bits(root), child);
-    assert!(bits(plain).is_empty());
+    assert!(bits(&tree, root).is_empty());
+    assert!(bits(&tree, plain).is_empty());
+    assert_eq!(tree.viewport_dependents(), 4);
 
-    // Rebuilding keeps the marks, without flagging anything.
+    // Rebuilding keeps the bits, without flagging anything.
     let key = tree.item_for_node(root).unwrap();
     clean(&mut tree, key);
     build(&mut LayoutInputTreeBuilder::new(), &ui, root, &mut tree).unwrap();
-    assert_eq!(tree.items[key].bits, child);
+    assert_eq!(bits(&tree, spaced), TextStyleBits::DEPENDS_VIEWPORT);
+    assert_eq!(tree.viewport_dependents(), 4);
     for item in tree.items.descendants(key) {
         assert!(tree.items[item].flags.is_empty());
     }
 }
 
 #[test]
-fn viewport_change_builds_only_viewport_dependent_subtrees() {
-    let mut ui = Ui::new();
-    let root = ui.create(Node::Box, ());
-    let plain = ui.create(Node::Box, ());
-    let spaced = ui.create(Node::Box, (bx::LetterSpacing(StyleUnit::Vw(0.01)),));
-    let inherited = ui.create(Node::Text, ());
-    let independent = ui.create(Node::Text, ());
-    let tall = ui.create(Node::Text, (bx::FontSize(StyleUnit::Vh(0.05)),));
-
-    ui.append(root, plain);
-    ui.append(plain, spaced);
-    ui.append(spaced, inherited);
-    ui.append(plain, independent);
-    ui.append(root, tall);
-
-    let mut tree = LayoutInputTree::new();
-    let mut builder = LayoutInputTreeBuilder::new();
-    let key = build(&mut builder, &ui, root, &mut tree).unwrap();
-    clean(&mut tree, key);
-
-    let item = |tree: &LayoutInputTree, node| tree.item_for_node(node).unwrap();
-    assert_eq!(
-        tree.items[item(&tree, spaced)]
-            .text_style
-            .span
-            .letter_spacing,
-        8.0
-    );
-    assert_eq!(
-        tree.items[item(&tree, tall)].text_style.span.font_size,
-        30.0
-    );
-
-    // An unmarked edit outside the viewport dependent subtrees is not seen.
-    ui.set_props(independent, (bx::FontSize(StyleUnit::Px(30.0)),));
-
-    let viewport = Size::new(400.0, 300.0);
-    let changed = BuildRequest::new(root, 16.0, viewport).with_viewport_changed(true);
-    assert_eq!(builder.build(&ui, &mut tree, changed), Some(key));
-
-    let style = |node| tree.items[item(&tree, node)].text_style.clone();
-    let flags = |node| tree.items[item(&tree, node)].flags;
-
-    assert_eq!(style(spaced).span.letter_spacing, 4.0);
-    assert_eq!(style(inherited).span.letter_spacing, 4.0);
-    assert_eq!(style(tall).span.font_size, 15.0);
-    assert_eq!(style(independent).span.font_size, 16.0);
-
-    assert_eq!(
-        flags(spaced),
-        LayoutFlags::NEED_FULL_LAYOUT | LayoutFlags::CHILD_NEED_LAYOUT
-    );
-    assert_eq!(flags(inherited), LayoutFlags::NEED_FULL_LAYOUT);
-    assert_eq!(flags(tall), LayoutFlags::NEED_FULL_LAYOUT);
-    assert!(flags(independent).is_empty());
-    assert_eq!(flags(plain), LayoutFlags::CHILD_NEED_LAYOUT);
-    assert_eq!(flags(root), LayoutFlags::CHILD_NEED_LAYOUT);
-
-    // The same viewport flags nothing.
-    clean(&mut tree, key);
-    builder.build(&ui, &mut tree, changed);
-    for item in tree.items.descendants(key) {
-        assert!(tree.items[item].flags.is_empty());
-    }
-    assert_no_input_flags(&tree, key);
-
-    // Marked items are resolved in the same build as the viewport change.
-    tree.mark_input_node(independent, InputFlags::NEED_STYLE);
-    let wider = Size::new(800.0, 300.0);
-    builder.build(
-        &ui,
-        &mut tree,
-        BuildRequest::new(root, 16.0, wider).with_viewport_changed(true),
-    );
-    let style = |node| tree.items[item(&tree, node)].text_style.clone();
-    assert_eq!(style(spaced).span.letter_spacing, 8.0);
-    assert_eq!(style(independent).span.font_size, 30.0);
-    assert_no_input_flags(&tree, key);
-}
-
-#[test]
-fn viewport_dependent_items_mark_their_ancestors() {
+fn viewport_dependents_are_counted() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let spaced = ui.create(Node::Box, (bx::LetterSpacing(StyleUnit::Vw(0.01)),));
@@ -300,33 +223,36 @@ fn viewport_dependent_items_mark_their_ancestors() {
     let mut tree = LayoutInputTree::new();
     let mut builder = LayoutInputTreeBuilder::new();
     let key = build(&mut builder, &ui, root, &mut tree).unwrap();
-    let bits = |tree: &LayoutInputTree, node| tree.items[tree.item_for_node(node).unwrap()].bits;
+    let bits = |tree: &LayoutInputTree, node| {
+        tree.items[tree.item_for_node(node).unwrap()]
+            .text_style
+            .bits
+    };
     let depends = TextStyleBits::DEPENDS_VIEWPORT;
-    let child = TextStyleBits::CHILD_DEPENDS_VIEWPORT;
 
-    // The styled box and the child inheriting from it depend on the
-    // viewport; their ancestors are marked.
-    assert_eq!(bits(&tree, spaced), depends | child);
+    // The styled box and the child inheriting from it depend on the viewport.
+    assert_eq!(bits(&tree, spaced), depends);
     assert_eq!(bits(&tree, inherited), depends);
-    assert_eq!(bits(&tree, root), child);
+    assert!(bits(&tree, root).is_empty());
     assert!(bits(&tree, plain).is_empty());
+    assert_eq!(tree.viewport_dependents(), 2);
 
-    // A style that stops depending on the viewport keeps the marks of its
-    // ancestors, which are only added.
+    // A style that stops depending on the viewport stops its children too.
     ui.set_props(spaced, (bx::LetterSpacing(StyleUnit::Px(1.0)),));
     tree.mark_input_node(spaced, InputFlags::NEED_STYLE);
     build(&mut builder, &ui, root, &mut tree);
-    assert_eq!(bits(&tree, spaced), child);
+    assert!(bits(&tree, spaced).is_empty());
     assert!(bits(&tree, inherited).is_empty());
-    assert_eq!(bits(&tree, root), child);
+    assert_eq!(tree.viewport_dependents(), 0);
 
-    // Stale marks only lead a viewport change to items it leaves as they are.
+    // Without dependents, a viewport change leaves everything as it is.
     clean(&mut tree, key);
+    tree.invalidate_viewport(key);
     assert_eq!(
         builder.build(
             &ui,
             &mut tree,
-            BuildRequest::new(root, 16.0, Size::new(400.0, 300.0)).with_viewport_changed(true)
+            BuildRequest::new(root, 16.0, Size::new(400.0, 300.0))
         ),
         Some(key)
     );
@@ -334,13 +260,23 @@ fn viewport_dependent_items_mark_their_ancestors() {
         assert!(tree.items[item].flags.is_empty());
     }
 
-    // New items mark their ancestors.
+    // New items are counted.
     let tall = ui.create(Node::Text, (bx::FontSize(StyleUnit::Vh(0.05)),));
     ui.append(plain, tall);
     tree.mark_input_node(plain, InputFlags::NEED_CHILDREN);
     build(&mut builder, &ui, root, &mut tree);
     assert_eq!(bits(&tree, tall), depends);
-    assert_eq!(bits(&tree, plain), child);
+    assert_eq!(tree.viewport_dependents(), 1);
+
+    // Deleted items are no longer counted.
+    ui.delete(tall);
+    tree.mark_input_node(plain, InputFlags::NEED_CHILDREN);
+    build(&mut builder, &ui, root, &mut tree);
+    assert_eq!(tree.viewport_dependents(), 0);
+
+    tree.invalidate_viewport(key);
+    tree.clear();
+    assert_eq!(tree.viewport_dependents(), 0);
 }
 
 #[test]

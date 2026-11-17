@@ -234,11 +234,14 @@ impl App {
         // The first layout builds the whole tree. Later ones resolve the
         // marked changes and, after resolving at another viewport, the items
         // whose text styles depend on it.
-        let request = BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport)
-            .with_viewport_changed(
-                self.input_viewport
-                    .is_some_and(|previous| previous != viewport),
-            );
+        if self
+            .input_viewport
+            .is_some_and(|previous| previous != viewport)
+            && let Some(key) = self.inputs.item_for_node(self.ui_root)
+        {
+            self.inputs.invalidate_viewport(key);
+        }
+        let request = BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport);
         let input_root = self
             .input_builder
             .build(&self.ui, &mut self.inputs, request)?;

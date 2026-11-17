@@ -68,11 +68,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // the viewport are resolved again.
     viewport = Size::new(180.0, 600.0);
     constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE).with_viewport_changed(true);
+    inputs.invalidate_viewport(input_root);
     input_builder
         .build(
             &ui,
             &mut inputs,
-            BuildRequest::new(root, ROOT_FONT_SIZE, viewport).with_viewport_changed(true),
+            BuildRequest::new(root, ROOT_FONT_SIZE, viewport),
         )
         .ok_or("could not rebuild sample UI")?;
     let resized = fragment_builder
