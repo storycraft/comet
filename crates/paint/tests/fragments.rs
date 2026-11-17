@@ -124,7 +124,7 @@ fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, FragmentKey)
             &LayoutConstraint::new_root(VIEWPORT, 16.0),
         )
         .unwrap();
-    inputs.clear_flags(root);
+    // Flags are kept: the pre-paint resolve visits the flagged items.
 
     (inputs, fragments, fragment)
 }

@@ -1,6 +1,6 @@
 use comet_layout::{
     fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
-    input::{LayoutInputKey, tree::LayoutInputTree},
+    input::{InputFlags, LayoutInputKey, tree::LayoutInputTree},
     style::{
         bx::Overflow,
         geometry::{AutoValue, Point as StylePoint, Rect, StyleUnit, UnitResolveContext},
@@ -11,7 +11,7 @@ use comet_tree::ui::{Props, Ui};
 use kurbo::{Affine, Point, RoundedRectRadii, Size};
 
 use crate::{
-    pre_paint::{FragmentData, LayerFlags, LayoutInputData, PrePaintFlags, tree::PrePaintTree},
+    pre_paint::{FragmentData, LayerFlags, LayoutInputData, tree::PrePaintTree},
     style::{
         BackdropFilter, BorderRadius, Filter, Opacity, OutlineOffset, OutlineWidth, Transform,
         TransformOrigin, ZIndex,
@@ -46,30 +46,27 @@ impl PrePaintTreeResolver {
 
     /// Resolve into `tree` the fragments under `root` that need it, and
     /// their layout input items:
-    /// - fragments that fragment builds created, moved or resized since the
-    ///   last successful call, found with the
-    ///   [generations](FragmentTree::generation) of `fragments`,
-    /// - fragments of items [marked](PrePaintTree::mark)
-    ///   [`NEED_PRE_PAINT`](PrePaintFlags::NEED_PRE_PAINT), such as after
-    ///   their paint styles changed,
+    /// - fragments of items whose [`LayoutInputItem::flags`](comet_layout::input::LayoutInputItem::flags) have
+    ///   [`InputFlags::NEED_PRE_PAINT`], which layout changes include, or
+    ///   which were marked with it, such as after their paint styles changed,
     /// - fragments without data in `tree`.
     ///
+    /// Fragments are visited from `root`, going into the children of a
+    /// fragment only when its item's
+    /// [`LayoutInputItem::child_flags`](comet_layout::input::LayoutInputItem::child_flags)
+    /// have [`InputFlags::NEED_PRE_PAINT`]. Fragments under other fragments
+    /// are not visited, even when they have no data, so mark their items
+    /// after [clearing](PrePaintTree::clear) `tree`.
+    ///
     /// Fragments resolved because their item was marked or they had no data,
-    /// whose
-    /// [stacking](FragmentData::stacking) changed, get
+    /// whose [stacking](FragmentData::stacking) changed, get
     /// [`LayerFlags::NEED_LAYER`] or [`LayerFlags::NEED_NO_LAYER`], and their
     /// ancestors [`LayerFlags::CHILD_LAYER_UPDATE`], for the next layer
     /// build. A new fragment counts as starting no layer before.
     ///
-    /// Every call starts a new [generation](PrePaintTree::generation).
-    /// Fragment data created or changed by the call is stamped with it, and
-    /// so is the [subtree generation](FragmentData::subtree_generation) of
-    /// its ancestors. Data resolved to equal values keeps its generation.
-    ///
-    /// Subtrees without such fragments are skipped, so the first call, or a
-    /// call on an empty `tree`, resolves everything. Data only depends on the
-    /// fragment or item itself, so ancestors are not resolved. Flags are not
-    /// cleared; call [`PrePaintTree::clear_flags`] after resolving, and
+    /// Data only depends on the fragment or item itself, so ancestors are not
+    /// resolved. Input flags are not cleared; call
+    /// [`LayoutInputTree::clear_flags`] after resolving, and
     /// [`PrePaintTree::clear_layer_flags`] after building layers.
     ///
     /// Changes builds cannot see, such as paint styles, must be marked. The
@@ -106,39 +103,23 @@ impl PrePaintTreeResolver {
             items,
             changed,
         } = self;
-        let resolved = tree.fragment_generation;
-        tree.generation += 1;
-        let generation = tree.generation;
-
         pending.clear();
         items.clear();
         changed.clear();
         pending.push(root);
 
-        // Flags are kept by item. Every ancestor of a fragment is a fragment
-        // of the item's ancestors or of the item itself, such as the box
-        // owning its line, so following flagged sources from the root reaches
-        // every fragment of a marked item.
         while let Some(key) = pending.pop() {
             let fragment = fragments.items.get(key)?;
-            let flags = tree.flags(fragment.source);
-            let stale = fragment.subtree_generation > resolved;
+            let item = inputs.items.get(fragment.source)?;
 
-            if !stale && flags.is_empty() {
-                continue;
-            }
-
-            if fragment.geometry_generation > resolved
-                || flags.contains(PrePaintFlags::NEED_PRE_PAINT)
+            if item.flags.contains(InputFlags::NEED_PRE_PAINT)
                 || !tree.fragment_mapping.contains_key(key)
             {
                 changed.push(key);
                 items.push(fragment.source);
             }
 
-            // A marked item's own fragments can sit under its box, such as its
-            // line boxes, so the children of any flagged source are visited.
-            if stale || !flags.is_empty() {
+            if item.child_flags.contains(InputFlags::NEED_PRE_PAINT) {
                 pending.extend(fragments.items.children(key));
             }
         }
@@ -152,21 +133,17 @@ impl PrePaintTreeResolver {
         }
 
         for &key in changed.iter() {
-            let mut data = sources.resolve_fragment(key)?;
+            let data = sources.resolve_fragment(key)?;
             let old = tree.fragment_mapping.get(key);
 
-            if old.is_some_and(|old| old.same_values(&data)) {
+            if old == Some(&data) {
                 continue;
             }
 
-            // Layer changes are tracked for marked and new fragments.
+            // Every resolved fragment is marked or new.
             let old_stacking = old.and_then(|old| old.stacking);
-            let tracked = old.is_none()
-                || tree
-                    .flags(fragments.items[key].source)
-                    .contains(PrePaintFlags::NEED_PRE_PAINT);
 
-            if tracked && old_stacking != data.stacking {
+            if old_stacking != data.stacking {
                 let change = if data.stacking.is_some() {
                     LayerFlags::NEED_LAYER
                 } else {
@@ -175,30 +152,9 @@ impl PrePaintTreeResolver {
                 tree.mark_layer(fragments, key, change);
             }
 
-            data.generation = generation;
-            data.subtree_generation = generation;
             tree.fragment_mapping.insert(key, data);
-
-            // Stamp the ancestors at once: a later failure keeps the stamp,
-            // and resolving again to equal data would not stamp them.
-            let mut ancestor = fragments.items.parent(key);
-
-            while let Some(key) = ancestor {
-                let Some(data) = tree.fragment_mapping.get_mut(key) else {
-                    break;
-                };
-
-                // Ancestors of a stamped fragment are stamped already.
-                if data.subtree_generation == generation {
-                    break;
-                }
-
-                data.subtree_generation = generation;
-                ancestor = fragments.items.parent(key);
-            }
         }
 
-        tree.fragment_generation = fragments.generation();
         Some(())
     }
 }
@@ -236,8 +192,6 @@ impl Sources<'_> {
             transform_origin,
             stacking: box_props.and_then(stacking),
             border_radius: self.border_radius(fragment, props),
-            generation: 0,
-            subtree_generation: 0,
         })
     }
 

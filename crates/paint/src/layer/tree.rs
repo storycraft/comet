@@ -28,9 +28,6 @@ pub struct PaintLayerTree {
     pub layers: SlotTree<PaintLayerKey, PaintLayerItem>,
     /// The layer each owner fragment starts.
     pub(super) by_owner: SecondaryMap<FragmentKey, PaintLayerKey>,
-    /// [Generation](crate::pre_paint::tree::PrePaintTree::generation) of the
-    /// pre-paint tree the layers were last built from, or 0.
-    pub(super) generation: u64,
 }
 
 impl Default for PaintLayerTree {
@@ -38,7 +35,6 @@ impl Default for PaintLayerTree {
         Self {
             layers: SlotTree::new(),
             by_owner: SecondaryMap::new(),
-            generation: 0,
         }
     }
 }
@@ -76,6 +72,5 @@ impl PaintLayerTree {
     pub fn clear(&mut self) {
         self.layers.clear();
         self.by_owner.clear();
-        self.generation = 0;
     }
 }

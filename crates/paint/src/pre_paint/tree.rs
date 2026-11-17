@@ -1,22 +1,23 @@
 use std::ops::Index;
 
+#[cfg(doc)]
+use comet_layout::input::InputFlags;
 use comet_layout::{
     fragment::{FragmentKey, tree::FragmentTree},
-    input::{LayoutInputKey, tree::LayoutInputTree},
+    input::LayoutInputKey,
 };
-use comet_tree::node::NodeKey;
 use kurbo::{Point, Shape};
 use slotmap::SecondaryMap;
 
-use crate::pre_paint::{FragmentData, LayerFlags, LayoutInputData, PrePaintFlags};
+use crate::pre_paint::{FragmentData, LayerFlags, LayoutInputData};
 
 /// Paint data of the fragments of a fragment tree, such as their transforms
 /// relative to their parents, and of the layout input items they were built
 /// from.
 ///
 /// Filled by a [`PrePaintTreeResolver`](super::resolver::PrePaintTreeResolver),
-/// which resolves the fragments fragment builds changed and the fragments of
-/// the items [marked](Self::mark) with [`PrePaintFlags::NEED_PRE_PAINT`].
+/// which resolves the fragments of the layout input items marked
+/// [`InputFlags::NEED_PRE_PAINT`] and the fragments without data.
 /// Keys are generational, so data left behind by deleted fragments and items
 /// is never returned for the fragments and items reusing their slots, and is
 /// overwritten when those are resolved.
@@ -24,19 +25,8 @@ use crate::pre_paint::{FragmentData, LayerFlags, LayoutInputData, PrePaintFlags}
 pub struct PrePaintTree {
     pub(super) fragment_mapping: SecondaryMap<FragmentKey, FragmentData>,
     pub(super) layout_mapping: SecondaryMap<LayoutInputKey, LayoutInputData>,
-    /// [Generation](FragmentTree::generation) of the fragment tree when
-    /// [`resolve`](super::resolver::PrePaintTreeResolver::resolve) last
-    /// succeeded, or 0.
-    pub(super) fragment_generation: u64,
-    /// Generation of the latest resolve, increasing with every resolve.
-    pub(super) generation: u64,
-    /// Invalidation state of layout input items. Items without an entry are
-    /// clean.
-    pub(super) flags: SecondaryMap<LayoutInputKey, PrePaintFlags>,
     /// Layer changes of fragments. Fragments without an entry are unchanged.
     pub(super) layer_flags: SecondaryMap<FragmentKey, LayerFlags>,
-    /// [`Self::generation`] when the tree was last cleared, or 0.
-    pub(super) cleared_generation: u64,
 }
 
 impl PrePaintTree {
@@ -54,68 +44,6 @@ impl PrePaintTree {
         self.layout_mapping.get(key)
     }
 
-    /// Generation of the latest
-    /// [`resolve`](super::resolver::PrePaintTreeResolver::resolve). Fragment
-    /// data it created or changed has it as its
-    /// [`generation`](FragmentData::generation), and so do the
-    /// [`subtree_generation`](FragmentData::subtree_generation) of their
-    /// ancestors. Only increases, also across [`Self::clear`].
-    pub fn generation(&self) -> u64 {
-        self.generation
-    }
-
-    /// The invalidation state of a layout input item.
-    pub fn flags(&self, key: LayoutInputKey) -> PrePaintFlags {
-        self.flags.get(key).copied().unwrap_or_default()
-    }
-
-    /// Mark an item [`PrePaintFlags::NEED_PRE_PAINT`] and its ancestors in
-    /// `inputs` [`PrePaintFlags::CHILD_NEED_PRE_PAINT`], so the next
-    /// [`resolve`](super::resolver::PrePaintTreeResolver::resolve) resolves
-    /// the item and every fragment it generates again, such as after its
-    /// paint styles changed. Items not in `inputs` are ignored.
-    ///
-    /// Marks are kept by item, so they can be set before or after the
-    /// fragment build: they also reach the fragments a build replaces, such
-    /// as line, inline and glyph run fragments of lines laid out again, or
-    /// box fragments re-keyed after a move.
-    pub fn mark(&mut self, inputs: &LayoutInputTree, key: LayoutInputKey) {
-        if inputs.items.get(key).is_none() {
-            return;
-        }
-
-        self.insert_flags(key, PrePaintFlags::NEED_PRE_PAINT);
-
-        let mut ancestor = inputs.items.parent(key);
-
-        while let Some(key) = ancestor {
-            // Ancestors of a marked item are marked already.
-            if self
-                .flags(key)
-                .contains(PrePaintFlags::CHILD_NEED_PRE_PAINT)
-            {
-                break;
-            }
-
-            self.insert_flags(key, PrePaintFlags::CHILD_NEED_PRE_PAINT);
-            ancestor = inputs.items.parent(key);
-        }
-    }
-
-    /// Mark the item generated for a source node, as [`Self::mark`].
-    /// Unmapped nodes are ignored.
-    pub fn mark_node(&mut self, inputs: &LayoutInputTree, node: NodeKey) {
-        if let Some(key) = inputs.item_for_node(node) {
-            self.mark(inputs, key);
-        }
-    }
-
-    /// Clear the flags of every item. The resolver keeps them, so run it
-    /// after resolving.
-    pub fn clear_flags(&mut self) {
-        self.flags.clear();
-    }
-
     /// The layer changes of a fragment, set by resolves since the last
     /// [`Self::clear_layer_flags`].
     pub fn layer_flags(&self, key: FragmentKey) -> LayerFlags {
@@ -126,13 +54,6 @@ impl PrePaintTree {
     /// run it after building layers.
     pub fn clear_layer_flags(&mut self) {
         self.layer_flags.clear();
-    }
-
-    /// [`Self::generation`] when the tree was last [cleared](Self::clear), or
-    /// 0. Layer flags do not cover what changed before, so layers built at
-    /// or before it are built again.
-    pub fn cleared_generation(&self) -> u64 {
-        self.cleared_generation
     }
 
     /// Set the layer change of a fragment, [`LayerFlags::NEED_LAYER`] or
@@ -169,22 +90,10 @@ impl PrePaintTree {
         }
     }
 
-    fn insert_flags(&mut self, key: LayoutInputKey, flags: PrePaintFlags) {
-        // Only keys removed from their slot map have no entry.
-        if let Some(entry) = self.flags.entry(key) {
-            entry.or_default().insert(flags);
-        }
-    }
-
     pub fn clear(&mut self) {
         self.fragment_mapping.clear();
         self.layout_mapping.clear();
-        self.flags.clear();
         self.layer_flags.clear();
-        // The generation keeps increasing, so data resolved again is newer
-        // than anything consumers have seen.
-        self.fragment_generation = 0;
-        self.cleared_generation = self.generation;
     }
 
     /// Whether `point`, in the local coordinates of a fragment, hits the

@@ -8,6 +8,7 @@ use comet_layout::style::geometry::StyleUnit;
 use comet_layout::{
     fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
+        InputFlags,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -256,21 +257,25 @@ impl App {
             &mut self.fragments,
             &constraint,
         );
-        // Flags were consumed by the fragment build.
-        self.inputs.clear_flags(input_root);
-        let fragment_root = fragment_root?;
+        let Some(fragment_root) = fragment_root else {
+            self.inputs.clear_flags(input_root);
+            return None;
+        };
 
-        // Positions and clips follow the layout, so resolve the fragments it
-        // created, moved or resized.
-        self.pre_paint_resolver.resolve(
+        // Positions and clips follow the layout, so resolve the fragments of
+        // the items it laid out, flagged `NEED_PRE_PAINT` with their layout
+        // flags.
+        let resolved = self.pre_paint_resolver.resolve(
             &self.ui,
             &self.inputs,
             &self.fragments,
             &constraint.units,
             &mut self.pre_paint,
             fragment_root,
-        )?;
-        self.pre_paint.clear_flags();
+        );
+        // Flags were consumed by the fragment build and the pre-paint resolve.
+        self.inputs.clear_flags(input_root);
+        resolved?;
 
         // Layers keep their keys, so building from the root again only places
         // the layers whose fragments gained, lost or reordered a layer.
@@ -305,23 +310,18 @@ impl App {
         };
 
         let units = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE).units;
-        self.pre_paint.mark(&self.inputs, item);
-        // A node that no longer matches the layout is resolved on the next
-        // layout instead, so the flags are kept on failure.
-        if self
-            .pre_paint_resolver
-            .resolve(
-                &self.ui,
-                &self.inputs,
-                &self.fragments,
-                &units,
-                &mut self.pre_paint,
-                root,
-            )
-            .is_some()
-        {
-            self.pre_paint.clear_flags();
-        }
+        self.inputs.mark(item, InputFlags::NEED_PRE_PAINT);
+        // The flag is kept for the next layout, which clears every flag after
+        // resolving. Only the fragment builder could clear it otherwise, and
+        // a node that no longer matches the layout is resolved then instead.
+        let _ = self.pre_paint_resolver.resolve(
+            &self.ui,
+            &self.inputs,
+            &self.fragments,
+            &units,
+            &mut self.pre_paint,
+            root,
+        );
     }
 
     /// Outline the node under the cursor, from the last frame's layout, and

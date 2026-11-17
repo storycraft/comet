@@ -4,8 +4,10 @@
 //! fragment, such as its transform relative to its parent fragment, and the
 //! [`LayoutInputData`] of every layout input item. Data only depends on the
 //! fragment or item itself, and fragment data on its item, so any fragment can
-//! be resolved again on its own: mark its item with
-//! [`PrePaintTree::mark`](tree::PrePaintTree::mark) and resolve from the root.
+//! be resolved again on its own: mark its item
+//! [`InputFlags::NEED_PRE_PAINT`] with
+//! [`LayoutInputTree::mark`](comet_layout::input::tree::LayoutInputTree::mark)
+//! and resolve from the root.
 //! Inherited paint styles, such as text colors, are looked up while painting
 //! instead.
 
@@ -14,23 +16,9 @@ pub mod tree;
 
 use bitflags::bitflags;
 use comet_layout::fragment::Fragment;
+#[cfg(doc)]
+use comet_layout::input::InputFlags;
 use kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii};
-
-bitflags! {
-    /// Invalidation state of a layout input item, maintained by
-    /// [`PrePaintTree`](tree::PrePaintTree) and consumed by the
-    /// [`PrePaintTreeResolver`](resolver::PrePaintTreeResolver).
-    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-    pub struct PrePaintFlags: u8 {
-        /// At least one descendant item needs pre-paint.
-        const CHILD_NEED_PRE_PAINT = 1 << 0;
-
-        /// The item needs pre-paint: its data, and the data of every fragment
-        /// it generates, are resolved again, such as after its paint styles
-        /// changed.
-        const NEED_PRE_PAINT = 1 << 1;
-    }
-}
 
 bitflags! {
     /// Layer changes of a fragment, set by the
@@ -38,11 +26,9 @@ bitflags! {
     /// [`PrePaintTree`](tree::PrePaintTree) and consumed by the
     /// [`PaintLayerBuilder`](crate::layer::builder::PaintLayerBuilder).
     ///
-    /// Only set for fragments resolved because their item was marked
-    /// [`PrePaintFlags::NEED_PRE_PAINT`] or they had no data yet, such as new
+    /// Set for fragments resolved because their item was marked
+    /// [`InputFlags::NEED_PRE_PAINT`] or they had no data yet, such as new
     /// fragments, when their [stacking](FragmentData::stacking) changed.
-    /// Fragments resolved again only because a fragment build moved or
-    /// resized them keep their stacking.
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
     pub struct LayerFlags: u8 {
         /// At least one descendant fragment needs a layer update.
@@ -124,27 +110,9 @@ pub struct FragmentData {
     /// `None` for fragments painting no box, such as line boxes and anonymous
     /// blocks, or items setting no radius.
     pub border_radius: Option<RoundedRectRadii>,
-
-    /// [Generation](tree::PrePaintTree::generation) of the resolve that last
-    /// created or changed this data. Resolving to equal data keeps it.
-    pub generation: u64,
-
-    /// The latest [`Self::generation`] of the fragment and of its
-    /// descendants. Subtrees older than a generation have not changed since.
-    pub subtree_generation: u64,
 }
 
 impl FragmentData {
-    /// Whether the resolved values equal those of `other`, ignoring
-    /// generations.
-    pub fn same_values(&self, other: &Self) -> bool {
-        self.transform == other.transform
-            && self.inverse_transform == other.inverse_transform
-            && self.transform_origin == other.transform_origin
-            && self.stacking == other.stacking
-            && self.border_radius == other.border_radius
-    }
-
     /// Corner radii of the border of `fragment`, the fragment this data was
     /// resolved for: its [border radius](Self::border_radius), with the
     /// corners joining a linked fragment square. Box fragments continue below

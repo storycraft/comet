@@ -63,12 +63,12 @@ impl Fixture {
                 &LayoutConstraint::new_root(VIEWPORT, 16.0),
             )
             .unwrap();
-        inputs.clear_flags(input_root);
 
         let mut pre_paint = PrePaintTree::new();
         PrePaintTreeResolver::new()
             .resolve(ui, &inputs, &fragments, &UNITS, &mut pre_paint, root)
             .unwrap();
+        inputs.clear_flags(input_root);
 
         let mut layers = PaintLayerTree::new();
         let mut builder = PaintLayerBuilder::new();
@@ -92,7 +92,7 @@ impl Fixture {
     fn update(&mut self, ui: &Ui, node: NodeKey) {
         let fragment_root = self.layers.layers[self.root].owner;
 
-        self.pre_paint.mark_node(&self.inputs, node);
+        self.inputs.mark_node(node, InputFlags::NEED_PRE_PAINT);
         PrePaintTreeResolver::new()
             .resolve(
                 ui,
@@ -103,7 +103,8 @@ impl Fixture {
                 fragment_root,
             )
             .unwrap();
-        self.pre_paint.clear_flags();
+        let input_root = self.fragments.items[fragment_root].source;
+        self.inputs.clear_flags(input_root);
         self.root = self
             .builder
             .build(
@@ -791,8 +792,9 @@ fn updates_match_full_builds() {
     ui.set_props(inner, (z(4),));
     let fragment_root = f.layers.layers[f.root].owner;
     let right_item = f.inputs.item_for_node(right).unwrap();
-    for item in f.inputs.items.descendants(right_item) {
-        f.pre_paint.mark(&f.inputs, item);
+    let items: Vec<_> = f.inputs.items.descendants(right_item).collect();
+    for item in items {
+        f.inputs.mark(item, InputFlags::NEED_PRE_PAINT);
     }
     PrePaintTreeResolver::new()
         .resolve(
@@ -804,7 +806,8 @@ fn updates_match_full_builds() {
             fragment_root,
         )
         .unwrap();
-    f.pre_paint.clear_flags();
+    let input_root = f.fragments.items[fragment_root].source;
+    f.inputs.clear_flags(input_root);
     f.root = f
         .builder
         .build(&f.fragments, &f.pre_paint, &mut f.layers, fragment_root)
@@ -962,7 +965,6 @@ impl Pipeline {
                 &LayoutConstraint::new_root(VIEWPORT, 16.0),
             )
             .unwrap();
-        self.inputs.clear_flags(input_root);
         self.resolver
             .resolve(
                 ui,
@@ -973,7 +975,7 @@ impl Pipeline {
                 root,
             )
             .unwrap();
-        self.pre_paint.clear_flags();
+        self.inputs.clear_flags(input_root);
 
         let layer = self
             .builder
@@ -1076,7 +1078,7 @@ fn layers_of_owners_losing_their_stacking_move_up_from_the_root() {
     // The group stops starting a layer, so its nested layer paints in the
     // root layer, below the sibling.
     ui.set_props(group, (ZIndex(AutoValue::Auto),));
-    p.pre_paint.mark_node(&p.inputs, group);
+    p.inputs.mark_node(group, InputFlags::NEED_PRE_PAINT);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1085,7 +1087,7 @@ fn layers_of_owners_losing_their_stacking_move_up_from_the_root() {
 
     // Starting one again takes the nested layer back.
     ui.set_props(group, (z(2),));
-    p.pre_paint.mark_node(&p.inputs, group);
+    p.inputs.mark_node(group, InputFlags::NEED_PRE_PAINT);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1110,7 +1112,7 @@ fn changed_z_indices_reorder_layers_from_the_root() {
     assert_eq!(p.children(root_layer), [first_layer, second_layer]);
 
     ui.set_props(first, (z(3),));
-    p.pre_paint.mark_node(&p.inputs, first);
+    p.inputs.mark_node(first, InputFlags::NEED_PRE_PAINT);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));

@@ -53,10 +53,11 @@ impl PaintLayerBuilder {
     /// layers moving to the layer they paint in. Subtrees without
     /// [`CHILD_LAYER_UPDATE`](LayerFlags::CHILD_LAYER_UPDATE) are skipped.
     ///
-    /// Otherwise, such as on the first build, after a new root, or with a
-    /// `pre_paint` older than the last build or
-    /// [cleared](PrePaintTree::cleared_generation) since, every layer is
-    /// built and layers of other fragments are deleted.
+    /// Otherwise, such as on the first build or after a new root, every layer
+    /// is built and layers of other fragments are deleted. After
+    /// [clearing](PrePaintTree::clear) `pre_paint`, also
+    /// [clear](PaintLayerTree::clear) `tree`: layer flags do not cover what
+    /// changed before.
     ///
     /// Build from the same `pre_paint` every time, after resolving it for
     /// `fragments`. Layer flags are not cleared; call
@@ -76,11 +77,7 @@ impl PaintLayerBuilder {
         self.detached.clear();
 
         let root_layer = match tree.layer_of(root) {
-            Some(layer)
-                if tree.layers.parent(layer).is_none()
-                    && pre_paint.cleared_generation() < tree.generation
-                    && tree.generation <= pre_paint.generation() =>
-            {
+            Some(layer) if tree.layers.parent(layer).is_none() => {
                 self.update(fragments, pre_paint, tree, root, layer);
                 layer
             }
@@ -88,7 +85,6 @@ impl PaintLayerBuilder {
         };
 
         self.delete_detached(tree);
-        tree.generation = pre_paint.generation();
 
         Some(root_layer)
     }

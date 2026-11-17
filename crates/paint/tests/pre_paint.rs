@@ -19,7 +19,7 @@ use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     pre_paint::{
-        FragmentData, LayerFlags, LayoutInputData, PrePaintFlags, resolver::PrePaintTreeResolver,
+        FragmentData, LayerFlags, LayoutInputData, resolver::PrePaintTreeResolver,
         tree::PrePaintTree,
     },
     style::{
@@ -52,18 +52,28 @@ struct Fixture {
     input_builder: LayoutInputTreeBuilder,
     builder: FragmentTreeBuilder,
     root: Option<FragmentKey>,
+    input_root: Option<LayoutInputKey>,
 }
 
 impl Fixture {
-    /// Build the layout and resolve the whole pre-paint tree.
+    /// Build the layout, resolve the pre-paint tree and clear the flags.
     fn build(&mut self, ui: &Ui, node: NodeKey) -> FragmentKey {
         let root = self.layout(ui, node);
         self.resolve(ui, root).unwrap();
+        self.clear_flags();
 
         root
     }
 
-    /// Build or update the layout only, keeping the resolved pre-paint tree.
+    /// Clear the input flags, once the pre-paint tree was resolved.
+    fn clear_flags(&mut self) {
+        if let Some(input_root) = self.input_root {
+            self.inputs.clear_flags(input_root);
+        }
+    }
+
+    /// Build or update the layout only, keeping the resolved pre-paint tree
+    /// and the input flags for the next resolve.
     fn layout(&mut self, ui: &Ui, node: NodeKey) -> FragmentKey {
         let input_root = self
             .input_builder
@@ -83,7 +93,7 @@ impl Fixture {
                 &LayoutConstraint::new_root(VIEWPORT, 16.0),
             )
             .unwrap();
-        self.inputs.clear_flags(input_root);
+        self.input_root = Some(input_root);
         self.root = Some(root);
 
         root
@@ -102,7 +112,7 @@ impl Fixture {
 
     /// Mark the item of a node as needing pre-paint.
     fn mark(&mut self, node: NodeKey) {
-        self.pre_paint.mark_node(&self.inputs, node);
+        self.inputs.mark_node(node, InputFlags::NEED_PRE_PAINT);
     }
 
     fn item(&self, node: NodeKey) -> LayoutInputKey {
@@ -884,7 +894,7 @@ fn resolving_fails_for_nodes_deleted_since_the_layout_was_built() {
     f.inputs.mark_node(root, InputFlags::NEED_CHILDREN);
     let root_fragment = f.layout(&ui, root);
     assert_eq!(f.resolve(&ui, root_fragment), Some(()));
-    f.pre_paint.clear_flags();
+    f.clear_flags();
 }
 
 #[test]
@@ -1009,7 +1019,7 @@ fn resolving_marked_fragments_leaves_unmarked_descendants_as_they_are() {
     ui.set_props(child, (hidden(), Transform(Affine::scale(3.0))));
     f.mark(parent);
     f.resolve(&ui, f.root.unwrap()).unwrap();
-    f.pre_paint.clear_flags();
+    f.clear_flags();
 
     // Only the parent's item and fragment are resolved again.
     assert_eq!(f.clip(parent), (true, true));
@@ -1302,7 +1312,7 @@ impl Fixture {
             let (data, expected) = (self.pre_paint.fragment(key), full.fragment(key));
             assert!(
                 data.zip(expected)
-                    .is_some_and(|(data, expected)| data.same_values(expected)),
+                    .is_some_and(|(data, expected)| data == expected),
                 "{key:?}: {data:?} != {expected:?}"
             );
             assert_eq!(self.pre_paint.get(source), full.get(source), "{source:?}");
@@ -1394,18 +1404,10 @@ fn resolves_both_changed_and_marked_fragments() {
     f.layout(&ui, root);
     f.mark(marked);
 
-    assert_eq!(
-        f.pre_paint.flags(f.item(marked)),
-        PrePaintFlags::NEED_PRE_PAINT
-    );
-    assert_eq!(
-        f.pre_paint.flags(f.item(wrapper)),
-        PrePaintFlags::CHILD_NEED_PRE_PAINT
-    );
-    assert_eq!(
-        f.pre_paint.flags(f.item(root)),
-        PrePaintFlags::CHILD_NEED_PRE_PAINT
-    );
+    let pre_paint = InputFlags::NEED_PRE_PAINT;
+    assert_eq!(f.inputs.items[f.item(marked)].flags, pre_paint);
+    assert_eq!(f.inputs.items[f.item(wrapper)].child_flags, pre_paint);
+    assert!(f.inputs.items[f.item(root)].child_flags.contains(pre_paint));
 
     f.resolve_changed(&ui, fragment_root);
     f.assert_matches_full_resolve(&ui, fragment_root);
@@ -1413,58 +1415,10 @@ fn resolves_both_changed_and_marked_fragments() {
     assert!(f.boxed(marked).border_radius.is_some());
 
     // The resolver keeps the flags for the caller to clear.
-    assert_eq!(
-        f.pre_paint.flags(f.item(marked)),
-        PrePaintFlags::NEED_PRE_PAINT
-    );
-    f.pre_paint.clear_flags();
-    assert!(f.pre_paint.flags(f.item(marked)).is_empty());
-    assert!(f.pre_paint.flags(f.item(root)).is_empty());
-}
-
-#[test]
-fn fragment_data_generations_follow_changed_values() {
-    let mut ui = Ui::new();
-    let root = ui.create(Node::Box, ());
-    let parent = ui.create(Node::Box, (fixed(80.0, 40.0),));
-    let child = ui.create(Node::Box, (fixed(20.0, 20.0),));
-    let sibling = ui.create(Node::Box, (fixed(80.0, 40.0),));
-    ui.append(root, parent);
-    ui.append(parent, child);
-    ui.append(root, sibling);
-
-    let mut f = Fixture::default();
-    let fragment_root = f.build(&ui, root);
-    let first = f.pre_paint.generation();
-
-    for key in f.fragments.items.descendants(fragment_root) {
-        assert_eq!(f.fragment(key).generation, first);
-        assert_eq!(f.fragment(key).subtree_generation, first);
-    }
-
-    // Resolving to equal values keeps the generations.
-    f.mark(child);
-    f.resolve(&ui, fragment_root).unwrap();
-    f.pre_paint.clear_flags();
-
-    assert!(f.pre_paint.generation() > first);
-    assert_eq!(f.boxed(child).generation, first);
-    assert_eq!(f.boxed(parent).subtree_generation, first);
-
-    // A changed value stamps the fragment and the subtrees of its
-    // ancestors, leaving the others as they are.
-    ui.set_props(child, (Transform(Affine::scale(2.0)),));
-    f.mark(child);
-    f.resolve(&ui, fragment_root).unwrap();
-    f.pre_paint.clear_flags();
-    let changed = f.pre_paint.generation();
-
-    assert_eq!(f.boxed(child).generation, changed);
-    assert_eq!(f.boxed(child).subtree_generation, changed);
-    assert_eq!(f.boxed(parent).generation, first);
-    assert_eq!(f.boxed(parent).subtree_generation, changed);
-    assert_eq!(f.boxed(root).subtree_generation, changed);
-    assert_eq!(f.boxed(sibling).subtree_generation, first);
+    assert_eq!(f.inputs.items[f.item(marked)].flags, pre_paint);
+    f.clear_flags();
+    assert!(f.inputs.items[f.item(marked)].flags.is_empty());
+    assert!(f.inputs.items[f.item(root)].child_flags.is_empty());
 }
 
 #[test]
@@ -1499,7 +1453,7 @@ fn stacking_changes_of_marked_and_new_fragments_set_layer_flags() {
     ui.set_props(raised, (Transform(Affine::translate((5.0, 0.0))),));
     f.mark(raised);
     f.resolve(&ui, root_key).unwrap();
-    f.pre_paint.clear_flags();
+    f.clear_flags();
     assert!(f.pre_paint.layer_flags(raised_key).is_empty());
     assert!(f.pre_paint.layer_flags(root_key).is_empty());
 
@@ -1508,7 +1462,7 @@ fn stacking_changes_of_marked_and_new_fragments_set_layer_flags() {
     ui.set_props(raised, (ZIndex(AutoValue::Value(2)),));
     f.mark(raised);
     f.resolve(&ui, root_key).unwrap();
-    f.pre_paint.clear_flags();
+    f.clear_flags();
     assert_eq!(f.pre_paint.layer_flags(raised_key), LayerFlags::NEED_LAYER);
     f.pre_paint.clear_layer_flags();
 
@@ -1518,7 +1472,7 @@ fn stacking_changes_of_marked_and_new_fragments_set_layer_flags() {
     ui.set_props(plain, (ZIndex(AutoValue::Value(1)),));
     f.mark(raised);
     f.resolve(&ui, root_key).unwrap();
-    f.pre_paint.clear_flags();
+    f.clear_flags();
     assert_eq!(
         f.pre_paint.layer_flags(raised_key),
         LayerFlags::NEED_NO_LAYER
@@ -1566,10 +1520,10 @@ fn marks_kept_by_item_reach_every_fragment_set_before_the_layout() {
         fragments
     );
     f.resolve(&ui, fragment_root).unwrap();
-    f.pre_paint.clear_flags();
+    f.clear_flags();
 
     for key in fragments {
         assert!(f.fragment(key).border_radius.is_some());
     }
-    assert!(f.pre_paint.flags(f.item(span)).is_empty());
+    assert!(f.inputs.items[f.item(span)].flags.is_empty());
 }
