@@ -7,8 +7,7 @@ use slotmap::{SecondaryMap, SlotMap};
 use super::{super::Engine, Scratch};
 use crate::{
     fragment::{
-        Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, StateKey,
-        state::NodeState,
+        Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, StateKey, state::NodeState,
         tree::FragmentTree,
     },
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},

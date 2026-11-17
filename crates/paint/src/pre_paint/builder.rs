@@ -44,14 +44,14 @@ impl PrePaintTreeBuilder {
         Self::default()
     }
 
-    /// Builds into `tree` the fragments under `root` that need it, and
-    /// their layout input items:
-    /// - fragments of items whose [`LayoutInputItem::flags`](comet_layout::input::LayoutInputItem::flags) have
+    /// Builds into `tree` the fragments that need it, and their layout input
+    /// items:
+    /// - fragments under `root` of items whose [`LayoutInputItem::flags`](comet_layout::input::LayoutInputItem::flags) have
     ///   [`InputFlags::NEED_PRE_PAINT`], which layout changes include, or
     ///   which were marked with it, such as after their paint styles changed,
+    /// - fragments under `root` without data in `tree`,
     /// - fragments that fragment builds created, moved or resized, listed by
-    ///   [`FragmentTree::changed`],
-    /// - fragments without data in `tree`.
+    ///   [`FragmentTree::changed`], wherever they are.
     ///
     /// Fragments are visited from `root`, going into the children of a
     /// fragment only when its item's
@@ -70,8 +70,8 @@ impl PrePaintTreeBuilder {
     /// Changes builds cannot see, such as paint styles, must be marked.
     ///
     /// With `viewport_changed`, every item whose paint values, or those of
-    /// its fragments, use `vw` or `vh` is resolved again with its fragments
-    /// under `root`. Pass it when the viewport in `units` differs from the
+    /// its fragments, use `vw` or `vh` is resolved again with all of its
+    /// fragments. Pass it when the viewport in `units` differs from the
     /// last successful call. The root font size is not tracked: resolve into a new
     /// or [cleared](PrePaintTree::clear) tree when it changes.
     ///
@@ -125,17 +125,10 @@ impl PrePaintTreeBuilder {
             }
         }
 
-        // Fragments the layout created, moved or resized under `root`. Item
-        // data does not depend on the layout, so it is only resolved for new
-        // items.
-        let whole_tree = fragments.items.parent(root).is_none();
-
+        // Fragments the layout created, moved or resized. Item data does not
+        // depend on the layout, so it is only resolved for new items.
         for &key in fragments.changed() {
             let fragment = fragments.items.get(key)?;
-
-            if !whole_tree && !is_inclusive_descendant(fragments, key, root) {
-                continue;
-            }
 
             changed.push(key);
 
@@ -153,9 +146,7 @@ impl PrePaintTreeBuilder {
 
             for key in tree.viewport_dependents.keys() {
                 items.push(key);
-                changed.extend(fragments.fragments(key).filter(|&fragment| {
-                    whole_tree || is_inclusive_descendant(fragments, fragment, root)
-                }));
+                changed.extend(fragments.fragments(key));
             }
         }
 
@@ -218,11 +209,6 @@ fn depends_viewport(props: Props<'_>) -> bool {
         || props
             .get_cloned()
             .is_some_and(|OutlineOffset(offset)| viewport(offset))
-}
-
-/// Whether `key` is `root` or one of its descendants.
-fn is_inclusive_descendant(fragments: &FragmentTree, key: FragmentKey, root: FragmentKey) -> bool {
-    std::iter::successors(Some(key), |&key| fragments.items.parent(key)).any(|key| key == root)
 }
 
 impl Sources<'_> {

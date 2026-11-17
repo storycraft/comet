@@ -18,9 +18,7 @@ use comet_layout::{
 use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
-    pre_paint::{
-        FragmentData, LayoutInputData, builder::PrePaintTreeBuilder, tree::PrePaintTree,
-    },
+    pre_paint::{FragmentData, LayoutInputData, builder::PrePaintTreeBuilder, tree::PrePaintTree},
     style::{
         BorderRadius, Fill, OutlineFill, OutlineOffset, OutlineWidth, TextColor, Transform,
         TransformOrigin,
@@ -857,26 +855,6 @@ fn text_color_changes_paint_without_resolving() {
 }
 
 #[test]
-fn resolving_a_fragment_leaves_its_ancestors_unresolved() {
-    let mut ui = Ui::new();
-    let root = ui.create(Node::Box, (TextColor(Paint::Solid(RED)),));
-    let block = ui.create(Node::Box, ());
-    ui.append(root, block);
-    let content = text(&mut ui, block, "text");
-
-    let mut f = Fixture::default();
-    let root_fragment = f.layout(&ui, root);
-    f.resolve(&ui, f.box_of(block)).unwrap();
-
-    // Neither fragments nor items depend on their ancestors.
-    assert!(f.pre_paint.fragment(root_fragment).is_none());
-    assert!(f.pre_paint.get(f.item(root)).is_none());
-    assert_eq!(f.transform(f.box_of(block)), Affine::IDENTITY);
-    assert!(f.pre_paint.get(f.item(block)).is_some());
-    assert!(f.pre_paint.get(f.item(content)).is_some());
-}
-
-#[test]
 fn resolving_fails_for_nodes_deleted_since_the_layout_was_built() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
@@ -1299,7 +1277,15 @@ impl Fixture {
     fn full_resolve(&self, ui: &Ui, root: FragmentKey) -> PrePaintTree {
         let mut full = PrePaintTree::new();
         PrePaintTreeBuilder::new()
-            .build(ui, &self.inputs, &self.fragments, &UNITS, &mut full, root, false)
+            .build(
+                ui,
+                &self.inputs,
+                &self.fragments,
+                &UNITS,
+                &mut full,
+                root,
+                false,
+            )
             .unwrap();
 
         full
@@ -1507,7 +1493,7 @@ fn viewport_changes_resolve_viewport_dependent_paint_values_again() {
     assert!(!f.pre_paint.depends_viewport(f.item(root)));
 
     let wide = LayoutConstraint::new_root(Size::new(200.0, 400.0), 16.0).units;
-    let mut resolve = |f: &mut Fixture, ui: &Ui, units, viewport_changed| {
+    let resolve = |f: &mut Fixture, ui: &Ui, units, viewport_changed| {
         f.resolver
             .build(
                 ui,
