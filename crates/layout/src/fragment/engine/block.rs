@@ -7,7 +7,7 @@ use taffy::style::CoreStyle;
 use super::{Engine, FragmentEngine, FragmentKey, Mode, StateKey, node_id, state_of};
 use crate::{
     container::ContainerContext,
-    fragment::tree::{FragmentTree, record_geometry},
+    fragment::tree::FragmentTree,
     input::LayoutInputKind,
     style::{bx::DisplayInner, geometry::Point},
 };
@@ -80,13 +80,7 @@ impl Engine<'_> {
     /// Their retained Taffy layouts keep containing block coordinates, so this
     /// can run again after every positioning pass.
     fn place_hoisted(&mut self, containing: FragmentKey) {
-        let FragmentTree {
-            items,
-            states,
-            changed,
-            generation,
-            ..
-        } = &mut *self.fragments;
+        let FragmentTree { items, states, .. } = &mut *self.fragments;
         let Some(containing_state) = items[containing]
             .item
             .state()
@@ -120,10 +114,7 @@ impl Engine<'_> {
             let location = hoisted_state.layout.location;
             let location = Point::new(f64::from(location.x) - x, f64::from(location.y) - y);
 
-            if items[hoisted].layout.location != location {
-                items[hoisted].layout.location = location;
-                record_geometry(items, changed, *generation, hoisted);
-            }
+            items[hoisted].layout.location = location;
         }
     }
 

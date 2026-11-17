@@ -7,9 +7,8 @@ use slotmap::{SecondaryMap, SlotMap};
 use super::{super::Engine, Scratch};
 use crate::{
     fragment::{
-        Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, StateKey,
-        state::NodeState,
-        tree::{FragmentTree, record_geometry},
+        Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, StateKey, state::NodeState,
+        tree::FragmentTree,
     },
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     style::geometry::{Point, Size},
@@ -30,8 +29,6 @@ impl Engine<'_> {
             items,
             states,
             first,
-            changed,
-            generation,
             ..
         } = &mut *self.fragments;
         let Some(InlineLayout { layout, boxes, .. }) = items[fragment]
@@ -53,8 +50,6 @@ impl Engine<'_> {
             boxes,
             span_parents,
             spans,
-            changed,
-            generation: *generation,
             line: 0,
             line_key: fragment,
         };
@@ -126,10 +121,6 @@ struct Emitter<'a> {
     boxes: &'a [LayoutInputKey],
     span_parents: &'a mut FxHashMap<LayoutInputKey, FragmentKey>,
     spans: &'a mut Vec<FragmentKey>,
-    /// Fragments created or moved in this build.
-    changed: &'a mut Vec<FragmentKey>,
-    /// Generation of this build.
-    generation: u64,
     /// Index of the current line in the Parley layout.
     line: usize,
     /// Fragment of the current line.
@@ -234,19 +225,13 @@ impl Emitter<'_> {
             (bx.y + margin.top - top) as f64,
         );
 
-        if self.items[atomic].layout.location != location {
-            self.items[atomic].layout.location = location;
-            record_geometry(self.items, self.changed, self.generation, atomic);
-        }
+        self.items[atomic].layout.location = location;
         self.items.append(parent, atomic);
     }
 
-    /// Insert a new fragment, marked as created in this build.
+    /// Insert a new fragment.
     fn insert(&mut self, fragment: Fragment) -> FragmentKey {
-        let key = self.items.insert(fragment);
-        record_geometry(self.items, self.changed, self.generation, key);
-
-        key
+        self.items.insert(fragment)
     }
 
     /// Insert a fragment under the span containing `source`.

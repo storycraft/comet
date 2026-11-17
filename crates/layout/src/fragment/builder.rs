@@ -71,7 +71,6 @@ impl FragmentTreeBuilder {
             return None;
         }
 
-        engine.fragments.begin_generation();
         engine.invalidate();
 
         let fragment = engine.ensure_box(root);
@@ -82,7 +81,6 @@ impl FragmentTreeBuilder {
             }),
         );
         engine.sweep();
-        engine.fragments.finish_generation();
 
         #[cfg(debug_assertions)]
         engine.check();
