@@ -49,6 +49,12 @@ pub(in crate::fragment::engine) fn content_changed(flags: InputFlags) -> bool {
     flags.contains(InputFlags::NEED_CHILDREN)
 }
 
+/// Whether an item with `flags` needs layout. [`InputFlags::NEED_PRE_PAINT`]
+/// alone is a paint change for later steps, so the item keeps its layout.
+pub(in crate::fragment::engine) fn layout_changed(flags: InputFlags) -> bool {
+    !flags.difference(InputFlags::NEED_PRE_PAINT).is_empty()
+}
+
 /// Buffers retained by the builder between builds.
 #[derive(Default)]
 pub(crate) struct Scratch {
@@ -225,7 +231,8 @@ impl Engine<'_> {
                     .is_some_and(|state| state.bits.contains(NodeLayoutBits::DEPENDS_VIEWPORT));
 
             // Ancestors of flagged items are laid out again too.
-            if !force && !viewport && flags.is_empty() && !descend {
+            // Paint-only changes are left to later steps.
+            if !force && !viewport && !layout_changed(flags) && !descend {
                 continue;
             }
 

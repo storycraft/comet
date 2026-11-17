@@ -385,6 +385,60 @@ fn editing_one_run_keeps_the_fragments_of_other_runs() {
 }
 
 #[test]
+fn paint_only_flags_keep_layouts() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let header = sized_block(&mut ui, 40.0);
+    let body = ui.create(Node::Box, ());
+    let content = text(&mut ui, "body");
+    let mixed = ui.create(Node::Box, ());
+    let before = text(&mut ui, "before");
+    let block = sized_block(&mut ui, 20.0);
+    ui.append(root, header);
+    ui.append(root, body);
+    ui.append(body, content);
+    ui.append(root, mixed);
+    ui.append(mixed, before);
+    ui.append(mixed, block);
+
+    let mut f = Fixture::new();
+    let (input_root, _) = f.build(&ui, root);
+    f.tree.clear_flags(input_root);
+
+    let body_lines = f.children(f.box_of(body));
+    let runs = f.children(f.box_of(mixed));
+    let run_lines = f.children(runs[0]);
+
+    // A paint change on a box, and on text in a run, next to layout changes
+    // reaching them: the header moves the body, and the block lays out the
+    // runs of its owner again.
+    f.tree.mark_node(body, InputFlags::NEED_PRE_PAINT);
+    f.tree.mark_node(before, InputFlags::NEED_PRE_PAINT);
+    ui.set_props(
+        header,
+        (bx::Size(Size::new(
+            AutoValue::Auto,
+            AutoValue::Value(StyleUnit::Px(60.0)),
+        )),),
+    );
+    f.tree.mark_node(header, InputFlags::NEED_BOX_LAYOUT);
+    ui.set_props(
+        block,
+        (bx::Size(Size::new(
+            AutoValue::Auto,
+            AutoValue::Value(StyleUnit::Px(30.0)),
+        )),),
+    );
+    f.tree.mark_node(block, InputFlags::NEED_BOX_LAYOUT);
+    f.layout(&ui, input_root);
+
+    // Their lines are not laid out again.
+    assert_eq!(f.children(f.box_of(body)), body_lines);
+    assert_eq!(f.children(f.box_of(mixed))[0], runs[0]);
+    assert_eq!(f.children(runs[0]), run_lines);
+}
+
+#[test]
 fn updates_reuse_box_fragments_and_layouts() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());

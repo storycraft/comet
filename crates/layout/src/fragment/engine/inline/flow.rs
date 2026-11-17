@@ -3,7 +3,7 @@
 use comet_tree::node::Text;
 
 use super::{
-    super::{Engine, FragmentItem, FragmentKey, Mode, NodeState, content_changed},
+    super::{Engine, FragmentItem, FragmentKey, Mode, NodeState, content_changed, layout_changed},
     events::{InlineEvents, Op},
 };
 use crate::{input::LayoutInputKey, taffy::style};
@@ -61,7 +61,7 @@ impl Engine<'_> {
         // Content changes shape a run again; other flags, such as box style
         // changes of atomic inlines, only lay it out again.
         let dirty = |key: LayoutInputKey| force || content_changed(tree.items[key].flags);
-        let flagged = |key: LayoutInputKey| force || !tree.items[key].flags.is_empty();
+        let flagged = |key: LayoutInputKey| force || layout_changed(tree.items[key].flags);
 
         let mut runs: Vec<FragmentKey> = self
             .fragments
