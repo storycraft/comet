@@ -179,15 +179,26 @@ impl LayoutInputTreeBuilder {
             let (kind, child_layout, text_style) = resolve(props, &parent_style, cx);
 
             let item = &mut tree.items[key];
+            let kind_changed = item.kind != kind;
             item.kind = kind;
             item.child_layout = child_layout;
             // Always take the new allocation so equal styles keep sharing it.
             tree.set_text_style(key, text_style);
+
+            if kind_changed {
+                mark_content_owner(tree, key);
+            }
         }
 
         // Children are checked against the source children only when the
         // child list is marked. `NEED_FULL_LAYOUT` includes `NEED_CHILDREN`.
         if flags.contains(InputFlags::NEED_CHILDREN) {
+            // The children of an inline element are inline content of its
+            // owner, whose mode depends on their kinds.
+            if tree.items[key].kind == LayoutInputKind::Inline {
+                mark_content_owner(tree, key);
+            }
+
             self.reconcile_children(ui, tree, key, node, full, descend, cx);
             return;
         }
@@ -339,6 +350,26 @@ fn delete_child(tree: &mut LayoutInputTree, key: LayoutInputKey) {
 
     if let Some(parent) = parent {
         tree.mark(parent, InputFlags::NEED_FULL_LAYOUT);
+    }
+}
+
+/// Mark [`InputFlags::NEED_CHILDREN`] the nearest ancestor of an item that is
+/// not an inline element: the box whose children, or whose inline content,
+/// include the item. Its layout mode depends on the kinds of those items, so
+/// mark it when an item changes kind, or when an inline element's child list
+/// changes. The builder visited the ancestor already, so the mark is only
+/// read by later steps.
+fn mark_content_owner(tree: &mut LayoutInputTree, key: LayoutInputKey) {
+    let mut owner = tree.items.parent(key);
+
+    while let Some(key) = owner
+        && tree.items[key].kind == LayoutInputKind::Inline
+    {
+        owner = tree.items.parent(key);
+    }
+
+    if let Some(owner) = owner {
+        tree.mark(owner, InputFlags::NEED_CHILDREN);
     }
 }
 
