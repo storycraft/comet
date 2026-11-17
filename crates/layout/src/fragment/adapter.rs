@@ -264,11 +264,17 @@ impl Engine<'_> {
         };
         let location = Point::new(layout.location.x as f64, layout.location.y as f64);
         let size = Size::new(layout.size.width as f64, layout.size.height as f64);
+        let changed = fragment.layout.location != location || fragment.layout.size != size;
+
         let fragment = &mut fragment.layout;
         fragment.location = location;
         fragment.size = size;
         fragment.padding = conv::from_rect(layout.padding, f64::from);
         fragment.border = conv::from_rect(layout.border, f64::from);
+
+        if changed {
+            self.fragments.record_geometry(key);
+        }
     }
 }
 

@@ -49,14 +49,18 @@ impl PrePaintTreeResolver {
     /// - fragments of items whose [`LayoutInputItem::flags`](comet_layout::input::LayoutInputItem::flags) have
     ///   [`InputFlags::NEED_PRE_PAINT`], which layout changes include, or
     ///   which were marked with it, such as after their paint styles changed,
+    /// - fragments that fragment builds created, moved or resized since the
+    ///   last successful call, found with their
+    ///   [generations](comet_layout::fragment::Fragment::geometry_generation),
     /// - fragments without data in `tree`.
     ///
     /// Fragments are visited from `root`, going into the children of a
     /// fragment only when its item's
     /// [`LayoutInputItem::child_flags`](comet_layout::input::LayoutInputItem::child_flags)
-    /// have [`InputFlags::NEED_PRE_PAINT`]. Fragments under other fragments
-    /// are not visited, even when they have no data, so mark their items
-    /// after [clearing](PrePaintTree::clear) `tree`.
+    /// have [`InputFlags::NEED_PRE_PAINT`], or when its
+    /// [subtree generation](comet_layout::fragment::Fragment::subtree_generation)
+    /// is newer than the last successful call. A [cleared](PrePaintTree::clear)
+    /// `tree` resolves every fragment.
     ///
     /// Data only depends on the fragment or item itself, so ancestors are not
     /// resolved. Input flags are not cleared; the layer build reads them too,
@@ -96,6 +100,7 @@ impl PrePaintTreeResolver {
             items,
             changed,
         } = self;
+        let resolved = tree.fragment_generation;
         pending.clear();
         items.clear();
         changed.clear();
@@ -110,9 +115,14 @@ impl PrePaintTreeResolver {
             {
                 changed.push(key);
                 items.push(fragment.source);
+            } else if fragment.geometry_generation > resolved {
+                // Item data does not depend on the layout.
+                changed.push(key);
             }
 
-            if item.child_flags.contains(InputFlags::NEED_PRE_PAINT) {
+            if item.child_flags.contains(InputFlags::NEED_PRE_PAINT)
+                || fragment.subtree_generation > resolved
+            {
                 pending.extend(fragments.items.children(key));
             }
         }
@@ -134,6 +144,7 @@ impl PrePaintTreeResolver {
             }
         }
 
+        tree.fragment_generation = fragments.generation();
         Some(())
     }
 }

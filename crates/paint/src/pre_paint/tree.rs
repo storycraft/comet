@@ -25,6 +25,9 @@ use crate::pre_paint::{FragmentData, LayoutInputData};
 pub struct PrePaintTree {
     pub(super) fragment_mapping: SecondaryMap<FragmentKey, FragmentData>,
     pub(super) layout_mapping: SecondaryMap<LayoutInputKey, LayoutInputData>,
+    /// [Generation](comet_layout::fragment::tree::FragmentTree::generation)
+    /// of the fragment tree when a resolve last succeeded, or 0.
+    pub(super) fragment_generation: u64,
 }
 
 impl PrePaintTree {
@@ -45,6 +48,8 @@ impl PrePaintTree {
     pub fn clear(&mut self) {
         self.fragment_mapping.clear();
         self.layout_mapping.clear();
+        // Every fragment is newer, so the next resolve resolves them all.
+        self.fragment_generation = 0;
     }
 
     /// Whether `point`, in the local coordinates of a fragment, hits the

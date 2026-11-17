@@ -1343,14 +1343,16 @@ fn incremental_resolves_follow_changed_fragments_only() {
     let fragment_root = f.layout(&ui, root);
     f.resolve_changed(&ui, fragment_root);
     f.assert_matches_full_resolve(&ui, fragment_root);
+    f.clear_flags();
 
-    // A taller top box moves the boxes below it.
+    // A taller top box moves the boxes below it, which are not marked.
     ui.set_props(top, (fixed(120.0, 50.0),));
     f.inputs.mark_node(top, InputFlags::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
     f.resolve_changed(&ui, fragment_root);
     f.assert_matches_full_resolve(&ui, fragment_root);
     assert_affine(f.boxed(middle).transform, Affine::translate((0.0, 50.0)));
+    f.clear_flags();
 
     // Boxes that did not move or resize are skipped, so an unmarked paint
     // style edit on one is not seen.
