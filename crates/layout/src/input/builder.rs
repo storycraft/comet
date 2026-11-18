@@ -132,7 +132,10 @@ impl LayoutInputTreeBuilder {
         let Some(key) = target else {
             let style = Arc::new(root_text_style(root_font_size));
 
-            return self.build_subtree(ui, tree, dirty, source, &style, &cx);
+            let key = self.build_subtree(ui, tree, dirty, source, &style, &cx)?;
+            dirty.mark(tree, key, InputFlags::NEED_FULL_LAYOUT);
+
+            return Some(key);
         };
 
         // Nothing under a clean item changed.
@@ -290,7 +293,8 @@ impl LayoutInputTreeBuilder {
                 match existing {
                     Some(item) if descend => self.queue(tree, dirty, item, full),
                     Some(_) => {}
-                    // Built already, with its flags.
+                    // Its descendants are marked already. Marking the
+                    // attached root marks its new ancestors too.
                     None => dirty.mark(tree, item, InputFlags::NEED_FULL_LAYOUT),
                 }
             }
@@ -321,9 +325,10 @@ impl LayoutInputTreeBuilder {
     }
 
     /// Build the whole subtree of `node` as a detached tree, its root
-    /// inheriting `parent_style`. Every item is marked
-    /// [`InputFlags::NEED_FULL_LAYOUT`]. Ancestors of the subtree root are not
-    /// marked. Returns its root, or `None` if `node` is not in the UI.
+    /// inheriting `parent_style`. Every descendant is marked
+    /// [`InputFlags::NEED_FULL_LAYOUT`]; the root is left for the caller to
+    /// mark once attached, so the mark reaches its ancestors. Returns its
+    /// root, or `None` if `node` is not in the UI.
     fn build_subtree(
         &mut self,
         ui: &Ui,
@@ -334,7 +339,6 @@ impl LayoutInputTreeBuilder {
         cx: &UnitResolveContext,
     ) -> Option<LayoutInputKey> {
         let root = tree.add_item(new_item(node, ui.props(node)?, parent_style, cx));
-        dirty.mark(tree, root, InputFlags::NEED_FULL_LAYOUT);
 
         self.subtree.clear();
         self.subtree.push((root, node));
