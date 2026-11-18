@@ -1550,3 +1550,36 @@ fn viewport_changes_resolve_viewport_dependent_paint_values_again() {
     resolve(&mut f, &ui, &UNITS, true);
     assert_eq!(radius(&f, relative), 2.0);
 }
+
+#[test]
+fn font_size_changes_resolve_em_paint_values_again() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    // A fixed size, so the font size moves and resizes nothing.
+    let rounded = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 20.0),
+            BorderRadius(LayoutRect::new_all(StyleUnit::Em(0.25))),
+            OutlineWidth(StyleUnit::Em(0.125)),
+        ),
+    );
+    ui.append(root, rounded);
+
+    let mut f = Fixture::default();
+    let fragment_root = f.build(&ui, root);
+    let radius = |f: &Fixture| f.boxed(rounded).border_radius.unwrap().top_left;
+    assert_eq!(radius(&f), 4.0);
+    assert_eq!(f.data(rounded).outline_width, 2.0);
+
+    ui.set_props(rounded, (bx::FontSize(StyleUnit::Px(32.0)),));
+    f.dirty
+        .mark_node(&f.inputs, rounded, InputFlags::NEED_FULL_LAYOUT);
+    let laid_out = f.layout(&ui, root);
+    assert_eq!(laid_out, fragment_root);
+    f.resolve(&ui, fragment_root).unwrap();
+
+    assert_eq!(radius(&f), 8.0);
+    assert_eq!(f.data(rounded).outline_width, 4.0);
+    f.assert_matches_full_resolve(&ui, fragment_root);
+}

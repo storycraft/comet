@@ -57,10 +57,10 @@ bitflags! {
 
         /// A prop of the source node resolved into the item changed, or the
         /// item is new. The input builder resolves the item again, reconciles
-        /// its children and marks every child with this flag.
+        /// its children and marks every child with this flag. It marks the
+        /// item [`Self::NEED_PRE_PAINT`] when its font size changed.
         const NEED_FULL_LAYOUT = 1 << 4
             | Self::NEED_BOX_LAYOUT.bits()
-            | Self::NEED_PRE_PAINT.bits()
             | Self::NEED_CHILDREN.bits();
     }
 }

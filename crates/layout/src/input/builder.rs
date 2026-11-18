@@ -185,6 +185,9 @@ impl LayoutInputTreeBuilder {
 
             let item = &mut tree.items[key];
             let kind_changed = item.kind != kind;
+            // Pre-paint resolves `em` lengths with the font size; the rest
+            // of what it reads comes from props or fragments.
+            let font_size_changed = item.text_style.span.font_size != text_style.span.font_size;
             cascade = item.child_layout != child_layout
                 || !(Arc::ptr_eq(&item.text_style, &text_style) || item.text_style == text_style);
             item.kind = kind;
@@ -194,6 +197,10 @@ impl LayoutInputTreeBuilder {
 
             if kind_changed {
                 mark_content_owner(tree, dirty, key);
+            }
+
+            if font_size_changed {
+                dirty.mark(tree, key, InputFlags::NEED_PRE_PAINT);
             }
         }
 

@@ -584,12 +584,14 @@ fn full_layout_resolves_and_marks_the_subtree() {
     // Its own font size wins.
     assert_eq!(item(fixed).text_style.span.font_size, 10.0);
 
-    // Every item under the marked one is marked.
-    assert_eq!(dirty.entry(key_of(child)).flags, FULL);
-    assert_eq!(dirty.entry(key_of(text)).flags, FULL);
+    // Every item under the marked one is marked, and those whose font size
+    // changed need pre-paint.
+    let pre_paint = FULL | InputFlags::NEED_PRE_PAINT;
+    assert_eq!(dirty.entry(key_of(child)).flags, pre_paint);
+    assert_eq!(dirty.entry(key_of(text)).flags, pre_paint);
     assert_eq!(dirty.entry(key_of(fixed)).flags, FULL);
     assert!(dirty.entry(key_of(root)).flags.is_empty());
-    assert_eq!(dirty.entry(key_of(root)).child_bits, FULL);
+    assert_eq!(dirty.entry(key_of(root)).child_bits, pre_paint);
     // The unmarked sibling was skipped.
     assert!(dirty.entry(key_of(sibling)).flags.is_empty());
 
@@ -645,7 +647,10 @@ fn full_layout_stops_cascading_where_styles_resolve_as_before() {
     assert_eq!(dirty.entry(key_of(inner)).flags, FULL);
     assert_eq!(item(inner).text_style.span.font_size, 10.0);
     assert!(dirty.entry(key_of(text)).flags.is_empty());
-    assert_eq!(dirty.entry(key_of(marked)).flags, FULL);
+    assert_eq!(
+        dirty.entry(key_of(marked)).flags,
+        FULL | InputFlags::NEED_PRE_PAINT
+    );
     assert_eq!(item(marked).text_style.span.font_size, 12.0);
     assert_fresh(&ui, root, &tree, key);
 }
@@ -976,4 +981,43 @@ fn deleting_and_moving_children_keeps_the_others_unflagged() {
     for &item in &keys[1..] {
         assert!(dirty.entry(item).flags.is_empty());
     }
+}
+
+#[test]
+fn only_font_size_changes_mark_pre_paint() {
+    const PRE_PAINT: InputFlags = InputFlags::NEED_PRE_PAINT;
+
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let parent = ui.create(Node::Box, ());
+    let child = ui.create(Node::Text, ());
+    let sized = ui.create(Node::Text, (bx::FontSize(StyleUnit::Px(20.0)),));
+    ui.append(root, parent);
+    ui.append(parent, child);
+    ui.append(parent, sized);
+
+    let mut builder = LayoutInputTreeBuilder::new();
+    let mut tree = LayoutInputTree::new();
+    let mut dirty = DirtyMap::new();
+    let key = build(&mut builder, &ui, root, &mut tree, &mut dirty).unwrap();
+    dirty.clear(&tree, key);
+
+    // A text style change keeping the font size marks no pre-paint.
+    ui.set_props(parent, (bx::LetterSpacing(StyleUnit::Px(2.0)),));
+    dirty.mark_node(&tree, parent, FULL);
+    build(&mut builder, &ui, root, &mut tree, &mut dirty).unwrap();
+    for node in [parent, child, sized] {
+        assert!(!flags2(&tree, &dirty, node).contains(PRE_PAINT), "{node:?}");
+    }
+    dirty.clear(&tree, key);
+
+    // A font size change marks the item and the descendants inheriting it,
+    // not those setting their own.
+    ui.set_props(parent, (bx::FontSize(StyleUnit::Px(24.0)),));
+    dirty.mark_node(&tree, parent, FULL);
+    build(&mut builder, &ui, root, &mut tree, &mut dirty).unwrap();
+    assert!(flags2(&tree, &dirty, parent).contains(PRE_PAINT));
+    assert!(flags2(&tree, &dirty, child).contains(PRE_PAINT));
+    assert!(!flags2(&tree, &dirty, sized).contains(PRE_PAINT));
+    assert!(child_flags(&tree, &dirty, root).contains(PRE_PAINT));
 }
