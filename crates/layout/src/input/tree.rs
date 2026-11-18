@@ -52,13 +52,10 @@ impl LayoutInputTree {
             return;
         }
 
-        let mut pending = vec![root];
-        while let Some(key) = pending.pop() {
+        for key in self.items.descendants(root) {
             if depends_viewport(&self.items[key].text_style) {
                 dirty.mark(self, key, InputFlags::NEED_FULL_LAYOUT);
             }
-
-            pending.extend(self.items.children(key));
         }
     }
 
