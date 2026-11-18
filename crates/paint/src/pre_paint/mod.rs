@@ -5,7 +5,7 @@
 //! [`LayoutInputData`] of every layout input item. Data only depends on the
 //! fragment or item itself, and fragment data on its item, so any fragment can
 //! be resolved again on its own: mark its item
-//! [`InputFlags::NEED_PRE_PAINT`] with
+//! [`DirtyFlags::NEED_PRE_PAINT`] with
 //! [`DirtyMap::mark`](comet_layout::dirty_map::DirtyMap::mark)
 //! and resolve from the root.
 //! Inherited paint styles, such as text colors, are looked up while painting
@@ -14,9 +14,9 @@
 pub mod builder;
 pub mod tree;
 
-use comet_layout::fragment::Fragment;
 #[cfg(doc)]
-use comet_layout::input::InputFlags;
+use comet_layout::dirty_map::DirtyFlags;
+use comet_layout::fragment::Fragment;
 use kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii};
 
 /// Paint data of a layout input item, shared by all fragments it generates.

@@ -1,7 +1,36 @@
+use bitflags::bitflags;
 use comet_tree::node::NodeKey;
 use slotmap::SecondaryMap;
 
-use crate::input::{InputFlags, LayoutInputKey, tree::LayoutInputTree};
+use crate::input::{LayoutInputKey, tree::LayoutInputTree};
+
+bitflags! {
+    /// Changes of an item, set with
+    /// [`DirtyMap::mark`] and cleared
+    /// with [`DirtyMap::clear`]
+    /// once every step consumed them.
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    pub struct DirtyFlags: u8 {
+        const NEED_LAYER = 1 << 0;
+
+        /// The child list of the source node changed: children were
+        /// inserted, removed or moved. The input builder reconciles the
+        /// item's children with the source children.
+        const NEED_CHILDREN = 1 << 1 | Self::NEED_LAYER.bits();
+
+        const NEED_PRE_PAINT = 1 << 2;
+
+        const NEED_BOX_LAYOUT = 1 << 3;
+
+        /// A prop of the source node resolved into the item changed, or the
+        /// item is new. The input builder resolves the item again, reconciles
+        /// its children and marks every child with this flag. It marks the
+        /// item [`Self::NEED_PRE_PAINT`] when its font size changed.
+        const NEED_FULL_LAYOUT = 1 << 4
+            | Self::NEED_BOX_LAYOUT.bits()
+            | Self::NEED_CHILDREN.bits();
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct DirtyMap {
@@ -19,13 +48,13 @@ impl DirtyMap {
         self.map.get(key).copied().unwrap_or_default()
     }
 
-    pub fn mark_node(&mut self, tree: &LayoutInputTree, node: NodeKey, flags: InputFlags) {
+    pub fn mark_node(&mut self, tree: &LayoutInputTree, node: NodeKey, flags: DirtyFlags) {
         if let Some(key) = tree.item_for_node(node) {
             self.mark(tree, key, flags);
         }
     }
 
-    pub fn mark(&mut self, tree: &LayoutInputTree, key: LayoutInputKey, flags: InputFlags) {
+    pub fn mark(&mut self, tree: &LayoutInputTree, key: LayoutInputKey, flags: DirtyFlags) {
         if self.mark_flags(key, flags) {
             self.mark_parents(tree, key, flags);
         }
@@ -75,7 +104,7 @@ impl DirtyMap {
         }
     }
 
-    fn mark_parents(&mut self, tree: &LayoutInputTree, key: LayoutInputKey, flags: InputFlags) {
+    fn mark_parents(&mut self, tree: &LayoutInputTree, key: LayoutInputKey, flags: DirtyFlags) {
         let mut ancestor = tree.items.parent(key);
         while let Some(key) = ancestor {
             if !self.mark_child_flags(key, flags) {
@@ -90,7 +119,7 @@ impl DirtyMap {
         Some(self.map.entry(key)?.or_default())
     }
 
-    fn mark_flags(&mut self, key: LayoutInputKey, flags: InputFlags) -> bool {
+    fn mark_flags(&mut self, key: LayoutInputKey, flags: DirtyFlags) -> bool {
         let Some(entry) = self.entry_mut(key) else {
             return false;
         };
@@ -102,7 +131,7 @@ impl DirtyMap {
         should_mark
     }
 
-    fn mark_child_flags(&mut self, key: LayoutInputKey, flags: InputFlags) -> bool {
+    fn mark_child_flags(&mut self, key: LayoutInputKey, flags: DirtyFlags) -> bool {
         let Some(entry) = self.entry_mut(key) else {
             return false;
         };
@@ -117,6 +146,6 @@ impl DirtyMap {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct DirtyEntry {
-    pub child_bits: InputFlags,
-    pub flags: InputFlags,
+    pub child_bits: DirtyFlags,
+    pub flags: DirtyFlags,
 }

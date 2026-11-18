@@ -8,7 +8,7 @@ use super::{
     state::{Mode, NodeLayoutBits, NodeState},
 };
 use crate::{
-    input::InputFlags,
+    dirty_map::DirtyFlags,
     style::geometry::{Point, Size},
     taffy::{conv, style::Style},
 };
@@ -270,7 +270,7 @@ impl Engine<'_> {
         // marked for pre-paint.
         if fragment.layout.location != location || fragment.layout.size != size {
             self.dirty
-                .mark(self.tree, fragment.source, InputFlags::NEED_PRE_PAINT);
+                .mark(self.tree, fragment.source, DirtyFlags::NEED_PRE_PAINT);
         }
 
         let fragment = &mut fragment.layout;

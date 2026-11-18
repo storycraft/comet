@@ -5,13 +5,12 @@ use std::sync::{
 
 use comet_layout::{
     container::{ContainerContext, ContainerLayout},
-    dirty_map::DirtyMap,
+    dirty_map::{DirtyFlags, DirtyMap},
     fragment::{
         FragmentItem, FragmentKey, builder::FragmentTreeBuilder, state::NodeLayoutBits,
         tree::FragmentTree,
     },
     input::{
-        InputFlags,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -185,7 +184,7 @@ fn custom_layout_runs_again_when_its_box_is_dirty() {
 
         if dirty {
             f.dirty
-                .mark_node(&f.inputs, custom, InputFlags::NEED_FULL_LAYOUT);
+                .mark_node(&f.inputs, custom, DirtyFlags::NEED_FULL_LAYOUT);
         }
 
         let fragment_root = f.build(&ui, root, viewport_width);
@@ -283,7 +282,7 @@ fn container_children_follow_reorders_and_removals() {
     ui.prepend(root, children[2]);
     ui.delete(children[0]);
     f.dirty
-        .mark_node(&f.inputs, root, InputFlags::NEED_CHILDREN);
+        .mark_node(&f.inputs, root, DirtyFlags::NEED_CHILDREN);
     f.build(&ui, root, 400.0);
 
     // Box fragments of kept children are reused in their new order,
@@ -391,7 +390,7 @@ fn size_probes_do_not_leave_probe_geometry_in_cached_final_layouts() {
     // layout input is unchanged.
     probe.store(50, Ordering::Relaxed);
     f.dirty
-        .mark_node(&f.inputs, custom, InputFlags::NEED_FULL_LAYOUT);
+        .mark_node(&f.inputs, custom, DirtyFlags::NEED_FULL_LAYOUT);
     f.build(&ui, root, 400.0);
 
     assert_eq!(width(&f, wrapper), 300.0);
@@ -441,7 +440,7 @@ fn children_gaining_or_losing_boxes_with_their_parents_layout_match_a_fresh_buil
 
     let check = |f: &mut Fixture, ui: &Ui| {
         f.dirty
-            .mark_node(&f.inputs, root, InputFlags::NEED_FULL_LAYOUT);
+            .mark_node(&f.inputs, root, DirtyFlags::NEED_FULL_LAYOUT);
         let fragment = f.build(ui, root, 400.0);
 
         let mut fresh = Fixture::default();

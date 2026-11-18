@@ -25,8 +25,8 @@ use super::{
     tree::FragmentTree,
 };
 use crate::{
-    dirty_map::DirtyMap,
-    input::{ChildLayout, InputFlags, LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
+    dirty_map::{DirtyFlags, DirtyMap},
+    input::{ChildLayout, LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     style::LayoutConstraint,
     taffy::style::{self, Style},
 };
@@ -42,18 +42,18 @@ pub(crate) fn state_of(id: taffy::NodeId) -> StateKey {
 }
 
 /// Whether the content of an item with `flags` changed: its child list, or,
-/// with [`InputFlags::NEED_FULL_LAYOUT`], which includes
-/// [`InputFlags::NEED_CHILDREN`], its kind, text style or content. Its box
+/// with [`DirtyFlags::NEED_FULL_LAYOUT`], which includes
+/// [`DirtyFlags::NEED_CHILDREN`], its kind, text style or content. Its box
 /// finds its mode and attaches its children again, and inline content
 /// including it is shaped again.
-pub(in crate::fragment::engine) fn content_changed(flags: InputFlags) -> bool {
-    flags.contains(InputFlags::NEED_CHILDREN)
+pub(in crate::fragment::engine) fn content_changed(flags: DirtyFlags) -> bool {
+    flags.contains(DirtyFlags::NEED_CHILDREN)
 }
 
-/// Whether an item with `flags` needs layout. [`InputFlags::NEED_PRE_PAINT`]
+/// Whether an item with `flags` needs layout. [`DirtyFlags::NEED_PRE_PAINT`]
 /// alone is a paint change for later steps, so the item keeps its layout.
-pub(in crate::fragment::engine) fn layout_changed(flags: InputFlags) -> bool {
-    !flags.difference(InputFlags::NEED_PRE_PAINT).is_empty()
+pub(in crate::fragment::engine) fn layout_changed(flags: DirtyFlags) -> bool {
+    !flags.difference(DirtyFlags::NEED_PRE_PAINT).is_empty()
 }
 
 /// Buffers retained by the builder between builds.
@@ -76,7 +76,7 @@ pub(crate) struct Engine<'a> {
     pub ui: &'a Ui,
     pub tree: &'a LayoutInputTree,
     /// Input changes to consume. Items whose fragments perform layout are
-    /// marked [`InputFlags::NEED_PRE_PAINT`] in it.
+    /// marked [`DirtyFlags::NEED_PRE_PAINT`] in it.
     pub dirty: &'a mut DirtyMap,
     pub fragments: &'a mut FragmentTree,
     pub fonts: &'a mut parley::FontContext,
@@ -194,7 +194,7 @@ impl Engine<'_> {
 
         self.fragments.first.insert(key, fragment);
         self.scratch.created.insert(fragment);
-        self.dirty.mark(self.tree, key, InputFlags::NEED_PRE_PAINT);
+        self.dirty.mark(self.tree, key, DirtyFlags::NEED_PRE_PAINT);
         self.propagate_bits(key, bits);
 
         fragment
@@ -204,7 +204,7 @@ impl Engine<'_> {
     /// dropped and their fragment children are synchronized. Subtrees are
     /// visited only when their root's
     /// [`DirtyEntry::child_bits`](crate::dirty_map::DirtyEntry::child_bits)
-    /// have [`InputFlags::NEED_BOX_LAYOUT`] or [`InputFlags::NEED_CHILDREN`].
+    /// have [`DirtyFlags::NEED_BOX_LAYOUT`] or [`DirtyFlags::NEED_CHILDREN`].
     /// Flags are kept.
     pub fn invalidate(&mut self) {
         // Without retained fragments every item is treated as flagged.
@@ -218,8 +218,8 @@ impl Engine<'_> {
             let flags = entry.flags;
             // `NEED_BOX_LAYOUT` is part of every flag laying out a box, and a
             // child list change alone carries `NEED_CHILDREN` only.
-            let descend = entry.child_bits.contains(InputFlags::NEED_BOX_LAYOUT)
-                || entry.child_bits.contains(InputFlags::NEED_CHILDREN);
+            let descend = entry.child_bits.contains(DirtyFlags::NEED_BOX_LAYOUT)
+                || entry.child_bits.contains(DirtyFlags::NEED_CHILDREN);
             let child_layout = self.tree.items[key].child_layout;
             let is_box = self.is_box(key);
 
@@ -285,13 +285,13 @@ impl Engine<'_> {
     fn invalidate_box(
         &mut self,
         key: LayoutInputKey,
-        flags: InputFlags,
+        flags: DirtyFlags,
         force: bool,
         viewport: bool,
     ) {
         let fragment = self.ensure_box(key);
         let created = self.scratch.created.contains(&fragment);
-        let box_dirty = force || viewport || flags.contains(InputFlags::NEED_BOX_LAYOUT);
+        let box_dirty = force || viewport || flags.contains(DirtyFlags::NEED_BOX_LAYOUT);
         let dirty = force || content_changed(flags);
         // Finding the mode walks the children and inline content.
         let mode = (!created && dirty).then(|| self.mode(key));

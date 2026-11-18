@@ -1,8 +1,8 @@
 use comet_layout::{
-    dirty_map::DirtyMap,
+    dirty_map::{DirtyFlags, DirtyMap},
     fragment::{FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
-        InputFlags, LayoutInputKey,
+        LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -375,7 +375,7 @@ fn editing_one_run_keeps_the_fragments_of_other_runs() {
 
     ui.set_props(after, (Text("after, but longer".into()),));
     f.dirty
-        .mark_node(&f.tree, after, InputFlags::NEED_FULL_LAYOUT);
+        .mark_node(&f.tree, after, DirtyFlags::NEED_FULL_LAYOUT);
     f.layout(&ui, input_root);
     f.dirty.clear(&f.tree, input_root);
 
@@ -386,7 +386,7 @@ fn editing_one_run_keeps_the_fragments_of_other_runs() {
 
     // Removing the block merges the runs into one inline formatting context.
     ui.delete(block);
-    f.dirty.mark_node(&f.tree, root, InputFlags::NEED_CHILDREN);
+    f.dirty.mark_node(&f.tree, root, DirtyFlags::NEED_CHILDREN);
     f.build(&ui, root);
 
     assert_eq!(f.items(root_fragment), vec![FragmentItem::Line { line: 0 }]);
@@ -422,9 +422,9 @@ fn paint_only_flags_keep_layouts() {
     // A paint change on a box, and on text in a run, next to layout changes
     // reaching them: the header moves the body, and the block lays out the
     // runs of its owner again.
-    f.dirty.mark_node(&f.tree, body, InputFlags::NEED_PRE_PAINT);
+    f.dirty.mark_node(&f.tree, body, DirtyFlags::NEED_PRE_PAINT);
     f.dirty
-        .mark_node(&f.tree, before, InputFlags::NEED_PRE_PAINT);
+        .mark_node(&f.tree, before, DirtyFlags::NEED_PRE_PAINT);
     ui.set_props(
         header,
         (bx::Size(Size::new(
@@ -433,7 +433,7 @@ fn paint_only_flags_keep_layouts() {
         )),),
     );
     f.dirty
-        .mark_node(&f.tree, header, InputFlags::NEED_BOX_LAYOUT);
+        .mark_node(&f.tree, header, DirtyFlags::NEED_BOX_LAYOUT);
     ui.set_props(
         block,
         (bx::Size(Size::new(
@@ -442,7 +442,7 @@ fn paint_only_flags_keep_layouts() {
         )),),
     );
     f.dirty
-        .mark_node(&f.tree, block, InputFlags::NEED_BOX_LAYOUT);
+        .mark_node(&f.tree, block, DirtyFlags::NEED_BOX_LAYOUT);
     f.layout(&ui, input_root);
 
     // Their lines are not laid out again.
@@ -486,7 +486,7 @@ fn updates_reuse_box_fragments_and_layouts() {
         (Text("a much longer text that has to wrap over several lines because the viewport is only four hundred pixels wide".into()),),
     );
     f.dirty
-        .mark_node(&f.tree, content, InputFlags::NEED_FULL_LAYOUT);
+        .mark_node(&f.tree, content, DirtyFlags::NEED_FULL_LAYOUT);
 
     assert_eq!(f.build(&ui, root), (input_root, root_fragment));
     assert_eq!(
@@ -542,7 +542,7 @@ fn block_child_list_changes_reuse_box_fragments_in_order() {
     // Insert in the middle.
     let inserted = sized_block(&mut ui, 10.0);
     ui.before(nodes[2], inserted);
-    f.dirty.mark_node(&f.tree, list, InputFlags::NEED_CHILDREN);
+    f.dirty.mark_node(&f.tree, list, DirtyFlags::NEED_CHILDREN);
     f.build(&ui, root);
     f.dirty.clear(&f.tree, input_root);
 
@@ -556,8 +556,8 @@ fn block_child_list_changes_reuse_box_fragments_in_order() {
     // Reorder, and move the last child to another parent.
     ui.prepend(list, nodes[1]);
     ui.append(other, nodes[3]);
-    f.dirty.mark_node(&f.tree, list, InputFlags::NEED_CHILDREN);
-    f.dirty.mark_node(&f.tree, other, InputFlags::NEED_CHILDREN);
+    f.dirty.mark_node(&f.tree, list, DirtyFlags::NEED_CHILDREN);
+    f.dirty.mark_node(&f.tree, other, DirtyFlags::NEED_CHILDREN);
     f.build(&ui, root);
     f.dirty.clear(&f.tree, input_root);
 
@@ -574,7 +574,7 @@ fn block_child_list_changes_reuse_box_fragments_in_order() {
 
     // Remove from the middle.
     ui.delete(inserted);
-    f.dirty.mark_node(&f.tree, list, InputFlags::NEED_CHILDREN);
+    f.dirty.mark_node(&f.tree, list, DirtyFlags::NEED_CHILDREN);
     f.build(&ui, root);
 
     assert_eq!(f.children(list_fragment), vec![keys[1], keys[0], keys[2]]);
@@ -596,7 +596,7 @@ fn removed_items_drop_their_fragments() {
     f.dirty.clear(&f.tree, input_root);
 
     ui.delete(block);
-    f.dirty.mark_node(&f.tree, root, InputFlags::NEED_CHILDREN);
+    f.dirty.mark_node(&f.tree, root, DirtyFlags::NEED_CHILDREN);
     f.build(&ui, root);
 
     assert!(f.children(root_fragment).is_empty());
@@ -710,7 +710,7 @@ fn fragments_iterate_linked_fragments_of_an_item() {
 
     // Removed items yield nothing.
     ui.delete(span);
-    f.dirty.mark_node(&f.tree, root, InputFlags::NEED_CHILDREN);
+    f.dirty.mark_node(&f.tree, root, DirtyFlags::NEED_CHILDREN);
     f.build(&ui, root);
 
     assert_eq!(f.fragments.fragments(span_key).count(), 0);
@@ -842,7 +842,7 @@ fn text_align_is_inherited_and_updates_descendants() {
     // Only the ancestor is marked; the change reaches the inline layout below.
     ui.set_props(root, (bx::TextAlign(TextAlign::Right),));
     f.dirty
-        .mark_node(&f.tree, root, InputFlags::NEED_FULL_LAYOUT);
+        .mark_node(&f.tree, root, DirtyFlags::NEED_FULL_LAYOUT);
     f.build(&ui, root);
 
     let paragraph_key = f.tree.item_for_node(paragraph).unwrap();
@@ -1007,7 +1007,7 @@ fn box_style_changes_keep_shaped_text() {
         (bx::Padding(Rect::new_all(StyleUnit::Px(10.0))),),
     );
     f.dirty
-        .mark_node(&f.tree, paragraph, InputFlags::NEED_BOX_LAYOUT);
+        .mark_node(&f.tree, paragraph, DirtyFlags::NEED_BOX_LAYOUT);
     f.build(&ui, root);
     f.dirty.clear(&f.tree, input_root);
 
@@ -1022,7 +1022,7 @@ fn box_style_changes_keep_shaped_text() {
 
     // Content changes shape the text again.
     f.dirty
-        .mark_node(&f.tree, content, InputFlags::NEED_FULL_LAYOUT);
+        .mark_node(&f.tree, content, DirtyFlags::NEED_FULL_LAYOUT);
     f.build(&ui, root);
 
     assert_eq!(f.shaped_text(paragraph_fragment), "changed");
@@ -1047,7 +1047,7 @@ fn atomic_inline_box_changes_keep_the_paragraph_shaped() {
     ui.set_props(before, (Text("edited ".into()),));
     ui.set_props(badge, (fixed_size(30.0, 10.0),));
     f.dirty
-        .mark_node(&f.tree, badge, InputFlags::NEED_BOX_LAYOUT);
+        .mark_node(&f.tree, badge, DirtyFlags::NEED_BOX_LAYOUT);
     f.build(&ui, root);
 
     assert_eq!(f.shaped_text(root_fragment), shaped);
@@ -1088,7 +1088,7 @@ fn atomic_inline_box_changes_lay_out_only_their_run() {
     ui.set_props(second, (Text("edited ".into()),));
     ui.set_props(badge, (fixed_size(30.0, 10.0),));
     f.dirty
-        .mark_node(&f.tree, badge, InputFlags::NEED_BOX_LAYOUT);
+        .mark_node(&f.tree, badge, DirtyFlags::NEED_BOX_LAYOUT);
     f.layout(&ui, input_root);
 
     // The run is laid out again without shaping; the other run is untouched.
@@ -1144,7 +1144,7 @@ fn item_kinds(f: &Fixture, key: FragmentKey) -> Vec<&'static str> {
 /// children of `parent` match a fresh layout.
 fn restyle_matches_fresh(f: &mut Fixture, ui: &Ui, root: NodeKey, node: NodeKey, parent: NodeKey) {
     f.dirty
-        .mark_node(&f.tree, node, InputFlags::NEED_FULL_LAYOUT);
+        .mark_node(&f.tree, node, DirtyFlags::NEED_FULL_LAYOUT);
     let (input_root, _) = f.build(ui, root);
     f.dirty.clear(&f.tree, input_root);
 
@@ -1216,7 +1216,7 @@ fn nested_inline_content_changing_kind_changes_its_owners_mode() {
     // Inserting a block into the span interrupts it again.
     let interruption = sized_block(&mut ui, 10.0);
     ui.append(span, interruption);
-    f.dirty.mark_node(&f.tree, span, InputFlags::NEED_CHILDREN);
+    f.dirty.mark_node(&f.tree, span, DirtyFlags::NEED_CHILDREN);
     let (input_root, _) = f.build(&ui, root);
     f.dirty.clear(&f.tree, input_root);
     let mut fresh = Fixture::new();

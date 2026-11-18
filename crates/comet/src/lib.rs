@@ -6,10 +6,9 @@ use anyrender::WindowRenderer;
 use anyrender_vello::VelloWindowRenderer;
 use comet_layout::style::geometry::{StyleUnit, UnitResolveContext};
 use comet_layout::{
-    dirty_map::DirtyMap,
+    dirty_map::{DirtyFlags, DirtyMap},
     fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
-        InputFlags,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -342,7 +341,7 @@ impl App {
 
         let units = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE).units;
         self.dirty
-            .mark(&self.inputs, item, InputFlags::NEED_PRE_PAINT);
+            .mark(&self.inputs, item, DirtyFlags::NEED_PRE_PAINT);
         // The flag is kept for the next layout, which clears every flag after
         // resolving. Only the fragment builder could clear it otherwise, and
         // a node that no longer matches the layout is resolved then instead.

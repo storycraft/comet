@@ -1,7 +1,7 @@
 use comet_layout::{
-    dirty_map::DirtyMap,
+    dirty_map::{DirtyFlags, DirtyMap},
     fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
-    input::{InputFlags, LayoutInputKey, tree::LayoutInputTree},
+    input::{LayoutInputKey, tree::LayoutInputTree},
     style::{
         bx::Overflow,
         geometry::{AutoValue, Point as StylePoint, Rect, StyleUnit, UnitResolveContext},
@@ -48,12 +48,12 @@ impl PrePaintTreeBuilder {
     /// Builds into `tree` the fragments that need it, and their layout input
     /// items:
     /// - fragments under `root` of items whose [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags) in `dirty` have
-    ///   [`InputFlags::NEED_PRE_PAINT`]: those the fragment builder created,
+    ///   [`DirtyFlags::NEED_PRE_PAINT`]: those the fragment builder created,
     ///   moved or resized, those whose font size the input builder resolved
     ///   to a new value, and those marked with it, such as after their paint
     ///   styles changed. Other layout changes,
-    ///   [`InputFlags::NEED_FULL_LAYOUT`] and
-    ///   [`InputFlags::NEED_BOX_LAYOUT`], reach pre-paint only through the
+    ///   [`DirtyFlags::NEED_FULL_LAYOUT`] and
+    ///   [`DirtyFlags::NEED_BOX_LAYOUT`], reach pre-paint only through the
     ///   fragments they create, move or resize,
     /// - fragments under `root` without data in `tree`.
     ///
@@ -61,7 +61,7 @@ impl PrePaintTreeBuilder {
     /// fragment only when its item's
     /// [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags) or
     /// [`DirtyEntry::child_bits`](comet_layout::dirty_map::DirtyEntry::child_bits)
-    /// have [`InputFlags::NEED_PRE_PAINT`], or when it has no data in `tree`.
+    /// have [`DirtyFlags::NEED_PRE_PAINT`], or when it has no data in `tree`.
     /// The former reaches the lines and anonymous blocks of a laid out box.
     /// A [cleared](PrePaintTree::clear) `tree` resolves every fragment.
     ///
@@ -71,7 +71,7 @@ impl PrePaintTreeBuilder {
     ///
     /// Items one of whose fragments gains, loses or changes the z index of
     /// its [stacking](crate::pre_paint::FragmentData::stacking) context are
-    /// marked [`InputFlags::NEED_LAYER`] in `dirty`, for the layer build. A
+    /// marked [`DirtyFlags::NEED_LAYER`] in `dirty`, for the layer build. A
     /// fragment without data before counts as starting none.
     ///
     /// Changes builds cannot see, such as paint styles, must be marked.
@@ -125,14 +125,14 @@ impl PrePaintTreeBuilder {
             let entry = dirty.entry(fragment.source);
             let missing = !tree.fragment_mapping.contains_key(key);
 
-            if entry.flags.contains(InputFlags::NEED_PRE_PAINT) || missing {
+            if entry.flags.contains(DirtyFlags::NEED_PRE_PAINT) || missing {
                 changed.push(key);
                 items.push(fragment.source);
             }
 
             // Lines and anonymous blocks carry the item of the box owning
             // them, so the children of a flagged item are visited too.
-            if (entry.flags | entry.child_bits).contains(InputFlags::NEED_PRE_PAINT) || missing {
+            if (entry.flags | entry.child_bits).contains(DirtyFlags::NEED_PRE_PAINT) || missing {
                 pending.extend(fragments.items.children(key));
             }
         }
@@ -175,7 +175,7 @@ impl PrePaintTreeBuilder {
 
             // The layers of a changed stacking context are placed again.
             if old.and_then(|old| old.stacking) != data.stacking {
-                dirty.mark(inputs, fragments.items[key].source, InputFlags::NEED_LAYER);
+                dirty.mark(inputs, fragments.items[key].source, DirtyFlags::NEED_LAYER);
             }
 
             if old != Some(&data) {

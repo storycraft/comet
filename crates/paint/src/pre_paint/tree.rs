@@ -1,7 +1,7 @@
 use std::ops::Index;
 
 #[cfg(doc)]
-use comet_layout::input::InputFlags;
+use comet_layout::dirty_map::DirtyFlags;
 use comet_layout::{
     fragment::{FragmentKey, tree::FragmentTree},
     input::LayoutInputKey,
@@ -17,7 +17,7 @@ use crate::pre_paint::{FragmentData, LayoutInputData};
 ///
 /// Filled by a [`PrePaintTreeBuilder`](super::builder::PrePaintTreeBuilder),
 /// which resolves the fragments of the layout input items marked
-/// [`InputFlags::NEED_PRE_PAINT`], including those the fragment builder laid
+/// [`DirtyFlags::NEED_PRE_PAINT`], including those the fragment builder laid
 /// out, and the fragments without data.
 /// Keys are generational, so data left behind by deleted fragments and items
 /// is never returned for the fragments and items reusing their slots, and is

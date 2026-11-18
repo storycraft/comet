@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use anyrender::{Paint, Scene, recording::RenderCommand};
 use comet_layout::{
-    dirty_map::DirtyMap,
+    dirty_map::{DirtyFlags, DirtyMap},
     fragment::{FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
-        InputFlags, LayoutInputKey,
+        LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -118,7 +118,7 @@ impl Fixture {
         let fragment_root = self.layers.layers[self.root].owner;
 
         self.dirty
-            .mark_node(&self.inputs, node, InputFlags::NEED_PRE_PAINT);
+            .mark_node(&self.inputs, node, DirtyFlags::NEED_PRE_PAINT);
         PrePaintTreeBuilder::new()
             .build(
                 ui,
@@ -835,7 +835,7 @@ fn updates_match_full_builds() {
     let right_item = f.inputs.item_for_node(right).unwrap();
     let items: Vec<_> = f.inputs.items.descendants(right_item).collect();
     for item in items {
-        f.dirty.mark(&f.inputs, item, InputFlags::NEED_PRE_PAINT);
+        f.dirty.mark(&f.inputs, item, DirtyFlags::NEED_PRE_PAINT);
     }
     PrePaintTreeBuilder::new()
         .build(
@@ -1116,7 +1116,7 @@ fn layers_follow_layout_changes_from_the_root() {
     let added = ui.create(Node::Box, (fixed(60.0, 10.0), z(1)));
     ui.prepend(root, added);
     p.dirty
-        .mark_node(&p.inputs, root, InputFlags::NEED_CHILDREN);
+        .mark_node(&p.inputs, root, DirtyFlags::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1132,7 +1132,7 @@ fn layers_follow_layout_changes_from_the_root() {
     // deleted descendant.
     ui.delete(group);
     p.dirty
-        .mark_node(&p.inputs, root, InputFlags::NEED_CHILDREN);
+        .mark_node(&p.inputs, root, DirtyFlags::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1161,7 +1161,7 @@ fn layers_of_owners_losing_their_stacking_move_up_from_the_root() {
     // root layer, below the sibling.
     ui.set_props(group, (ZIndex(AutoValue::Auto),));
     p.dirty
-        .mark_node(&p.inputs, group, InputFlags::NEED_PRE_PAINT);
+        .mark_node(&p.inputs, group, DirtyFlags::NEED_PRE_PAINT);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1171,7 +1171,7 @@ fn layers_of_owners_losing_their_stacking_move_up_from_the_root() {
     // Starting one again takes the nested layer back.
     ui.set_props(group, (z(2),));
     p.dirty
-        .mark_node(&p.inputs, group, InputFlags::NEED_PRE_PAINT);
+        .mark_node(&p.inputs, group, DirtyFlags::NEED_PRE_PAINT);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1197,7 +1197,7 @@ fn changed_z_indices_reorder_layers_from_the_root() {
 
     ui.set_props(first, (z(3),));
     p.dirty
-        .mark_node(&p.inputs, first, InputFlags::NEED_PRE_PAINT);
+        .mark_node(&p.inputs, first, DirtyFlags::NEED_PRE_PAINT);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1228,7 +1228,7 @@ fn reordered_siblings_reorder_layers_with_equal_z_indices() {
     // Equal z indices paint in tree order, which follows the move.
     ui.prepend(root, boxes[2]);
     p.dirty
-        .mark_node(&p.inputs, root, InputFlags::NEED_CHILDREN);
+        .mark_node(&p.inputs, root, DirtyFlags::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     // Every owner keeps its layer, in the new order.
@@ -1263,7 +1263,7 @@ fn reordered_boxes_reorder_the_layers_inside_them() {
     // layer inside it too.
     ui.append(root, wrapper);
     p.dirty
-        .mark_node(&p.inputs, root, InputFlags::NEED_CHILDREN);
+        .mark_node(&p.inputs, root, DirtyFlags::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     let by_node = [sibling, inner].map(|node| p.layer_of(node).unwrap());
@@ -1301,7 +1301,7 @@ fn reordered_atomic_inlines_reorder_their_layers() {
 
     ui.prepend(root, second);
     p.dirty
-        .mark_node(&p.inputs, root, InputFlags::NEED_CHILDREN);
+        .mark_node(&p.inputs, root, DirtyFlags::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     let by_node = [second, first].map(|node| p.layer_of(node).unwrap());

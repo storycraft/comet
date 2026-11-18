@@ -1,12 +1,12 @@
 use std::ops::Deref;
 
 use comet_layout::{
-    dirty_map::DirtyMap,
+    dirty_map::{DirtyFlags, DirtyMap},
     fragment::{
         FragmentBox, FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree,
     },
     input::{
-        InputFlags, LayoutInputKey,
+        LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -390,16 +390,16 @@ fn nested_flex_and_incremental_style_changes_match_fresh_layout() {
             let (nested, b) = (retained.item(nested), retained.item(b));
             retained
                 .dirty
-                .mark(&retained.inputs, nested, InputFlags::NEED_FULL_LAYOUT);
+                .mark(&retained.inputs, nested, DirtyFlags::NEED_FULL_LAYOUT);
             retained
                 .dirty
-                .mark(&retained.inputs, b, InputFlags::NEED_FULL_LAYOUT);
+                .mark(&retained.inputs, b, DirtyFlags::NEED_FULL_LAYOUT);
         } else if step == 2 {
             ui.prepend(nested, b);
             let nested = retained.item(nested);
             retained
                 .dirty
-                .mark(&retained.inputs, nested, InputFlags::NEED_CHILDREN);
+                .mark(&retained.inputs, nested, DirtyFlags::NEED_CHILDREN);
         }
 
         let current = retained.build(&ui, root);

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use comet_layout::{
-    dirty_map::DirtyMap,
+    dirty_map::{DirtyFlags, DirtyMap},
     input::{
-        ChildLayout, InputFlags, LayoutInputKey, LayoutInputKind,
+        ChildLayout, LayoutInputKey, LayoutInputKind,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         text::TextStyleBits,
         tree::LayoutInputTree,
@@ -16,8 +16,8 @@ use comet_layout::{
 use comet_tree::{node::Node, ui::Ui};
 
 const VIEWPORT: Size<f64> = Size::new(800.0, 600.0);
-const FULL: InputFlags = InputFlags::NEED_FULL_LAYOUT;
-const CHILDREN: InputFlags = InputFlags::NEED_CHILDREN;
+const FULL: DirtyFlags = DirtyFlags::NEED_FULL_LAYOUT;
+const CHILDREN: DirtyFlags = DirtyFlags::NEED_CHILDREN;
 
 fn build(
     builder: &mut LayoutInputTreeBuilder,
@@ -72,7 +72,7 @@ fn assert_clean(tree: &LayoutInputTree, dirty: &DirtyMap, root: LayoutInputKey) 
     }
 }
 
-fn flags2(tree: &LayoutInputTree, dirty: &DirtyMap, node: comet_tree::node::NodeKey) -> InputFlags {
+fn flags2(tree: &LayoutInputTree, dirty: &DirtyMap, node: comet_tree::node::NodeKey) -> DirtyFlags {
     dirty.entry(tree.item_for_node(node).unwrap()).flags
 }
 
@@ -80,7 +80,7 @@ fn child_flags(
     tree: &LayoutInputTree,
     dirty: &DirtyMap,
     node: comet_tree::node::NodeKey,
-) -> InputFlags {
+) -> DirtyFlags {
     dirty.entry(tree.item_for_node(node).unwrap()).child_bits
 }
 
@@ -142,7 +142,7 @@ fn fresh_tree_mirrors_ui_with_full_layout_flags() {
     for item in tree.items.descendants(key) {
         let expected = match tree.items.first_child(item) {
             Some(_) => FULL,
-            None => InputFlags::empty(),
+            None => DirtyFlags::empty(),
         };
         assert_eq!(dirty.entry(item).child_bits, expected);
     }
@@ -419,18 +419,18 @@ fn mark_propagates_child_flags_to_ancestors() {
     dirty.clear(&tree, key);
 
     let leaf_key = tree.item_for_node(leaf).unwrap();
-    dirty.mark(&tree, leaf_key, InputFlags::NEED_BOX_LAYOUT);
+    dirty.mark(&tree, leaf_key, DirtyFlags::NEED_BOX_LAYOUT);
 
-    assert_eq!(flags2(&tree, &dirty, leaf), InputFlags::NEED_BOX_LAYOUT);
+    assert_eq!(flags2(&tree, &dirty, leaf), DirtyFlags::NEED_BOX_LAYOUT);
     assert!(child_flags(&tree, &dirty, leaf).is_empty());
     assert!(flags2(&tree, &dirty, left).is_empty());
     assert_eq!(
         child_flags(&tree, &dirty, left),
-        InputFlags::NEED_BOX_LAYOUT
+        DirtyFlags::NEED_BOX_LAYOUT
     );
     assert_eq!(
         child_flags(&tree, &dirty, root),
-        InputFlags::NEED_BOX_LAYOUT
+        DirtyFlags::NEED_BOX_LAYOUT
     );
     assert!(child_flags(&tree, &dirty, right).is_empty());
 
@@ -439,18 +439,18 @@ fn mark_propagates_child_flags_to_ancestors() {
     assert_eq!(flags2(&tree, &dirty, right), CHILDREN);
     assert_eq!(
         child_flags(&tree, &dirty, root),
-        InputFlags::NEED_BOX_LAYOUT | CHILDREN
+        DirtyFlags::NEED_BOX_LAYOUT | CHILDREN
     );
     assert_eq!(
         child_flags(&tree, &dirty, left),
-        InputFlags::NEED_BOX_LAYOUT
+        DirtyFlags::NEED_BOX_LAYOUT
     );
 
     // A full change includes the others.
     dirty.mark(&tree, leaf_key, FULL);
     assert_eq!(flags2(&tree, &dirty, leaf), FULL);
     assert_eq!(child_flags(&tree, &dirty, left), FULL);
-    assert!(FULL.contains(InputFlags::NEED_BOX_LAYOUT | CHILDREN));
+    assert!(FULL.contains(DirtyFlags::NEED_BOX_LAYOUT | CHILDREN));
 
     // Unmapped nodes are ignored.
     let unmapped = ui.create(Node::Box, ());
@@ -586,7 +586,7 @@ fn full_layout_resolves_and_marks_the_subtree() {
 
     // Every item under the marked one is marked, and those whose font size
     // changed need pre-paint.
-    let pre_paint = FULL | InputFlags::NEED_PRE_PAINT;
+    let pre_paint = FULL | DirtyFlags::NEED_PRE_PAINT;
     assert_eq!(dirty.entry(key_of(child)).flags, pre_paint);
     assert_eq!(dirty.entry(key_of(text)).flags, pre_paint);
     assert_eq!(dirty.entry(key_of(fixed)).flags, FULL);
@@ -649,7 +649,7 @@ fn full_layout_stops_cascading_where_styles_resolve_as_before() {
     assert!(dirty.entry(key_of(text)).flags.is_empty());
     assert_eq!(
         dirty.entry(key_of(marked)).flags,
-        FULL | InputFlags::NEED_PRE_PAINT
+        FULL | DirtyFlags::NEED_PRE_PAINT
     );
     assert_eq!(item(marked).text_style.span.font_size, 12.0);
     assert_fresh(&ui, root, &tree, key);
@@ -809,14 +809,14 @@ fn build_resolves_only_marked_items_of_an_existing_tree() {
 
     // Flags the builder does not consume are kept.
     dirty.clear(&tree, key);
-    dirty.mark(&tree, text_key, InputFlags::NEED_BOX_LAYOUT);
+    dirty.mark(&tree, text_key, DirtyFlags::NEED_BOX_LAYOUT);
     builder.build(
         &ui,
         &mut tree,
         &mut dirty,
         BuildRequest::new(root, 16.0, viewport),
     );
-    assert_eq!(dirty.entry(text_key).flags, InputFlags::NEED_BOX_LAYOUT);
+    assert_eq!(dirty.entry(text_key).flags, DirtyFlags::NEED_BOX_LAYOUT);
 }
 
 #[test]
@@ -985,7 +985,7 @@ fn deleting_and_moving_children_keeps_the_others_unflagged() {
 
 #[test]
 fn only_font_size_changes_mark_pre_paint() {
-    const PRE_PAINT: InputFlags = InputFlags::NEED_PRE_PAINT;
+    const PRE_PAINT: DirtyFlags = DirtyFlags::NEED_PRE_PAINT;
 
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());

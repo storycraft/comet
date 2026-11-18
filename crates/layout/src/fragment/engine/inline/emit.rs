@@ -6,12 +6,12 @@ use slotmap::{SecondaryMap, SlotMap};
 
 use super::{super::Engine, Scratch};
 use crate::{
-    dirty_map::DirtyMap,
+    dirty_map::{DirtyFlags, DirtyMap},
     fragment::{
         Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, StateKey, state::NodeState,
         tree::FragmentTree,
     },
-    input::{InputFlags, LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
+    input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     style::geometry::{Point, Size},
 };
 
@@ -125,7 +125,7 @@ struct Emitter<'a> {
     span_parents: &'a mut FxHashMap<LayoutInputKey, FragmentKey>,
     spans: &'a mut Vec<FragmentKey>,
     /// Items whose fragments perform layout are marked
-    /// [`InputFlags::NEED_PRE_PAINT`] in it.
+    /// [`DirtyFlags::NEED_PRE_PAINT`] in it.
     dirty: &'a mut DirtyMap,
     /// Index of the current line in the Parley layout.
     line: usize,
@@ -234,7 +234,7 @@ impl Emitter<'_> {
         if self.items[atomic].layout.location != location {
             self.items[atomic].layout.location = location;
             self.dirty
-                .mark(self.tree, child, InputFlags::NEED_PRE_PAINT);
+                .mark(self.tree, child, DirtyFlags::NEED_PRE_PAINT);
         }
         self.items.append(parent, atomic);
     }
@@ -242,7 +242,7 @@ impl Emitter<'_> {
     /// Insert a new fragment, marking its item as laid out in this build.
     fn insert(&mut self, fragment: Fragment) -> FragmentKey {
         self.dirty
-            .mark(self.tree, fragment.source, InputFlags::NEED_PRE_PAINT);
+            .mark(self.tree, fragment.source, DirtyFlags::NEED_PRE_PAINT);
         self.items.insert(fragment)
     }
 

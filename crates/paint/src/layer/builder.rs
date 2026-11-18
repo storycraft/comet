@@ -1,7 +1,7 @@
 use comet_layout::{
-    dirty_map::DirtyMap,
+    dirty_map::{DirtyFlags, DirtyMap},
     fragment::{FragmentKey, tree::FragmentTree},
-    input::{InputFlags, LayoutInputKey, tree::LayoutInputTree},
+    input::{LayoutInputKey, tree::LayoutInputTree},
 };
 
 use crate::{
@@ -50,15 +50,15 @@ impl PaintLayerBuilder {
     /// the layers with changes are placed again. Items are visited from
     /// `root`, going into the children of an item whose
     /// [`DirtyEntry::child_bits`](comet_layout::dirty_map::DirtyEntry::child_bits)
-    /// in `dirty` have [`InputFlags::NEED_LAYER`], which the pre-paint
+    /// in `dirty` have [`DirtyFlags::NEED_LAYER`], which the pre-paint
     /// resolve marks on items whose fragments gained, lost or changed the z
     /// index of their stacking context, and which
-    /// [`InputFlags::NEED_CHILDREN`] includes.
+    /// [`DirtyFlags::NEED_CHILDREN`] includes.
     /// The child layers of the layer enclosing an item marked
-    /// [`InputFlags::NEED_CHILDREN`] are placed again, in their new order.
+    /// [`DirtyFlags::NEED_CHILDREN`] are placed again, in their new order.
     /// For each item whose
     /// [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags)
-    /// have [`InputFlags::NEED_LAYER`], the
+    /// have [`DirtyFlags::NEED_LAYER`], the
     /// [stacking](crate::pre_paint::FragmentData::stacking) of each of its
     /// fragments is compared with the layer the fragment starts: when it
     /// gains, loses or changes the z index of its layer, the child layers of
@@ -173,7 +173,7 @@ impl PaintLayerBuilder {
 
             // `NEED_CHILDREN` includes `NEED_LAYER`, so the stacking of each
             // fragment is compared with the layer it starts.
-            if entry.flags.contains(InputFlags::NEED_LAYER) {
+            if entry.flags.contains(DirtyFlags::NEED_LAYER) {
                 for fragment in fragments.fragments(key) {
                     // The root layer has z index 0, whatever the root's
                     // stacking.
@@ -202,7 +202,7 @@ impl PaintLayerBuilder {
             // Children inserted, removed or reordered can reorder the layers
             // they start, which are child layers of the layer enclosing the
             // item's fragments: its own layer if it starts one.
-            if entry.flags.contains(InputFlags::NEED_CHILDREN)
+            if entry.flags.contains(DirtyFlags::NEED_CHILDREN)
                 && let Some(layer) = fragments
                     .fragments(key)
                     .next()
@@ -211,7 +211,7 @@ impl PaintLayerBuilder {
                 self.dirty.push((0, layer));
             }
 
-            if entry.child_bits.contains(InputFlags::NEED_LAYER) {
+            if entry.child_bits.contains(DirtyFlags::NEED_LAYER) {
                 self.items.extend(inputs.items.children(key));
             }
         }

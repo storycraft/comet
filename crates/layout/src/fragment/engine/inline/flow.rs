@@ -7,8 +7,8 @@ use super::{
     events::{InlineEvents, Op},
 };
 use crate::{
-    dirty_map::DirtyMap,
-    input::{InputFlags, LayoutInputKey},
+    dirty_map::{DirtyFlags, DirtyMap},
+    input::LayoutInputKey,
     taffy::style,
 };
 
@@ -164,7 +164,7 @@ impl Engine<'_> {
             None => {
                 let style = style::resolve(None, &self.style_constraint(owner));
                 self.dirty
-                    .mark(self.tree, owner, InputFlags::NEED_PRE_PAINT);
+                    .mark(self.tree, owner, DirtyFlags::NEED_PRE_PAINT);
                 self.fragments.insert_with_state(
                     owner,
                     |state| FragmentItem::AnonymousBlock { state },

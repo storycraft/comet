@@ -1,9 +1,9 @@
 use anyrender::{Paint, Scene, recording::RenderCommand};
 use comet_layout::{
-    dirty_map::DirtyMap,
+    dirty_map::{DirtyFlags, DirtyMap},
     fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
-        InputFlags, LayoutInputKey,
+        LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -116,7 +116,7 @@ impl Fixture {
     /// Mark the item of a node as needing pre-paint.
     fn mark(&mut self, node: NodeKey) {
         self.dirty
-            .mark_node(&self.inputs, node, InputFlags::NEED_PRE_PAINT);
+            .mark_node(&self.inputs, node, DirtyFlags::NEED_PRE_PAINT);
     }
 
     fn item(&self, node: NodeKey) -> LayoutInputKey {
@@ -810,7 +810,7 @@ fn resolving_follows_the_layout() {
 
     ui.set_props(top, (fixed(10.0, 30.0),));
     f.dirty
-        .mark_node(&f.inputs, top, InputFlags::NEED_BOX_LAYOUT);
+        .mark_node(&f.inputs, top, DirtyFlags::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
 
     // Resolved data is kept until it is resolved again.
@@ -879,7 +879,7 @@ fn resolving_fails_for_nodes_deleted_since_the_layout_was_built() {
 
     // Resolving succeeds again once the layout follows the UI.
     f.dirty
-        .mark_node(&f.inputs, root, InputFlags::NEED_CHILDREN);
+        .mark_node(&f.inputs, root, DirtyFlags::NEED_CHILDREN);
     let root_fragment = f.layout(&ui, root);
     assert_eq!(f.resolve(&ui, root_fragment), Some(()));
     f.clear_flags();
@@ -1346,7 +1346,7 @@ fn incremental_resolves_follow_changed_fragments_only() {
     // A taller top box moves the boxes below it, which are not marked.
     ui.set_props(top, (fixed(120.0, 50.0),));
     f.dirty
-        .mark_node(&f.inputs, top, InputFlags::NEED_BOX_LAYOUT);
+        .mark_node(&f.inputs, top, DirtyFlags::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
     f.resolve_changed(&ui, fragment_root);
     f.assert_matches_full_resolve(&ui, fragment_root);
@@ -1363,7 +1363,7 @@ fn incremental_resolves_follow_changed_fragments_only() {
     );
     ui.set_props(bottom, (fixed(120.0, 60.0),));
     f.dirty
-        .mark_node(&f.inputs, bottom, InputFlags::NEED_BOX_LAYOUT);
+        .mark_node(&f.inputs, bottom, DirtyFlags::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
     f.resolve_changed(&ui, fragment_root);
 
@@ -1403,11 +1403,11 @@ fn resolves_both_changed_and_marked_fragments() {
     );
     ui.set_props(top, (fixed(120.0, 30.0),));
     f.dirty
-        .mark_node(&f.inputs, top, InputFlags::NEED_BOX_LAYOUT);
+        .mark_node(&f.inputs, top, DirtyFlags::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
     f.mark(marked);
 
-    let pre_paint = InputFlags::NEED_PRE_PAINT;
+    let pre_paint = DirtyFlags::NEED_PRE_PAINT;
     assert_eq!(f.dirty.entry(f.item(marked)).flags, pre_paint);
     assert_eq!(f.dirty.entry(f.item(wrapper)).child_bits, pre_paint);
     assert!(f.dirty.entry(f.item(root)).child_bits.contains(pre_paint));
@@ -1454,7 +1454,7 @@ fn marks_kept_by_item_reach_every_fragment_set_before_the_layout() {
     f.mark(span);
     ui.set_props(other, (fixed(40.0, 20.0),));
     f.dirty
-        .mark_node(&f.inputs, other, InputFlags::NEED_BOX_LAYOUT);
+        .mark_node(&f.inputs, other, DirtyFlags::NEED_BOX_LAYOUT);
     let fragment_root = f.layout(&ui, root);
 
     // The layout kept the span's fragments, and the mark still reaches all
@@ -1574,7 +1574,7 @@ fn font_size_changes_resolve_em_paint_values_again() {
 
     ui.set_props(rounded, (bx::FontSize(StyleUnit::Px(32.0)),));
     f.dirty
-        .mark_node(&f.inputs, rounded, InputFlags::NEED_FULL_LAYOUT);
+        .mark_node(&f.inputs, rounded, DirtyFlags::NEED_FULL_LAYOUT);
     let laid_out = f.layout(&ui, root);
     assert_eq!(laid_out, fragment_root);
     f.resolve(&ui, fragment_root).unwrap();

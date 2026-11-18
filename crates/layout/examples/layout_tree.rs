@@ -1,9 +1,9 @@
 mod common;
 
 use comet_layout::{
-    dirty_map::DirtyMap,
+    dirty_map::{DirtyFlags, DirtyMap},
     input::{
-        InputFlags, LayoutInputKey, LayoutInputKind,
+        LayoutInputKey, LayoutInputKind,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // item, so only the layout flag is set and the input build skips it.
     ui.set_props(greeting, (Text("Updated greeting! ".into()),));
     dirty.clear(&tree, layout_root);
-    dirty.mark_node(&tree, greeting, InputFlags::NEED_FULL_LAYOUT);
+    dirty.mark_node(&tree, greeting, DirtyFlags::NEED_FULL_LAYOUT);
     build(
         &mut builder,
         &ui,
@@ -70,7 +70,7 @@ After changing the greeting text:"
     // only describe their own node, so marking the changed node is enough.
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
     dirty.clear(&tree, layout_root);
-    dirty.mark_node(&tree, interruption, InputFlags::NEED_FULL_LAYOUT);
+    dirty.mark_node(&tree, interruption, DirtyFlags::NEED_FULL_LAYOUT);
     build(
         &mut builder,
         &ui,
@@ -91,7 +91,7 @@ After changing the interruption to inline-block:"
     ui.set_props(interruption, (DisplayOuter::Block, DisplayInner::Flow));
     ui.set_props(interruption, (FontSize(StyleUnit::Em(1.5)),));
     dirty.clear(&tree, layout_root);
-    dirty.mark_node(&tree, interruption, InputFlags::NEED_FULL_LAYOUT);
+    dirty.mark_node(&tree, interruption, DirtyFlags::NEED_FULL_LAYOUT);
     build(
         &mut builder,
         &ui,
@@ -111,7 +111,7 @@ After restoring the block with font-size: 1.5em:"
     let note = ui.create(Node::Text, (Text("A new note.".into()),));
     ui.append(root, note);
     dirty.clear(&tree, layout_root);
-    dirty.mark_node(&tree, root, InputFlags::NEED_CHILDREN);
+    dirty.mark_node(&tree, root, DirtyFlags::NEED_CHILDREN);
     build(
         &mut builder,
         &ui,

@@ -35,7 +35,7 @@ impl FragmentTreeBuilder {
     ///
     /// Every item one of whose fragments the build created, moved or resized
     /// is marked
-    /// [`InputFlags::NEED_PRE_PAINT`](crate::input::InputFlags::NEED_PRE_PAINT)
+    /// [`DirtyFlags::NEED_PRE_PAINT`](crate::dirty_map::DirtyFlags::NEED_PRE_PAINT)
     /// in `dirty`, so later steps resolve its paint data again. Fragments
     /// laid out again in place, such as unchanged siblings, are not marked.
     ///

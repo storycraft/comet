@@ -4,8 +4,8 @@ use comet_slotmap_tree::SlotTree;
 use comet_tree::node::NodeKey;
 use rustc_hash::FxHashMap;
 
-use crate::dirty_map::DirtyMap;
-use crate::input::{InputFlags, LayoutInputItem, LayoutInputKey, TextStyle, text::TextStyleBits};
+use crate::dirty_map::{DirtyFlags, DirtyMap};
+use crate::input::{LayoutInputItem, LayoutInputKey, TextStyle, text::TextStyleBits};
 
 pub struct LayoutInputTree {
     /// Raw tree storage. Use the tree mutation methods and builder to keep
@@ -43,7 +43,7 @@ impl LayoutInputTree {
     }
 
     /// Mark the items under `root`, including itself, whose text styles are
-    /// [`TextStyleBits::DEPENDS_VIEWPORT`] [`InputFlags::NEED_FULL_LAYOUT`] in
+    /// [`TextStyleBits::DEPENDS_VIEWPORT`] [`DirtyFlags::NEED_FULL_LAYOUT`] in
     /// `dirty`, so they resolve again with a changed viewport. Call it before
     /// building after the viewport changed. Returns at once without viewport
     /// dependents. Stale keys are ignored.
@@ -54,7 +54,7 @@ impl LayoutInputTree {
 
         for key in self.items.descendants(root) {
             if depends_viewport(&self.items[key].text_style) {
-                dirty.mark(self, key, InputFlags::NEED_FULL_LAYOUT);
+                dirty.mark(self, key, DirtyFlags::NEED_FULL_LAYOUT);
             }
         }
     }

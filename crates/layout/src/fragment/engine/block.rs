@@ -7,8 +7,9 @@ use taffy::style::CoreStyle;
 use super::{Engine, FragmentEngine, FragmentKey, Mode, StateKey, node_id, state_of};
 use crate::{
     container::ContainerContext,
+    dirty_map::DirtyFlags,
     fragment::tree::FragmentTree,
-    input::{InputFlags, LayoutInputKind},
+    input::LayoutInputKind,
     style::{bx::DisplayInner, geometry::Point},
 };
 
@@ -117,7 +118,7 @@ impl Engine<'_> {
 
             if items[hoisted].layout.location != location {
                 items[hoisted].layout.location = location;
-                dirty.mark(tree, items[hoisted].source, InputFlags::NEED_PRE_PAINT);
+                dirty.mark(tree, items[hoisted].source, DirtyFlags::NEED_PRE_PAINT);
             }
         }
     }

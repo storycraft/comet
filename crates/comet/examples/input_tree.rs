@@ -1,9 +1,9 @@
 mod common;
 
 use comet_layout::{
-    dirty_map::DirtyMap,
+    dirty_map::{DirtyFlags, DirtyMap},
     input::{
-        InputFlags, LayoutInputKey,
+        LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -33,7 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     ui.prop::<Text>(text).ok_or("missing sample text")?;
     ui.set_props(text, (Text("Updated text".into()),));
-    dirty.mark_node(&tree, text, InputFlags::NEED_FULL_LAYOUT);
+    dirty.mark_node(&tree, text, DirtyFlags::NEED_FULL_LAYOUT);
 
     let updated = builder
         .build(&ui, &mut tree, &mut dirty, request)

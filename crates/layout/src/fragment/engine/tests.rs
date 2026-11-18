@@ -7,10 +7,9 @@ use comet_tree::{
 
 use crate::{
     container::{ContainerContext, ContainerLayout},
-    dirty_map::DirtyMap,
+    dirty_map::{DirtyFlags, DirtyMap},
     fragment::{builder::FragmentTreeBuilder, state::NodeLayoutBits, tree::FragmentTree},
     input::{
-        InputFlags,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
@@ -123,7 +122,7 @@ fn style_units_set_viewport_bits_up_to_the_root() {
     // A box style edit adds the bits of its new style to the ancestors.
     ui.set_props(plain, (width(StyleUnit::Vh(0.5)),));
     f.dirty
-        .mark_node(&f.tree, plain, InputFlags::NEED_BOX_LAYOUT);
+        .mark_node(&f.tree, plain, DirtyFlags::NEED_BOX_LAYOUT);
     f.build(&ui, root);
 
     assert_eq!(f.bits(plain), NodeLayoutBits::DEPENDS_VIEWPORT);
@@ -505,7 +504,7 @@ fn boxes_depending_on_the_parent_size_lay_out_again() {
 }
 
 /// Lay out at `width` like [`layout_at`], and return the nodes whose items
-/// are marked [`InputFlags::NEED_PRE_PAINT`] before the flags are cleared.
+/// are marked [`DirtyFlags::NEED_PRE_PAINT`] before the flags are cleared.
 fn laid_out_at(f: &mut Fixture, ui: &Ui, root: NodeKey, width: f64) -> Vec<NodeKey> {
     let viewport = Size::new(width, 600.0);
     let input_root = f
@@ -535,7 +534,7 @@ fn laid_out_at(f: &mut Fixture, ui: &Ui, root: NodeKey, width: f64) -> Vec<NodeK
             f.dirty
                 .entry(key)
                 .flags
-                .contains(InputFlags::NEED_PRE_PAINT)
+                .contains(DirtyFlags::NEED_PRE_PAINT)
         })
         .map(|key| f.tree.items[key].node)
         .collect();
@@ -588,7 +587,7 @@ fn builds_mark_the_items_they_lay_out() {
 
     // Resizing a box lays it out again.
     ui.set_props(a, (fixed(100.0, 80.0),));
-    f.dirty.mark_node(&f.tree, a, InputFlags::NEED_BOX_LAYOUT);
+    f.dirty.mark_node(&f.tree, a, DirtyFlags::NEED_BOX_LAYOUT);
     let marked = laid_out_at(&mut f, &ui, root, 120.0);
     for node in [root, a] {
         assert!(marked.contains(&node), "{node:?} not marked");
@@ -602,7 +601,7 @@ fn builds_mark_the_items_they_lay_out() {
     assert!(!marked.contains(&text));
 
     // Changing a box's style to the same size marks nothing.
-    f.dirty.mark_node(&f.tree, b, InputFlags::NEED_BOX_LAYOUT);
+    f.dirty.mark_node(&f.tree, b, DirtyFlags::NEED_BOX_LAYOUT);
     let marked = laid_out_at(&mut f, &ui, root, 120.0);
     assert!(marked.is_empty(), "{marked:?} marked");
 
