@@ -65,11 +65,11 @@ impl DirtyMap {
             return false;
         };
 
-        let contains = entry.flags.contains(flags);
-        if !contains {
+        let should_mark = !entry.flags.contains(flags);
+        if should_mark {
             entry.flags.insert(flags);
         }
-        contains
+        should_mark
     }
 
     fn mark_child_flags(&mut self, key: LayoutInputKey, flags: InputFlags) -> bool {
@@ -77,11 +77,11 @@ impl DirtyMap {
             return false;
         };
 
-        let contains = entry.child_bits.contains(flags);
-        if !contains {
+        let should_mark = !entry.child_bits.contains(flags);
+        if should_mark {
             entry.child_bits.insert(flags);
         }
-        contains
+        should_mark
     }
 }
 
