@@ -31,16 +31,46 @@ impl DirtyMap {
         }
     }
 
+    /// Clear the flags of `root` and its descendants. Only subtrees with
+    /// child bits are visited, in preorder along the parent and sibling
+    /// links, so nothing is allocated. Stale keys are ignored.
     pub fn clear(&mut self, tree: &LayoutInputTree, root: LayoutInputKey) {
-        let mut pending = vec![root];
-        while let Some(key) = pending.pop() {
-            let Some(entry) = self.entry_mut(key) else {
-                continue;
-            };
+        if tree.items.get(root).is_none() {
+            return;
+        }
 
-            let old_entry = std::mem::take(entry);
-            if !old_entry.child_bits.is_empty() {
-                pending.extend(tree.items.children(key));
+        let mut current = root;
+
+        loop {
+            let child_bits = self
+                .map
+                .get_mut(current)
+                .map(|entry| std::mem::take(entry).child_bits)
+                .unwrap_or_default();
+
+            // Flagged descendants always have flagged ancestors.
+            if !child_bits.is_empty()
+                && let Some(child) = tree.items.first_child(current)
+            {
+                current = child;
+                continue;
+            }
+
+            // Next sibling of the nearest ancestor that has one, up to `root`.
+            loop {
+                if current == root {
+                    return;
+                }
+
+                if let Some(sibling) = tree.items.next_sibling(current) {
+                    current = sibling;
+                    break;
+                }
+
+                match tree.items.parent(current) {
+                    Some(parent) => current = parent,
+                    None => return,
+                }
             }
         }
     }
