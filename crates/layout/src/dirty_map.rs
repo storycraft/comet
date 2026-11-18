@@ -3,7 +3,7 @@ use slotmap::SecondaryMap;
 
 use crate::input::{InputFlags, LayoutInputKey, tree::LayoutInputTree};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DirtyMap {
     map: SecondaryMap<LayoutInputKey, DirtyEntry>,
 }
