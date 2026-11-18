@@ -14,5 +14,5 @@ comet-slotmap-tree = { path = "./crates/slotmap-tree" }
 comet-layout = { path = "./crates/layout" }
 comet-paint = { path = "./crates/paint" }
 comet-accesskit = { path = "./crates/accesskit" }
-
+comet-reactivity = { path = "./crates/reactivity" }
 comet-layout-flex = { path = "./crates/layout-flex" }

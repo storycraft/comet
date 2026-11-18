@@ -510,6 +510,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "comet-reactivity"
+version = "0.1.0"
+
+[[package]]
 name = "comet-slotmap-tree"
 version = "0.1.0"
 dependencies = [
