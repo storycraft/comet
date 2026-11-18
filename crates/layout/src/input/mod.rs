@@ -50,19 +50,21 @@ bitflags! {
     /// once every step consumed them.
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
     pub struct InputFlags: u8 {
+        const NEED_LAYER = 1 << 0;
+
         /// The child list of the source node changed: children were
         /// inserted, removed or moved. The input builder reconciles the
         /// item's children with the source children.
-        const NEED_CHILDREN = 1 << 0;
+        const NEED_CHILDREN = 1 << 1 | Self::NEED_LAYER.bits();
 
-        const NEED_PRE_PAINT = 1 << 1;
+        const NEED_PRE_PAINT = 1 << 2;
 
-        const NEED_BOX_LAYOUT = 1 << 2 | Self::NEED_PRE_PAINT.bits();
+        const NEED_BOX_LAYOUT = 1 << 3 | Self::NEED_PRE_PAINT.bits();
 
         /// A prop of the source node resolved into the item changed, or the
         /// item is new. The input builder resolves the item again, reconciles
         /// its children and marks every child with this flag.
-        const NEED_FULL_LAYOUT = 1 << 3 | Self::NEED_BOX_LAYOUT.bits() | Self::NEED_CHILDREN.bits();
+        const NEED_FULL_LAYOUT = 1 << 4 | Self::NEED_BOX_LAYOUT.bits() | Self::NEED_CHILDREN.bits();
     }
 }
 
