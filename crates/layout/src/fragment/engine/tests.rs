@@ -604,7 +604,7 @@ fn builds_mark_the_items_they_lay_out() {
     // Changing a box's style to the same size marks nothing.
     f.dirty.mark_node(&f.tree, b, InputFlags::NEED_BOX_LAYOUT);
     let marked = laid_out_at(&mut f, &ui, root, 120.0);
-    assert_eq!(marked, vec![b], "only the marked box keeps its input mark");
+    assert!(marked.is_empty(), "{marked:?} marked");
 
     // A build without changes marks nothing, the root included.
     assert!(laid_out_at(&mut f, &ui, root, 120.0).is_empty());

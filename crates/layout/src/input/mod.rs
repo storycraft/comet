@@ -53,12 +53,15 @@ bitflags! {
 
         const NEED_PRE_PAINT = 1 << 2;
 
-        const NEED_BOX_LAYOUT = 1 << 3 | Self::NEED_PRE_PAINT.bits();
+        const NEED_BOX_LAYOUT = 1 << 3;
 
         /// A prop of the source node resolved into the item changed, or the
         /// item is new. The input builder resolves the item again, reconciles
         /// its children and marks every child with this flag.
-        const NEED_FULL_LAYOUT = 1 << 4 | Self::NEED_BOX_LAYOUT.bits() | Self::NEED_CHILDREN.bits();
+        const NEED_FULL_LAYOUT = 1 << 4
+            | Self::NEED_BOX_LAYOUT.bits()
+            | Self::NEED_PRE_PAINT.bits()
+            | Self::NEED_CHILDREN.bits();
     }
 }
 

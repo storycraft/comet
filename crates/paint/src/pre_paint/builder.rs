@@ -48,9 +48,12 @@ impl PrePaintTreeBuilder {
     /// Builds into `tree` the fragments that need it, and their layout input
     /// items:
     /// - fragments under `root` of items whose [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags) in `dirty` have
-    ///   [`InputFlags::NEED_PRE_PAINT`]: those the fragment builder laid
-    ///   out, those whose layout input changed, and those marked with it,
-    ///   such as after their paint styles changed,
+    ///   [`InputFlags::NEED_PRE_PAINT`]: those the fragment builder created,
+    ///   moved or resized, those marked
+    ///   [`InputFlags::NEED_FULL_LAYOUT`], which includes it, and those
+    ///   marked with it, such as after their paint styles changed. A box
+    ///   style change alone, [`InputFlags::NEED_BOX_LAYOUT`], reaches
+    ///   pre-paint only through the fragments it moves or resizes,
     /// - fragments under `root` without data in `tree`.
     ///
     /// Fragments are visited from `root`, going into the children of a
