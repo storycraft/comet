@@ -1,5 +1,6 @@
 use anyrender::{Paint, Scene, recording::RenderCommand};
 use comet_layout::{
+    dirty_map::DirtyMap,
     fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
         InputFlags, LayoutInputKey,
@@ -43,6 +44,7 @@ const BLUE: Color = Color::from_rgb8(20, 40, 180);
 #[derive(Default)]
 struct Fixture {
     inputs: LayoutInputTree,
+    dirty: DirtyMap,
     fragments: FragmentTree,
     pre_paint: PrePaintTree,
     resolver: PrePaintTreeBuilder,
@@ -66,7 +68,7 @@ impl Fixture {
     /// tree was resolved.
     fn clear_flags(&mut self) {
         if let Some(input_root) = self.input_root {
-            self.inputs.clear_flags(input_root);
+            self.dirty.clear(&self.inputs, input_root);
         }
         self.fragments.clear_changed();
     }
@@ -79,6 +81,7 @@ impl Fixture {
             .build(
                 ui,
                 &mut self.inputs,
+                &mut self.dirty,
                 BuildRequest::new(node, 16.0, VIEWPORT),
             )
             .unwrap();
@@ -87,6 +90,7 @@ impl Fixture {
             .build(
                 ui,
                 &self.inputs,
+                &self.dirty,
                 input_root,
                 &mut self.fragments,
                 &LayoutConstraint::new_root(VIEWPORT, 16.0),
@@ -102,6 +106,7 @@ impl Fixture {
         self.resolver.build(
             ui,
             &self.inputs,
+            &self.dirty,
             &self.fragments,
             &UNITS,
             &mut self.pre_paint,
@@ -112,7 +117,8 @@ impl Fixture {
 
     /// Mark the item of a node as needing pre-paint.
     fn mark(&mut self, node: NodeKey) {
-        self.inputs.mark_node(node, InputFlags::NEED_PRE_PAINT);
+        self.dirty
+            .mark_node(&self.inputs, node, InputFlags::NEED_PRE_PAINT);
     }
 
     fn item(&self, node: NodeKey) -> LayoutInputKey {
@@ -195,6 +201,7 @@ impl Fixture {
             .build(
                 &self.fragments,
                 &self.inputs,
+                &self.dirty,
                 &self.pre_paint,
                 &mut layers,
                 self.input_root.unwrap(),
@@ -804,7 +811,8 @@ fn resolving_follows_the_layout() {
     let root_data = f.boxed(root).clone();
 
     ui.set_props(top, (fixed(10.0, 30.0),));
-    f.inputs.mark_node(top, InputFlags::NEED_BOX_LAYOUT);
+    f.dirty
+        .mark_node(&f.inputs, top, InputFlags::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
 
     // Resolved data is kept until it is resolved again.
@@ -872,7 +880,8 @@ fn resolving_fails_for_nodes_deleted_since_the_layout_was_built() {
     assert_eq!(f.resolve(&ui, root_fragment), None);
 
     // Resolving succeeds again once the layout follows the UI.
-    f.inputs.mark_node(root, InputFlags::NEED_CHILDREN);
+    f.dirty
+        .mark_node(&f.inputs, root, InputFlags::NEED_CHILDREN);
     let root_fragment = f.layout(&ui, root);
     assert_eq!(f.resolve(&ui, root_fragment), Some(()));
     f.clear_flags();
@@ -1280,6 +1289,7 @@ impl Fixture {
             .build(
                 ui,
                 &self.inputs,
+                &self.dirty,
                 &self.fragments,
                 &UNITS,
                 &mut full,
@@ -1336,7 +1346,8 @@ fn incremental_resolves_follow_changed_fragments_only() {
 
     // A taller top box moves the boxes below it, which are not marked.
     ui.set_props(top, (fixed(120.0, 50.0),));
-    f.inputs.mark_node(top, InputFlags::NEED_BOX_LAYOUT);
+    f.dirty
+        .mark_node(&f.inputs, top, InputFlags::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
     f.resolve_changed(&ui, fragment_root);
     f.assert_matches_full_resolve(&ui, fragment_root);
@@ -1352,7 +1363,8 @@ fn incremental_resolves_follow_changed_fragments_only() {
         (BorderRadius(LayoutRect::new_all(StyleUnit::Px(8.0))),),
     );
     ui.set_props(bottom, (fixed(120.0, 60.0),));
-    f.inputs.mark_node(bottom, InputFlags::NEED_BOX_LAYOUT);
+    f.dirty
+        .mark_node(&f.inputs, bottom, InputFlags::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
     f.resolve_changed(&ui, fragment_root);
 
@@ -1391,14 +1403,15 @@ fn resolves_both_changed_and_marked_fragments() {
         (BorderRadius(LayoutRect::new_all(StyleUnit::Px(6.0))),),
     );
     ui.set_props(top, (fixed(120.0, 30.0),));
-    f.inputs.mark_node(top, InputFlags::NEED_BOX_LAYOUT);
+    f.dirty
+        .mark_node(&f.inputs, top, InputFlags::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
     f.mark(marked);
 
     let pre_paint = InputFlags::NEED_PRE_PAINT;
-    assert_eq!(f.inputs.items[f.item(marked)].flags, pre_paint);
-    assert_eq!(f.inputs.items[f.item(wrapper)].child_flags, pre_paint);
-    assert!(f.inputs.items[f.item(root)].child_flags.contains(pre_paint));
+    assert_eq!(f.dirty.entry(f.item(marked)).flags, pre_paint);
+    assert_eq!(f.dirty.entry(f.item(wrapper)).child_bits, pre_paint);
+    assert!(f.dirty.entry(f.item(root)).child_bits.contains(pre_paint));
 
     f.resolve_changed(&ui, fragment_root);
     f.assert_matches_full_resolve(&ui, fragment_root);
@@ -1406,10 +1419,10 @@ fn resolves_both_changed_and_marked_fragments() {
     assert!(f.boxed(marked).border_radius.is_some());
 
     // The resolver keeps the flags for the caller to clear.
-    assert_eq!(f.inputs.items[f.item(marked)].flags, pre_paint);
+    assert_eq!(f.dirty.entry(f.item(marked)).flags, pre_paint);
     f.clear_flags();
-    assert!(f.inputs.items[f.item(marked)].flags.is_empty());
-    assert!(f.inputs.items[f.item(root)].child_flags.is_empty());
+    assert!(f.dirty.entry(f.item(marked)).flags.is_empty());
+    assert!(f.dirty.entry(f.item(root)).child_bits.is_empty());
 }
 
 #[test]
@@ -1441,7 +1454,8 @@ fn marks_kept_by_item_reach_every_fragment_set_before_the_layout() {
     );
     f.mark(span);
     ui.set_props(other, (fixed(40.0, 20.0),));
-    f.inputs.mark_node(other, InputFlags::NEED_BOX_LAYOUT);
+    f.dirty
+        .mark_node(&f.inputs, other, InputFlags::NEED_BOX_LAYOUT);
     let fragment_root = f.layout(&ui, root);
 
     // The layout kept the span's fragments, and the mark still reaches all
@@ -1456,7 +1470,7 @@ fn marks_kept_by_item_reach_every_fragment_set_before_the_layout() {
     for key in fragments {
         assert!(f.fragment(key).border_radius.is_some());
     }
-    assert!(f.inputs.items[f.item(span)].flags.is_empty());
+    assert!(f.dirty.entry(f.item(span)).flags.is_empty());
 }
 
 #[test]
@@ -1498,6 +1512,7 @@ fn viewport_changes_resolve_viewport_dependent_paint_values_again() {
             .build(
                 ui,
                 &f.inputs,
+                &f.dirty,
                 &f.fragments,
                 units,
                 &mut f.pre_paint,

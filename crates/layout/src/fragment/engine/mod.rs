@@ -25,6 +25,7 @@ use super::{
     tree::FragmentTree,
 };
 use crate::{
+    dirty_map::DirtyMap,
     input::{ChildLayout, InputFlags, LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     style::LayoutConstraint,
     taffy::style::{self, Style},
@@ -74,6 +75,7 @@ pub(crate) struct Scratch {
 pub(crate) struct Engine<'a> {
     pub ui: &'a Ui,
     pub tree: &'a LayoutInputTree,
+    pub dirty: &'a DirtyMap,
     pub fragments: &'a mut FragmentTree,
     pub fonts: &'a mut parley::FontContext,
     pub parley: &'a mut parley::LayoutContext<Option<LayoutInputKey>>,
@@ -197,11 +199,10 @@ impl Engine<'_> {
 
     /// Visit flagged items from the root. Cached layouts of flagged items are
     /// dropped and their fragment children are synchronized. Subtrees are
-    /// visited only when their root's [`LayoutInputItem::child_flags`] have
-    /// [`InputFlags::NEED_BOX_LAYOUT`] or [`InputFlags::NEED_CHILDREN`].
+    /// visited only when their root's
+    /// [`DirtyEntry::child_bits`](crate::dirty_map::DirtyEntry::child_bits)
+    /// have [`InputFlags::NEED_BOX_LAYOUT`] or [`InputFlags::NEED_CHILDREN`].
     /// Flags are kept.
-    ///
-    /// [`LayoutInputItem::child_flags`]: crate::input::LayoutInputItem::child_flags
     pub fn invalidate(&mut self) {
         // Without retained fragments every item is treated as flagged.
         let force = self.fragments.box_fragment(self.root).is_none();
@@ -210,13 +211,13 @@ impl Engine<'_> {
         stack.push(self.root);
 
         while let Some(key) = stack.pop() {
-            let item = &self.tree.items[key];
-            let flags = item.flags;
+            let entry = self.dirty.entry(key);
+            let flags = entry.flags;
             // `NEED_BOX_LAYOUT` is part of every flag laying out a box, and a
             // child list change alone carries `NEED_CHILDREN` only.
-            let descend = item.child_flags.contains(InputFlags::NEED_BOX_LAYOUT)
-                || item.child_flags.contains(InputFlags::NEED_CHILDREN);
-            let child_layout = item.child_layout;
+            let descend = entry.child_bits.contains(InputFlags::NEED_BOX_LAYOUT)
+                || entry.child_bits.contains(InputFlags::NEED_CHILDREN);
+            let child_layout = self.tree.items[key].child_layout;
             let is_box = self.is_box(key);
 
             // After a viewport change, boxes depending on it are laid out

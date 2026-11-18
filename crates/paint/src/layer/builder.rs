@@ -1,4 +1,5 @@
 use comet_layout::{
+    dirty_map::DirtyMap,
     fragment::{FragmentKey, tree::FragmentTree},
     input::{InputFlags, LayoutInputKey, tree::LayoutInputTree},
 };
@@ -48,12 +49,13 @@ impl PaintLayerBuilder {
     /// When `tree` already holds the root layer of the root fragment, only
     /// the layers with changes are placed again. Items are visited from
     /// `root`, going into the children of an item whose
-    /// [`LayoutInputItem::child_flags`](comet_layout::input::LayoutInputItem::child_flags)
-    /// have [`InputFlags::NEED_PRE_PAINT`] or [`InputFlags::NEED_CHILDREN`].
+    /// [`DirtyEntry::child_bits`](comet_layout::dirty_map::DirtyEntry::child_bits)
+    /// in `dirty` have [`InputFlags::NEED_PRE_PAINT`] or
+    /// [`InputFlags::NEED_CHILDREN`].
     /// The child layers of the layer enclosing an item marked
     /// [`InputFlags::NEED_CHILDREN`] are placed again, in their new order.
     /// For each item whose
-    /// [`LayoutInputItem::flags`](comet_layout::input::LayoutInputItem::flags)
+    /// [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags)
     /// have it, the [stacking](crate::pre_paint::FragmentData::stacking) of
     /// each of its fragments is compared with the layer the fragment starts:
     /// when it gains, loses or changes the z index of its layer, the child
@@ -66,7 +68,7 @@ impl PaintLayerBuilder {
     /// is built and layers of other fragments are deleted.
     ///
     /// Build from the same `pre_paint` every time, after resolving it for
-    /// `fragments`, and before clearing the input flags. Fragments without
+    /// `fragments`, and before clearing `dirty`. Fragments without
     /// pre-paint data start no layer. Layers whose owner still starts one
     /// keep their keys. Returns `None` if `root` has no box fragment in
     /// `fragments`.
@@ -74,6 +76,7 @@ impl PaintLayerBuilder {
         &mut self,
         fragments: &FragmentTree,
         inputs: &LayoutInputTree,
+        dirty: &DirtyMap,
         pre_paint: &PrePaintTree,
         tree: &mut PaintLayerTree,
         root: LayoutInputKey,
@@ -84,7 +87,7 @@ impl PaintLayerBuilder {
 
         let root_layer = match tree.layer_of(root_fragment) {
             Some(layer) if tree.layers.parent(layer).is_none() => {
-                self.update(fragments, inputs, pre_paint, tree, root, layer);
+                self.update(fragments, inputs, dirty, pre_paint, tree, root, layer);
                 layer
             }
             _ => self.build_root(fragments, pre_paint, tree, root_fragment),
@@ -130,10 +133,12 @@ impl PaintLayerBuilder {
     }
 
     /// Place the child layers of the layers with layer changes again.
+    #[allow(clippy::too_many_arguments)]
     fn update(
         &mut self,
         fragments: &FragmentTree,
         inputs: &LayoutInputTree,
+        dirty: &DirtyMap,
         pre_paint: &PrePaintTree,
         tree: &mut PaintLayerTree,
         root: LayoutInputKey,
@@ -159,11 +164,12 @@ impl PaintLayerBuilder {
         self.items.push(root);
 
         while let Some(key) = self.items.pop() {
-            let Some(item) = inputs.items.get(key) else {
+            if inputs.items.get(key).is_none() {
                 continue;
-            };
+            }
+            let entry = dirty.entry(key);
 
-            if item.flags.contains(InputFlags::NEED_PRE_PAINT) {
+            if entry.flags.contains(InputFlags::NEED_PRE_PAINT) {
                 for fragment in fragments.fragments(key) {
                     // The root layer has z index 0, whatever the root's
                     // stacking.
@@ -190,7 +196,7 @@ impl PaintLayerBuilder {
             // Children inserted, removed or reordered can reorder the layers
             // they start, which are child layers of the layer enclosing the
             // item's fragments: its own layer if it starts one.
-            if item.flags.contains(InputFlags::NEED_CHILDREN)
+            if entry.flags.contains(InputFlags::NEED_CHILDREN)
                 && let Some(layer) = fragments
                     .fragments(key)
                     .next()
@@ -200,8 +206,8 @@ impl PaintLayerBuilder {
             }
 
             // A child list change alone carries no `NEED_PRE_PAINT`.
-            if item
-                .child_flags
+            if entry
+                .child_bits
                 .intersects(InputFlags::NEED_PRE_PAINT | InputFlags::NEED_CHILDREN)
             {
                 self.items.extend(inputs.items.children(key));

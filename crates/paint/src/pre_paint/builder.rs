@@ -1,4 +1,5 @@
 use comet_layout::{
+    dirty_map::DirtyMap,
     fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
     input::{InputFlags, LayoutInputKey, tree::LayoutInputTree},
     style::{
@@ -46,7 +47,7 @@ impl PrePaintTreeBuilder {
 
     /// Builds into `tree` the fragments that need it, and their layout input
     /// items:
-    /// - fragments under `root` of items whose [`LayoutInputItem::flags`](comet_layout::input::LayoutInputItem::flags) have
+    /// - fragments under `root` of items whose [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags) in `dirty` have
     ///   [`InputFlags::NEED_PRE_PAINT`], which layout changes include, or
     ///   which were marked with it, such as after their paint styles changed,
     /// - fragments under `root` without data in `tree`,
@@ -55,7 +56,7 @@ impl PrePaintTreeBuilder {
     ///
     /// Fragments are visited from `root`, going into the children of a
     /// fragment only when its item's
-    /// [`LayoutInputItem::child_flags`](comet_layout::input::LayoutInputItem::child_flags)
+    /// [`DirtyEntry::child_bits`](comet_layout::dirty_map::DirtyEntry::child_bits)
     /// have [`InputFlags::NEED_PRE_PAINT`], or when it has no data in `tree`.
     /// A [cleared](PrePaintTree::clear) `tree` resolves every fragment.
     ///
@@ -64,8 +65,8 @@ impl PrePaintTreeBuilder {
     /// one does not resolve those fragments again.
     ///
     /// Data only depends on the fragment or item itself, so ancestors are not
-    /// resolved. Input flags are not cleared; the layer build reads them too,
-    /// so call [`LayoutInputTree::clear_flags`] after building layers.
+    /// resolved. `dirty` is not cleared; the layer build reads it too, so
+    /// call [`DirtyMap::clear`] after building layers.
     ///
     /// Changes builds cannot see, such as paint styles, must be marked.
     ///
@@ -84,10 +85,12 @@ impl PrePaintTreeBuilder {
     /// `fragments` were built. Rebuild them, then resolve again. Data resolved
     /// before the failure stays in `tree`, so `tree` may be partly updated,
     /// but the next call resolves the same fragments again.
+    #[allow(clippy::too_many_arguments)]
     pub fn build(
         &mut self,
         ui: &Ui,
         inputs: &LayoutInputTree,
+        dirty: &DirtyMap,
         fragments: &FragmentTree,
         units: &UnitResolveContext,
         tree: &mut PrePaintTree,
@@ -112,15 +115,16 @@ impl PrePaintTreeBuilder {
 
         while let Some(key) = pending.pop() {
             let fragment = fragments.items.get(key)?;
-            let item = inputs.items.get(fragment.source)?;
+            inputs.items.get(fragment.source)?;
+            let entry = dirty.entry(fragment.source);
             let missing = !tree.fragment_mapping.contains_key(key);
 
-            if item.flags.contains(InputFlags::NEED_PRE_PAINT) || missing {
+            if entry.flags.contains(InputFlags::NEED_PRE_PAINT) || missing {
                 changed.push(key);
                 items.push(fragment.source);
             }
 
-            if item.child_flags.contains(InputFlags::NEED_PRE_PAINT) || missing {
+            if entry.child_bits.contains(InputFlags::NEED_PRE_PAINT) || missing {
                 pending.extend(fragments.items.children(key));
             }
         }

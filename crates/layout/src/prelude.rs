@@ -1,6 +1,7 @@
 //! Common types for styling nodes and building input and fragment trees.
 
 pub use crate::container::{ContainerContext, ContainerLayout};
+pub use crate::dirty_map::{DirtyEntry, DirtyMap};
 pub use crate::fragment::{
     Fragment, FragmentBox, FragmentItem, FragmentKey, builder::FragmentTreeBuilder,
     state::NodeLayoutBits, tree::FragmentTree,

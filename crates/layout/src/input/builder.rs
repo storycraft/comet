@@ -6,6 +6,7 @@ use comet_tree::{
 };
 
 use crate::{
+    dirty_map::{DirtyEntry, DirtyMap},
     input::{
         ChildLayout, InputFlags, LayoutInputItem, LayoutInputKey, LayoutInputKind, TextStyle,
         text::{resolve_text_style, root_text_style},
@@ -56,10 +57,10 @@ impl LayoutInputTreeBuilder {
     }
 
     /// Build a new tree for `request.source` when the node has no item, or
-    /// update its existing item with the source changes marked with
-    /// [`LayoutInputTree::mark`]. Only subtrees whose
-    /// [`LayoutInputItem::child_flags`] have [`InputFlags::NEED_CHILDREN`]
-    /// are visited. For each visited item, by its [`LayoutInputItem::flags`]:
+    /// update its existing item with the source changes marked in `dirty`
+    /// with [`DirtyMap::mark`]. Only subtrees whose
+    /// [`DirtyEntry::child_bits`] have [`InputFlags::NEED_CHILDREN`]
+    /// are visited. For each visited item, by its [`DirtyEntry::flags`]:
     ///
     /// - [`InputFlags::NEED_FULL_LAYOUT`] resolves the item again, including
     ///   its text style. When its text style or child layout changed, every
@@ -87,8 +88,8 @@ impl LayoutInputTreeBuilder {
     /// `source` has a UI parent but its item has no parent item, since the tree
     /// no longer mirrors the UI. Build from the UI root first.
     ///
-    /// Flags are left for later steps, and cleared with
-    /// [`LayoutInputTree::clear_flags`] once consumed. Use `item_for_node`
+    /// Flags are left in `dirty` for later steps, and cleared with
+    /// [`DirtyMap::clear`] once consumed. Use `item_for_node`
     /// for child results.
     ///
     /// The root font size of an existing tree is not tracked:
@@ -97,6 +98,7 @@ impl LayoutInputTreeBuilder {
         &mut self,
         ui: &Ui,
         tree: &mut LayoutInputTree,
+        dirty: &mut DirtyMap,
         request: BuildRequest,
     ) -> Option<LayoutInputKey> {
         let BuildRequest {
@@ -108,7 +110,7 @@ impl LayoutInputTreeBuilder {
 
         let Some(props) = ui.props(source) else {
             if let Some(key) = target {
-                delete_child(tree, key);
+                delete_child(tree, dirty, key);
             }
 
             return None;
@@ -130,11 +132,11 @@ impl LayoutInputTreeBuilder {
         let Some(key) = target else {
             let style = Arc::new(root_text_style(root_font_size));
 
-            return self.build_subtree(ui, tree, source, &style, &cx);
+            return self.build_subtree(ui, tree, dirty, source, &style, &cx);
         };
 
         // Nothing under a clean item changed.
-        if !needs_visit(&tree.items[key]) {
+        if !needs_visit(dirty.entry(key)) {
             return Some(key);
         }
 
@@ -142,7 +144,7 @@ impl LayoutInputTreeBuilder {
         self.pending.push(key);
 
         while let Some(key) = self.pending.pop() {
-            self.visit(ui, tree, key, &cx);
+            self.visit(ui, tree, dirty, key, &cx);
         }
 
         Some(key)
@@ -154,16 +156,17 @@ impl LayoutInputTreeBuilder {
         &mut self,
         ui: &Ui,
         tree: &mut LayoutInputTree,
+        dirty: &mut DirtyMap,
         key: LayoutInputKey,
         cx: &UnitResolveContext,
     ) {
         let node = tree.items[key].node;
         let Some(props) = ui.props(node) else {
             // The source node was deleted without marking its parent.
-            delete_child(tree, key);
+            delete_child(tree, dirty, key);
             return;
         };
-        let flags = tree.items[key].flags;
+        let flags = dirty.entry(key).flags;
         let full = flags.contains(InputFlags::NEED_FULL_LAYOUT);
         // Whether every child is marked `NEED_FULL_LAYOUT`: children inherit
         // the resolved style, and whether they generate boxes depends on the
@@ -187,15 +190,16 @@ impl LayoutInputTreeBuilder {
             tree.set_text_style(key, text_style);
 
             if kind_changed {
-                mark_content_owner(tree, key);
+                mark_content_owner(tree, dirty, key);
             }
         }
 
         // Subtrees are visited only for descendants needing it, or to
         // cascade a changed style to every child.
         let descend = cascade
-            || tree.items[key]
-                .child_flags
+            || dirty
+                .entry(key)
+                .child_bits
                 .contains(InputFlags::NEED_CHILDREN);
 
         // Children are checked against the source children only when the
@@ -204,10 +208,10 @@ impl LayoutInputTreeBuilder {
             // The children of an inline element are inline content of its
             // owner, whose mode depends on their kinds.
             if tree.items[key].kind == LayoutInputKind::Inline {
-                mark_content_owner(tree, key);
+                mark_content_owner(tree, dirty, key);
             }
 
-            self.reconcile_children(ui, tree, key, node, cascade, descend, cx);
+            self.reconcile_children(ui, tree, dirty, key, node, cascade, descend, cx);
             return;
         }
 
@@ -219,7 +223,7 @@ impl LayoutInputTreeBuilder {
 
         while let Some(child) = next {
             next = tree.items.next_sibling(child);
-            self.queue(tree, child, false);
+            self.queue(tree, dirty, child, false);
         }
     }
 
@@ -233,6 +237,7 @@ impl LayoutInputTreeBuilder {
         &mut self,
         ui: &Ui,
         tree: &mut LayoutInputTree,
+        dirty: &mut DirtyMap,
         key: LayoutInputKey,
         node: NodeKey,
         full: bool,
@@ -251,7 +256,8 @@ impl LayoutInputTreeBuilder {
                 let item = match existing {
                     Some(item) => item,
                     None => {
-                        let Some(item) = self.build_subtree(ui, tree, child, &parent_style, cx)
+                        let Some(item) =
+                            self.build_subtree(ui, tree, dirty, child, &parent_style, cx)
                         else {
                             continue;
                         };
@@ -270,7 +276,7 @@ impl LayoutInputTreeBuilder {
                         != Some(node)
                 {
                     next = tree.items.next_sibling(stale);
-                    delete_child(tree, stale);
+                    delete_child(tree, dirty, stale);
                 }
 
                 if next == Some(item) {
@@ -282,45 +288,53 @@ impl LayoutInputTreeBuilder {
                 }
 
                 match existing {
-                    Some(item) if descend => self.queue(tree, item, full),
+                    Some(item) if descend => self.queue(tree, dirty, item, full),
                     Some(_) => {}
                     // Built already, with its flags.
-                    None => tree.mark_parents(item, InputFlags::NEED_FULL_LAYOUT),
+                    None => dirty.mark(tree, item, InputFlags::NEED_FULL_LAYOUT),
                 }
             }
         }
 
         while let Some(item) = next {
             next = tree.items.next_sibling(item);
-            delete_child(tree, item);
+            delete_child(tree, dirty, item);
         }
     }
 
     /// Mark an existing child [`InputFlags::NEED_FULL_LAYOUT`] with `full`,
     /// and queue it if its subtree has something to build.
-    fn queue(&mut self, tree: &mut LayoutInputTree, key: LayoutInputKey, full: bool) {
+    fn queue(
+        &mut self,
+        tree: &LayoutInputTree,
+        dirty: &mut DirtyMap,
+        key: LayoutInputKey,
+        full: bool,
+    ) {
         if full {
-            tree.mark(key, InputFlags::NEED_FULL_LAYOUT);
+            dirty.mark(tree, key, InputFlags::NEED_FULL_LAYOUT);
         }
 
-        if needs_visit(&tree.items[key]) {
+        if needs_visit(dirty.entry(key)) {
             self.pending.push(key);
         }
     }
 
     /// Build the whole subtree of `node` as a detached tree, its root
-    /// inheriting `parent_style`. Every item is created with
-    /// [`InputFlags::NEED_FULL_LAYOUT`]. Returns its root, or `None` if
-    /// `node` is not in the UI.
+    /// inheriting `parent_style`. Every item is marked
+    /// [`InputFlags::NEED_FULL_LAYOUT`]. Ancestors of the subtree root are not
+    /// marked. Returns its root, or `None` if `node` is not in the UI.
     fn build_subtree(
         &mut self,
         ui: &Ui,
         tree: &mut LayoutInputTree,
+        dirty: &mut DirtyMap,
         node: NodeKey,
         parent_style: &Arc<TextStyle>,
         cx: &UnitResolveContext,
     ) -> Option<LayoutInputKey> {
         let root = tree.add_item(new_item(node, ui.props(node)?, parent_style, cx));
+        dirty.mark(tree, root, InputFlags::NEED_FULL_LAYOUT);
 
         self.subtree.clear();
         self.subtree.push((root, node));
@@ -339,6 +353,7 @@ impl LayoutInputTreeBuilder {
                 let item = tree.add_item(new_item(child, props, &style, cx));
 
                 tree.items.append(key, item);
+                dirty.mark(tree, item, InputFlags::NEED_FULL_LAYOUT);
                 self.subtree.push((item, child));
             }
         }
@@ -351,13 +366,13 @@ impl LayoutInputTreeBuilder {
 /// [`InputFlags::NEED_FULL_LAYOUT`]: its child list changed, so later steps
 /// lay it out again. The builder resolved the parent already, so the mark
 /// does not restyle its children in this build.
-fn delete_child(tree: &mut LayoutInputTree, key: LayoutInputKey) {
+fn delete_child(tree: &mut LayoutInputTree, dirty: &mut DirtyMap, key: LayoutInputKey) {
     let parent = tree.items.parent(key);
 
     tree.delete_item(key);
 
     if let Some(parent) = parent {
-        tree.mark(parent, InputFlags::NEED_FULL_LAYOUT);
+        dirty.mark(tree, parent, InputFlags::NEED_FULL_LAYOUT);
     }
 }
 
@@ -367,7 +382,7 @@ fn delete_child(tree: &mut LayoutInputTree, key: LayoutInputKey) {
 /// mark it when an item changes kind, or when an inline element's child list
 /// changes. The builder visited the ancestor already, so the mark is only
 /// read by later steps.
-fn mark_content_owner(tree: &mut LayoutInputTree, key: LayoutInputKey) {
+fn mark_content_owner(tree: &LayoutInputTree, dirty: &mut DirtyMap, key: LayoutInputKey) {
     let mut owner = tree.items.parent(key);
 
     while let Some(key) = owner
@@ -377,15 +392,15 @@ fn mark_content_owner(tree: &mut LayoutInputTree, key: LayoutInputKey) {
     }
 
     if let Some(owner) = owner {
-        tree.mark(owner, InputFlags::NEED_CHILDREN);
+        dirty.mark(tree, owner, InputFlags::NEED_CHILDREN);
     }
 }
 
 /// Whether the item or its subtree has something to build.
-fn needs_visit(item: &LayoutInputItem) -> bool {
+fn needs_visit(entry: DirtyEntry) -> bool {
     // `NEED_FULL_LAYOUT` includes `NEED_CHILDREN`.
-    item.flags.contains(InputFlags::NEED_CHILDREN)
-        || item.child_flags.contains(InputFlags::NEED_CHILDREN)
+    entry.flags.contains(InputFlags::NEED_CHILDREN)
+        || entry.child_bits.contains(InputFlags::NEED_CHILDREN)
 }
 
 /// Resolve the source props of an item: its kind, child layout and the text
@@ -404,9 +419,7 @@ fn resolve(
     )
 }
 
-/// A resolved, detached item for `node`. New items, and the subtrees under
-/// them, need a full layout, so both [`LayoutInputItem::flags`] and
-/// [`LayoutInputItem::child_flags`] have [`InputFlags::NEED_FULL_LAYOUT`].
+/// A resolved, detached item for `node`.
 fn new_item(
     node: NodeKey,
     props: Props,
@@ -416,8 +429,6 @@ fn new_item(
     let (kind, child_layout, text_style) = resolve(props, parent_style, cx);
 
     LayoutInputItem {
-        child_flags: InputFlags::NEED_FULL_LAYOUT,
-        flags: InputFlags::NEED_FULL_LAYOUT,
         kind,
         node,
         text_style,

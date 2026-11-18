@@ -7,6 +7,7 @@ use comet_tree::{
 
 use crate::{
     container::{ContainerContext, ContainerLayout},
+    dirty_map::DirtyMap,
     fragment::{builder::FragmentTreeBuilder, state::NodeLayoutBits, tree::FragmentTree},
     input::{
         InputFlags,
@@ -37,6 +38,7 @@ impl ContainerLayout for Empty {
 struct Fixture {
     inputs: LayoutInputTreeBuilder,
     tree: LayoutInputTree,
+    dirty: DirtyMap,
     builder: FragmentTreeBuilder,
     fragments: FragmentTree,
 }
@@ -46,6 +48,7 @@ impl Fixture {
         Self {
             inputs: LayoutInputTreeBuilder::new(),
             tree: LayoutInputTree::new(),
+            dirty: DirtyMap::new(),
             builder: FragmentTreeBuilder::new(),
             fragments: FragmentTree::new(),
         }
@@ -54,18 +57,24 @@ impl Fixture {
     fn build(&mut self, ui: &Ui, node: NodeKey) {
         let root = self
             .inputs
-            .build(ui, &mut self.tree, BuildRequest::new(node, 16.0, VIEWPORT))
+            .build(
+                ui,
+                &mut self.tree,
+                &mut self.dirty,
+                BuildRequest::new(node, 16.0, VIEWPORT),
+            )
             .unwrap();
         self.builder
             .build(
                 ui,
                 &self.tree,
+                &self.dirty,
                 root,
                 &mut self.fragments,
                 &LayoutConstraint::new_root(VIEWPORT, 16.0),
             )
             .unwrap();
-        self.tree.clear_flags(root);
+        self.dirty.clear(&self.tree, root);
     }
 
     fn bits(&self, node: NodeKey) -> NodeLayoutBits {
@@ -113,7 +122,8 @@ fn style_units_set_viewport_bits_up_to_the_root() {
 
     // A box style edit adds the bits of its new style to the ancestors.
     ui.set_props(plain, (width(StyleUnit::Vh(0.5)),));
-    f.tree.mark_node(plain, InputFlags::NEED_BOX_LAYOUT);
+    f.dirty
+        .mark_node(&f.tree, plain, InputFlags::NEED_BOX_LAYOUT);
     f.build(&ui, root);
 
     assert_eq!(f.bits(plain), NodeLayoutBits::DEPENDS_VIEWPORT);
@@ -201,18 +211,24 @@ fn viewport_changes_skip_cached_layouts_of_viewport_dependent_boxes() {
         let viewport = Size::new(width, 600.0);
         let input_root = f
             .inputs
-            .build(&ui, &mut f.tree, BuildRequest::new(root, 16.0, viewport))
+            .build(
+                &ui,
+                &mut f.tree,
+                &mut f.dirty,
+                BuildRequest::new(root, 16.0, viewport),
+            )
             .unwrap();
         f.builder
             .build(
                 &ui,
                 &f.tree,
+                &f.dirty,
                 input_root,
                 &mut f.fragments,
                 &LayoutConstraint::new_root(viewport, 16.0).with_viewport_changed(viewport_changed),
             )
             .unwrap();
-        f.tree.clear_flags(input_root);
+        f.dirty.clear(&f.tree, input_root);
 
         calls.swap(0, Ordering::Relaxed)
     };
@@ -254,18 +270,24 @@ fn percentage_descendants_keep_fixed_size_ancestors_cached() {
         let viewport = Size::new(width, 600.0);
         let input_root = f
             .inputs
-            .build(&ui, &mut f.tree, BuildRequest::new(root, 16.0, viewport))
+            .build(
+                &ui,
+                &mut f.tree,
+                &mut f.dirty,
+                BuildRequest::new(root, 16.0, viewport),
+            )
             .unwrap();
         f.builder
             .build(
                 &ui,
                 &f.tree,
+                &f.dirty,
                 input_root,
                 &mut f.fragments,
                 &LayoutConstraint::new_root(viewport, 16.0),
             )
             .unwrap();
-        f.tree.clear_flags(input_root);
+        f.dirty.clear(&f.tree, input_root);
 
         calls.swap(0, Ordering::Relaxed)
     };
@@ -298,18 +320,24 @@ fn viewport_changes_resolve_viewport_dependent_styles_again() {
         let viewport = Size::new(width, 600.0);
         let input_root = f
             .inputs
-            .build(&ui, &mut f.tree, BuildRequest::new(root, 16.0, viewport))
+            .build(
+                &ui,
+                &mut f.tree,
+                &mut f.dirty,
+                BuildRequest::new(root, 16.0, viewport),
+            )
             .unwrap();
         f.builder
             .build(
                 &ui,
                 &f.tree,
+                &f.dirty,
                 input_root,
                 &mut f.fragments,
                 &LayoutConstraint::new_root(viewport, 16.0).with_viewport_changed(viewport_changed),
             )
             .unwrap();
-        f.tree.clear_flags(input_root);
+        f.dirty.clear(&f.tree, input_root);
 
         let fragment = f
             .fragments
@@ -350,18 +378,24 @@ fn viewport_changes_reach_boxes_inside_inline_elements() {
         let viewport = Size::new(width, 600.0);
         let input_root = f
             .inputs
-            .build(&ui, &mut f.tree, BuildRequest::new(root, 16.0, viewport))
+            .build(
+                &ui,
+                &mut f.tree,
+                &mut f.dirty,
+                BuildRequest::new(root, 16.0, viewport),
+            )
             .unwrap();
         f.builder
             .build(
                 &ui,
                 &f.tree,
+                &f.dirty,
                 input_root,
                 &mut f.fragments,
                 &LayoutConstraint::new_root(viewport, 16.0).with_viewport_changed(viewport_changed),
             )
             .unwrap();
-        f.tree.clear_flags(input_root);
+        f.dirty.clear(&f.tree, input_root);
 
         let fragment = f
             .fragments
@@ -380,18 +414,24 @@ fn layout_at(f: &mut Fixture, ui: &Ui, root: NodeKey, width: f64) {
     let viewport = Size::new(width, 600.0);
     let input_root = f
         .inputs
-        .build(ui, &mut f.tree, BuildRequest::new(root, 16.0, viewport))
+        .build(
+            ui,
+            &mut f.tree,
+            &mut f.dirty,
+            BuildRequest::new(root, 16.0, viewport),
+        )
         .unwrap();
     f.builder
         .build(
             ui,
             &f.tree,
+            &f.dirty,
             input_root,
             &mut f.fragments,
             &LayoutConstraint::new_root(viewport, 16.0),
         )
         .unwrap();
-    f.tree.clear_flags(input_root);
+    f.dirty.clear(&f.tree, input_root);
 }
 
 #[test]
@@ -534,7 +574,7 @@ fn builds_list_the_fragments_they_changed() {
 
     // Resizing the first box moves the boxes after it, unmarked.
     ui.set_props(a, (fixed(100.0, 80.0),));
-    f.tree.mark_node(a, InputFlags::NEED_BOX_LAYOUT);
+    f.dirty.mark_node(&f.tree, a, InputFlags::NEED_BOX_LAYOUT);
     layout_at(&mut f, &ui, root, 120.0);
     let listed = changed(&mut f);
     for node in [root, a, b, c, paragraph] {
@@ -550,16 +590,16 @@ fn builds_list_the_fragments_they_changed() {
     assert!(changed(&mut f).is_empty());
 
     // Changing a box's style to the same size lists nothing either.
-    f.tree.mark_node(b, InputFlags::NEED_BOX_LAYOUT);
+    f.dirty.mark_node(&f.tree, b, InputFlags::NEED_BOX_LAYOUT);
     layout_at(&mut f, &ui, root, 120.0);
     assert!(changed(&mut f).is_empty());
 
     // Builds add to the list until it is cleared.
     ui.set_props(b, (fixed(100.0, 60.0),));
-    f.tree.mark_node(b, InputFlags::NEED_BOX_LAYOUT);
+    f.dirty.mark_node(&f.tree, b, InputFlags::NEED_BOX_LAYOUT);
     layout_at(&mut f, &ui, root, 120.0);
     ui.set_props(a, (fixed(110.0, 80.0),));
-    f.tree.mark_node(a, InputFlags::NEED_BOX_LAYOUT);
+    f.dirty.mark_node(&f.tree, a, InputFlags::NEED_BOX_LAYOUT);
     layout_at(&mut f, &ui, root, 120.0);
     let listed = changed(&mut f);
     assert!(listed.contains(&box_of(&f, a)));
@@ -581,6 +621,7 @@ fn builds_of_a_removed_root_list_nothing() {
     let built = f.builder.build(
         &ui,
         &f.tree,
+        &f.dirty,
         input_root,
         &mut f.fragments,
         &LayoutConstraint::new_root(VIEWPORT, 16.0),

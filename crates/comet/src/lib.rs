@@ -6,6 +6,7 @@ use anyrender::WindowRenderer;
 use anyrender_vello::VelloWindowRenderer;
 use comet_layout::style::geometry::{StyleUnit, UnitResolveContext};
 use comet_layout::{
+    dirty_map::DirtyMap,
     fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
         InputFlags,
@@ -46,6 +47,7 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
         input_builder: LayoutInputTreeBuilder::new(),
         fragment_builder: FragmentTreeBuilder::new(),
         inputs: LayoutInputTree::new(),
+        dirty: DirtyMap::new(),
         fragments: FragmentTree::new(),
         pre_paint: PrePaintTree::new(),
         pre_paint_resolver: PrePaintTreeBuilder::new(),
@@ -70,6 +72,8 @@ struct App {
     input_builder: LayoutInputTreeBuilder,
     fragment_builder: FragmentTreeBuilder,
     inputs: LayoutInputTree,
+    /// Changes of `inputs` not consumed by the layout yet.
+    dirty: DirtyMap,
     fragments: FragmentTree,
     pre_paint: PrePaintTree,
     pre_paint_resolver: PrePaintTreeBuilder,
@@ -244,12 +248,12 @@ impl App {
             .is_some_and(|previous| previous != viewport)
             && let Some(key) = self.inputs.item_for_node(self.ui_root)
         {
-            self.inputs.invalidate_viewport(key);
+            self.inputs.invalidate_viewport(&mut self.dirty, key);
         }
         let request = BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport);
-        let input_root = self
-            .input_builder
-            .build(&self.ui, &mut self.inputs, request)?;
+        let input_root =
+            self.input_builder
+                .build(&self.ui, &mut self.inputs, &mut self.dirty, request)?;
         self.input_viewport = Some(viewport);
 
         let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE)
@@ -257,12 +261,13 @@ impl App {
         let fragment_root = self.fragment_builder.build(
             &self.ui,
             &self.inputs,
+            &self.dirty,
             input_root,
             &mut self.fragments,
             &constraint,
         );
         let Some(fragment_root) = fragment_root else {
-            self.inputs.clear_flags(input_root);
+            self.dirty.clear(&self.inputs, input_root);
             return None;
         };
 
@@ -276,6 +281,7 @@ impl App {
             self.layer_builder.build(
                 &self.fragments,
                 &self.inputs,
+                &self.dirty,
                 &self.pre_paint,
                 &mut self.layers,
                 input_root,
@@ -283,7 +289,7 @@ impl App {
         });
         // Flags were consumed by the fragment build, the pre-paint resolve and
         // the layer build.
-        self.inputs.clear_flags(input_root);
+        self.dirty.clear(&self.inputs, input_root);
         self.layer_root = Some(layer_root?);
         self.viewport = Some(viewport);
 
@@ -302,6 +308,7 @@ impl App {
         self.pre_paint_resolver.build(
             &self.ui,
             &self.inputs,
+            &self.dirty,
             &self.fragments,
             units,
             &mut self.pre_paint,
@@ -333,7 +340,8 @@ impl App {
         };
 
         let units = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE).units;
-        self.inputs.mark(item, InputFlags::NEED_PRE_PAINT);
+        self.dirty
+            .mark(&self.inputs, item, InputFlags::NEED_PRE_PAINT);
         // The flag is kept for the next layout, which clears every flag after
         // resolving. Only the fragment builder could clear it otherwise, and
         // a node that no longer matches the layout is resolved then instead.

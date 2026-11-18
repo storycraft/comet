@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyrender::{Paint, Scene, recording::RenderCommand};
 use comet_layout::{
+    dirty_map::DirtyMap,
     fragment::{FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
         InputFlags, LayoutInputKey,
@@ -39,6 +40,7 @@ const BLUE: Color = Color::from_rgb8(20, 40, 180);
 /// Layout, pre-paint and layer trees of one UI root.
 struct Fixture {
     inputs: LayoutInputTree,
+    dirty: DirtyMap,
     fragments: FragmentTree,
     pre_paint: PrePaintTree,
     layers: PaintLayerTree,
@@ -50,14 +52,21 @@ struct Fixture {
 impl Fixture {
     fn build(ui: &Ui, node: NodeKey) -> Self {
         let mut inputs = LayoutInputTree::new();
+        let mut dirty = DirtyMap::new();
         let input_root = LayoutInputTreeBuilder::new()
-            .build(ui, &mut inputs, BuildRequest::new(node, 16.0, VIEWPORT))
+            .build(
+                ui,
+                &mut inputs,
+                &mut dirty,
+                BuildRequest::new(node, 16.0, VIEWPORT),
+            )
             .unwrap();
         let mut fragments = FragmentTree::new();
         let root = FragmentTreeBuilder::new()
             .build(
                 ui,
                 &inputs,
+                &dirty,
                 input_root,
                 &mut fragments,
                 &LayoutConstraint::new_root(VIEWPORT, 16.0),
@@ -66,18 +75,35 @@ impl Fixture {
 
         let mut pre_paint = PrePaintTree::new();
         PrePaintTreeBuilder::new()
-            .build(ui, &inputs, &fragments, &UNITS, &mut pre_paint, root, false)
+            .build(
+                ui,
+                &inputs,
+                &dirty,
+                &fragments,
+                &UNITS,
+                &mut pre_paint,
+                root,
+                false,
+            )
             .unwrap();
 
         let mut layers = PaintLayerTree::new();
         let mut builder = PaintLayerBuilder::new();
         let root = builder
-            .build(&fragments, &inputs, &pre_paint, &mut layers, input_root)
+            .build(
+                &fragments,
+                &inputs,
+                &dirty,
+                &pre_paint,
+                &mut layers,
+                input_root,
+            )
             .unwrap();
-        inputs.clear_flags(input_root);
+        dirty.clear(&inputs, input_root);
 
         Self {
             inputs,
+            dirty,
             fragments,
             pre_paint,
             layers,
@@ -91,11 +117,13 @@ impl Fixture {
     fn update(&mut self, ui: &Ui, node: NodeKey) {
         let fragment_root = self.layers.layers[self.root].owner;
 
-        self.inputs.mark_node(node, InputFlags::NEED_PRE_PAINT);
+        self.dirty
+            .mark_node(&self.inputs, node, InputFlags::NEED_PRE_PAINT);
         PrePaintTreeBuilder::new()
             .build(
                 ui,
                 &self.inputs,
+                &self.dirty,
                 &self.fragments,
                 &UNITS,
                 &mut self.pre_paint,
@@ -109,12 +137,13 @@ impl Fixture {
             .build(
                 &self.fragments,
                 &self.inputs,
+                &self.dirty,
                 &self.pre_paint,
                 &mut self.layers,
                 input_root,
             )
             .unwrap();
-        self.inputs.clear_flags(input_root);
+        self.dirty.clear(&self.inputs, input_root);
     }
 
     /// The layout input item of the root layer's owner.
@@ -721,6 +750,7 @@ fn building_again_keeps_layer_keys() {
         .build(
             &f.fragments,
             &f.inputs,
+            &f.dirty,
             &f.pre_paint,
             &mut f.layers,
             input_root,
@@ -805,12 +835,13 @@ fn updates_match_full_builds() {
     let right_item = f.inputs.item_for_node(right).unwrap();
     let items: Vec<_> = f.inputs.items.descendants(right_item).collect();
     for item in items {
-        f.inputs.mark(item, InputFlags::NEED_PRE_PAINT);
+        f.dirty.mark(&f.inputs, item, InputFlags::NEED_PRE_PAINT);
     }
     PrePaintTreeBuilder::new()
         .build(
             &ui,
             &f.inputs,
+            &f.dirty,
             &f.fragments,
             &UNITS,
             &mut f.pre_paint,
@@ -824,16 +855,24 @@ fn updates_match_full_builds() {
         .build(
             &f.fragments,
             &f.inputs,
+            &f.dirty,
             &f.pre_paint,
             &mut f.layers,
             input_root,
         )
         .unwrap();
-    f.inputs.clear_flags(input_root);
+    f.dirty.clear(&f.inputs, input_root);
 
     let mut full = PaintLayerTree::new();
     let full_root = PaintLayerBuilder::new()
-        .build(&f.fragments, &f.inputs, &f.pre_paint, &mut full, input_root)
+        .build(
+            &f.fragments,
+            &f.inputs,
+            &f.dirty,
+            &f.pre_paint,
+            &mut full,
+            input_root,
+        )
         .unwrap();
 
     assert_eq!(shape(&f.layers, f.root), shape(&full, full_root));
@@ -901,6 +940,7 @@ fn hit_testers_can_be_reused() {
         .build(
             &f.fragments,
             &f.inputs,
+            &f.dirty,
             &f.pre_paint,
             &mut f.layers,
             input_root,
@@ -961,6 +1001,7 @@ struct Pipeline {
     resolver: PrePaintTreeBuilder,
     builder: PaintLayerBuilder,
     inputs: LayoutInputTree,
+    dirty: DirtyMap,
     fragments: FragmentTree,
     pre_paint: PrePaintTree,
     layers: PaintLayerTree,
@@ -974,6 +1015,7 @@ impl Pipeline {
             .build(
                 ui,
                 &mut self.inputs,
+                &mut self.dirty,
                 BuildRequest::new(node, 16.0, VIEWPORT),
             )
             .unwrap();
@@ -982,6 +1024,7 @@ impl Pipeline {
             .build(
                 ui,
                 &self.inputs,
+                &self.dirty,
                 input_root,
                 &mut self.fragments,
                 &LayoutConstraint::new_root(VIEWPORT, 16.0),
@@ -991,6 +1034,7 @@ impl Pipeline {
             .build(
                 ui,
                 &self.inputs,
+                &self.dirty,
                 &self.fragments,
                 &UNITS,
                 &mut self.pre_paint,
@@ -1004,12 +1048,13 @@ impl Pipeline {
             .build(
                 &self.fragments,
                 &self.inputs,
+                &self.dirty,
                 &self.pre_paint,
                 &mut self.layers,
                 input_root,
             )
             .unwrap();
-        self.inputs.clear_flags(input_root);
+        self.dirty.clear(&self.inputs, input_root);
 
         layer
     }
@@ -1035,6 +1080,7 @@ impl Pipeline {
             .build(
                 &self.fragments,
                 &self.inputs,
+                &self.dirty,
                 &self.pre_paint,
                 &mut full,
                 input_root,
@@ -1069,7 +1115,8 @@ fn layers_follow_layout_changes_from_the_root() {
     // A new box starting a layer, inserted before the others.
     let added = ui.create(Node::Box, (fixed(60.0, 10.0), z(1)));
     ui.prepend(root, added);
-    p.inputs.mark_node(root, InputFlags::NEED_CHILDREN);
+    p.dirty
+        .mark_node(&p.inputs, root, InputFlags::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1084,7 +1131,8 @@ fn layers_follow_layout_changes_from_the_root() {
     // A deleted owner takes its layer along, and the nested layer of its
     // deleted descendant.
     ui.delete(group);
-    p.inputs.mark_node(root, InputFlags::NEED_CHILDREN);
+    p.dirty
+        .mark_node(&p.inputs, root, InputFlags::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1112,7 +1160,8 @@ fn layers_of_owners_losing_their_stacking_move_up_from_the_root() {
     // The group stops starting a layer, so its nested layer paints in the
     // root layer, below the sibling.
     ui.set_props(group, (ZIndex(AutoValue::Auto),));
-    p.inputs.mark_node(group, InputFlags::NEED_PRE_PAINT);
+    p.dirty
+        .mark_node(&p.inputs, group, InputFlags::NEED_PRE_PAINT);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1121,7 +1170,8 @@ fn layers_of_owners_losing_their_stacking_move_up_from_the_root() {
 
     // Starting one again takes the nested layer back.
     ui.set_props(group, (z(2),));
-    p.inputs.mark_node(group, InputFlags::NEED_PRE_PAINT);
+    p.dirty
+        .mark_node(&p.inputs, group, InputFlags::NEED_PRE_PAINT);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1146,7 +1196,8 @@ fn changed_z_indices_reorder_layers_from_the_root() {
     assert_eq!(p.children(root_layer), [first_layer, second_layer]);
 
     ui.set_props(first, (z(3),));
-    p.inputs.mark_node(first, InputFlags::NEED_PRE_PAINT);
+    p.dirty
+        .mark_node(&p.inputs, first, InputFlags::NEED_PRE_PAINT);
     assert_eq!(p.run(&ui, root), root_layer);
 
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
@@ -1176,7 +1227,8 @@ fn reordered_siblings_reorder_layers_with_equal_z_indices() {
 
     // Equal z indices paint in tree order, which follows the move.
     ui.prepend(root, boxes[2]);
-    p.inputs.mark_node(root, InputFlags::NEED_CHILDREN);
+    p.dirty
+        .mark_node(&p.inputs, root, InputFlags::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     // Every owner keeps its layer, in the new order.
@@ -1210,7 +1262,8 @@ fn reordered_boxes_reorder_the_layers_inside_them() {
     // The wrapper starts no layer, but moving it after the sibling moves the
     // layer inside it too.
     ui.append(root, wrapper);
-    p.inputs.mark_node(root, InputFlags::NEED_CHILDREN);
+    p.dirty
+        .mark_node(&p.inputs, root, InputFlags::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     let by_node = [sibling, inner].map(|node| p.layer_of(node).unwrap());
@@ -1247,7 +1300,8 @@ fn reordered_atomic_inlines_reorder_their_layers() {
     assert_eq!(p.children(root_layer), vec![first_layer, second_layer]);
 
     ui.prepend(root, second);
-    p.inputs.mark_node(root, InputFlags::NEED_CHILDREN);
+    p.dirty
+        .mark_node(&p.inputs, root, InputFlags::NEED_CHILDREN);
     assert_eq!(p.run(&ui, root), root_layer);
 
     let by_node = [second, first].map(|node| p.layer_of(node).unwrap());

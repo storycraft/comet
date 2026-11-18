@@ -1,6 +1,7 @@
 mod common;
 
 use comet_layout::{
+    dirty_map::DirtyMap,
     input::{
         InputFlags, LayoutInputKey, LayoutInputKind,
         builder::{BuildRequest, LayoutInputTreeBuilder},
@@ -28,11 +29,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } = common::sample_ui();
 
     let mut tree = LayoutInputTree::new();
+    let mut dirty = DirtyMap::new();
     let mut builder = LayoutInputTreeBuilder::new();
-    let layout_root = build(&mut builder, &ui, &mut tree, root, ROOT_FONT_SIZE)?;
+    let layout_root = build(
+        &mut builder,
+        &ui,
+        &mut tree,
+        &mut dirty,
+        root,
+        ROOT_FONT_SIZE,
+    )?;
 
     println!("Initial layout input tree (every item is flagged):");
-    print_tree(&ui, &tree, layout_root);
+    print_tree(&ui, &tree, &dirty, layout_root);
 
     // Building again only resolves the changes marked with input flags.
     // Keys are kept.
@@ -40,65 +49,94 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Text content is read by the fragment builder, not resolved into the
     // item, so only the layout flag is set and the input build skips it.
     ui.set_props(greeting, (Text("Updated greeting! ".into()),));
-    tree.clear_flags(layout_root);
-    tree.mark_node(greeting, InputFlags::NEED_FULL_LAYOUT);
-    build(&mut builder, &ui, &mut tree, root, ROOT_FONT_SIZE)?;
+    dirty.clear(&tree, layout_root);
+    dirty.mark_node(&tree, greeting, InputFlags::NEED_FULL_LAYOUT);
+    build(
+        &mut builder,
+        &ui,
+        &mut tree,
+        &mut dirty,
+        root,
+        ROOT_FONT_SIZE,
+    )?;
 
     println!(
         "
 After changing the greeting text:"
     );
-    print_tree(&ui, &tree, layout_root);
+    print_tree(&ui, &tree, &dirty, layout_root);
 
     // An inline-block becomes an atomic inline item with its own flow. Items
     // only describe their own node, so marking the changed node is enough.
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
-    tree.clear_flags(layout_root);
-    tree.mark_node(interruption, InputFlags::NEED_FULL_LAYOUT);
-    build(&mut builder, &ui, &mut tree, root, ROOT_FONT_SIZE)?;
+    dirty.clear(&tree, layout_root);
+    dirty.mark_node(&tree, interruption, InputFlags::NEED_FULL_LAYOUT);
+    build(
+        &mut builder,
+        &ui,
+        &mut tree,
+        &mut dirty,
+        root,
+        ROOT_FONT_SIZE,
+    )?;
 
     println!(
         "
 After changing the interruption to inline-block:"
     );
-    print_tree(&ui, &tree, layout_root);
+    print_tree(&ui, &tree, &dirty, layout_root);
 
     // Text styles are resolved during building and inherited from the parent
     // item. Descendants are resolved again while their styles change.
     ui.set_props(interruption, (DisplayOuter::Block, DisplayInner::Flow));
     ui.set_props(interruption, (FontSize(StyleUnit::Em(1.5)),));
-    tree.clear_flags(layout_root);
-    tree.mark_node(interruption, InputFlags::NEED_FULL_LAYOUT);
-    build(&mut builder, &ui, &mut tree, root, ROOT_FONT_SIZE)?;
+    dirty.clear(&tree, layout_root);
+    dirty.mark_node(&tree, interruption, InputFlags::NEED_FULL_LAYOUT);
+    build(
+        &mut builder,
+        &ui,
+        &mut tree,
+        &mut dirty,
+        root,
+        ROOT_FONT_SIZE,
+    )?;
 
     println!(
         "
 After restoring the block with font-size: 1.5em:"
     );
-    print_tree(&ui, &tree, layout_root);
+    print_tree(&ui, &tree, &dirty, layout_root);
 
     // Inserting a node marks its parent's child list.
     let note = ui.create(Node::Text, (Text("A new note.".into()),));
     ui.append(root, note);
-    tree.clear_flags(layout_root);
-    tree.mark_node(root, InputFlags::NEED_CHILDREN);
-    build(&mut builder, &ui, &mut tree, root, ROOT_FONT_SIZE)?;
+    dirty.clear(&tree, layout_root);
+    dirty.mark_node(&tree, root, InputFlags::NEED_CHILDREN);
+    build(
+        &mut builder,
+        &ui,
+        &mut tree,
+        &mut dirty,
+        root,
+        ROOT_FONT_SIZE,
+    )?;
 
     println!(
         "
 After appending a note:"
     );
-    print_tree(&ui, &tree, layout_root);
+    print_tree(&ui, &tree, &dirty, layout_root);
 
     // A new root font size is not tracked, so the tree is built from scratch.
     tree.clear();
-    let layout_root = build(&mut builder, &ui, &mut tree, root, 20.0)?;
+    dirty = DirtyMap::new();
+    let layout_root = build(&mut builder, &ui, &mut tree, &mut dirty, root, 20.0)?;
 
     println!(
         "
 After rebuilding with a 20px root font size:"
     );
-    print_tree(&ui, &tree, layout_root);
+    print_tree(&ui, &tree, &dirty, layout_root);
 
     Ok(())
 }
@@ -107,15 +145,21 @@ fn build(
     builder: &mut LayoutInputTreeBuilder,
     ui: &Ui,
     tree: &mut LayoutInputTree,
+    dirty: &mut DirtyMap,
     root: NodeKey,
     root_font_size: f64,
 ) -> Result<LayoutInputKey, &'static str> {
     builder
-        .build(ui, tree, BuildRequest::new(root, root_font_size, VIEWPORT))
+        .build(
+            ui,
+            tree,
+            dirty,
+            BuildRequest::new(root, root_font_size, VIEWPORT),
+        )
         .ok_or("could not build sample UI")
 }
 
-fn print_tree(ui: &Ui, tree: &LayoutInputTree, root: LayoutInputKey) {
+fn print_tree(ui: &Ui, tree: &LayoutInputTree, dirty: &DirtyMap, root: LayoutInputKey) {
     let mut pending = vec![(root, 0)];
 
     while let Some((key, depth)) = pending.pop() {
@@ -125,7 +169,11 @@ fn print_tree(ui: &Ui, tree: &LayoutInputTree, root: LayoutInputKey) {
         let indent = "  ".repeat(depth);
         println!(
             "{indent}{key:?} {:?}({:?}) children={:?} font_size={} flags={:?}",
-            item.kind, item.node, item.child_layout, item.text_style.span.font_size, item.flags
+            item.kind,
+            item.node,
+            item.child_layout,
+            item.text_style.span.font_size,
+            dirty.entry(key).flags
         );
 
         if item.kind == LayoutInputKind::Text {

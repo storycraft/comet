@@ -1,6 +1,7 @@
 use std::ops::Deref;
 
 use comet_layout::{
+    dirty_map::DirtyMap,
     fragment::{
         FragmentBox, FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree,
     },
@@ -33,6 +34,7 @@ fn size(width: f64, height: f64) -> bx::Size {
 #[derive(Default)]
 struct Layout {
     inputs: LayoutInputTree,
+    dirty: DirtyMap,
     fragments: FragmentTree,
     input_builder: LayoutInputTreeBuilder,
     builder: FragmentTreeBuilder,
@@ -54,6 +56,7 @@ impl Layout {
             .build(
                 ui,
                 &mut self.inputs,
+                &mut self.dirty,
                 BuildRequest::new(root, 16.0, VIEWPORT),
             )
             .unwrap();
@@ -62,12 +65,13 @@ impl Layout {
             .build(
                 ui,
                 &self.inputs,
+                &self.dirty,
                 key,
                 &mut self.fragments,
                 &LayoutConstraint::new_root(VIEWPORT, 16.0),
             )
             .unwrap();
-        self.inputs.clear_flags(key);
+        self.dirty.clear(&self.inputs, key);
 
         fragment
     }
@@ -384,12 +388,18 @@ fn nested_flex_and_incremental_style_changes_match_fresh_layout() {
             );
             ui.set_props(b, (flex::FlexGrow(2.0),));
             let (nested, b) = (retained.item(nested), retained.item(b));
-            retained.inputs.mark(nested, InputFlags::NEED_FULL_LAYOUT);
-            retained.inputs.mark(b, InputFlags::NEED_FULL_LAYOUT);
+            retained
+                .dirty
+                .mark(&retained.inputs, nested, InputFlags::NEED_FULL_LAYOUT);
+            retained
+                .dirty
+                .mark(&retained.inputs, b, InputFlags::NEED_FULL_LAYOUT);
         } else if step == 2 {
             ui.prepend(nested, b);
             let nested = retained.item(nested);
-            retained.inputs.mark(nested, InputFlags::NEED_CHILDREN);
+            retained
+                .dirty
+                .mark(&retained.inputs, nested, InputFlags::NEED_CHILDREN);
         }
 
         let current = retained.build(&ui, root);
@@ -533,6 +543,7 @@ fn viewport_gaps_follow_viewport_changes() {
             .build(
                 &ui,
                 &mut layout.inputs,
+                &mut layout.dirty,
                 BuildRequest::new(root, 16.0, viewport),
             )
             .unwrap();
@@ -541,12 +552,13 @@ fn viewport_gaps_follow_viewport_changes() {
             .build(
                 &ui,
                 &layout.inputs,
+                &layout.dirty,
                 key,
                 &mut layout.fragments,
                 &LayoutConstraint::new_root(viewport, 16.0).with_viewport_changed(viewport_changed),
             )
             .unwrap();
-        layout.inputs.clear_flags(key);
+        layout.dirty.clear(&layout.inputs, key);
 
         box_for(layout, fragment, b).location.x
     };

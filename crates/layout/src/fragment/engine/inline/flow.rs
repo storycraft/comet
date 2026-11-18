@@ -38,7 +38,7 @@ impl Engine<'_> {
     pub(in crate::fragment::engine) fn inline_content_dirty(&self, key: LayoutInputKey) -> bool {
         InlineEvents::new(self.tree, key).any(|op| match op {
             Op::Push(key) | Op::Text(key) | Op::Box(key) | Op::Empty(key) => {
-                content_changed(self.tree.items[key].flags)
+                content_changed(self.dirty.entry(key).flags)
             }
             Op::Block(_) | Op::Pop => false,
         })
@@ -57,11 +57,12 @@ impl Engine<'_> {
         force: bool,
     ) {
         let tree = self.tree;
+        let dirty_map = self.dirty;
         let ui = self.ui;
         // Content changes shape a run again; other flags, such as box style
         // changes of atomic inlines, only lay it out again.
-        let dirty = |key: LayoutInputKey| force || content_changed(tree.items[key].flags);
-        let flagged = |key: LayoutInputKey| force || layout_changed(tree.items[key].flags);
+        let dirty = |key: LayoutInputKey| force || content_changed(dirty_map.entry(key).flags);
+        let flagged = |key: LayoutInputKey| force || layout_changed(dirty_map.entry(key).flags);
 
         let mut runs: Vec<FragmentKey> = self
             .fragments
@@ -72,7 +73,7 @@ impl Engine<'_> {
         runs.reverse();
         self.release_children(fragment);
 
-        let owner_dirty = force || content_changed(tree.items[owner].flags);
+        let owner_dirty = force || content_changed(dirty_map.entry(owner).flags);
         // Inline elements open at the current position, which runs reopen.
         let mut open: Vec<LayoutInputKey> = Vec::new();
         let mut run = Run {

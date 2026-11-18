@@ -12,12 +12,6 @@ pub use text::{SpanStyle, TextStyle, TextStyleBits};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutInputItem {
-    /// Union of the [`Self::flags`] of every descendant. Kept on the
-    /// ancestors of an item by [`LayoutInputTree::mark`](tree::LayoutInputTree::mark),
-    /// so subtrees without the flags are skipped.
-    pub child_flags: InputFlags,
-    /// Changes of this item not consumed yet.
-    pub flags: InputFlags,
     pub kind: LayoutInputKind,
     pub node: NodeKey,
     /// Inherited text properties. Equal styles share an allocation.
@@ -45,8 +39,8 @@ pub enum ChildLayout {
 
 bitflags! {
     /// Changes of an item, set with
-    /// [`LayoutInputTree::mark`](tree::LayoutInputTree::mark) and cleared
-    /// with [`LayoutInputTree::clear_flags`](tree::LayoutInputTree::clear_flags)
+    /// [`DirtyMap::mark`](crate::dirty_map::DirtyMap::mark) and cleared
+    /// with [`DirtyMap::clear`](crate::dirty_map::DirtyMap::clear)
     /// once every step consumed them.
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
     pub struct InputFlags: u8 {

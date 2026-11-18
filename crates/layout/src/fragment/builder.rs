@@ -6,6 +6,7 @@ use super::{
     tree::FragmentTree,
 };
 use crate::{
+    dirty_map::DirtyMap,
     input::{LayoutInputKey, tree::LayoutInputTree},
     style::LayoutConstraint,
     taffy::conv,
@@ -28,9 +29,9 @@ impl FragmentTreeBuilder {
     /// Lay out `root` and update its fragments, or build them when `fragments`
     /// has none. Returns the box fragment of `root`.
     ///
-    /// Starting from `root`, flagged items are visited and laid out again.
-    /// Clean subtrees reuse their cached layouts and fragments. Flags are not
-    /// cleared; call [`LayoutInputTree::clear_flags`] after building.
+    /// Starting from `root`, items flagged in `dirty` are visited and laid out
+    /// again. Clean subtrees reuse their cached layouts and fragments. Flags
+    /// are not cleared; call [`DirtyMap::clear`] after building.
     ///
     /// `constraint` supplies the viewport and root font size used to resolve
     /// box styles, and the space available to `root`. Build the input tree again
@@ -48,6 +49,7 @@ impl FragmentTreeBuilder {
         &mut self,
         ui: &Ui,
         tree: &LayoutInputTree,
+        dirty: &DirtyMap,
         root: LayoutInputKey,
         fragments: &mut FragmentTree,
         constraint: &LayoutConstraint,
@@ -55,6 +57,7 @@ impl FragmentTreeBuilder {
         let mut engine = Engine {
             ui,
             tree,
+            dirty,
             fragments,
             fonts: &mut self.fonts,
             parley: &mut self.parley,

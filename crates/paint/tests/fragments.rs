@@ -1,5 +1,6 @@
 use anyrender::{Glyph, Paint, Scene, recording::RenderCommand};
 use comet_layout::{
+    dirty_map::DirtyMap,
     fragment::{FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
@@ -110,8 +111,14 @@ const UNITS: UnitResolveContext = LayoutConstraint::new_root(VIEWPORT, 16.0).uni
 
 fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, FragmentKey) {
     let mut inputs = LayoutInputTree::new();
+    let mut dirty = DirtyMap::new();
     let root = LayoutInputTreeBuilder::new()
-        .build(ui, &mut inputs, BuildRequest::new(node, 16.0, VIEWPORT))
+        .build(
+            ui,
+            &mut inputs,
+            &mut dirty,
+            BuildRequest::new(node, 16.0, VIEWPORT),
+        )
         .unwrap();
 
     let mut fragments = FragmentTree::new();
@@ -119,12 +126,14 @@ fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, FragmentKey)
         .build(
             ui,
             &inputs,
+            &dirty,
             root,
             &mut fragments,
             &LayoutConstraint::new_root(VIEWPORT, 16.0),
         )
         .unwrap();
-    // Flags are kept: the pre-paint resolve visits the flagged items.
+    // Flags are dropped: `draw` resolves into fresh trees, which resolve
+    // every fragment.
 
     (inputs, fragments, fragment)
 }
@@ -142,15 +151,18 @@ fn draw(
     viewport: Rect,
     scene: &mut Scene,
 ) {
+    // Fresh trees resolve every fragment, so no flags are needed.
+    let dirty = &DirtyMap::new();
     let mut pre_paint = PrePaintTree::new();
     PrePaintTreeBuilder::new()
-        .build(ui, inputs, tree, units, &mut pre_paint, root, false)
+        .build(ui, inputs, dirty, tree, units, &mut pre_paint, root, false)
         .unwrap();
     let mut layers = PaintLayerTree::new();
     let layer_root = PaintLayerBuilder::new()
         .build(
             tree,
             inputs,
+            dirty,
             &pre_paint,
             &mut layers,
             tree.items[root].source,

@@ -6,7 +6,7 @@
 //! fragment or item itself, and fragment data on its item, so any fragment can
 //! be resolved again on its own: mark its item
 //! [`InputFlags::NEED_PRE_PAINT`] with
-//! [`LayoutInputTree::mark`](comet_layout::input::tree::LayoutInputTree::mark)
+//! [`DirtyMap::mark`](comet_layout::dirty_map::DirtyMap::mark)
 //! and resolve from the root.
 //! Inherited paint styles, such as text colors, are looked up while painting
 //! instead.

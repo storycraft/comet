@@ -1,6 +1,7 @@
 mod common;
 
 use comet_layout::{
+    dirty_map::DirtyMap,
     fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
         InputFlags,
@@ -25,6 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         interruption,
     } = common::sample_ui();
     let mut inputs = LayoutInputTree::new();
+    let mut dirty = DirtyMap::new();
     let mut input_builder = LayoutInputTreeBuilder::new();
     let mut fragments = FragmentTree::new();
     let mut fragment_builder = FragmentTreeBuilder::new();
@@ -35,14 +37,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(
             &ui,
             &mut inputs,
+            &mut dirty,
             BuildRequest::new(root, ROOT_FONT_SIZE, viewport),
         )
         .ok_or("could not build sample UI")?;
     let fragment_root = fragment_builder
-        .build(&ui, &inputs, input_root, &mut fragments, &constraint)
+        .build(
+            &ui,
+            &inputs,
+            &dirty,
+            input_root,
+            &mut fragments,
+            &constraint,
+        )
         .ok_or("could not build fragments")?;
     // Flags are consumed by the fragment builder and cleared by the caller.
-    inputs.clear_flags(input_root);
+    dirty.clear(&inputs, input_root);
 
     println!("Initial fragment tree at 320px:");
     print_tree(&inputs, &fragments, fragment_root);
@@ -53,12 +63,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Updated greeting with enough text to wrap over several lines. ".into(),
         ),),
     );
-    inputs.mark_node(greeting, InputFlags::NEED_FULL_LAYOUT);
+    dirty.mark_node(&inputs, greeting, InputFlags::NEED_FULL_LAYOUT);
 
     let updated = fragment_builder
-        .build(&ui, &inputs, input_root, &mut fragments, &constraint)
+        .build(
+            &ui,
+            &inputs,
+            &dirty,
+            input_root,
+            &mut fragments,
+            &constraint,
+        )
         .ok_or("could not update fragments")?;
-    inputs.clear_flags(input_root);
+    dirty.clear(&inputs, input_root);
     assert_eq!(updated, fragment_root);
 
     println!("\nAfter changing the greeting (box fragments retained):");
@@ -68,18 +85,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // the viewport are resolved again.
     viewport = Size::new(180.0, 600.0);
     constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE).with_viewport_changed(true);
-    inputs.invalidate_viewport(input_root);
+    inputs.invalidate_viewport(&mut dirty, input_root);
     input_builder
         .build(
             &ui,
             &mut inputs,
+            &mut dirty,
             BuildRequest::new(root, ROOT_FONT_SIZE, viewport),
         )
         .ok_or("could not rebuild sample UI")?;
     let resized = fragment_builder
-        .build(&ui, &inputs, input_root, &mut fragments, &constraint)
+        .build(
+            &ui,
+            &inputs,
+            &dirty,
+            input_root,
+            &mut fragments,
+            &constraint,
+        )
         .ok_or("could not reflow fragments")?;
-    inputs.clear_flags(input_root);
+    dirty.clear(&inputs, input_root);
 
     println!("\nAfter narrowing the viewport to 180px:");
     print_tree(&inputs, &fragments, resized);
@@ -87,20 +112,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Display is resolved into the input item, so the input builder resolves
     // the marked item again and flags its new kind for the fragment builder.
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
-    inputs.mark_node(interruption, InputFlags::NEED_FULL_LAYOUT);
+    dirty.mark_node(&inputs, interruption, InputFlags::NEED_FULL_LAYOUT);
     constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE);
 
     input_builder
         .build(
             &ui,
             &mut inputs,
+            &mut dirty,
             BuildRequest::new(root, ROOT_FONT_SIZE, viewport),
         )
         .ok_or("could not merge inline span")?;
     let merged = fragment_builder
-        .build(&ui, &inputs, input_root, &mut fragments, &constraint)
+        .build(
+            &ui,
+            &inputs,
+            &dirty,
+            input_root,
+            &mut fragments,
+            &constraint,
+        )
         .ok_or("could not rebuild merged fragments")?;
-    inputs.clear_flags(input_root);
+    dirty.clear(&inputs, input_root);
 
     println!("\nAfter changing the interruption to inline-block:");
     print_tree(&inputs, &fragments, merged);
