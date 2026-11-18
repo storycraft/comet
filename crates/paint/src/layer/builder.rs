@@ -50,19 +50,22 @@ impl PaintLayerBuilder {
     /// the layers with changes are placed again. Items are visited from
     /// `root`, going into the children of an item whose
     /// [`DirtyEntry::child_bits`](comet_layout::dirty_map::DirtyEntry::child_bits)
-    /// in `dirty` have [`InputFlags::NEED_PRE_PAINT`] or
-    /// [`InputFlags::NEED_CHILDREN`].
+    /// in `dirty` have [`InputFlags::NEED_LAYER`], which the pre-paint
+    /// resolve marks on items whose fragments gained, lost or changed the z
+    /// index of their stacking context, and which
+    /// [`InputFlags::NEED_CHILDREN`] includes.
     /// The child layers of the layer enclosing an item marked
     /// [`InputFlags::NEED_CHILDREN`] are placed again, in their new order.
     /// For each item whose
     /// [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags)
-    /// have it, the [stacking](crate::pre_paint::FragmentData::stacking) of
-    /// each of its fragments is compared with the layer the fragment starts:
-    /// when it gains, loses or changes the z index of its layer, the child
-    /// layers of the layer it paints in are placed again. So are those of a
-    /// layer one of whose child layers lost its owner. Layers started by new
-    /// fragments are built, and layers whose owner no longer starts one are
-    /// deleted, their child layers moving to the layer they paint in.
+    /// have [`InputFlags::NEED_LAYER`], the
+    /// [stacking](crate::pre_paint::FragmentData::stacking) of each of its
+    /// fragments is compared with the layer the fragment starts: when it
+    /// gains, loses or changes the z index of its layer, the child layers of
+    /// the layer it paints in are placed again. So are those of a layer one
+    /// of whose child layers lost its owner. Layers started by
+    /// new fragments are built, and layers whose owner no longer starts one
+    /// are deleted, their child layers moving to the layer they paint in.
     ///
     /// Otherwise, such as on the first build or after a new root, every layer
     /// is built and layers of other fragments are deleted.
@@ -157,9 +160,8 @@ impl PaintLayerBuilder {
             }
         }
 
-        // A fragment gaining, losing or reordering its layer changes the
-        // child layers of the layer it paints in, found from the layers its
-        // ancestors started before this build.
+        // Layers are found from the layers the ancestors started before this
+        // build.
         self.items.clear();
         self.items.push(root);
 
@@ -169,7 +171,9 @@ impl PaintLayerBuilder {
             }
             let entry = dirty.entry(key);
 
-            if entry.flags.contains(InputFlags::NEED_PRE_PAINT) {
+            // `NEED_CHILDREN` includes `NEED_LAYER`, so the stacking of each
+            // fragment is compared with the layer it starts.
+            if entry.flags.contains(InputFlags::NEED_LAYER) {
                 for fragment in fragments.fragments(key) {
                     // The root layer has z index 0, whatever the root's
                     // stacking.
@@ -182,6 +186,8 @@ impl PaintLayerBuilder {
                         .layer_of(fragment)
                         .map(|layer| tree.layers[layer].z_index);
 
+                    // A fragment gaining, losing or reordering its layer
+                    // changes the child layers of the layer it paints in.
                     if stacking != current
                         && let Some(layer) = fragments
                             .items
@@ -205,11 +211,7 @@ impl PaintLayerBuilder {
                 self.dirty.push((0, layer));
             }
 
-            // A child list change alone carries no `NEED_PRE_PAINT`.
-            if entry
-                .child_bits
-                .intersects(InputFlags::NEED_PRE_PAINT | InputFlags::NEED_CHILDREN)
-            {
+            if entry.child_bits.contains(InputFlags::NEED_LAYER) {
                 self.items.extend(inputs.items.children(key));
             }
         }

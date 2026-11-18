@@ -57,7 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(
             &ui,
             &inputs,
-            &dirty,
+            &mut dirty,
             &fragments,
             &constraint.units,
             &mut pre_paint,

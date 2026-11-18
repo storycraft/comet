@@ -152,7 +152,7 @@ fn draw(
     scene: &mut Scene,
 ) {
     // Fresh trees resolve every fragment, so no flags are needed.
-    let dirty = &DirtyMap::new();
+    let dirty = &mut DirtyMap::new();
     let mut pre_paint = PrePaintTree::new();
     PrePaintTreeBuilder::new()
         .build(ui, inputs, dirty, tree, units, &mut pre_paint, root, false)

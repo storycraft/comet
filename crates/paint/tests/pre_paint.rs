@@ -104,7 +104,7 @@ impl Fixture {
         self.resolver.build(
             ui,
             &self.inputs,
-            &self.dirty,
+            &mut self.dirty,
             &self.fragments,
             &UNITS,
             &mut self.pre_paint,
@@ -1280,14 +1280,15 @@ impl Fixture {
         self.resolve(ui, root).unwrap();
     }
 
-    /// The pre-paint tree of `root`, resolved from scratch.
+    /// The pre-paint tree of `root`, resolved from scratch. Its marks go to
+    /// a copy of the flags, which are left as they are.
     fn full_resolve(&self, ui: &Ui, root: FragmentKey) -> PrePaintTree {
         let mut full = PrePaintTree::new();
         PrePaintTreeBuilder::new()
             .build(
                 ui,
                 &self.inputs,
-                &self.dirty,
+                &mut self.dirty.clone(),
                 &self.fragments,
                 &UNITS,
                 &mut full,
@@ -1510,7 +1511,7 @@ fn viewport_changes_resolve_viewport_dependent_paint_values_again() {
             .build(
                 ui,
                 &f.inputs,
-                &f.dirty,
+                &mut f.dirty,
                 &f.fragments,
                 units,
                 &mut f.pre_paint,

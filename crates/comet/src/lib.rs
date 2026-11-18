@@ -310,7 +310,7 @@ impl App {
         self.pre_paint_resolver.build(
             &self.ui,
             &self.inputs,
-            &self.dirty,
+            &mut self.dirty,
             &self.fragments,
             units,
             &mut self.pre_paint,

@@ -78,7 +78,7 @@ impl Fixture {
             .build(
                 ui,
                 &inputs,
-                &dirty,
+                &mut dirty,
                 &fragments,
                 &UNITS,
                 &mut pre_paint,
@@ -123,7 +123,7 @@ impl Fixture {
             .build(
                 ui,
                 &self.inputs,
-                &self.dirty,
+                &mut self.dirty,
                 &self.fragments,
                 &UNITS,
                 &mut self.pre_paint,
@@ -841,7 +841,7 @@ fn updates_match_full_builds() {
         .build(
             &ui,
             &f.inputs,
-            &f.dirty,
+            &mut f.dirty,
             &f.fragments,
             &UNITS,
             &mut f.pre_paint,
@@ -1034,7 +1034,7 @@ impl Pipeline {
             .build(
                 ui,
                 &self.inputs,
-                &self.dirty,
+                &mut self.dirty,
                 &self.fragments,
                 &UNITS,
                 &mut self.pre_paint,

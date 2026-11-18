@@ -65,6 +65,11 @@ impl PrePaintTreeBuilder {
     /// resolved. `dirty` is not cleared; the layer build reads it too, so
     /// call [`DirtyMap::clear`] after building layers.
     ///
+    /// Items one of whose fragments gains, loses or changes the z index of
+    /// its [stacking](crate::pre_paint::FragmentData::stacking) context are
+    /// marked [`InputFlags::NEED_LAYER`] in `dirty`, for the layer build. A
+    /// fragment without data before counts as starting none.
+    ///
     /// Changes builds cannot see, such as paint styles, must be marked.
     ///
     /// With `viewport_changed`, every item whose paint values, or those of
@@ -87,7 +92,7 @@ impl PrePaintTreeBuilder {
         &mut self,
         ui: &Ui,
         inputs: &LayoutInputTree,
-        dirty: &DirtyMap,
+        dirty: &mut DirtyMap,
         fragments: &FragmentTree,
         units: &UnitResolveContext,
         tree: &mut PrePaintTree,
@@ -163,6 +168,11 @@ impl PrePaintTreeBuilder {
         for &key in changed.iter() {
             let data = sources.resolve_fragment(key)?;
             let old = tree.fragment_mapping.get(key);
+
+            // The layers of a changed stacking context are placed again.
+            if old.and_then(|old| old.stacking) != data.stacking {
+                dirty.mark(inputs, fragments.items[key].source, InputFlags::NEED_LAYER);
+            }
 
             if old != Some(&data) {
                 tree.fragment_mapping.insert(key, data);
