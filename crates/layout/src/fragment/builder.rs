@@ -33,6 +33,12 @@ impl FragmentTreeBuilder {
     /// again. Clean subtrees reuse their cached layouts and fragments. Flags
     /// are not cleared; call [`DirtyMap::clear`] after building.
     ///
+    /// Every item one of whose fragments the build created, moved or resized
+    /// is marked
+    /// [`InputFlags::NEED_PRE_PAINT`](crate::input::InputFlags::NEED_PRE_PAINT)
+    /// in `dirty`, so later steps resolve its paint data again. Fragments
+    /// laid out again in place, such as unchanged siblings, are not marked.
+    ///
     /// `constraint` supplies the viewport and root font size used to resolve
     /// box styles, and the space available to `root`. Build the input tree again
     /// when the viewport or root font size changes. Returns `None` and deletes the retained fragments if `root`
@@ -41,15 +47,11 @@ impl FragmentTreeBuilder {
     /// Box fragments of block level and atomic inline items, and anonymous
     /// blocks of unchanged runs, keep their keys across builds. Line, inline and
     /// glyph run fragments of laid out lines are replaced.
-    ///
-    /// The fragments the build created, moved or resized are added to
-    /// [`FragmentTree::changed`], kept until
-    /// [`FragmentTree::clear_changed`].
     pub fn build(
         &mut self,
         ui: &Ui,
         tree: &LayoutInputTree,
-        dirty: &DirtyMap,
+        dirty: &mut DirtyMap,
         root: LayoutInputKey,
         fragments: &mut FragmentTree,
         constraint: &LayoutConstraint,
@@ -75,9 +77,6 @@ impl FragmentTreeBuilder {
                 engine.sweep();
             }
 
-            // Fragments listed before may be gone.
-            engine.fragments.finish_build();
-
             return None;
         }
 
@@ -91,7 +90,6 @@ impl FragmentTreeBuilder {
             }),
         );
         engine.sweep();
-        engine.fragments.finish_build();
 
         #[cfg(debug_assertions)]
         engine.check();

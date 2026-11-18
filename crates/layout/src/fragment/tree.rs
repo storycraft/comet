@@ -16,10 +16,6 @@ pub struct FragmentTree {
     /// First fragment of each item: its box, or its first inline or glyph
     /// run fragment.
     pub(crate) first: SecondaryMap<LayoutInputKey, FragmentKey>,
-    /// Fragments created, moved or resized since the last
-    /// [`Self::clear_changed`]. Deleted fragments and duplicates are dropped
-    /// once a build finishes.
-    pub(crate) changed: Vec<FragmentKey>,
 }
 
 impl FragmentTree {
@@ -55,42 +51,10 @@ impl FragmentTree {
             .or_else(|| self.get_inline(self.items.parent(key)?))
     }
 
-    /// The fragments created, moved or resized by the builds since the last
-    /// [`Self::clear_changed`], each once, sorted by key. Every key is live:
-    /// fragments deleted since they were listed, such as lines laid out
-    /// again, are left out. Changes of padding, border or baseline alone are
-    /// not recorded.
-    ///
-    /// Builds add to the list, so the next step can consume the changes of
-    /// several builds, such as after it failed. Clear it once consumed.
-    pub fn changed(&self) -> &[FragmentKey] {
-        &self.changed
-    }
-
-    /// Clear [`Self::changed`], once the next step consumed it.
-    pub fn clear_changed(&mut self) {
-        self.changed.clear();
-    }
-
     pub fn clear(&mut self) {
         self.items.clear();
         self.states.clear();
         self.first.clear();
-        self.changed.clear();
-    }
-
-    /// Record a fragment as created, moved or resized in the current build.
-    pub(crate) fn record_geometry(&mut self, key: FragmentKey) {
-        self.changed.push(key);
-    }
-
-    /// Finish the changes of a build, once the tree is final: drop the
-    /// fragments deleted since they were recorded, and the duplicates.
-    pub(crate) fn finish_build(&mut self) {
-        let items = &self.items;
-        self.changed.retain(|&key| items.get(key).is_some());
-        self.changed.sort_unstable();
-        self.changed.dedup();
     }
 
     /// Insert a box or anonymous block fragment with its layout state, linking
@@ -108,7 +72,6 @@ impl FragmentTree {
         if let Some(state) = self.states.get_mut(key) {
             state.fragment = fragment;
         }
-        self.record_geometry(fragment);
 
         fragment
     }

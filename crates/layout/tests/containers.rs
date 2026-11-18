@@ -123,7 +123,7 @@ impl Fixture {
             .build(
                 ui,
                 &self.inputs,
-                &self.dirty,
+                &mut self.dirty,
                 root,
                 &mut self.fragments,
                 &LayoutConstraint::new_root(viewport, 16.0),

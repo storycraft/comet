@@ -68,7 +68,7 @@ impl Fixture {
             .build(
                 ui,
                 &self.tree,
-                &self.dirty,
+                &mut self.dirty,
                 root,
                 &mut self.fragments,
                 &LayoutConstraint::new_root(VIEWPORT, 16.0),
@@ -222,7 +222,7 @@ fn viewport_changes_skip_cached_layouts_of_viewport_dependent_boxes() {
             .build(
                 &ui,
                 &f.tree,
-                &f.dirty,
+                &mut f.dirty,
                 input_root,
                 &mut f.fragments,
                 &LayoutConstraint::new_root(viewport, 16.0).with_viewport_changed(viewport_changed),
@@ -281,7 +281,7 @@ fn percentage_descendants_keep_fixed_size_ancestors_cached() {
             .build(
                 &ui,
                 &f.tree,
-                &f.dirty,
+                &mut f.dirty,
                 input_root,
                 &mut f.fragments,
                 &LayoutConstraint::new_root(viewport, 16.0),
@@ -331,7 +331,7 @@ fn viewport_changes_resolve_viewport_dependent_styles_again() {
             .build(
                 &ui,
                 &f.tree,
-                &f.dirty,
+                &mut f.dirty,
                 input_root,
                 &mut f.fragments,
                 &LayoutConstraint::new_root(viewport, 16.0).with_viewport_changed(viewport_changed),
@@ -389,7 +389,7 @@ fn viewport_changes_reach_boxes_inside_inline_elements() {
             .build(
                 &ui,
                 &f.tree,
-                &f.dirty,
+                &mut f.dirty,
                 input_root,
                 &mut f.fragments,
                 &LayoutConstraint::new_root(viewport, 16.0).with_viewport_changed(viewport_changed),
@@ -425,7 +425,7 @@ fn layout_at(f: &mut Fixture, ui: &Ui, root: NodeKey, width: f64) {
         .build(
             ui,
             &f.tree,
-            &f.dirty,
+            &mut f.dirty,
             input_root,
             &mut f.fragments,
             &LayoutConstraint::new_root(viewport, 16.0),
@@ -504,8 +504,48 @@ fn boxes_depending_on_the_parent_size_lay_out_again() {
     assert_eq!(width(&f), 300.0);
 }
 
+/// Lay out at `width` like [`layout_at`], and return the nodes whose items
+/// are marked [`InputFlags::NEED_PRE_PAINT`] before the flags are cleared.
+fn laid_out_at(f: &mut Fixture, ui: &Ui, root: NodeKey, width: f64) -> Vec<NodeKey> {
+    let viewport = Size::new(width, 600.0);
+    let input_root = f
+        .inputs
+        .build(
+            ui,
+            &mut f.tree,
+            &mut f.dirty,
+            BuildRequest::new(root, 16.0, viewport),
+        )
+        .unwrap();
+    f.builder
+        .build(
+            ui,
+            &f.tree,
+            &mut f.dirty,
+            input_root,
+            &mut f.fragments,
+            &LayoutConstraint::new_root(viewport, 16.0),
+        )
+        .unwrap();
+    let marked = f
+        .tree
+        .items
+        .descendants(input_root)
+        .filter(|&key| {
+            f.dirty
+                .entry(key)
+                .flags
+                .contains(InputFlags::NEED_PRE_PAINT)
+        })
+        .map(|key| f.tree.items[key].node)
+        .collect();
+    f.dirty.clear(&f.tree, input_root);
+
+    marked
+}
+
 #[test]
-fn builds_list_the_fragments_they_changed() {
+fn builds_mark_the_items_they_lay_out() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let fixed = |width, height| {
@@ -516,7 +556,6 @@ fn builds_list_the_fragments_they_changed() {
     };
     let a = ui.create(Node::Box, (fixed(100.0, 50.0),));
     let b = ui.create(Node::Box, (fixed(100.0, 50.0),));
-    let c = ui.create(Node::Box, (fixed(100.0, 50.0),));
     let paragraph = ui.create(Node::Box, ());
     let text = ui.create(
         Node::Text,
@@ -524,108 +563,72 @@ fn builds_list_the_fragments_they_changed() {
     );
     ui.append(root, a);
     ui.append(root, b);
-    ui.append(root, c);
     ui.append(root, paragraph);
     ui.append(paragraph, text);
 
     let mut f = Fixture::new();
-    let box_of = |f: &Fixture, node| {
-        f.fragments
-            .box_fragment(f.tree.item_for_node(node).unwrap())
-            .unwrap()
-    };
-    // Read and clear the changed fragments, as the next step does.
-    let changed = |f: &mut Fixture| {
-        let changed = f.fragments.changed().to_vec();
-        f.fragments.clear_changed();
-        let mut unique = changed.clone();
-        unique.sort_unstable();
-        unique.dedup();
-        assert_eq!(unique.len(), changed.len(), "listed twice: {changed:?}");
-        for &key in &changed {
-            assert!(f.fragments.items.get(key).is_some(), "deleted: {key:?}");
-        }
 
-        changed
-    };
-
-    // The first build creates every fragment.
-    layout_at(&mut f, &ui, root, 400.0);
-    let listed = changed(&mut f);
-    let root_fragment = box_of(&f, root);
-    assert_eq!(
-        listed.len(),
-        f.fragments.items.descendants(root_fragment).count()
-    );
-
-    // A narrower viewport resizes the root and the paragraph, and replaces
-    // its lines, but leaves the fixed boxes in place.
-    layout_at(&mut f, &ui, root, 120.0);
-    let listed = changed(&mut f);
-    assert!(listed.contains(&root_fragment));
-    assert!(listed.contains(&box_of(&f, paragraph)));
-    for node in [a, b, c] {
-        assert!(!listed.contains(&box_of(&f, node)));
-    }
-    let paragraph_fragment = box_of(&f, paragraph);
-    for key in f.fragments.items.descendants(paragraph_fragment).skip(1) {
-        assert!(listed.contains(&key), "replaced line part not listed");
+    // The first build lays out every item.
+    let marked = laid_out_at(&mut f, &ui, root, 400.0);
+    for node in [root, a, b, paragraph, text] {
+        assert!(marked.contains(&node), "{node:?} not marked");
     }
 
-    // Resizing the first box moves the boxes after it, unmarked.
+    // Nothing is marked in the input tree, so the marks come from the
+    // layout: a narrower viewport lays out the root and the paragraph again,
+    // and emits the lines of the text again.
+    let marked = laid_out_at(&mut f, &ui, root, 120.0);
+    for node in [root, paragraph, text] {
+        assert!(marked.contains(&node), "{node:?} not marked");
+    }
+    // The fixed boxes are laid out in place, so they are not marked.
+    for node in [a, b] {
+        assert!(!marked.contains(&node), "{node:?} marked");
+    }
+
+    // Resizing a box lays it out again.
     ui.set_props(a, (fixed(100.0, 80.0),));
     f.dirty.mark_node(&f.tree, a, InputFlags::NEED_BOX_LAYOUT);
-    layout_at(&mut f, &ui, root, 120.0);
-    let listed = changed(&mut f);
-    for node in [root, a, b, c, paragraph] {
-        assert!(listed.contains(&box_of(&f, node)), "{node:?} not listed");
-    }
-    // Moving the paragraph keeps its lines, relative to it.
-    for key in f.fragments.items.descendants(paragraph_fragment).skip(1) {
-        assert!(!listed.contains(&key));
+    let marked = laid_out_at(&mut f, &ui, root, 120.0);
+    for node in [root, a] {
+        assert!(marked.contains(&node), "{node:?} not marked");
     }
 
-    // A build without changes lists nothing.
-    layout_at(&mut f, &ui, root, 120.0);
-    assert!(changed(&mut f).is_empty());
+    // The boxes after it moved; the paragraph keeps its lines, relative to
+    // it, so the text is not marked.
+    for node in [b, paragraph] {
+        assert!(marked.contains(&node), "{node:?} not marked");
+    }
+    assert!(!marked.contains(&text));
 
-    // Changing a box's style to the same size lists nothing either.
+    // Changing a box's style to the same size marks nothing.
     f.dirty.mark_node(&f.tree, b, InputFlags::NEED_BOX_LAYOUT);
-    layout_at(&mut f, &ui, root, 120.0);
-    assert!(changed(&mut f).is_empty());
+    let marked = laid_out_at(&mut f, &ui, root, 120.0);
+    assert_eq!(marked, vec![b], "only the marked box keeps its input mark");
 
-    // Builds add to the list until it is cleared.
-    ui.set_props(b, (fixed(100.0, 60.0),));
-    f.dirty.mark_node(&f.tree, b, InputFlags::NEED_BOX_LAYOUT);
-    layout_at(&mut f, &ui, root, 120.0);
-    ui.set_props(a, (fixed(110.0, 80.0),));
-    f.dirty.mark_node(&f.tree, a, InputFlags::NEED_BOX_LAYOUT);
-    layout_at(&mut f, &ui, root, 120.0);
-    let listed = changed(&mut f);
-    assert!(listed.contains(&box_of(&f, a)));
-    assert!(listed.contains(&box_of(&f, b)));
-    assert!(changed(&mut f).is_empty());
+    // A build without changes marks nothing, the root included.
+    assert!(laid_out_at(&mut f, &ui, root, 120.0).is_empty());
 }
 
 #[test]
-fn builds_of_a_removed_root_list_nothing() {
+fn builds_of_a_removed_root_mark_nothing() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
 
     let mut f = Fixture::new();
     layout_at(&mut f, &ui, root, 400.0);
-    assert!(!f.fragments.changed().is_empty());
     let input_root = f.tree.item_for_node(root).unwrap();
 
     f.tree.delete_item(input_root);
+    let mut dirty = DirtyMap::new();
     let built = f.builder.build(
         &ui,
         &f.tree,
-        &f.dirty,
+        &mut dirty,
         input_root,
         &mut f.fragments,
         &LayoutConstraint::new_root(VIEWPORT, 16.0),
     );
     assert!(built.is_none());
-    assert!(f.fragments.changed().is_empty());
+    assert_eq!(dirty.entry(input_root), Default::default());
 }

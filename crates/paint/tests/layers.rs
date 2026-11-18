@@ -66,7 +66,7 @@ impl Fixture {
             .build(
                 ui,
                 &inputs,
-                &dirty,
+                &mut dirty,
                 input_root,
                 &mut fragments,
                 &LayoutConstraint::new_root(VIEWPORT, 16.0),
@@ -1024,7 +1024,7 @@ impl Pipeline {
             .build(
                 ui,
                 &self.inputs,
-                &self.dirty,
+                &mut self.dirty,
                 input_root,
                 &mut self.fragments,
                 &LayoutConstraint::new_root(VIEWPORT, 16.0),

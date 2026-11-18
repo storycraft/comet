@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(
             &ui,
             &inputs,
-            &dirty,
+            &mut dirty,
             input_root,
             &mut fragments,
             &constraint,
@@ -69,7 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(
             &ui,
             &inputs,
-            &dirty,
+            &mut dirty,
             input_root,
             &mut fragments,
             &constraint,
@@ -98,7 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(
             &ui,
             &inputs,
-            &dirty,
+            &mut dirty,
             input_root,
             &mut fragments,
             &constraint,
@@ -127,7 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(
             &ui,
             &inputs,
-            &dirty,
+            &mut dirty,
             input_root,
             &mut fragments,
             &constraint,

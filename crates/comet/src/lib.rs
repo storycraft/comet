@@ -261,7 +261,7 @@ impl App {
         let fragment_root = self.fragment_builder.build(
             &self.ui,
             &self.inputs,
-            &self.dirty,
+            &mut self.dirty,
             input_root,
             &mut self.fragments,
             &constraint,
@@ -271,8 +271,9 @@ impl App {
             return None;
         };
 
-        // Positions and clips follow the layout, so resolve the fragments it
-        // created, moved or resized, and those of the marked items.
+        // Positions and clips follow the layout, so resolve the fragments of
+        // the items it laid out, which it marked, and of the other marked
+        // items.
         let resolved = self.resolve_pre_paint(&constraint.units, fragment_root);
 
         // Layers keep their keys, so building from the root again only places
@@ -288,9 +289,10 @@ impl App {
             )
         });
         // Flags were consumed by the fragment build, the pre-paint resolve and
-        // the layer build.
-        self.dirty.clear(&self.inputs, input_root);
+        // the layer build. On failure they are kept, so the next layout
+        // resolves the items laid out by this one again.
         self.layer_root = Some(layer_root?);
+        self.dirty.clear(&self.inputs, input_root);
         self.viewport = Some(viewport);
 
         Some(())
@@ -298,8 +300,8 @@ impl App {
 
     /// Resolve the pre-paint tree for the fragments under `root`, with paint
     /// values using viewport units resolved again when `units` has another
-    /// viewport than the last successful resolve. Changed fragments and the
-    /// viewport are kept on failure, for the next resolve.
+    /// viewport than the last successful resolve. The viewport is kept on
+    /// failure, for the next resolve.
     fn resolve_pre_paint(&mut self, units: &UnitResolveContext, root: FragmentKey) -> Option<()> {
         let viewport_changed = self
             .pre_paint_viewport
@@ -315,7 +317,6 @@ impl App {
             root,
             viewport_changed,
         )?;
-        self.fragments.clear_changed();
         self.pre_paint_viewport = Some(units.viewport);
 
         Some(())

@@ -75,7 +75,9 @@ pub(crate) struct Scratch {
 pub(crate) struct Engine<'a> {
     pub ui: &'a Ui,
     pub tree: &'a LayoutInputTree,
-    pub dirty: &'a DirtyMap,
+    /// Input changes to consume. Items whose fragments perform layout are
+    /// marked [`InputFlags::NEED_PRE_PAINT`] in it.
+    pub dirty: &'a mut DirtyMap,
     pub fragments: &'a mut FragmentTree,
     pub fonts: &'a mut parley::FontContext,
     pub parley: &'a mut parley::LayoutContext<Option<LayoutInputKey>>,
@@ -192,6 +194,7 @@ impl Engine<'_> {
 
         self.fragments.first.insert(key, fragment);
         self.scratch.created.insert(fragment);
+        self.dirty.mark(self.tree, key, InputFlags::NEED_PRE_PAINT);
         self.propagate_bits(key, bits);
 
         fragment

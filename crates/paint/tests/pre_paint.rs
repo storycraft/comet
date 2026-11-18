@@ -64,13 +64,11 @@ impl Fixture {
         root
     }
 
-    /// Clear the input flags and the changed fragments, once the pre-paint
-    /// tree was resolved.
+    /// Clear the input flags, once the pre-paint tree was resolved.
     fn clear_flags(&mut self) {
         if let Some(input_root) = self.input_root {
             self.dirty.clear(&self.inputs, input_root);
         }
-        self.fragments.clear_changed();
     }
 
     /// Build or update the layout only, keeping the resolved pre-paint tree
@@ -90,7 +88,7 @@ impl Fixture {
             .build(
                 ui,
                 &self.inputs,
-                &self.dirty,
+                &mut self.dirty,
                 input_root,
                 &mut self.fragments,
                 &LayoutConstraint::new_root(VIEWPORT, 16.0),

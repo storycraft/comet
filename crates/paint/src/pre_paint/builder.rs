@@ -48,21 +48,18 @@ impl PrePaintTreeBuilder {
     /// Builds into `tree` the fragments that need it, and their layout input
     /// items:
     /// - fragments under `root` of items whose [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags) in `dirty` have
-    ///   [`InputFlags::NEED_PRE_PAINT`], which layout changes include, or
-    ///   which were marked with it, such as after their paint styles changed,
-    /// - fragments under `root` without data in `tree`,
-    /// - fragments that fragment builds created, moved or resized, listed by
-    ///   [`FragmentTree::changed`], wherever they are.
+    ///   [`InputFlags::NEED_PRE_PAINT`]: those the fragment builder laid
+    ///   out, those whose layout input changed, and those marked with it,
+    ///   such as after their paint styles changed,
+    /// - fragments under `root` without data in `tree`.
     ///
     /// Fragments are visited from `root`, going into the children of a
     /// fragment only when its item's
+    /// [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags) or
     /// [`DirtyEntry::child_bits`](comet_layout::dirty_map::DirtyEntry::child_bits)
     /// have [`InputFlags::NEED_PRE_PAINT`], or when it has no data in `tree`.
+    /// The former reaches the lines and anonymous blocks of a laid out box.
     /// A [cleared](PrePaintTree::clear) `tree` resolves every fragment.
-    ///
-    /// [`FragmentTree::changed`] is not cleared; call
-    /// [`FragmentTree::clear_changed`] once a build succeeds, so the next
-    /// one does not resolve those fragments again.
     ///
     /// Data only depends on the fragment or item itself, so ancestors are not
     /// resolved. `dirty` is not cleared; the layer build reads it too, so
@@ -124,20 +121,10 @@ impl PrePaintTreeBuilder {
                 items.push(fragment.source);
             }
 
-            if entry.child_bits.contains(InputFlags::NEED_PRE_PAINT) || missing {
+            // Lines and anonymous blocks carry the item of the box owning
+            // them, so the children of a flagged item are visited too.
+            if (entry.flags | entry.child_bits).contains(InputFlags::NEED_PRE_PAINT) || missing {
                 pending.extend(fragments.items.children(key));
-            }
-        }
-
-        // Fragments the layout created, moved or resized. Item data does not
-        // depend on the layout, so it is only resolved for new items.
-        for &key in fragments.changed() {
-            let fragment = fragments.items.get(key)?;
-
-            changed.push(key);
-
-            if !tree.layout_mapping.contains_key(fragment.source) {
-                items.push(fragment.source);
             }
         }
 

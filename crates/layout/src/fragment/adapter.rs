@@ -8,6 +8,7 @@ use super::{
     state::{Mode, NodeLayoutBits, NodeState},
 };
 use crate::{
+    input::InputFlags,
     style::geometry::{Point, Size},
     taffy::{conv, style::Style},
 };
@@ -264,17 +265,19 @@ impl Engine<'_> {
         };
         let location = Point::new(layout.location.x as f64, layout.location.y as f64);
         let size = Size::new(layout.size.width as f64, layout.size.height as f64);
-        let changed = fragment.layout.location != location || fragment.layout.size != size;
+        // Taffy writes the layouts of every child of a box it lays out, and of
+        // the root on every build, so only moved or resized fragments are
+        // marked for pre-paint.
+        if fragment.layout.location != location || fragment.layout.size != size {
+            self.dirty
+                .mark(self.tree, fragment.source, InputFlags::NEED_PRE_PAINT);
+        }
 
         let fragment = &mut fragment.layout;
         fragment.location = location;
         fragment.size = size;
         fragment.padding = conv::from_rect(layout.padding, f64::from);
         fragment.border = conv::from_rect(layout.border, f64::from);
-
-        if changed {
-            self.fragments.record_geometry(key);
-        }
     }
 }
 

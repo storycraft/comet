@@ -72,7 +72,7 @@ impl Fixture {
             .build(
                 ui,
                 &self.tree,
-                &self.dirty,
+                &mut self.dirty,
                 root,
                 &mut self.fragments,
                 &LayoutConstraint::new_root(viewport, 16.0),
@@ -608,7 +608,7 @@ fn removed_items_drop_their_fragments() {
         f.builder.build(
             &ui,
             &f.tree,
-            &f.dirty,
+            &mut f.dirty,
             input_root,
             &mut f.fragments,
             &LayoutConstraint::new_root(VIEWPORT, 16.0),

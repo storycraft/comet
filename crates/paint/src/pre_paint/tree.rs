@@ -17,9 +17,8 @@ use crate::pre_paint::{FragmentData, LayoutInputData};
 ///
 /// Filled by a [`PrePaintTreeBuilder`](super::builder::PrePaintTreeBuilder),
 /// which resolves the fragments of the layout input items marked
-/// [`InputFlags::NEED_PRE_PAINT`], the fragments the latest fragment build
-/// changed, listed by [`FragmentTree::changed`], and the fragments without
-/// data.
+/// [`InputFlags::NEED_PRE_PAINT`], including those the fragment builder laid
+/// out, and the fragments without data.
 /// Keys are generational, so data left behind by deleted fragments and items
 /// is never returned for the fragments and items reusing their slots, and is
 /// overwritten when those are resolved.

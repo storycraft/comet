@@ -6,7 +6,11 @@ use super::{
     super::{Engine, FragmentItem, FragmentKey, Mode, NodeState, content_changed, layout_changed},
     events::{InlineEvents, Op},
 };
-use crate::{input::LayoutInputKey, taffy::style};
+use crate::{
+    dirty_map::DirtyMap,
+    input::{InputFlags, LayoutInputKey},
+    taffy::style,
+};
 
 impl Engine<'_> {
     /// Whether block boxes interrupt the inline content of an item.
@@ -57,12 +61,7 @@ impl Engine<'_> {
         force: bool,
     ) {
         let tree = self.tree;
-        let dirty_map = self.dirty;
         let ui = self.ui;
-        // Content changes shape a run again; other flags, such as box style
-        // changes of atomic inlines, only lay it out again.
-        let dirty = |key: LayoutInputKey| force || content_changed(dirty_map.entry(key).flags);
-        let flagged = |key: LayoutInputKey| force || layout_changed(dirty_map.entry(key).flags);
 
         let mut runs: Vec<FragmentKey> = self
             .fragments
@@ -73,7 +72,7 @@ impl Engine<'_> {
         runs.reverse();
         self.release_children(fragment);
 
-        let owner_dirty = force || content_changed(dirty_map.entry(owner).flags);
+        let owner_dirty = force || content_changed(self.dirty.entry(owner).flags);
         // Inline elements open at the current position, which runs reopen.
         let mut open: Vec<LayoutInputKey> = Vec::new();
         let mut run = Run {
@@ -86,7 +85,7 @@ impl Engine<'_> {
         for op in InlineEvents::new(tree, owner) {
             match op {
                 Op::Push(key) => {
-                    run.mark(dirty(key), flagged(key));
+                    run.mark_item(self.dirty, key, force);
                     open.push(key);
                 }
                 Op::Pop => {
@@ -96,11 +95,11 @@ impl Engine<'_> {
                     run.content |= ui
                         .prop::<Text>(tree.items[key].node)
                         .is_some_and(|text| !text.0.is_empty());
-                    run.mark(dirty(key), flagged(key));
+                    run.mark_item(self.dirty, key, force);
                 }
                 Op::Box(key) | Op::Empty(key) => {
                     run.content = true;
-                    run.mark(dirty(key), flagged(key));
+                    run.mark_item(self.dirty, key, force);
                 }
                 Op::Block(key) => {
                     if run.content {
@@ -110,7 +109,10 @@ impl Engine<'_> {
                     let block = self.ensure_box(key);
                     self.fragments.items.append(fragment, block);
 
-                    let dirty = owner_dirty || open.iter().any(|&key| dirty(key));
+                    let dirty = owner_dirty
+                        || open
+                            .iter()
+                            .any(|&key| force || content_changed(self.dirty.entry(key).flags));
                     run = Run {
                         after: Some(key),
                         content: false,
@@ -161,6 +163,8 @@ impl Engine<'_> {
             }
             None => {
                 let style = style::resolve(None, &self.style_constraint(owner));
+                self.dirty
+                    .mark(self.tree, owner, InputFlags::NEED_PRE_PAINT);
                 self.fragments.insert_with_state(
                     owner,
                     |state| FragmentItem::AnonymousBlock { state },
@@ -186,8 +190,13 @@ struct Run {
 }
 
 impl Run {
-    fn mark(&mut self, dirty: bool, flagged: bool) {
-        self.dirty |= dirty;
-        self.flagged |= dirty || flagged;
+    /// Mark the run with the flags of an item in it. Content changes shape
+    /// the run again; other flags, such as box style changes of atomic
+    /// inlines, only lay it out again. `force` treats the item as changed.
+    fn mark_item(&mut self, dirty: &DirtyMap, key: LayoutInputKey, force: bool) {
+        let flags = dirty.entry(key).flags;
+
+        self.dirty |= force || content_changed(flags);
+        self.flagged |= force || content_changed(flags) || layout_changed(flags);
     }
 }

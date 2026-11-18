@@ -126,7 +126,7 @@ fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, FragmentKey)
         .build(
             ui,
             &inputs,
-            &dirty,
+            &mut dirty,
             root,
             &mut fragments,
             &LayoutConstraint::new_root(VIEWPORT, 16.0),

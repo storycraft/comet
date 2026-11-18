@@ -65,7 +65,7 @@ impl Layout {
             .build(
                 ui,
                 &self.inputs,
-                &self.dirty,
+                &mut self.dirty,
                 key,
                 &mut self.fragments,
                 &LayoutConstraint::new_root(VIEWPORT, 16.0),
@@ -552,7 +552,7 @@ fn viewport_gaps_follow_viewport_changes() {
             .build(
                 &ui,
                 &layout.inputs,
-                &layout.dirty,
+                &mut layout.dirty,
                 key,
                 &mut layout.fragments,
                 &LayoutConstraint::new_root(viewport, 16.0).with_viewport_changed(viewport_changed),
