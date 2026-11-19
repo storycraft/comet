@@ -206,6 +206,7 @@ fn filters(ui: &mut Ui, panel: NodeKey) {
 fn filter(effect: FilterEffect) -> Filter {
     Filter(Arc::new(FilterGraph::single(
         effect,
+        // TODO:: move out filter to painter
         kurbo::Rect::ZERO.inflate(f64::MAX, f64::MAX),
     )))
 }
