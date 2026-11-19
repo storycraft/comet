@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use anyrender::Paint;
 use anyrender::WindowRenderer;
-use anyrender_vello::VelloWindowRenderer;
+use anyrender_vello_cpu::VelloCpuImageRenderer;
+use softbuffer_window_renderer::SoftbufferWindowRenderer;
 use comet_layout::style::geometry::{StyleUnit, UnitResolveContext};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
@@ -60,7 +61,7 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
         cursor: None,
         hovered: None,
         win: None,
-        vello: VelloWindowRenderer::new(),
+        renderer: SoftbufferWindowRenderer::new(),
         ui_renderer: CometPainter::new(),
     })?)
 }
@@ -98,7 +99,7 @@ struct App {
     /// before, to restore once it is no longer hovered.
     hovered: Option<Hovered>,
     win: Option<Arc<Window>>,
-    vello: VelloWindowRenderer,
+    renderer: SoftbufferWindowRenderer<VelloCpuImageRenderer>,
     ui_renderer: CometPainter,
 }
 
@@ -111,10 +112,10 @@ impl ApplicationHandler for App {
         let size = win.inner_size();
 
         if size.width > 0 && size.height > 0 {
-            self.vello.resume(win.clone(), size.width, size.height, || {
+            self.renderer.resume(win.clone(), size.width, size.height, || {
                 // TODO
             });
-            self.vello.complete_resume();
+            self.renderer.complete_resume();
         }
 
         win.request_redraw();
@@ -122,7 +123,7 @@ impl ApplicationHandler for App {
     }
 
     fn suspended(&mut self, _: &ActiveEventLoop) {
-        self.vello.suspend();
+        self.renderer.suspend();
         self.win.take();
     }
 
@@ -141,13 +142,13 @@ impl ApplicationHandler for App {
                     return;
                 }
 
-                if self.vello.is_active() {
-                    self.vello.set_size(size.width, size.height);
+                if self.renderer.is_active() {
+                    self.renderer.set_size(size.width, size.height);
                 } else {
-                    self.vello.resume(win.clone(), size.width, size.height, || {
+                    self.renderer.resume(win.clone(), size.width, size.height, || {
                         // TODO
                     });
-                    self.vello.complete_resume();
+                    self.renderer.complete_resume();
                 }
 
                 win.request_redraw();
@@ -155,7 +156,7 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 let size = win.inner_size();
 
-                if size.width == 0 || size.height == 0 || !self.vello.is_active() {
+                if size.width == 0 || size.height == 0 || !self.renderer.is_active() {
                     return;
                 }
 
@@ -180,7 +181,7 @@ impl ApplicationHandler for App {
                     return;
                 };
 
-                self.vello.render(|painter| {
+                self.renderer.render(|painter| {
                     self.ui_renderer.draw(
                         &self.ui,
                         &self.inputs,

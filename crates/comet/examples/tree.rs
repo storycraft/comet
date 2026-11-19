@@ -2,8 +2,8 @@ mod common;
 
 use std::{fs, io::BufWriter};
 
-use anyrender::{ImageRenderer, PaintScene};
-use anyrender_vello::VelloImageRenderer;
+use anyrender::{AntiAliasing, ImageRenderer, PaintScene};
+use anyrender_vello_cpu::VelloCpuImageRenderer;
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -99,7 +99,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut renderer = CometPainter::new();
-    let mut image_renderer = VelloImageRenderer::new(WIDTH, HEIGHT);
+    let mut image_renderer = VelloCpuImageRenderer::new(WIDTH, HEIGHT);
     let mut data = vec![0_u8; (WIDTH * HEIGHT * 4) as usize];
     image_renderer.render(
         |scene| {
@@ -109,6 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 common::BACKGROUND,
                 None,
                 &kurbo::Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
+                AntiAliasing::Enabled
             );
             renderer.draw(
                 &ui,
