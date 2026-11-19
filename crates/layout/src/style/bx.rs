@@ -34,6 +34,16 @@ pub enum DisplayInner {
 }
 impl StyleProp for DisplayInner {}
 
+/// Containers are equal when they share the same algorithm instance.
+impl PartialEq for DisplayInner {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Container(a), Self::Container(b)) => Arc::ptr_eq(a, b),
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
+}
+
 define_style_props!(
     // Position
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
