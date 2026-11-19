@@ -11,10 +11,10 @@ comet-layout = { workspace = true }
 comet-layout-flex = { workspace = true }
 comet-paint = { workspace = true }
 
-anyrender = "0.14.0"
+anyrender = "0.15.0"
 kurbo = "0.13.1"
 peniko = "0.6.0"
-anyrender_vello = "0.15.0"
+anyrender_vello = "0.16.0"
 
 winit = { version = "0.30.12", features = ["rwh_06"] }
 

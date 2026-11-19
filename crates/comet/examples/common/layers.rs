@@ -204,7 +204,10 @@ fn filters(ui: &mut Ui, panel: NodeKey) {
 }
 
 fn filter(effect: FilterEffect) -> Filter {
-    Filter(Arc::new(FilterGraph::single(effect)))
+    Filter(Arc::new(FilterGraph::single(
+        effect,
+        kurbo::Rect::ZERO.inflate(f64::MAX, f64::MAX),
+    )))
 }
 
 /// Nested transforms multiply, and overflow clips transformed contents.
