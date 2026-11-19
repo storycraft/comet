@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use anyrender::AntiAliasing;
 use anyrender::Paint;
 use anyrender::PaintScene;
 use bytemuck::TransparentWrapper;
@@ -770,6 +771,7 @@ fn draw_box(
             &fill.0,
             None,
             &rect.to_rounded_rect(radii),
+            AntiAliasing::Enabled,
         );
     }
 
@@ -784,6 +786,7 @@ fn draw_box(
             &fill.0,
             None,
             &rect.inset(-width / 2.0).to_rounded_rect(radii),
+            AntiAliasing::Enabled,
         );
     }
 
@@ -805,6 +808,7 @@ fn draw_box(
                 data.outline_offset,
                 width,
             ),
+            AntiAliasing::Enabled,
         );
     }
 }
@@ -896,5 +900,7 @@ fn draw_glyph_run(
             x: (offset_x + glyph.x) * scale,
             y: (offset_y + glyph.y) * scale,
         }),
+        // TODO:: add aa control
+        AntiAliasing::Enabled,
     );
 }

@@ -440,7 +440,10 @@ fn clips_apply_to_descendants_in_other_layers() {
 }
 
 fn blur() -> Arc<anyrender::Filter> {
-    Arc::new(anyrender::Filter::default())
+    Arc::new(anyrender::Filter::single(
+        anyrender::filters::FilterEffect::blur(2.0),
+        Rect::ZERO,
+    ))
 }
 
 /// Layers pushed to a scene, with their alpha, transform, clip bounds rounded
