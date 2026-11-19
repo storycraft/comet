@@ -14,6 +14,7 @@ mod events;
 mod flow;
 mod shape;
 
+use parley::Alignment;
 use rustc_hash::FxHashMap;
 use taffy::{ResolveOrZero, style::CoreStyle};
 
@@ -82,8 +83,8 @@ impl Engine<'_> {
             };
 
             self.prepare(fragment, available);
-            self.break_lines(fragment, width);
-            self.align_lines(fragment);
+            let align = self.alignment(fragment);
+            self.break_lines(fragment, width, align);
             self.emit(
                 fragment,
                 taffy::Point {
@@ -122,13 +123,17 @@ impl Engine<'_> {
         self.prepare(fragment, available);
 
         let flow = match available.width {
-            taffy::AvailableSpace::Definite(width) => self.break_lines(fragment, width),
-            taffy::AvailableSpace::MaxContent => self.break_lines(fragment, f32::MAX),
+            taffy::AvailableSpace::Definite(width) => {
+                self.break_lines(fragment, width, Alignment::Start)
+            }
+            taffy::AvailableSpace::MaxContent => {
+                self.break_lines(fragment, f32::MAX, Alignment::Start)
+            }
             taffy::AvailableSpace::MinContent => {
                 // Zero width determines the intrinsic minimum. Measure height at
                 // that width so short words can share a line in the final layout.
-                let flow = self.break_lines(fragment, 0.0);
-                self.break_lines(fragment, flow.width)
+                let flow = self.break_lines(fragment, 0.0, Alignment::Start);
+                self.break_lines(fragment, flow.width, Alignment::Start)
             }
         };
 
@@ -188,27 +193,30 @@ impl Engine<'_> {
         } = &*self.fragments;
         let InlineLayout { layout, boxes, .. } = &mut *inline;
 
-        for inline_box in layout.inline_boxes_mut() {
-            let key = boxes[inline_box.id as usize];
+        let count = layout.inline_boxes().len();
+        for index in 0..count {
+            layout.edit_inline_box(index, |inline_box| {
+                let key = boxes[inline_box.id as usize];
 
-            if tree.items[key].kind != LayoutInputKind::AtomicInline {
-                continue;
-            }
+                if tree.items[key].kind != LayoutInputKind::AtomicInline {
+                    return;
+                }
 
-            let Some(state) = first
-                .get(key)
-                .and_then(|&atomic| items.get(atomic)?.item.state())
-                .and_then(|key| states.get(key))
-            else {
-                continue;
-            };
-            let layout = state.layout;
+                let Some(state) = first
+                    .get(key)
+                    .and_then(|&atomic| items.get(atomic)?.item.state())
+                    .and_then(|key| states.get(key))
+                else {
+                    return;
+                };
+                let layout = state.layout;
 
-            // Parley places the margin box; fragments retain border-box
-            // coordinates and dimensions.
-            inline_box.width = layout.size.width + layout.margin.left + layout.margin.right;
-            inline_box.height = layout.size.height + layout.margin.top + layout.margin.bottom;
-            inline_box.baseline = Some(layout.margin.top + state.baseline);
+                // Parley places the margin box; fragments retain border-box
+                // coordinates and dimensions.
+                inline_box.width = layout.size.width + layout.margin.left + layout.margin.right;
+                inline_box.height = layout.size.height + layout.margin.top + layout.margin.bottom;
+                inline_box.baseline = Some(layout.margin.top + state.baseline);
+            });
         }
 
         if let Some(state) = self.fragments.get_state_mut(fragment) {
@@ -216,14 +224,19 @@ impl Engine<'_> {
         }
     }
 
-    /// Break the lines at `max_advance`, measuring their extent and baselines.
-    fn break_lines(&mut self, fragment: FragmentKey, max_advance: f32) -> Flow {
+    /// Break the lines at `max_advance` with `align`, measuring their extent
+    /// and baselines. Alignment only moves content within lines, so measuring
+    /// passes [`Alignment::Start`].
+    fn break_lines(&mut self, fragment: FragmentKey, max_advance: f32, align: Alignment) -> Flow {
         let Some(inline) = self.fragments.get_inline_mut(fragment) else {
             return Flow {
                 width: 0.0,
                 height: 0.0,
             };
         };
+        inline
+            .layout
+            .set_alignment(align, parley::AlignmentOptions::default());
         inline.layout.break_all_lines(Some(max_advance));
 
         let mut width = 0.0f32;
@@ -246,16 +259,9 @@ impl Engine<'_> {
         }
     }
 
-    /// Align the lines by the owner's alignment. Alignment only moves content
-    /// within lines, so measuring skips it.
-    fn align_lines(&mut self, fragment: FragmentKey) {
+    /// The alignment of the lines, from the owner's text style.
+    fn alignment(&self, fragment: FragmentKey) -> Alignment {
         let owner = self.fragments.items[fragment].source;
-        let align = self.tree.items[owner].text_style.align;
-
-        if let Some(inline) = self.fragments.get_inline_mut(fragment) {
-            inline
-                .layout
-                .align(align, parley::AlignmentOptions::default());
-        }
+        self.tree.items[owner].text_style.align
     }
 }
