@@ -58,6 +58,10 @@ impl PaintHitTester {
     ///
     /// Points outside the clip of a box clipping its overflow do not hit its
     /// descendants, like the painter, and their subtrees are not searched.
+    /// Neither are the subtrees of fragments whose
+    /// [overflow](comet_layout::fragment::FragmentBox::overflow) does not
+    /// contain the point, since it covers the border boxes of every
+    /// descendant. Child layers are searched on their own.
     /// Clips of the ancestors of `root`'s owner do not apply. Line boxes and
     /// anonymous blocks are never hit, and neither are fragments whose
     /// transforms collapse them to no area.
@@ -129,7 +133,9 @@ impl PaintHitTester {
                 }
             }
 
-            if let Some(hit) = self.hit_contents(sources, owner, point) {
+            if inside_overflow(sources, owner, point)
+                && let Some(hit) = self.hit_contents(sources, owner, point)
+            {
                 return Some(hit);
             }
 
@@ -251,7 +257,7 @@ impl PaintHitTester {
                 expanded: true,
             });
 
-            if inside_clip(sources, key, point) {
+            if inside_overflow(sources, key, point) && inside_clip(sources, key, point) {
                 self.pending
                     .extend(sources.fragments.items.children(key).map(|child| Visit {
                         key: child,
@@ -263,6 +269,20 @@ impl PaintHitTester {
 
         None
     }
+}
+
+/// Whether `point`, in the local coordinates of a fragment, is inside its
+/// layout overflow, which covers the border boxes of all of its descendants:
+/// outside it, none of them is hit. Its edges count as inside, so no border
+/// box edge a descendant could be hit on is left out. Missing fragments
+/// contain every point.
+fn inside_overflow(sources: Sources<'_>, key: FragmentKey, point: Point) -> bool {
+    sources.fragments.items.get(key).is_none_or(|fragment| {
+        let overflow = fragment.layout.overflow;
+
+        (overflow.x0..=overflow.x1).contains(&point.x)
+            && (overflow.y0..=overflow.y1).contains(&point.y)
+    })
 }
 
 /// Whether `point`, in the local coordinates of a fragment, is inside the
