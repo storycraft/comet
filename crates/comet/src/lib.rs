@@ -4,7 +4,6 @@ use std::sync::Arc;
 use anyrender::Paint;
 use anyrender::WindowRenderer;
 use anyrender_vello_cpu::VelloCpuImageRenderer;
-use softbuffer_window_renderer::SoftbufferWindowRenderer;
 use comet_layout::style::geometry::{StyleUnit, UnitResolveContext};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
@@ -24,6 +23,7 @@ use comet_paint::{
 };
 use comet_tree::{node::NodeKey, ui::Ui};
 use peniko::Color;
+use softbuffer_window_renderer::SoftbufferWindowRenderer;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -112,9 +112,10 @@ impl ApplicationHandler for App {
         let size = win.inner_size();
 
         if size.width > 0 && size.height > 0 {
-            self.renderer.resume(win.clone(), size.width, size.height, || {
-                // TODO
-            });
+            self.renderer
+                .resume(win.clone(), size.width, size.height, || {
+                    // TODO
+                });
             self.renderer.complete_resume();
         }
 
@@ -145,9 +146,10 @@ impl ApplicationHandler for App {
                 if self.renderer.is_active() {
                     self.renderer.set_size(size.width, size.height);
                 } else {
-                    self.renderer.resume(win.clone(), size.width, size.height, || {
-                        // TODO
-                    });
+                    self.renderer
+                        .resume(win.clone(), size.width, size.height, || {
+                            // TODO
+                        });
                     self.renderer.complete_resume();
                 }
 

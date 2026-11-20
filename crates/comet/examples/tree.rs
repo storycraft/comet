@@ -109,7 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 common::BACKGROUND,
                 None,
                 &kurbo::Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
-                AntiAliasing::Enabled
+                AntiAliasing::Enabled,
             );
             renderer.draw(
                 &ui,
