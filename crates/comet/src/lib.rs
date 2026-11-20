@@ -6,6 +6,10 @@
 //! painted again in the next frame. Input and frame handlers are registered
 //! with [`Interactive`] and [`on_frame`].
 //!
+//! While an assistive technology is active, the window exposes an
+//! accessibility tree mirroring the layout through `accesskit_winit`.
+//! Click actions call the click handlers of the target and its ancestors.
+//!
 //! Signals are only expected to be set on the event loop thread, from
 //! handlers and bindings. Signals set from other threads do not wake the
 //! event loop.
@@ -18,6 +22,8 @@ pub mod runtime;
 use core::error::Error;
 use std::{sync::Arc, time::Instant};
 
+use accesskit::Action;
+use accesskit_winit::{Adapter, WindowEvent as AccessKitEvent};
 use anyrender::WindowRenderer;
 use anyrender_vello_cpu::VelloCpuImageRenderer;
 use comet_layout::style::geometry::Size;
@@ -27,10 +33,11 @@ use softbuffer_window_renderer::SoftbufferWindowRenderer;
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, MouseButton, WindowEvent},
-    event_loop::{ActiveEventLoop, EventLoop},
+    event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy},
     window::{Window, WindowAttributes, WindowId},
 };
 
+pub use accesskit;
 pub use comet_reactivity as reactivity;
 pub use event::{Interactive, on_frame, on_frame_while};
 pub use reactive_graph;
@@ -46,10 +53,13 @@ pub fn run(
     root: impl FnOnce(&UiCx) -> NodeKey,
 ) -> Result<(), Box<dyn Error>> {
     let ui = UiRoot::new(root);
-    let event_loop = EventLoop::new()?;
+    let event_loop = EventLoop::<accesskit_winit::Event>::with_user_event().build()?;
+    let proxy = event_loop.create_proxy();
 
     Ok(event_loop.run_app(&mut App {
         attributes,
+        proxy,
+        adapter: None,
         ui,
         pipeline: Pipeline::default(),
         cursor: None,
@@ -62,6 +72,10 @@ pub fn run(
 
 struct App {
     attributes: WindowAttributes,
+    /// Delivers accessibility events to the event loop.
+    proxy: EventLoopProxy<accesskit_winit::Event>,
+    /// Accessibility adapter of the window.
+    adapter: Option<Adapter>,
     ui: UiRoot,
     pipeline: Pipeline,
     /// Cursor position in logical units, the units of the layout.
@@ -74,12 +88,20 @@ struct App {
     renderer: SoftbufferWindowRenderer<VelloCpuImageRenderer>,
 }
 
-impl ApplicationHandler for App {
+impl ApplicationHandler<accesskit_winit::Event> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        // The adapter must be created before the window is first shown.
+        let visible = self.attributes.visible;
         let win: Arc<Window> = event_loop
-            .create_window(self.attributes.clone())
+            .create_window(self.attributes.clone().with_visible(false))
             .unwrap()
             .into();
+        self.adapter = Some(Adapter::with_event_loop_proxy(
+            event_loop,
+            &win,
+            self.proxy.clone(),
+        ));
+        win.set_visible(visible);
         let size = win.inner_size();
 
         if size.width > 0 && size.height > 0 {
@@ -94,7 +116,40 @@ impl ApplicationHandler for App {
 
     fn suspended(&mut self, _: &ActiveEventLoop) {
         self.renderer.suspend();
+        self.adapter = None;
+        self.pipeline.set_accessibility(false);
         self.win.take();
+    }
+
+    fn user_event(&mut self, _: &ActiveEventLoop, event: accesskit_winit::Event) {
+        let Some(win) = self.win.clone() else {
+            return;
+        };
+
+        if win.id() != event.window_id {
+            return;
+        }
+
+        match event.window_event {
+            // The next layout builds the whole tree, and sends it.
+            AccessKitEvent::InitialTreeRequested => {
+                self.pipeline.set_accessibility(true);
+                win.request_redraw();
+            }
+            AccessKitEvent::ActionRequested(request) => {
+                if request.action == Action::Click {
+                    let path = {
+                        let tree = self.ui.tree().borrow();
+                        let target = self
+                            .pipeline
+                            .accessibility_target(&tree, request.target_node);
+                        ancestors(&tree.ui, target)
+                    };
+                    run_click(&path);
+                }
+            }
+            AccessKitEvent::AccessibilityDeactivated => self.pipeline.set_accessibility(false),
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
@@ -104,6 +159,10 @@ impl ApplicationHandler for App {
 
         if win.id() != id {
             return;
+        }
+
+        if let Some(adapter) = &mut self.adapter {
+            adapter.process_event(&win, &event);
         }
 
         match event {
@@ -196,6 +255,12 @@ impl App {
             return;
         }
 
+        if let Some(update) = self.pipeline.take_accessibility_update(scale_factor)
+            && let Some(adapter) = &mut self.adapter
+        {
+            adapter.update_if_active(|| update);
+        }
+
         self.renderer.render(|scene| {
             self.pipeline.paint(&tree, physical, scale_factor, scene);
         });
@@ -215,11 +280,7 @@ impl App {
     /// Call the click handlers of the node under the cursor and its
     /// ancestors, innermost first.
     fn click(&mut self) {
-        let path = self.path_under_cursor();
-
-        for handler in event::click_handlers(&path) {
-            handler();
-        }
+        run_click(&self.path_under_cursor());
     }
 
     /// Call the hover handlers of the nodes the cursor left, then of those it
@@ -246,4 +307,12 @@ impl App {
 
 fn ancestors(ui: &Ui, node: Option<NodeKey>) -> Vec<NodeKey> {
     core::iter::successors(node, |&node| ui.parent(node)).collect()
+}
+
+/// Call the click handlers of `path`, a node and its ancestors, innermost
+/// first. Handlers run without borrows of the tree.
+fn run_click(path: &[NodeKey]) {
+    for handler in event::click_handlers(path) {
+        handler();
+    }
 }

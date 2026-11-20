@@ -1,8 +1,16 @@
 //! Layout and paint state of a window.
 
+use accesskit::{NodeId, TreeId, TreeInfo, TreeUpdate};
+use comet_accesskit::{
+    A11yTree, A11yTreeBuilder,
+    tree::{fragment_key, node_id},
+};
 use comet_layout::{
     fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
-    input::builder::{BuildRequest, LayoutInputTreeBuilder},
+    input::{
+        LayoutInputKey,
+        builder::{BuildRequest, LayoutInputTreeBuilder},
+    },
     style::{
         LayoutConstraint,
         geometry::{Size, UnitResolveContext},
@@ -44,6 +52,7 @@ pub(crate) struct Pipeline {
     /// Logical viewport the pre-paint tree was last resolved with, kept when
     /// a resolve fails, so the next one resolves viewport units again.
     prepaint_viewport: Option<Size<f64>>,
+    a11y: Accessibility,
 }
 
 impl Pipeline {
@@ -110,11 +119,13 @@ impl Pipeline {
                 input_root,
             )
         });
-        // Flags were consumed by the fragment build, the pre-paint resolve and
-        // the layer build. On failure they are kept, so the next layout
-        // resolves the items laid out by this one again.
+        // Flags were consumed by the fragment build, the pre-paint resolve,
+        // the layer build and the accessibility build. On failure they are
+        // kept, so the next layout resolves the items laid out by this one
+        // again.
         self.layer_root = Some(layer_root?);
-        dirty.clear(inputs, input_root);
+        self.build_accessibility(tree, input_root);
+        tree.dirty.clear(&tree.inputs, input_root);
         self.viewport = Some(viewport);
 
         Some(())
@@ -184,6 +195,109 @@ impl Pipeline {
             point,
         )?;
         let source = self.fragments.items.get(key)?.source;
+
+        Some(tree.inputs.items.get(source)?.node)
+    }
+}
+
+/// Accessibility tree of a window, built with the layout while an assistive
+/// technology is active.
+#[derive(Default)]
+pub(crate) struct Accessibility {
+    tree: A11yTree,
+    builder: A11yTreeBuilder,
+    /// Whether the platform adapter is active, so the tree is built.
+    active: bool,
+    /// Root fragment of the last successful build. `None` until one
+    /// succeeds, or after one fails.
+    root: Option<FragmentKey>,
+    /// Scale factor of the last update, applied to the root node.
+    scale_factor: Option<f64>,
+}
+
+impl Pipeline {
+    /// Start or stop building the accessibility tree. Starting builds the
+    /// whole tree with the next layout, for the adapter's initial tree.
+    pub fn set_accessibility(&mut self, active: bool) {
+        let a11y = &mut self.a11y;
+        a11y.active = active;
+        a11y.tree.clear();
+        a11y.root = None;
+        a11y.scale_factor = None;
+    }
+
+    /// Build the accessibility tree for the last layout. A failed build
+    /// starts over with the next one, which sends the whole tree again.
+    fn build_accessibility(&mut self, tree: &UiTree, root: LayoutInputKey) {
+        let a11y = &mut self.a11y;
+        if !a11y.active {
+            return;
+        }
+
+        a11y.root = a11y
+            .builder
+            .build(
+                &tree.ui,
+                &tree.inputs,
+                &tree.dirty,
+                &self.fragments,
+                &self.prepaint,
+                &mut a11y.tree,
+                root,
+            )
+            .and_then(|()| self.fragments.box_fragment(root));
+
+        if a11y.root.is_none() {
+            a11y.tree.clear();
+        }
+    }
+
+    /// The accessibility changes since the last update, with the root node
+    /// scaled from logical units to the physical pixels of `scale_factor`.
+    /// `None` while inactive or without changes.
+    pub fn take_accessibility_update(&mut self, scale_factor: f64) -> Option<TreeUpdate> {
+        let a11y = &mut self.a11y;
+        let root = a11y.root.filter(|_| a11y.active)?;
+        let root_id = node_id(root);
+        let mut nodes = a11y.tree.take_update();
+
+        // The root node carries the scale factor, so a new one updates it.
+        if a11y.scale_factor != Some(scale_factor)
+            && !nodes.iter().any(|(id, _)| *id == root_id)
+            && let Some(node) = a11y.tree.get(root)
+        {
+            nodes.push((root_id, node.node.clone()));
+        }
+        a11y.scale_factor = Some(scale_factor);
+
+        if nodes.is_empty() {
+            return None;
+        }
+
+        for (_, node) in nodes.iter_mut().filter(|(id, _)| *id == root_id) {
+            let transform = node
+                .transform()
+                .map_or(kurbo::Affine::IDENTITY, |transform| {
+                    kurbo::Affine::new(transform.as_coeffs())
+                });
+            let scaled = kurbo::Affine::scale(scale_factor) * transform;
+            node.set_transform(accesskit::Affine::new(scaled.as_coeffs()));
+        }
+
+        Some(TreeUpdate {
+            nodes,
+            // Sending it again with every update is allowed.
+            tree: Some(TreeInfo::new(root_id)),
+            tree_id: TreeId::ROOT,
+            // No focus yet.
+            focus: root_id,
+        })
+    }
+
+    /// The source node of an accessibility node, such as the target of an
+    /// action request.
+    pub fn accessibility_target(&self, tree: &UiTree, id: NodeId) -> Option<NodeKey> {
+        let source = self.fragments.items.get(fragment_key(id))?.source;
 
         Some(tree.inputs.items.get(source)?.node)
     }

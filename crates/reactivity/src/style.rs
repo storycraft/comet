@@ -108,6 +108,9 @@ pub trait Styled: Sized {
         opacity: paint::Opacity => f64;
         filter: paint::Filter => Arc<anyrender::Filter>;
         backdrop_filter: paint::BackdropFilter => Arc<anyrender::Filter>;
+
+        // Accessibility. Changes are not sent to the accessibility tree yet.
+        role: comet_accesskit::style::Role => accesskit::Role;
     }
 }
 

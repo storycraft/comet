@@ -19,6 +19,7 @@ fn app(cx: &UiCx) -> NodeKey {
     // A flex root shrinks to its content without a width; fill the window so
     // the halves below have a width to take.
     cx.div()
+        .role(Role::Main)
         .flex()
         .size(size(vw(100), auto()))
         .min_size(size(auto(), vh(100)))
@@ -55,6 +56,7 @@ fn button(cx: &UiCx, label: &str, on_click: impl Fn() + 'static) -> NodeKey {
     let (hovered, set_hovered) = signal(false);
 
     cx.div()
+        .role(Role::Button)
         .padding(axis(px(10), px(18)))
         .border_radius(all(px(8)))
         .text_color(Paint::Solid(Color::WHITE))

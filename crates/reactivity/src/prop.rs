@@ -1,5 +1,6 @@
 //! Which pipeline steps a prop change invalidates.
 
+use comet_accesskit::style as a11y;
 use comet_layout::{dirty_map::DirtyFlags, style::bx};
 use comet_layout_flex::styles as flex;
 use comet_paint::style as paint;
@@ -107,3 +108,8 @@ reactive_props!(REPAINT =>
     paint::OutlineFill,
     paint::TextColor,
 );
+
+// Read by the accessibility build, which layout flags do not reach yet: a
+// change is written into the tree, but the accessibility tree keeps the old
+// value until something else resolves the node again.
+reactive_props!(DirtyFlags::empty() => a11y::Role);

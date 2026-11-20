@@ -4,4 +4,6 @@
 pub use comet_reactivity::{ReactiveProp, prelude::*};
 pub use reactive_graph::{prelude::*, signal::signal, wrappers::read::Signal};
 
+pub use accesskit::Role;
+
 pub use crate::event::{Interactive, on_frame, on_frame_while};

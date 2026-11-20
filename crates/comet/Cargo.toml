@@ -11,6 +11,7 @@ comet-layout = { workspace = true }
 comet-layout-flex = { workspace = true }
 comet-paint = { workspace = true }
 comet-reactivity = { workspace = true }
+comet-accesskit = { workspace = true }
 
 anyrender = "0.15.0"
 kurbo = "0.13.1"
@@ -23,6 +24,9 @@ reactive_graph = { version = "0.2.16", features = ["effects"] }
 
 winit = { version = "0.30.12", features = ["rwh_06"] }
 softbuffer_window_renderer = "0.10.0"
+
+accesskit = "0.25.2"
+accesskit_winit = "0.34.2"
 
 [dev-dependencies]
 image = "0.25.8"

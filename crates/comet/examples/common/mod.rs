@@ -20,6 +20,7 @@ pub const MUTED: Color = Color::from_rgb8(97, 109, 128);
 
 pub fn sample_ui(cx: &UiCx) -> NodeKey {
     cx.div()
+        .role(Role::Main)
         .fill(solid(BACKGROUND))
         .text_color(solid(Color::from_rgb8(36, 46, 63)))
         .font_size(px(16))
@@ -27,6 +28,7 @@ pub fn sample_ui(cx: &UiCx) -> NodeKey {
         .min_size(size(auto(), vh(100)))
         .children(|cx| {
             cx.div()
+                .role(Role::Heading)
                 .font_size(px(28))
                 .font_weight(parley::FontWeight::BOLD)
                 .children(|cx| cx.text("Comet / layout & text").build());
@@ -142,6 +144,7 @@ fn typography_sample(cx: &UiCx) -> NodeKey {
                 });
 
             cx.div()
+                .role(Role::Code)
                 .font(parley::FontFamily::from("monospace"))
                 .font_size(px(14))
                 .padding(axis(px(8), px(10)))
@@ -172,6 +175,7 @@ fn typography_sample(cx: &UiCx) -> NodeKey {
 /// A section of the sample, with a heading above `body`.
 fn panel(cx: &UiCx, label: &str, color: Color, body: impl FnOnce(&UiCx)) -> NodeKey {
     cx.div()
+        .role(Role::Section)
         .fill(solid(color))
         .border_radius(all(px(12)))
         .padding(all(px(16)))
@@ -180,6 +184,7 @@ fn panel(cx: &UiCx, label: &str, color: Color, body: impl FnOnce(&UiCx)) -> Node
         .min_size(size(px(0), auto()))
         .children(|cx| {
             cx.div()
+                .role(Role::Heading)
                 .font_size(px(14))
                 .font_weight(parley::FontWeight::SEMI_BOLD)
                 .text_color(solid(MUTED))

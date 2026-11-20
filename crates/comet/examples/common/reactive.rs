@@ -49,6 +49,7 @@ fn counter(cx: &UiCx) {
 
     // Progress through the steps, starting over once full.
     cx.div()
+        .role(Role::ProgressIndicator)
         .size(size(auto(), px(10)))
         .margin(sides(px(10), px(0), px(0), px(0)))
         .fill(solid(Color::from_rgb8(255, 226, 204)))
@@ -115,6 +116,7 @@ fn button(cx: &UiCx, label: Signal<String>, on_click: impl Fn() + 'static) -> No
     let (hovered, set_hovered) = signal(false);
 
     cx.div()
+        .role(Role::Button)
         .padding(axis(px(8), px(16)))
         .border_radius(all(px(8)))
         .text_color(solid(Color::WHITE))
