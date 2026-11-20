@@ -24,6 +24,8 @@ use kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii};
 pub struct LayoutInputData {
     /// Axes the item clips its overflow on. Each box fragment of the item
     /// clips its contents to its own border box; other fragments do not clip.
+    /// Hiding or scrolling the overflow on one axis clips both, while
+    /// `Overflow::Clip` only clips its own axis.
     pub clip: (bool, bool),
 
     /// Width of the outline drawn around the item's fragments, resolved from

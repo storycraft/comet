@@ -31,6 +31,8 @@ pub struct PrePaintTree {
     /// so the map is sparse. Keyed by item, since the fragments of an item
     /// share its props, and line fragments are replaced by layouts.
     pub(super) viewport_dependents: SparseSecondaryMap<LayoutInputKey, ()>,
+    /// See [`Self::ink_margin`].
+    pub(super) ink_margin: f64,
 }
 
 impl PrePaintTree {
@@ -54,10 +56,24 @@ impl PrePaintTree {
         self.viewport_dependents.contains_key(key)
     }
 
+    /// How far, in logical units, any fragment may paint outside its border
+    /// box: the widest outline reach, past its offset, and the largest font
+    /// size, which bounds glyph ink overhanging a line box by one em.
+    ///
+    /// It is the largest value of every item resolved since the tree was
+    /// [cleared](Self::clear), so it only grows: an item no longer painting
+    /// as far keeps it. Painting skips subtrees whose
+    /// [overflow](comet_layout::fragment::FragmentBox::overflow), grown by it,
+    /// is outside the viewport.
+    pub fn ink_margin(&self) -> f64 {
+        self.ink_margin
+    }
+
     pub fn clear(&mut self) {
         self.fragment_mapping.clear();
         self.layout_mapping.clear();
         self.viewport_dependents.clear();
+        self.ink_margin = 0.0;
     }
 
     /// Whether `point`, in the local coordinates of a fragment, hits the

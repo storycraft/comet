@@ -148,8 +148,12 @@ impl CometPainter {
     ///
     /// Fragments painting entirely outside `viewport`, in physical pixels, or
     /// outside their clip are skipped. Fragments touching their edges are
-    /// painted. Their descendants are still painted, since children may paint
-    /// outside their parents.
+    /// painted. Their descendants are skipped with them only when the
+    /// fragment's [overflow](comet_layout::fragment::FragmentBox::overflow),
+    /// grown by the pre-paint tree's
+    /// [ink margin](PrePaintTree::ink_margin), is outside too, since children
+    /// may paint outside their parents. Child layers are visited on their own,
+    /// so they paint wherever their transforms place them.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
@@ -295,7 +299,9 @@ impl CometPainter {
             self.draw_child(sources, child, owner, transforms, clip, scene);
         }
 
-        self.draw_contents(sources, owner, transforms, clip, scene);
+        if subtree_visible(sources, fragment, transforms, clip) {
+            self.draw_contents(sources, owner, transforms, clip, scene);
+        }
 
         for child in sources.layers.layers.cursor(non_negative) {
             self.draw_child(sources, child, owner, transforms, clip, scene);
@@ -430,6 +436,11 @@ impl CometPainter {
 
             let transforms = parent.then(own);
             self.draw_fragment(sources, key, transforms, inline_owner, clip, scene);
+
+            // Nothing below paints in view: skip the whole subtree.
+            if !subtree_visible(sources, fragment, transforms, clip) {
+                continue;
+            }
 
             // A clipping fragment clips its descendants, not itself.
             let (child_clip, clipped) = push_clip(sources, key, fragment, transforms, clip, scene);
@@ -584,6 +595,24 @@ impl CometPainter {
             }
         }
     }
+}
+
+/// Whether a fragment's descendants may paint inside the viewport and
+/// `clip`: whether its layout overflow, grown by the farthest any fragment
+/// paints outside its border box, overlaps them. `transforms` maps its local
+/// coordinates to the scene.
+fn subtree_visible(
+    sources: Sources<'_>,
+    fragment: &Fragment,
+    transforms: Transforms,
+    clip: Option<Rect>,
+) -> bool {
+    let margin = sources.pre_paint.ink_margin();
+    let bounds = transforms
+        .transform
+        .transform_rect_bbox(fragment.layout.overflow.inflate(margin, margin));
+
+    bounds.overlaps(sources.viewport) && clip.is_none_or(|clip| bounds.overlaps(clip))
 }
 
 /// Push the clip a fragment applies to its descendants, if it clips its

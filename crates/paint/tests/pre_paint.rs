@@ -1583,3 +1583,41 @@ fn font_size_changes_resolve_em_paint_values_again() {
     assert_eq!(f.data(rounded).outline_width, 4.0);
     f.assert_matches_full_resolve(&ui, fragment_root);
 }
+
+#[test]
+fn hiding_overflow_on_one_axis_clips_both() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let scroller = ui.create(
+        Node::Box,
+        (bx::Overflow(LayoutPoint::new(
+            Overflow::Hidden,
+            Overflow::Visible,
+        )),),
+    );
+    let scrolled = ui.create(
+        Node::Box,
+        (bx::Overflow(LayoutPoint::new(
+            Overflow::Visible,
+            Overflow::Scroll,
+        )),),
+    );
+    let clipped = ui.create(
+        Node::Box,
+        (bx::Overflow(LayoutPoint::new(
+            Overflow::Visible,
+            Overflow::Clip,
+        )),),
+    );
+    ui.append(root, scroller);
+    ui.append(root, scrolled);
+    ui.append(root, clipped);
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    // Like Taffy's layout overflow, which they bound.
+    assert_eq!(f.clip(scroller), (true, true));
+    assert_eq!(f.clip(scrolled), (true, true));
+    assert_eq!(f.clip(clipped), (false, true));
+}

@@ -9,13 +9,14 @@ use comet_layout::{
     style::{
         LayoutConstraint, bx,
         geometry::{AutoValue, Rect as LayoutRect, Size, StyleUnit, UnitResolveContext},
+        taffy::Position,
     },
 };
 use comet_paint::{
     layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     pre_paint::{builder::PrePaintTreeBuilder, tree::PrePaintTree},
-    style::{BorderFill, BorderRadius, Fill, TextColor},
+    style::{BorderFill, BorderRadius, Fill, OutlineFill, OutlineWidth, TextColor},
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
@@ -679,4 +680,150 @@ fn skips_fragments_outside_viewport_but_paints_their_overflowing_children() {
     );
 
     assert_eq!(fills(&culled), [(Rect::new(0.0, 0.0, 120.0, 40.0), blue)]);
+}
+
+fn px(value: f64) -> AutoValue<StyleUnit> {
+    AutoValue::Value(StyleUnit::Px(value))
+}
+
+fn fixed(width: f64, height: f64) -> bx::Size {
+    bx::Size(Size::new(px(width), px(height)))
+}
+
+fn inset(top: AutoValue<StyleUnit>, left: AutoValue<StyleUnit>) -> bx::Inset {
+    bx::Inset(LayoutRect::new_invidiual(
+        top,
+        AutoValue::Auto,
+        AutoValue::Auto,
+        left,
+    ))
+}
+
+fn paint(ui: &Ui, node: NodeKey) -> Scene {
+    let (inputs, tree, root) = build(ui, node);
+    let mut scene = Scene::new();
+    draw(
+        &mut CometPainter::new(),
+        ui,
+        &inputs,
+        &tree,
+        root,
+        &UNITS,
+        SCENE_VIEWPORT,
+        &mut scene,
+    );
+    scene
+}
+
+#[test]
+fn paints_descendants_moved_into_view_from_a_box_below_it() {
+    let mut ui = Ui::new();
+    let blue = Color::from_rgb8(20, 20, 200);
+    let green = Color::from_rgb8(20, 200, 20);
+    let root = ui.create(Node::Box, ());
+    // Below the 400px viewport, and so are its own fills.
+    let below = ui.create(
+        Node::Box,
+        (
+            fixed(120.0, 50.0),
+            bx::Margin(LayoutRect::new_invidiual(
+                px(500.0),
+                px(0.0),
+                px(0.0),
+                px(0.0),
+            )),
+        ),
+    );
+    let offscreen = ui.create(Node::Box, (fixed(10.0, 10.0), Fill(Paint::Solid(blue))));
+    // Moved up into view.
+    let shifted = ui.create(
+        Node::Box,
+        (
+            fixed(10.0, 10.0),
+            inset(px(-300.0), AutoValue::Auto),
+            Fill(Paint::Solid(green)),
+        ),
+    );
+    ui.append(root, below);
+    ui.append(below, offscreen);
+    ui.append(below, shifted);
+
+    assert_eq!(
+        fills(&paint(&ui, root)),
+        [(Rect::new(0.0, 210.0, 10.0, 220.0), green)]
+    );
+}
+
+#[test]
+fn paints_hoisted_boxes_positioned_into_view_past_boxes_below_it() {
+    let mut ui = Ui::new();
+    let green = Color::from_rgb8(20, 200, 20);
+    let root = ui.create(Node::Box, ());
+    // Static, so the root positions the absolute box inside it.
+    let below = ui.create(
+        Node::Box,
+        (
+            bx::Position(Position::Static),
+            fixed(120.0, 50.0),
+            bx::Margin(LayoutRect::new_invidiual(
+                px(500.0),
+                px(0.0),
+                px(0.0),
+                px(0.0),
+            )),
+        ),
+    );
+    let inner = ui.create(
+        Node::Box,
+        (bx::Position(Position::Static), fixed(120.0, 50.0)),
+    );
+    let abs = ui.create(
+        Node::Box,
+        (
+            bx::Position(Position::Absolute),
+            inset(px(5.0), px(7.0)),
+            fixed(10.0, 10.0),
+            Fill(Paint::Solid(green)),
+        ),
+    );
+    ui.append(root, below);
+    ui.append(below, inner);
+    ui.append(inner, abs);
+
+    assert_eq!(
+        fills(&paint(&ui, root)),
+        [(Rect::new(7.0, 5.0, 17.0, 15.0), green)]
+    );
+}
+
+#[test]
+fn paints_outlines_of_descendants_reaching_into_view() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    // Starts 2px below the viewport.
+    let below = ui.create(
+        Node::Box,
+        (
+            fixed(120.0, 50.0),
+            bx::Margin(LayoutRect::new_invidiual(
+                px(402.0),
+                px(0.0),
+                px(0.0),
+                px(0.0),
+            )),
+        ),
+    );
+    let outlined = ui.create(
+        Node::Box,
+        (
+            fixed(10.0, 10.0),
+            OutlineWidth(StyleUnit::Px(4.0)),
+            OutlineFill(Paint::Solid(Color::BLACK)),
+        ),
+    );
+    ui.append(root, below);
+    ui.append(below, outlined);
+
+    // The outline reaches 4px above its box, into view.
+    assert_eq!(strokes(&paint(&ui, root)).len(), 1);
 }
