@@ -41,13 +41,10 @@ impl Engine<'_> {
             first,
             ..
         } = &mut *self.fragments;
-        let Some(InlineLayout { layout, boxes, .. }) = items[fragment]
+        let InlineLayout { layout, boxes, .. } = items[fragment]
             .item
             .state()
-            .and_then(|key| states.get(key)?.inline.as_deref())
-        else {
-            return None;
-        };
+            .and_then(|key| states.get(key)?.inline.as_deref())?;
 
         let mut emitter = Emitter {
             tree: self.tree,
