@@ -19,7 +19,7 @@ use comet_layout::{
 use comet_layout_flex::styles::Gap;
 use comet_paint::style::TextColor;
 use comet_reactivity::{
-    PropFlags, UiCx, UiTree,
+    PropHint, UiCx, UiTree,
     prelude::{FlexStyled, Styled, auto, axis, percent, px, vh},
 };
 use comet_tree::node::{Node, NodeKey, Text};
@@ -93,7 +93,7 @@ impl Layout {
 }
 
 /// The flags recorded for `node` since the changes were last taken.
-fn flags(tree: &UiTree, node: NodeKey) -> PropFlags {
+fn flags(tree: &UiTree, node: NodeKey) -> PropHint {
     tree.changes().get(&node).copied().unwrap_or_default()
 }
 
@@ -130,7 +130,7 @@ async fn builds_nodes_with_initial_values() {
             .collect();
         assert_eq!(texts, ["a", "b"]);
         // Initial values are not changes: only the new children are.
-        assert_eq!(flags(&tree, root), PropFlags::CHILDREN);
+        assert_eq!(flags(&tree, root), PropHint::CHILDREN);
         assert!(children.iter().all(|&child| flags(&tree, child).is_empty()));
     })
     .await;
@@ -171,7 +171,7 @@ async fn bindings_write_changes_and_mark_flags() {
                 *tree.ui.prop::<TextColor>(text).unwrap(),
                 TextColor(paint(255))
             );
-            assert_eq!(flags(&tree, text), PropFlags::RENDER);
+            assert_eq!(flags(&tree, text), PropHint::RENDER);
             assert!(flags(&tree, text).layout().is_empty());
             tree.take_changes().for_each(drop);
         }
@@ -180,14 +180,14 @@ async fn bindings_write_changes_and_mark_flags() {
         set_pad.set(8.0);
         set_red.set(0);
         settle().await;
-        assert_eq!(flags(&tree.borrow(), root), PropFlags::BOX_LAYOUT);
+        assert_eq!(flags(&tree.borrow(), root), PropHint::BOX_LAYOUT);
         set_size.set(20.0);
         settle().await;
         assert_eq!(
             flags(&tree.borrow(), root),
-            PropFlags::FULL_LAYOUT | PropFlags::BOX_LAYOUT
+            PropHint::FULL_LAYOUT | PropHint::BOX_LAYOUT
         );
-        assert_eq!(flags(&tree.borrow(), text), PropFlags::RENDER);
+        assert_eq!(flags(&tree.borrow(), text), PropHint::RENDER);
         assert_eq!(tree.borrow_mut().take_changes().count(), 2);
 
         // Equal values are skipped.
@@ -232,7 +232,7 @@ async fn text_changes_relayout() {
 
         set_label.set("a much longer label".to_owned());
         settle().await;
-        assert_eq!(flags(&tree.borrow(), badge), PropFlags::empty());
+        assert_eq!(flags(&tree.borrow(), badge), PropHint::empty());
         layout.layout(&mut tree.borrow_mut(), root);
         let long = width(&layout);
 
@@ -351,7 +351,7 @@ async fn accessibility_changes_are_not_layout_changes() {
             *tree.ui.prop::<Role>(root).unwrap(),
             Role(accesskit::Role::Link)
         );
-        assert_eq!(flags(&tree, root), PropFlags::A11Y);
+        assert_eq!(flags(&tree, root), PropHint::A11Y);
         assert!(flags(&tree, root).layout().is_empty());
     })
     .await;

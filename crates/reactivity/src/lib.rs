@@ -17,6 +17,6 @@ pub mod style;
 pub mod tree;
 
 pub use cx::{NodeBuild, UiCx};
-pub use prop::{PropFlags, ReactiveProp};
+pub use prop::{PropHint, ReactiveProp};
 pub use style::{FlexStyled, Styled};
 pub use tree::UiTree;

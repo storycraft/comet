@@ -15,7 +15,7 @@ bitflags! {
     /// [`Self::A11Y`]: the accessibility build follows the layout's own
     /// flags, so it is only for changes the layout does not see.
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-    pub struct PropFlags: u8 {
+    pub struct PropHint: u8 {
         /// Painted again.
         const RENDER = 1 << 0;
         /// Its fragments are pre-painted again.
@@ -31,7 +31,7 @@ bitflags! {
     }
 }
 
-impl PropFlags {
+impl PropHint {
     /// The flags to mark on the node's layout item. Empty when the layout
     /// has nothing to do.
     pub const fn layout(self) -> DirtyFlags {
@@ -59,19 +59,19 @@ impl PropFlags {
 /// out item is pre-painted again, and the pre-paint step marks layers itself.
 pub trait ReactiveProp: StyleProp + PartialEq {
     /// Flags recorded for the node when the prop changes.
-    const DIRTY: PropFlags;
+    const HINT: PropHint;
 }
 
-const FULL: PropFlags = PropFlags::FULL_LAYOUT;
-const BOX: PropFlags = PropFlags::BOX_LAYOUT;
-const PRE_PAINT: PropFlags = PropFlags::PRE_PAINT;
-const REPAINT: PropFlags = PropFlags::RENDER;
-const A11Y: PropFlags = PropFlags::A11Y;
+const FULL: PropHint = PropHint::FULL_LAYOUT;
+const BOX: PropHint = PropHint::BOX_LAYOUT;
+const PRE_PAINT: PropHint = PropHint::PRE_PAINT;
+const REPAINT: PropHint = PropHint::RENDER;
+const A11Y: PropHint = PropHint::A11Y;
 
 macro_rules! reactive_props {
     ($flags:expr => $($ty:ty),* $(,)?) => {
         $(impl ReactiveProp for $ty {
-            const DIRTY: PropFlags = $flags;
+            const HINT: PropHint = $flags;
         })*
     };
 }

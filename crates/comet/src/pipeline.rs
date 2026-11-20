@@ -24,7 +24,7 @@ use comet_paint::{
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
 };
-use comet_reactivity::{PropFlags, UiTree};
+use comet_reactivity::{PropHint, UiTree};
 use comet_tree::{node::NodeKey, ui::Ui};
 
 /// Font size of the root element, used for `rem`.
@@ -74,7 +74,7 @@ impl Pipeline {
                 self.dirty.mark_node(&self.inputs, node, layout);
             }
 
-            if flags.contains(PropFlags::A11Y) && self.a11y.active {
+            if flags.contains(PropHint::A11Y) && self.a11y.active {
                 self.a11y.marks.push(node);
             }
         }

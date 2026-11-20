@@ -1,7 +1,7 @@
 use comet_tree::{node::NodeKey, ui::Ui};
 use rustc_hash::FxHashMap;
 
-use crate::prop::{PropFlags, ReactiveProp};
+use crate::prop::{PropHint, ReactiveProp};
 
 /// A [`Ui`] with the changes made to it since they were last taken. Shared
 /// as `Rc<RefCell<UiTree>>` between the application, which takes the
@@ -15,7 +15,7 @@ pub struct UiTree {
     pub ui: Ui,
     /// Flags of the nodes changed since the last
     /// [`take_changes`](Self::take_changes).
-    changes: FxHashMap<NodeKey, PropFlags>,
+    changes: FxHashMap<NodeKey, PropHint>,
 }
 
 impl UiTree {
@@ -25,17 +25,17 @@ impl UiTree {
 
     /// The nodes changed since the changes were last taken, with what their
     /// changes invalidate. Nodes may have been removed since.
-    pub fn changes(&self) -> &FxHashMap<NodeKey, PropFlags> {
+    pub fn changes(&self) -> &FxHashMap<NodeKey, PropHint> {
         &self.changes
     }
 
     /// Take the changes, for the consumer to process them.
-    pub fn take_changes(&mut self) -> impl Iterator<Item = (NodeKey, PropFlags)> + '_ {
+    pub fn take_changes(&mut self) -> impl Iterator<Item = (NodeKey, PropHint)> + '_ {
         self.changes.drain()
     }
 
     /// Record `flags` for `node`, adding them to its earlier flags.
-    pub fn mark(&mut self, node: NodeKey, flags: PropFlags) {
+    pub fn mark(&mut self, node: NodeKey, flags: PropHint) {
         if !flags.is_empty() {
             *self.changes.entry(node).or_default() |= flags;
         }
@@ -54,7 +54,7 @@ impl UiTree {
         }
 
         self.ui.set_props(node, (prop,));
-        self.mark(node, P::DIRTY);
+        self.mark(node, P::HINT);
 
         true
     }

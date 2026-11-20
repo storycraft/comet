@@ -16,7 +16,7 @@ use reactive_graph::{
 };
 
 use crate::{
-    prop::{PropFlags, ReactiveProp},
+    prop::{PropHint, ReactiveProp},
     tree::UiTree,
 };
 
@@ -185,7 +185,7 @@ impl<'a> NodeBuild<'a> {
         if let Some(parent) = self.cx.parent {
             tree.ui.append(parent, key);
             // New children are built with the parent's children.
-            tree.mark(parent, PropFlags::CHILDREN);
+            tree.mark(parent, PropHint::CHILDREN);
         }
 
         key
