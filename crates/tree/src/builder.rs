@@ -5,11 +5,11 @@
 //! [`NodeBuilder`] first, then insert the [`BuiltNode`] at once with
 //! [`Ui::create_prebuilt`](crate::ui::Ui::create_prebuilt).
 
-use hecs::{BuiltEntity, DynamicBundle, EntityBuilder};
+use hecs::{BuiltEntity, EntityBuilder};
 
 use crate::{
     node::{Node, NodeKey},
-    style::StyleProp,
+    style::{StyleProp, StyleProps},
     ui::UiNode,
 };
 
@@ -29,7 +29,8 @@ impl NodeBuilder {
         self
     }
 
-    pub(crate) fn add_bundle(&mut self, props: impl DynamicBundle) -> &mut Self {
+    /// Add several props, replacing earlier ones of the same types.
+    pub fn add_bundle(&mut self, props: impl StyleProps) -> &mut Self {
         self.0.add_bundle(props);
         self
     }
