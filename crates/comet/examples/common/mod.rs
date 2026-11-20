@@ -175,7 +175,7 @@ fn panel(cx: &UiCx, label: &str, color: Color, body: impl FnOnce(&UiCx)) -> Node
         .fill(solid(color))
         .border_radius(all(px(12)))
         .padding(all(px(16)))
-        .flex_basis(AutoValue::from(px(420)))
+        .flex_basis(AutoValue::from(px(256)))
         .flex_grow(1.0)
         .min_size(size(px(0), auto()))
         .children(|cx| {
