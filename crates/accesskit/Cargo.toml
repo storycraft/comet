@@ -7,5 +7,13 @@ license.workspace = true
 
 [dependencies]
 comet-layout = { workspace = true }
+comet-paint = { workspace = true }
+comet-tree = { workspace = true }
 
 accesskit = "0.25.2"
+bitflags = "2.10.0"
+parley = "0.13.0"
+slotmap = "1.1.1"
+
+[dev-dependencies]
+kurbo = "0.13.1"

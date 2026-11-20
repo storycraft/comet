@@ -435,7 +435,13 @@ name = "comet-accesskit"
 version = "0.1.0"
 dependencies = [
  "accesskit",
+ "bitflags 2.13.2",
  "comet-layout",
+ "comet-paint",
+ "comet-tree",
+ "kurbo",
+ "parley",
+ "slotmap",
 ]
 
 [[package]]
