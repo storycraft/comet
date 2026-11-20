@@ -10,6 +10,7 @@
 //! left to the application.
 
 pub mod cx;
+pub mod prelude;
 pub mod prop;
 pub mod style;
 pub mod tree;

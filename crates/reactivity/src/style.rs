@@ -6,7 +6,7 @@
 //!
 //! ```ignore
 //! cx.div()
-//!     .padding(Rect::new_all(StyleUnit::Px(8.0)))
+//!     .padding(all(px(8)))
 //!     .fill(Signal::derive(move || if hovered.get() { dark } else { light }))
 //!     .build()
 //! ```

@@ -1,14 +1,22 @@
 //! Minimal winit integration for the examples: sets up `reactive_graph`,
 //! opens a window, lays out and paints the tree, and dispatches clicks and
 //! hovers to handlers registered with [`on_click`] and [`on_hover`].
+//! Handlers registered with [`on_frame`] run before every frame, and keep
+//! frames coming, for animations.
 //!
 //! Bindings re-run as local tasks on a `futures` `LocalPool`, polled after
-//! every batch of window events. Signals here are only set from window
-//! events, so that is enough; signals set from other threads would also need
-//! to wake the event loop.
+//! every batch of window events and before every frame. Signals here are only
+//! set from window events and frame handlers, so that is enough; signals set
+//! from other threads would also need to wake the event loop.
 
 use core::error::Error;
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    rc::Rc,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use any_spawner::{CustomExecutor, Executor, PinnedFuture, PinnedLocalFuture};
 use anyrender::WindowRenderer;
@@ -49,6 +57,7 @@ thread_local! {
 struct Handlers {
     click: HashMap<NodeKey, Rc<dyn Fn()>>,
     hover: HashMap<NodeKey, Rc<dyn Fn(bool)>>,
+    frame: Vec<Rc<dyn Fn(Duration)>>,
 }
 
 /// Call `handler` when `node` or one of its descendants is clicked.
@@ -60,6 +69,12 @@ pub fn on_click(node: NodeKey, handler: impl Fn() + 'static) {
 /// and its descendants.
 pub fn on_hover(node: NodeKey, handler: impl Fn(bool) + 'static) {
     HANDLERS.with_borrow_mut(|handlers| handlers.hover.insert(node, Rc::new(handler)));
+}
+
+/// Call `handler` before every frame with the time since the window opened.
+/// Frames are drawn continuously while a frame handler is registered.
+pub fn on_frame(handler: impl Fn(Duration) + 'static) {
+    HANDLERS.with_borrow_mut(|handlers| handlers.frame.push(Rc::new(handler)));
 }
 
 /// Build the UI with `root` and show it in a window until it is closed.
@@ -79,6 +94,7 @@ pub fn run(title: &str, root: impl FnOnce(&UiCx) -> NodeKey) -> Result<(), Box<d
         pipeline: Pipeline::default(),
         cursor: None,
         hovered: Vec::new(),
+        start: Instant::now(),
         win: None,
         renderer: SoftbufferWindowRenderer::new(),
         painter: CometPainter::new(),
@@ -97,6 +113,8 @@ struct App {
     cursor: Option<kurbo::Point>,
     /// Nodes with hover handlers under the cursor.
     hovered: Vec<NodeKey>,
+    /// Origin of the time passed to frame handlers.
+    start: Instant,
     win: Option<Arc<Window>>,
     renderer: SoftbufferWindowRenderer<VelloCpuImageRenderer>,
     painter: CometPainter,
@@ -109,7 +127,8 @@ impl ApplicationHandler for App {
         let attributes = WindowAttributes::default().with_title(&self.title);
         let win: Arc<Window> = event_loop.create_window(attributes).unwrap().into();
         let size = win.inner_size();
-        self.renderer.resume(win.clone(), size.width, size.height, || {});
+        self.renderer
+            .resume(win.clone(), size.width, size.height, || {});
         self.renderer.complete_resume();
         win.request_redraw();
         self.win = Some(win);
@@ -180,7 +199,21 @@ impl App {
             physical.height() / scale_factor,
         );
 
+        // Frame handlers set signals; run the bindings they woke before laying
+        // out, and keep animating while there are any.
+        let frame: Vec<_> = HANDLERS.with_borrow(|handlers| handlers.frame.clone());
+        let elapsed = self.start.elapsed();
+        for handler in &frame {
+            handler(elapsed);
+        }
+        Executor::poll_local();
+        if !frame.is_empty() {
+            win.request_redraw();
+        }
+
         let mut tree = self.tree.borrow_mut();
+        // This frame shows every change so far.
+        tree.take_redraw();
         let Some(layer_root) = self.pipeline.layout(&mut tree, self.root, viewport) else {
             return;
         };
@@ -246,7 +279,9 @@ impl App {
         self.hovered = hovered;
 
         for (node, value) in changes {
-            if let Some(handler) = HANDLERS.with_borrow(|handlers| handlers.hover.get(&node).cloned()) {
+            if let Some(handler) =
+                HANDLERS.with_borrow(|handlers| handlers.hover.get(&node).cloned())
+            {
                 handler(value);
             }
         }

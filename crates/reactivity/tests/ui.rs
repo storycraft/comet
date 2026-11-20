@@ -1,22 +1,25 @@
 use std::{cell::RefCell, rc::Rc};
 
 use any_spawner::Executor;
+use anyrender::Paint;
 use comet_layout::{
     dirty_map::DirtyFlags,
     fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
     input::builder::{BuildRequest, LayoutInputTreeBuilder},
     style::{
         LayoutConstraint,
-        bx::{DisplayInner, DisplayOuter, FontSize, Padding},
-        geometry::{Rect, Size, StyleUnit},
+        bx::{DisplayInner, DisplayOuter, FontSize, MinSize, Padding},
+        geometry::{AutoValue, Rect, Size, StyleUnit},
     },
 };
-use anyrender::Paint;
-use comet_paint::style::TextColor;
-use peniko::Color;
 use comet_layout_flex::styles::Gap;
-use comet_reactivity::{FlexStyled, Styled, UiCx, UiTree};
+use comet_paint::style::TextColor;
+use comet_reactivity::{
+    UiCx, UiTree,
+    prelude::{FlexStyled, Styled, auto, axis, percent, px, vh},
+};
 use comet_tree::node::{Node, NodeKey, Text};
+use peniko::Color;
 use reactive_graph::{
     owner::Owner,
     signal::{ReadSignal, signal},
@@ -145,7 +148,10 @@ async fn bindings_write_changes_and_mark_flags() {
         settle().await;
         {
             let mut tree = tree.borrow_mut();
-            assert_eq!(*tree.ui.prop::<TextColor>(text).unwrap(), TextColor(paint(255)));
+            assert_eq!(
+                *tree.ui.prop::<TextColor>(text).unwrap(),
+                TextColor(paint(255))
+            );
             assert_eq!(flags(&tree, text), DirtyFlags::empty());
             assert!(tree.take_redraw());
         }
@@ -220,7 +226,15 @@ async fn helpers_bind_values_and_signals() {
         let (size, set_size) = signal(StyleUnit::Px(12.0));
         let gap = Size::new(StyleUnit::Px(4.0), StyleUnit::Px(4.0));
 
-        let root = cx.build(|cx| cx.div().flex().gap(gap).font_size(size).build());
+        let root = cx.build(|cx| {
+            cx.div()
+                .flex()
+                .gap(gap)
+                .font_size(size)
+                .padding(axis(px(2), percent(50)))
+                .min_size(comet_reactivity::prelude::size(auto(), vh(100)))
+                .build()
+        });
 
         let font_size = |tree: &UiTree| *tree.ui.prop::<FontSize>(root).unwrap();
         {
@@ -228,6 +242,17 @@ async fn helpers_bind_values_and_signals() {
             assert_eq!(*tree.ui.prop::<Gap>(root).unwrap(), Gap(gap));
             assert!(tree.ui.prop::<DisplayInner>(root).is_some());
             assert_eq!(font_size(&tree), FontSize(StyleUnit::Px(12.0)));
+            assert_eq!(
+                *tree.ui.prop::<Padding>(root).unwrap(),
+                Padding(Rect::new_axis(StyleUnit::Px(2.0), StyleUnit::Percent(0.5)))
+            );
+            assert_eq!(
+                *tree.ui.prop::<MinSize>(root).unwrap(),
+                MinSize(Size::new(
+                    AutoValue::Auto,
+                    AutoValue::Value(StyleUnit::Vh(1.0))
+                ))
+            );
         }
 
         set_size.set(StyleUnit::Px(20.0));
