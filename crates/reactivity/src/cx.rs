@@ -112,6 +112,11 @@ impl<'a> NodeBuild<'a> {
         }
     }
 
+    /// The context the node is built with.
+    pub fn cx(&self) -> &'a UiCx {
+        self.cx
+    }
+
     /// The key the node will have once built.
     pub fn key(&self) -> NodeKey {
         self.key.as_ref().expect("node is created once").key()

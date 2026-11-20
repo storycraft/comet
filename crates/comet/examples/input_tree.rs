@@ -9,34 +9,35 @@ use comet_layout::{
     },
     style::geometry::Size,
 };
-use comet_tree::node::Text;
+use comet_tree::{
+    node::{NodeKey, Text},
+    ui::Ui,
+};
 
 const VIEWPORT: Size<f64> = Size::new(640.0, 920.0);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (mut ui, root) = common::sample_ui();
+    let sample = comet::UiRoot::new(common::sample_ui);
+    let root = sample.root();
+    let ui = &mut sample.tree().borrow_mut().ui;
     let mut tree = LayoutInputTree::new();
     let mut dirty = DirtyMap::new();
     let mut builder = LayoutInputTreeBuilder::new();
     let request = BuildRequest::new(root, 16.0, VIEWPORT);
     let input_root = builder
-        .build(&ui, &mut tree, &mut dirty, request)
+        .build(ui, &mut tree, &mut dirty, request)
         .ok_or("could not build layout input tree")?;
 
     println!("Initial layout input tree:");
     print_tree(&tree, &dirty, input_root);
     dirty.clear(&tree, input_root);
 
-    let mut text = root;
-    while let Some(child) = ui.last_child(text) {
-        text = child;
-    }
-    ui.prop::<Text>(text).ok_or("missing sample text")?;
+    let text = last_text(ui, root).ok_or("missing sample text")?;
     ui.set_props(text, (Text("Updated text".into()),));
     dirty.mark_node(&tree, text, DirtyFlags::NEED_FULL_LAYOUT);
 
     let updated = builder
-        .build(&ui, &mut tree, &mut dirty, request)
+        .build(ui, &mut tree, &mut dirty, request)
         .ok_or("could not update layout input tree")?;
     assert_eq!(input_root, updated);
 
@@ -68,4 +69,17 @@ fn print_tree(tree: &LayoutInputTree, dirty: &DirtyMap, root: LayoutInputKey) {
                 .map(|child| (child, depth + 1)),
         );
     }
+}
+
+/// The last text node under `node`, in tree order.
+fn last_text(ui: &Ui, node: NodeKey) -> Option<NodeKey> {
+    if ui.prop::<Text>(node).is_some() {
+        return Some(node);
+    }
+
+    let children: Vec<_> = ui.children(node).collect();
+    children
+        .into_iter()
+        .rev()
+        .find_map(|child| last_text(ui, child))
 }

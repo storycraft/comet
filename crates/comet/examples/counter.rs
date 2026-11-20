@@ -1,27 +1,18 @@
 //! A reactive counter in a window: click the button to count up. A rounded
-//! square spins on the right, driven by a time signal.
-//!
-//! The window integration lives in `common`.
-
-mod common;
+//! square spins on the right, driven by a frame handler.
 
 use core::f64::consts::TAU;
 
 use anyrender::Paint;
+use comet::{prelude::*, winit::window::WindowAttributes};
 use comet_layout::style::{parley, taffy::Position};
 use comet_layout_flex::styles::taffy::{AlignItems, FlexDirection, JustifyContent};
-use comet_reactivity::prelude::*;
 use comet_tree::node::NodeKey;
 use kurbo::Affine;
 use peniko::Color;
-use reactive_graph::{
-    signal::signal,
-    traits::{Get, Set, Update},
-    wrappers::read::Signal,
-};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    common::run("comet-reactivity counter", app)
+    comet::run(WindowAttributes::default().with_title("comet counter"), app)
 }
 
 fn app(cx: &UiCx) -> NodeKey {
@@ -54,15 +45,16 @@ fn counter(cx: &UiCx) -> NodeKey {
             cx.text_with(move || format!("Clicked {} times", count.get()))
                 .font_size(px(28))
                 .build();
-            button(cx, "Count up", move || set_count.update(|count| *count += 1));
+            button(cx, "Count up", move || {
+                set_count.update(|count| *count += 1)
+            });
         })
 }
 
 fn button(cx: &UiCx, label: &str, on_click: impl Fn() + 'static) -> NodeKey {
     let (hovered, set_hovered) = signal(false);
 
-    let button = cx
-        .div()
+    cx.div()
         .padding(axis(px(10), px(18)))
         .border_radius(all(px(8)))
         .text_color(Paint::Solid(Color::WHITE))
@@ -75,12 +67,9 @@ fn button(cx: &UiCx, label: &str, on_click: impl Fn() + 'static) -> NodeKey {
                 Color::from_rgb8(96, 125, 240)
             })
         }))
-        .children(|cx| cx.text(label).build());
-
-    common::on_click(button, on_click);
-    common::on_hover(button, move |value| set_hovered.set(value));
-
-    button
+        .on_click(on_click)
+        .on_hover(move |value| set_hovered.set(value))
+        .children(|cx| cx.text(label).build())
 }
 
 /// Side of the spinning square.
@@ -89,8 +78,8 @@ const SPINNER_SIZE: f64 = 120.0;
 const SPINNER_SPEED: f64 = 0.25;
 
 fn spinner(cx: &UiCx) -> NodeKey {
-    let (seconds, set_seconds) = signal(0.0);
-    common::on_frame(move |elapsed| set_seconds.set(elapsed.as_secs_f64()));
+    let (turns, set_turns) = signal(0.0);
+    on_frame(move |delta| set_turns.update(|turns| *turns += delta.as_secs_f64() * SPINNER_SPEED));
 
     // Its own transform is pre-painted again every frame; nothing is laid
     // out again.
@@ -98,7 +87,7 @@ fn spinner(cx: &UiCx) -> NodeKey {
         let half = SPINNER_SIZE / 2.0;
         // Move the top-left corner, anchored at the centre of the area, back
         // by half the size, then spin around the square's own centre.
-        Affine::translate((-half, -half)) * Affine::rotate(seconds.get() * SPINNER_SPEED * TAU)
+        Affine::translate((-half, -half)) * Affine::rotate(turns.get() * TAU)
     });
 
     // The containing block of the square.

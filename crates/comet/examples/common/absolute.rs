@@ -1,136 +1,101 @@
-use anyrender::Paint;
+use comet::prelude::*;
 use comet_layout::style::{
-    bx::{FontSize, FontWeight, Inset, Margin, MinSize, Padding, Position, Size as BoxSize},
-    geometry::{AutoValue, Rect, Size as LayoutSize, StyleUnit},
+    geometry::{AutoValue, Rect, StyleUnit},
     parley,
-    taffy::Position as Placement,
+    taffy::Position,
 };
-use comet_paint::style::{BorderRadius, Fill, TextColor};
-use comet_tree::{
-    node::{Node, NodeKey},
-    ui::Ui,
-};
+use comet_reactivity::NodeBuild;
+use comet_tree::node::NodeKey;
 use peniko::Color;
 
-use super::{panel, text};
+use super::{panel, solid};
 
-pub(super) fn showcase(ui: &mut Ui, root: NodeKey) {
-    let panel = panel(
-        ui,
-        root,
+pub(super) fn showcase(cx: &UiCx) -> NodeKey {
+    panel(
+        cx,
         "05 / Absolute positioning",
         Color::from_rgb8(236, 246, 250),
-    );
+        |cx| {
+            // Positioned boxes are containing blocks for their absolute
+            // descendants.
+            cx.div()
+                .position(Position::Relative)
+                .min_size(size(auto(), px(210)))
+                // Room above and below the flow for the corner tags.
+                .padding(axis(px(44), px(14)))
+                .fill(solid(Color::WHITE))
+                .border_radius(all(px(10)))
+                .children(stage);
+        },
+    )
+}
 
-    // Positioned boxes are containing blocks for their absolute descendants.
-    let stage = ui.create(
-        Node::Box,
-        (
-            Position(Placement::Relative),
-            MinSize(LayoutSize::new(AutoValue::Auto, px(210.0))),
-            // Room above and below the flow for the corner tags.
-            Padding(Rect::new_axis(StyleUnit::Px(44.0), StyleUnit::Px(14.0))),
-            Fill(Paint::Solid(Color::WHITE)),
-            BorderRadius(Rect::new_all(StyleUnit::Px(10.0))),
-        ),
-    );
-    ui.append(panel, stage);
-    text(
-        ui,
-        stage,
+fn stage(cx: &UiCx) {
+    cx.text(
         "Absolute boxes leave the flow, so this text and the cards below are laid out as if the tags were not there.",
-    );
+    )
+    .build();
 
     // A relative card anchors its own absolute badge.
-    let relative = card(ui, stage, "Relative card", Color::from_rgb8(224, 233, 255));
-    ui.set_props(relative, (Position(Placement::Relative),));
-    let counter = tag(
-        ui,
-        relative,
-        "3",
-        Color::from_rgb8(229, 72, 77),
-        Rect::new_invidiual(px(-8.0), px(-8.0), AutoValue::Auto, AutoValue::Auto),
-    );
-    ui.set_props(
-        counter,
-        (
-            TextColor(Paint::Solid(Color::WHITE)),
-            BorderRadius(Rect::new_all(StyleUnit::Px(10.0))),
-        ),
-    );
+    card(cx, Color::from_rgb8(224, 233, 255))
+        .position(Position::Relative)
+        .children(|cx| {
+            cx.text("Relative card").build();
+            tag(
+                cx,
+                Color::from_rgb8(229, 72, 77),
+                sides(px(-8), px(-8), auto(), auto()),
+            )
+            .text_color(solid(Color::WHITE))
+            .border_radius(all(px(10)))
+            .children(|cx| cx.text("3").build());
+        });
 
     // A static card is not a containing block: its absolute child is placed
     // against the stage instead.
-    let static_card = card(ui, stage, "Static card", Color::from_rgb8(255, 236, 214));
-    ui.set_props(static_card, (Position(Placement::Static),));
-    tag(
-        ui,
-        static_card,
-        "declared in the static card",
-        Color::from_rgb8(255, 210, 160),
-        Rect::new_invidiual(AutoValue::Auto, px(12.0), px(12.0), AutoValue::Auto),
-    );
+    card(cx, Color::from_rgb8(255, 236, 214))
+        .position(Position::Static)
+        .children(|cx| {
+            cx.text("Static card").build();
+            tag(
+                cx,
+                Color::from_rgb8(255, 210, 160),
+                sides(auto(), px(12), px(12), auto()),
+            )
+            .children(|cx| cx.text("declared in the static card").build());
+        });
 
     tag(
-        ui,
-        stage,
-        "top 12 · right 12",
+        cx,
         Color::from_rgb8(198, 236, 220),
-        Rect::new_invidiual(px(12.0), px(12.0), AutoValue::Auto, AutoValue::Auto),
-    );
+        sides(px(12), px(12), auto(), auto()),
+    )
+    .children(|cx| cx.text("top 12 · right 12").build());
     tag(
-        ui,
-        stage,
-        "bottom 12 · left 12",
+        cx,
         Color::from_rgb8(226, 214, 250),
-        Rect::new_invidiual(AutoValue::Auto, AutoValue::Auto, px(12.0), px(12.0)),
-    );
+        sides(auto(), auto(), px(12), px(12)),
+    )
+    .children(|cx| cx.text("bottom 12 · left 12").build());
 }
 
-fn card(ui: &mut Ui, parent: NodeKey, label: &str, color: Color) -> NodeKey {
-    let card = ui.create(
-        Node::Box,
-        (
-            BoxSize(LayoutSize::new(
-                AutoValue::Value(StyleUnit::Percent(0.5)),
-                AutoValue::Auto,
-            )),
-            Padding(Rect::new_all(StyleUnit::Px(10.0))),
-            Margin(Rect::new_invidiual(px(12.0), px(0.0), px(0.0), px(0.0))),
-            Fill(Paint::Solid(color)),
-            BorderRadius(Rect::new_all(StyleUnit::Px(8.0))),
-            FontWeight(parley::FontWeight::SEMI_BOLD),
-        ),
-    );
-    ui.append(parent, card);
-    text(ui, card, label);
-    card
+fn card(cx: &UiCx, color: Color) -> NodeBuild<'_> {
+    cx.div()
+        .size(size(percent(50), auto()))
+        .padding(all(px(10)))
+        .margin(sides(px(12), px(0), px(0), px(0)))
+        .fill(solid(color))
+        .border_radius(all(px(8)))
+        .font_weight(parley::FontWeight::SEMI_BOLD)
 }
 
-fn tag(
-    ui: &mut Ui,
-    parent: NodeKey,
-    label: &str,
-    color: Color,
-    inset: Rect<AutoValue<StyleUnit>>,
-) -> NodeKey {
-    let tag = ui.create(
-        Node::Box,
-        (
-            Position(Placement::Absolute),
-            Inset(inset),
-            Padding(Rect::new_axis(StyleUnit::Px(3.0), StyleUnit::Px(8.0))),
-            Fill(Paint::Solid(color)),
-            BorderRadius(Rect::new_all(StyleUnit::Px(6.0))),
-            FontSize(StyleUnit::Px(12.0)),
-            FontWeight(parley::FontWeight::SEMI_BOLD),
-        ),
-    );
-    ui.append(parent, tag);
-    text(ui, tag, label);
-    tag
-}
-
-fn px(value: f64) -> AutoValue<StyleUnit> {
-    AutoValue::Value(StyleUnit::Px(value))
+fn tag(cx: &UiCx, color: Color, inset: Rect<AutoValue<StyleUnit>>) -> NodeBuild<'_> {
+    cx.div()
+        .position(Position::Absolute)
+        .inset(inset)
+        .padding(axis(px(3), px(8)))
+        .fill(solid(color))
+        .border_radius(all(px(6)))
+        .font_size(px(12))
+        .font_weight(parley::FontWeight::SEMI_BOLD)
 }

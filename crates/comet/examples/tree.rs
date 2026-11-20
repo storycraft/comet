@@ -27,14 +27,16 @@ const HEIGHT: u32 = 1400;
 const SCALE_FACTOR: f64 = 1.0;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (ui, root) = common::sample_ui();
+    let sample = comet::UiRoot::new(common::sample_ui);
+    let (tree, root) = (sample.tree().borrow(), sample.root());
+    let ui = &tree.ui;
     // Layout works in logical units.
     let viewport = Size::new(WIDTH as f64 / SCALE_FACTOR, HEIGHT as f64 / SCALE_FACTOR);
     let mut inputs = LayoutInputTree::new();
     let mut dirty = DirtyMap::new();
     let input_root = LayoutInputTreeBuilder::new()
         .build(
-            &ui,
+            ui,
             &mut inputs,
             &mut dirty,
             BuildRequest::new(root, 16.0, viewport),
@@ -44,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let constraint = LayoutConstraint::new_root(viewport, 16.0);
     let root = FragmentTreeBuilder::new()
         .build(
-            &ui,
+            ui,
             &inputs,
             &mut dirty,
             input_root,
@@ -55,7 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut prepaint = PrepaintTree::new();
     PrepaintTreeBuilder::new()
         .build(
-            &ui,
+            ui,
             &inputs,
             &mut dirty,
             &fragments,
@@ -112,7 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 AntiAliasing::Enabled,
             );
             renderer.draw(
-                &ui,
+                ui,
                 &inputs,
                 &fragments,
                 &prepaint,

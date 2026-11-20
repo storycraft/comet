@@ -1,7 +1,10 @@
 mod common;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (ui, root) = common::sample_ui();
+use comet::winit::window::WindowAttributes;
 
-    comet::run(ui, root)
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    comet::run(
+        WindowAttributes::default().with_title("Comet"),
+        common::sample_ui,
+    )
 }

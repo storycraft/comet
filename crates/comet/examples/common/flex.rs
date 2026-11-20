@@ -1,143 +1,82 @@
-use anyrender::Paint;
-use comet_layout::{
-    prelude::*,
-    style::{
-        geometry::{AutoValue, Rect, Size as LayoutSize, StyleUnit},
-        parley,
-    },
-};
-use comet_layout_flex::{prelude::*, styles as flex};
-use comet_paint::style::{BorderRadius, Fill, TextColor};
-use comet_tree::{
-    node::{Node, NodeKey},
-    ui::Ui,
-};
+use comet::prelude::*;
+use comet_layout::style::{geometry::AutoValue, parley};
+use comet_layout_flex::styles::taffy::{AlignItems, FlexWrap, JustifyContent};
+use comet_reactivity::NodeBuild;
+use comet_tree::node::NodeKey;
 use peniko::Color;
 
-use super::{panel, text};
+use super::{MUTED, panel, solid};
 
-pub(super) fn showcase(ui: &mut Ui, root: NodeKey) {
-    let panel = panel(ui, root, "01 / Flexbox", Color::WHITE);
+pub(super) fn showcase(cx: &UiCx) -> NodeKey {
+    panel(cx, "01 / Flexbox", Color::WHITE, |cx| {
+        label(cx, "GROW / shared space in a 1 : 2 : 1 ratio");
+        flex_row(cx).children(|cx| {
+            for (caption, grow, color) in [
+                ("1×", 1.0, Color::from_rgb8(224, 233, 255)),
+                ("2× flexible", 2.0, Color::from_rgb8(198, 215, 255)),
+                ("1×", 1.0, Color::from_rgb8(224, 233, 255)),
+            ] {
+                tile(cx, color)
+                    .flex_basis(AutoValue::from(px(0)))
+                    .flex_grow(grow)
+                    .min_size(size(px(0), auto()))
+                    .children(|cx| cx.text(caption).build());
+            }
+        });
 
-    label(ui, panel, "GROW / shared space in a 1 : 2 : 1 ratio");
+        label(cx, "ALIGN / different heights, one bottom edge");
+        flex_row(cx)
+            .align_items(AlignItems::END)
+            .justify_content(JustifyContent::SPACE_BETWEEN)
+            .children(|cx| {
+                for (caption, height) in [("Small", 32), ("Medium", 44), ("Tall", 56)] {
+                    tile(cx, Color::from_rgb8(222, 242, 233))
+                        .size(size(auto(), px(height)))
+                        .flex_grow(1.0)
+                        .children(|cx| cx.text(caption).build());
+                }
+            });
 
-    let row = flex_row(ui, panel);
-
-    for (caption, grow, color) in [
-        ("1×", 1.0, Color::from_rgb8(224, 233, 255)),
-        ("2× flexible", 2.0, Color::from_rgb8(198, 215, 255)),
-        ("1×", 1.0, Color::from_rgb8(224, 233, 255)),
-    ] {
-        let card = tile(ui, row, caption, color);
-        ui.set_props(
-            card,
-            (
-                FlexBasis(AutoValue::Value(StyleUnit::ZERO)),
-                FlexGrow(grow),
-                MinSize(LayoutSize::new(
-                    AutoValue::Value(StyleUnit::ZERO),
-                    AutoValue::Auto,
-                )),
-            ),
-        );
-    }
-
-    label(ui, panel, "ALIGN / different heights, one bottom edge");
-
-    let row = flex_row(ui, panel);
-    ui.set_props(
-        row,
-        (
-            AlignItems(flex::taffy::AlignItems::END),
-            JustifyContent(flex::taffy::JustifyContent::SPACE_BETWEEN),
-        ),
-    );
-
-    for (caption, height) in [("Small", 32.0), ("Medium", 44.0), ("Tall", 56.0)] {
-        let card = tile(ui, row, caption, Color::from_rgb8(222, 242, 233));
-        ui.set_props(
-            card,
-            (
-                Size(LayoutSize::new(
-                    AutoValue::Auto,
-                    AutoValue::Value(StyleUnit::Px(height)),
-                )),
-                FlexGrow(1.0),
-            ),
-        );
-    }
-
-    label(ui, panel, "WRAP / resize the window to reflow these items");
-
-    let row = flex_row(ui, panel);
-    ui.set_props(row, (FlexWrap(flex::taffy::FlexWrap::Wrap),));
-
-    for caption in [
-        "Layout",
-        "Text",
-        "Styles",
-        "Flexbox",
-        "Wrapping",
-        "Gaps",
-        "Alignment",
-        "Comet",
-    ] {
-        let chip = tile(ui, row, caption, Color::from_rgb8(242, 238, 250));
-        ui.set_props(
-            chip,
-            (
-                FlexBasis(AutoValue::Value(StyleUnit::Px(112.0))),
-                FlexShrink(0.0),
-            ),
-        );
-    }
+        label(cx, "WRAP / resize the window to reflow these items");
+        flex_row(cx).flex_wrap(FlexWrap::Wrap).children(|cx| {
+            for caption in [
+                "Layout",
+                "Text",
+                "Styles",
+                "Flexbox",
+                "Wrapping",
+                "Gaps",
+                "Alignment",
+                "Comet",
+            ] {
+                tile(cx, Color::from_rgb8(242, 238, 250))
+                    .flex_basis(AutoValue::from(px(112)))
+                    .flex_shrink(0.0)
+                    .children(|cx| cx.text(caption).build());
+            }
+        });
+    })
 }
 
-fn flex_row(ui: &mut Ui, parent: NodeKey) -> NodeKey {
-    let row = ui.create(
-        Node::Box,
-        (
-            DisplayInner::Container(flex()),
-            Gap(LayoutSize::new(StyleUnit::Px(8.0), StyleUnit::Px(8.0))),
-        ),
-    );
-    ui.append(parent, row);
-
-    row
+fn flex_row(cx: &UiCx) -> NodeBuild<'_> {
+    cx.div().flex().gap(size(px(8), px(8)))
 }
 
-fn label(ui: &mut Ui, parent: NodeKey, value: &str) {
-    let label = ui.create(
-        Node::Box,
-        (
-            FontSize(StyleUnit::Px(11.0)),
-            FontWeight(parley::FontWeight::SEMI_BOLD),
-            TextColor(Paint::Solid(Color::from_rgb8(97, 109, 128))),
-            Padding(Rect::new_invidiual(
-                StyleUnit::Px(10.0),
-                StyleUnit::ZERO,
-                StyleUnit::Px(6.0),
-                StyleUnit::ZERO,
-            )),
-        ),
-    );
-    ui.append(parent, label);
-    text(ui, label, value);
+fn label(cx: &UiCx, value: &str) -> NodeKey {
+    cx.div()
+        .font_size(px(11))
+        .font_weight(parley::FontWeight::SEMI_BOLD)
+        .text_color(solid(MUTED))
+        .padding(sides(px(10), px(0), px(6), px(0)))
+        .children(|cx| cx.text(value).build())
 }
 
-fn tile(ui: &mut Ui, parent: NodeKey, caption: &str, color: Color) -> NodeKey {
-    let tile = ui.create(
-        Node::Box,
-        (
-            Fill(Paint::Solid(color)),
-            BorderRadius(Rect::new_all(StyleUnit::Px(6.0))),
-            Padding(Rect::new_axis(StyleUnit::Px(8.0), StyleUnit::Px(10.0))),
-            FontSize(StyleUnit::Px(13.0)),
-            FontWeight(parley::FontWeight::SEMI_BOLD),
-        ),
-    );
-    ui.append(parent, tile);
-    text(ui, tile, caption);
-
-    tile
+/// A tile, left open for more styles and its caption.
+fn tile(cx: &UiCx, color: Color) -> NodeBuild<'_> {
+    cx.div()
+        .fill(solid(color))
+        .border_radius(all(px(6)))
+        .padding(axis(px(8), px(10)))
+        .font_size(px(13))
+        .font_weight(parley::FontWeight::SEMI_BOLD)
 }

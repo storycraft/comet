@@ -413,15 +413,19 @@ dependencies = [
 name = "comet"
 version = "0.1.0"
 dependencies = [
+ "any_spawner",
  "anyrender",
  "anyrender_vello_cpu",
  "comet-layout",
  "comet-layout-flex",
  "comet-paint",
+ "comet-reactivity",
  "comet-tree",
+ "futures",
  "image",
  "kurbo",
  "peniko",
+ "reactive_graph",
  "softbuffer_window_renderer",
  "winit",
 ]
@@ -481,18 +485,14 @@ version = "0.1.0"
 dependencies = [
  "any_spawner",
  "anyrender",
- "anyrender_vello_cpu",
  "comet-layout",
  "comet-layout-flex",
  "comet-paint",
  "comet-tree",
- "futures",
  "kurbo",
  "peniko",
  "reactive_graph",
- "softbuffer_window_renderer",
  "tokio",
- "winit",
 ]
 
 [[package]]

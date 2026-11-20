@@ -1,121 +1,90 @@
-use core::error::Error;
-use std::sync::Arc;
+//! Reactive UI in a window.
+//!
+//! Build the UI with [`comet_reactivity`] components and show it with
+//! [`run`]. Bindings re-run on the event loop thread after every batch of
+//! window events and before every frame; changed props are laid out and
+//! painted again in the next frame. Input and frame handlers are registered
+//! with [`Interactive`] and [`on_frame`].
+//!
+//! Signals are only expected to be set on the event loop thread, from
+//! handlers and bindings. Signals set from other threads do not wake the
+//! event loop.
 
-use anyrender::Paint;
+pub mod event;
+mod pipeline;
+pub mod prelude;
+pub mod runtime;
+
+use core::error::Error;
+use std::{sync::Arc, time::Instant};
+
 use anyrender::WindowRenderer;
 use anyrender_vello_cpu::VelloCpuImageRenderer;
-use comet_layout::style::geometry::{StyleUnit, UnitResolveContext};
-use comet_layout::{
-    dirty_map::{DirtyFlags, DirtyMap},
-    fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
-    input::{
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
-    style::{LayoutConstraint, geometry::Size},
-};
-use comet_paint::{
-    hit::PaintHitTester,
-    layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
-    painter::CometPainter,
-    prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
-    style::{OutlineFill, OutlineOffset, OutlineWidth},
-};
+use comet_layout::style::geometry::Size;
+use comet_reactivity::UiCx;
 use comet_tree::{node::NodeKey, ui::Ui};
-use peniko::Color;
 use softbuffer_window_renderer::SoftbufferWindowRenderer;
 use winit::{
     application::ApplicationHandler,
-    event::WindowEvent,
+    event::{ElementState, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     window::{Window, WindowAttributes, WindowId},
 };
 
-/// Font size of the root element, used for `rem`.
-const ROOT_FONT_SIZE: f64 = 16.0;
+pub use comet_reactivity as reactivity;
+pub use event::{Interactive, on_frame, on_frame_while};
+pub use reactive_graph;
+pub use runtime::UiRoot;
+pub use winit;
 
-pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
-    if ui.kind(root).is_none() {
-        return Err("invalid UI root".into());
-    }
+use crate::pipeline::Pipeline;
 
+/// Build the UI with `root` and show it in a window opened with
+/// `attributes`, until the window is closed.
+pub fn run(
+    attributes: WindowAttributes,
+    root: impl FnOnce(&UiCx) -> NodeKey,
+) -> Result<(), Box<dyn Error>> {
+    let ui = UiRoot::new(root);
     let event_loop = EventLoop::new()?;
 
     Ok(event_loop.run_app(&mut App {
+        attributes,
         ui,
-        ui_root: root,
-        input_builder: LayoutInputTreeBuilder::new(),
-        fragment_builder: FragmentTreeBuilder::new(),
-        inputs: LayoutInputTree::new(),
-        dirty: DirtyMap::new(),
-        fragments: FragmentTree::new(),
-        prepaint: PrepaintTree::new(),
-        prepaint_resolver: PrepaintTreeBuilder::new(),
-        layers: PaintLayerTree::new(),
-        layer_builder: PaintLayerBuilder::new(),
-        layer_root: None,
-        viewport: None,
-        input_viewport: None,
-        prepaint_viewport: None,
-        hit_tester: PaintHitTester::new(),
+        pipeline: Pipeline::default(),
         cursor: None,
-        hovered: None,
+        hovered: Vec::new(),
+        start: Instant::now(),
         win: None,
         renderer: SoftbufferWindowRenderer::new(),
-        ui_renderer: CometPainter::new(),
     })?)
 }
 
 struct App {
-    ui: Ui,
-    ui_root: NodeKey,
-    input_builder: LayoutInputTreeBuilder,
-    fragment_builder: FragmentTreeBuilder,
-    inputs: LayoutInputTree,
-    /// Changes of `inputs` not consumed by the layout yet.
-    dirty: DirtyMap,
-    fragments: FragmentTree,
-    prepaint: PrepaintTree,
-    prepaint_resolver: PrepaintTreeBuilder,
-    layers: PaintLayerTree,
-    layer_builder: PaintLayerBuilder,
-    /// Root layer of `layers`, from the last layout. `None` until a layout
-    /// succeeds, or after one fails.
-    layer_root: Option<PaintLayerKey>,
-    /// Logical viewport of the last successful layout.
-    viewport: Option<Size<f64>>,
-    /// Logical viewport `inputs` was resolved with, kept when a later step
-    /// of the layout fails.
-    input_viewport: Option<Size<f64>>,
-    /// Logical viewport `prepaint` was last resolved with, kept when a
-    /// resolve fails, so the next one resolves viewport units again.
-    prepaint_viewport: Option<Size<f64>>,
-    // TODO: Temporary hover outline, drawn around the node under the cursor.
-    // Replace with real input handling.
-    hit_tester: PaintHitTester,
+    attributes: WindowAttributes,
+    ui: UiRoot,
+    pipeline: Pipeline,
     /// Cursor position in logical units, the units of the layout.
     cursor: Option<kurbo::Point>,
-    /// The node outlined under the cursor, with the outline styles it had
-    /// before, to restore once it is no longer hovered.
-    hovered: Option<Hovered>,
+    /// Nodes with hover handlers under the cursor.
+    hovered: Vec<NodeKey>,
+    /// Origin of frame times.
+    start: Instant,
     win: Option<Arc<Window>>,
     renderer: SoftbufferWindowRenderer<VelloCpuImageRenderer>,
-    ui_renderer: CometPainter,
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let win: Arc<Window> = event_loop
-            .create_window(WindowAttributes::default())
+            .create_window(self.attributes.clone())
             .unwrap()
             .into();
         let size = win.inner_size();
 
         if size.width > 0 && size.height > 0 {
             self.renderer
-                .resume(win.clone(), size.width, size.height, || {
-                    // TODO
-                });
+                .resume(win.clone(), size.width, size.height, || {});
             self.renderer.complete_resume();
         }
 
@@ -147,58 +116,13 @@ impl ApplicationHandler for App {
                     self.renderer.set_size(size.width, size.height);
                 } else {
                     self.renderer
-                        .resume(win.clone(), size.width, size.height, || {
-                            // TODO
-                        });
+                        .resume(win.clone(), size.width, size.height, || {});
                     self.renderer.complete_resume();
                 }
 
                 win.request_redraw();
             }
-            WindowEvent::RedrawRequested => {
-                let size = win.inner_size();
-
-                if size.width == 0 || size.height == 0 || !self.renderer.is_active() {
-                    return;
-                }
-
-                // Layout works in logical units: the physical surface divided
-                // by the display's scale factor.
-                let scale_factor = win.scale_factor();
-                let physical = kurbo::Rect::new(0.0, 0.0, size.width as f64, size.height as f64);
-                let viewport = Size::new(
-                    physical.width() / scale_factor,
-                    physical.height() / scale_factor,
-                );
-
-                // The layout only changes with the logical viewport, so other
-                // redraws only paint the last layout again.
-                if (self.viewport != Some(viewport) || self.layer_root.is_none())
-                    && self.update_layout(viewport).is_none()
-                {
-                    return;
-                }
-
-                let Some(layer_root) = self.layer_root else {
-                    return;
-                };
-
-                self.renderer.render(|painter| {
-                    self.ui_renderer.draw(
-                        &self.ui,
-                        &self.inputs,
-                        &self.fragments,
-                        &self.prepaint,
-                        &self.layers,
-                        layer_root,
-                        physical,
-                        scale_factor,
-                        painter,
-                    );
-                });
-            }
-            // TODO: Temporary hover outline. Replace with real input
-            // handling.
+            WindowEvent::RedrawRequested => self.redraw(&win),
             WindowEvent::CursorMoved { position, .. } => {
                 // Hit testing works in logical units, like the layout.
                 let position = position.to_logical::<f64>(win.scale_factor());
@@ -209,6 +133,11 @@ impl ApplicationHandler for App {
                 self.cursor = None;
                 self.update_hover();
             }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } => self.click(),
             // The logical viewport changes with the scale factor. A resize
             // usually follows, but the surface may keep its physical size.
             WindowEvent::ScaleFactorChanged { .. } => win.request_redraw(),
@@ -216,227 +145,105 @@ impl ApplicationHandler for App {
             _ => {}
         }
     }
-}
 
-/// Outline drawn around the hovered node.
-const HOVER_OUTLINE_WIDTH: f64 = 2.0;
-const HOVER_OUTLINE_OFFSET: f64 = 2.0;
+    /// Run the bindings woken by this batch of events, then draw a frame if
+    /// they changed the tree or something animates.
+    fn about_to_wait(&mut self, _: &ActiveEventLoop) {
+        self.ui.poll();
 
-/// A node outlined because it is hovered, with the outline styles it set
-/// itself.
-struct Hovered {
-    node: NodeKey,
-    width: Option<OutlineWidth>,
-    offset: Option<OutlineOffset>,
-    fill: Option<OutlineFill>,
-}
-
-impl App {
-    /// Build the input and fragment trees for `viewport`, resolve the
-    /// pre-paint tree and place the layers. On failure, nothing is painted
-    /// until a later redraw lays out again.
-    fn update_layout(&mut self, viewport: Size<f64>) -> Option<()> {
-        // Cleared until the layout succeeds.
-        let previous_viewport = self.viewport.take();
-        // Cleared until the layers are placed. The layer tree keeps the root
-        // layer, so the layers keep their keys.
-        self.layer_root = None;
-
-        // The first layout builds the whole tree. Later ones resolve the
-        // marked changes and, after resolving at another viewport, the items
-        // whose text styles depend on it.
-        if self
-            .input_viewport
-            .is_some_and(|previous| previous != viewport)
-            && let Some(key) = self.inputs.item_for_node(self.ui_root)
+        let changed = self.ui.tree().borrow_mut().take_redraw();
+        if (changed || event::animating())
+            && let Some(win) = &self.win
         {
-            self.inputs.invalidate_viewport(&mut self.dirty, key);
-        }
-        let request = BuildRequest::new(self.ui_root, ROOT_FONT_SIZE, viewport);
-        let input_root =
-            self.input_builder
-                .build(&self.ui, &mut self.inputs, &mut self.dirty, request)?;
-        self.input_viewport = Some(viewport);
-
-        let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE)
-            .with_viewport_changed(previous_viewport.is_some_and(|previous| previous != viewport));
-        let fragment_root = self.fragment_builder.build(
-            &self.ui,
-            &self.inputs,
-            &mut self.dirty,
-            input_root,
-            &mut self.fragments,
-            &constraint,
-        );
-        let Some(fragment_root) = fragment_root else {
-            self.dirty.clear(&self.inputs, input_root);
-            return None;
-        };
-
-        // Positions and clips follow the layout, so resolve the fragments of
-        // the items it laid out, which it marked, and of the other marked
-        // items.
-        let resolved = self.resolve_prepaint(&constraint.units, fragment_root);
-
-        // Layers keep their keys, so building from the root again only places
-        // the layers whose fragments gained, lost or reordered a layer.
-        let layer_root = resolved.and_then(|()| {
-            self.layer_builder.build(
-                &self.fragments,
-                &self.inputs,
-                &self.dirty,
-                &self.prepaint,
-                &mut self.layers,
-                input_root,
-            )
-        });
-        // Flags were consumed by the fragment build, the pre-paint resolve and
-        // the layer build. On failure they are kept, so the next layout
-        // resolves the items laid out by this one again.
-        self.layer_root = Some(layer_root?);
-        self.dirty.clear(&self.inputs, input_root);
-        self.viewport = Some(viewport);
-
-        Some(())
-    }
-
-    /// Resolve the pre-paint tree for the fragments under `root`, with paint
-    /// values using viewport units resolved again when `units` has another
-    /// viewport than the last successful resolve. The viewport is kept on
-    /// failure, for the next resolve.
-    fn resolve_prepaint(&mut self, units: &UnitResolveContext, root: FragmentKey) -> Option<()> {
-        let viewport_changed = self
-            .prepaint_viewport
-            .is_some_and(|previous| previous != units.viewport);
-
-        self.prepaint_resolver.build(
-            &self.ui,
-            &self.inputs,
-            &mut self.dirty,
-            &self.fragments,
-            units,
-            &mut self.prepaint,
-            root,
-            viewport_changed,
-        )?;
-        self.prepaint_viewport = Some(units.viewport);
-
-        Some(())
-    }
-
-    /// Resolve the pre-paint data of a node's item again after its outline
-    /// styles changed. Outlines are painted from that data and do not affect
-    /// the layout or the layers, so a repaint is enough to show them.
-    fn resolve_outline(&mut self, node: NodeKey) {
-        let Some(viewport) = self.viewport else {
-            return;
-        };
-        let Some(item) = self.inputs.item_for_node(node) else {
-            return;
-        };
-        let Some(root) = self
-            .inputs
-            .item_for_node(self.ui_root)
-            .and_then(|item| self.fragments.box_fragment(item))
-        else {
-            return;
-        };
-
-        let units = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE).units;
-        self.dirty
-            .mark(&self.inputs, item, DirtyFlags::NEED_PRE_PAINT);
-        // The flag is kept for the next layout, which clears every flag after
-        // resolving. Only the fragment builder could clear it otherwise, and
-        // a node that no longer matches the layout is resolved then instead.
-        let _ = self.resolve_prepaint(&units, root);
-    }
-
-    /// Outline the node under the cursor, from the last frame's layout, and
-    /// restore the outline of the node hovered before.
-    ///
-    /// TODO: Temporary, for checking hit testing by hand. Remove once input
-    /// events are dispatched to the UI.
-    fn update_hover(&mut self) {
-        let node = self.hovered_node();
-
-        if self.hovered.as_ref().map(|hovered| hovered.node) == node {
-            return;
-        }
-
-        if let Some(hovered) = self.hovered.take() {
-            let previous = hovered.node;
-            restore(&mut self.ui, hovered);
-            self.resolve_outline(previous);
-        }
-
-        if let Some(node) = node {
-            self.hovered = Some(outline(&mut self.ui, node));
-            self.resolve_outline(node);
-        }
-
-        if let Some(win) = &self.win {
             win.request_redraw();
         }
     }
+}
 
-    /// The source node of the fragment under the cursor.
-    fn hovered_node(&mut self) -> Option<NodeKey> {
-        let key = self.hit_tester.hit(
-            &self.layers,
-            &self.fragments,
-            &self.prepaint,
-            self.layer_root?,
-            self.cursor?,
-        )?;
-        let source = self.fragments.items.get(key)?.source;
+impl App {
+    fn redraw(&mut self, win: &Window) {
+        let size = win.inner_size();
 
-        Some(self.inputs.items.get(source)?.node)
+        if size.width == 0 || size.height == 0 || !self.renderer.is_active() {
+            return;
+        }
+
+        // Frame handlers set signals: run the bindings they woke before laying
+        // out, and keep drawing frames while anything animates.
+        event::run_frame(self.start.elapsed());
+        self.ui.poll();
+        if event::animating() {
+            win.request_redraw();
+        }
+
+        // Layout works in logical units: the physical surface divided by the
+        // display's scale factor.
+        let scale_factor = win.scale_factor();
+        let physical = kurbo::Rect::new(0.0, 0.0, size.width as f64, size.height as f64);
+        let viewport = Size::new(
+            physical.width() / scale_factor,
+            physical.height() / scale_factor,
+        );
+
+        let mut tree = self.ui.tree().borrow_mut();
+        // This frame shows every change so far.
+        tree.take_redraw();
+        if self
+            .pipeline
+            .layout(&mut tree, self.ui.root(), viewport)
+            .is_none()
+        {
+            return;
+        }
+
+        self.renderer.render(|scene| {
+            self.pipeline.paint(&tree, physical, scale_factor, scene);
+        });
+    }
+
+    /// The node under the cursor and its ancestors, innermost first, from the
+    /// last frame's layout.
+    fn path_under_cursor(&mut self) -> Vec<NodeKey> {
+        let tree = self.ui.tree().borrow();
+        let hit = self
+            .cursor
+            .and_then(|cursor| self.pipeline.hit(&tree, cursor));
+
+        ancestors(&tree.ui, hit)
+    }
+
+    /// Call the click handlers of the node under the cursor and its
+    /// ancestors, innermost first.
+    fn click(&mut self) {
+        let path = self.path_under_cursor();
+
+        for handler in event::click_handlers(&path) {
+            handler();
+        }
+    }
+
+    /// Call the hover handlers of the nodes the cursor left, then of those it
+    /// entered.
+    fn update_hover(&mut self) {
+        let path = self.path_under_cursor();
+        let hovered = event::hover_targets(&path);
+
+        let left = self.hovered.iter().filter(|node| !hovered.contains(node));
+        let entered = hovered.iter().filter(|node| !self.hovered.contains(node));
+        let changes: Vec<_> = left
+            .map(|&node| (node, false))
+            .chain(entered.map(|&node| (node, true)))
+            .collect();
+        self.hovered = hovered;
+
+        for (node, value) in changes {
+            if let Some(handler) = event::hover_handler(node) {
+                handler(value);
+            }
+        }
     }
 }
 
-/// Outline a hovered node, keeping the outline styles it set itself.
-fn outline(ui: &mut Ui, node: NodeKey) -> Hovered {
-    let props = ui.props(node);
-    let hovered = Hovered {
-        node,
-        width: props.and_then(|props| props.get_cloned()),
-        offset: props.and_then(|props| props.get_cloned()),
-        fill: props.and_then(|props| props.get_cloned()),
-    };
-
-    ui.set_props(
-        node,
-        (
-            OutlineWidth(StyleUnit::Px(HOVER_OUTLINE_WIDTH)),
-            OutlineOffset(StyleUnit::Px(HOVER_OUTLINE_OFFSET)),
-            OutlineFill(Paint::Solid(Color::BLACK)),
-        ),
-    );
-
-    hovered
-}
-
-/// Restore the outline styles a node set itself, once no longer hovered.
-fn restore(ui: &mut Ui, hovered: Hovered) {
-    let Hovered {
-        node,
-        width,
-        offset,
-        fill,
-    } = hovered;
-
-    match width {
-        Some(width) => ui.set_props(node, (width,)),
-        None => drop(ui.remove_prop::<OutlineWidth>(node)),
-    }
-
-    match offset {
-        Some(offset) => ui.set_props(node, (offset,)),
-        None => drop(ui.remove_prop::<OutlineOffset>(node)),
-    }
-
-    match fill {
-        Some(fill) => ui.set_props(node, (fill,)),
-        None => drop(ui.remove_prop::<OutlineFill>(node)),
-    }
+fn ancestors(ui: &Ui, node: Option<NodeKey>) -> Vec<NodeKey> {
+    core::iter::successors(node, |&node| ui.parent(node)).collect()
 }

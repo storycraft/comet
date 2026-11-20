@@ -1,285 +1,207 @@
 mod absolute;
 mod flex;
 mod layers;
+mod reactive;
 
 use anyrender::Paint;
+use comet::prelude::*;
 use comet_layout::style::{
-    bx::*,
-    geometry::{AutoValue, Rect, Size as LayoutSize, StyleUnit},
+    bx::{DisplayInner, DisplayOuter},
+    geometry::AutoValue,
     parley::{self, Alignment},
 };
-use comet_layout_flex::{flex, styles as flex_style};
-use comet_paint::style::{BorderRadius, Fill, TextColor};
-use comet_tree::{
-    node::{Node, NodeKey, Text},
-    ui::Ui,
-};
+use comet_layout_flex::styles::taffy::FlexWrap;
+use comet_tree::node::NodeKey;
 use peniko::Color;
 
 pub const BACKGROUND: Color = Color::from_rgb8(239, 242, 247);
+/// Color of captions and headings.
+pub const MUTED: Color = Color::from_rgb8(97, 109, 128);
 
-pub fn sample_ui() -> (Ui, NodeKey) {
-    let mut ui = Ui::new();
-    let root = ui.create(
-        Node::Box,
-        (
-            Fill(Paint::Solid(BACKGROUND)),
-            TextColor(Paint::Solid(Color::from_rgb8(36, 46, 63))),
-            FontSize(StyleUnit::Px(16.0)),
-            Padding(Rect::new_all(StyleUnit::Px(24.0))),
-            MinSize(LayoutSize::new(
-                AutoValue::Auto,
-                AutoValue::Value(StyleUnit::Vh(1.0)),
-            )),
-        ),
-    );
-    let title = ui.create(
-        Node::Box,
-        (
-            FontSize(StyleUnit::Px(28.0)),
-            FontWeight(parley::FontWeight::BOLD),
-        ),
-    );
-    ui.append(root, title);
-    text(&mut ui, title, "Comet / layout & text");
+pub fn sample_ui(cx: &UiCx) -> NodeKey {
+    cx.div()
+        .fill(solid(BACKGROUND))
+        .text_color(solid(Color::from_rgb8(36, 46, 63)))
+        .font_size(px(16))
+        .padding(all(px(24)))
+        .min_size(size(auto(), vh(100)))
+        .children(|cx| {
+            cx.div()
+                .font_size(px(28))
+                .font_weight(parley::FontWeight::BOLD)
+                .children(|cx| cx.text("Comet / layout & text").build());
 
-    // Sections wrap into as many columns as fit, each at least 420px wide.
-    let sections = ui.create(
-        Node::Box,
-        (
-            DisplayInner::Container(flex()),
-            flex_style::FlexWrap(flex_style::taffy::FlexWrap::Wrap),
-            flex_style::Gap(LayoutSize::new(StyleUnit::Px(16.0), StyleUnit::Px(16.0))),
-            Margin(Rect::new_invidiual(
-                AutoValue::Value(StyleUnit::Px(16.0)),
-                AutoValue::Value(StyleUnit::ZERO),
-                AutoValue::Value(StyleUnit::ZERO),
-                AutoValue::Value(StyleUnit::ZERO),
-            )),
-        ),
-    );
-    ui.append(root, sections);
-
-    flex::showcase(&mut ui, sections);
-    block_inline_sample(&mut ui, sections);
-    rich_text_sample(&mut ui, sections);
-    typography_sample(&mut ui, sections);
-    absolute::showcase(&mut ui, sections);
-    layers::showcase(&mut ui, sections);
-
-    (ui, root)
+            // Sections wrap into as many columns as fit, each at least 420px
+            // wide.
+            cx.div()
+                .flex()
+                .flex_wrap(FlexWrap::Wrap)
+                .gap(size(px(16), px(16)))
+                .margin(sides(px(16), px(0), px(0), px(0)))
+                .children(|cx| {
+                    flex::showcase(cx);
+                    block_inline_sample(cx);
+                    rich_text_sample(cx);
+                    typography_sample(cx);
+                    absolute::showcase(cx);
+                    layers::showcase(cx);
+                    reactive::showcase(cx);
+                });
+        })
 }
 
-fn block_inline_sample(ui: &mut Ui, root: NodeKey) {
-    let panel = panel(ui, root, "02 / Block + inline", Color::WHITE);
-    text(ui, panel, "Inline content starts here, ");
-    let span = ui.create(
-        Node::Box,
-        (
-            DisplayOuter::Inline,
-            Fill(Paint::Solid(Color::from_rgb8(224, 233, 255))),
-            BorderRadius(Rect::new_all(StyleUnit::Px(6.0))),
-        ),
-    );
-    ui.append(panel, span);
-    text(ui, span, "continues in a colored span ");
-    badge(ui, span, "inline box", Color::from_rgb8(198, 215, 255));
-    text(ui, span, " and wraps naturally with the available width.");
+fn block_inline_sample(cx: &UiCx) -> NodeKey {
+    panel(cx, "02 / Block + inline", Color::WHITE, |cx| {
+        cx.text("Inline content starts here, ").build();
+        cx.div()
+            .display_outer(DisplayOuter::Inline)
+            .fill(solid(Color::from_rgb8(224, 233, 255)))
+            .border_radius(all(px(6)))
+            .children(|cx| {
+                cx.text("continues in a colored span ").build();
+                badge(cx, "inline box", Color::from_rgb8(198, 215, 255));
+                cx.text(" and wraps naturally with the available width.")
+                    .build();
 
-    // A block inside an inline span splits the surrounding inline flow.
-    let block = ui.create(
-        Node::Box,
-        (
-            Padding(Rect::new_all(StyleUnit::Px(12.0))),
-            Fill(Paint::Solid(Color::from_rgb8(222, 242, 233))),
-            BorderRadius(Rect::new_all(StyleUnit::Px(8.0))),
-            TextAlign(Alignment::Center),
-        ),
-    );
-    ui.append(span, block);
-    text(ui, block, "Nested block / takes a full row, with ");
-    badge(
-        ui,
-        block,
-        "its own inline box",
-        Color::from_rgb8(182, 223, 207),
-    );
-    text(ui, span, "The same inline span resumes after the block.");
-    text(ui, panel, " Then the outer text continues.");
+                // A block inside an inline span splits the surrounding inline
+                // flow.
+                cx.div()
+                    .padding(all(px(12)))
+                    .fill(solid(Color::from_rgb8(222, 242, 233)))
+                    .border_radius(all(px(8)))
+                    .text_align(Alignment::Center)
+                    .children(|cx| {
+                        cx.text("Nested block / takes a full row, with ").build();
+                        badge(cx, "its own inline box", Color::from_rgb8(182, 223, 207));
+                    });
+                cx.text("The same inline span resumes after the block.")
+                    .build();
+            });
+        cx.text(" Then the outer text continues.").build();
+    })
 }
 
-fn rich_text_sample(ui: &mut Ui, root: NodeKey) {
-    let panel = panel(
-        ui,
-        root,
+fn rich_text_sample(cx: &UiCx) -> NodeKey {
+    panel(
+        cx,
         "03 / Rich text + inline block",
         Color::from_rgb8(255, 250, 240),
-    );
-    text(ui, panel, "Regular text, ");
-    let bold = text(ui, panel, "bold emphasis");
-    ui.set_props(bold, (FontWeight(parley::FontWeight::BOLD),));
-    text(ui, panel, ", ");
-    let italic = text(ui, panel, "a softer italic voice");
-    ui.set_props(italic, (FontStyle(parley::FontStyle::Italic),));
-    text(ui, panel, ", and ");
-    let accent = ui.create(
-        Node::Text,
-        (
-            Text("color and scale".into()),
-            FontSize(StyleUnit::Em(1.35)),
-            FontWeight(parley::FontWeight::SEMI_BOLD),
-            TextColor(Paint::Solid(Color::from_rgb8(96, 65, 177))),
-        ),
-    );
-    ui.append(panel, accent);
-    text(ui, panel, " share one paragraph. An ");
-    badge(ui, panel, "inline block", Color::from_rgb8(255, 222, 161));
-    text(
-        ui,
-        panel,
-        " stays in the text flow, even as the lines wrap. ",
-    );
+        |cx| {
+            cx.text("Regular text, ").build();
+            cx.text("bold emphasis")
+                .font_weight(parley::FontWeight::BOLD)
+                .build();
+            cx.text(", ").build();
+            cx.text("a softer italic voice")
+                .font_style(parley::FontStyle::Italic)
+                .build();
+            cx.text(", and ").build();
+            cx.text("color and scale")
+                .font_size(em(1.35))
+                .font_weight(parley::FontWeight::SEMI_BOLD)
+                .text_color(solid(Color::from_rgb8(96, 65, 177)))
+                .build();
+            cx.text(" share one paragraph. An ").build();
+            badge(cx, "inline block", Color::from_rgb8(255, 222, 161));
+            cx.text(" stays in the text flow, even as the lines wrap. ")
+                .build();
 
-    // Children inherit bold and color; the nested text adds italics.
-    let emphasis = ui.create(
-        Node::Box,
-        (
-            DisplayOuter::Inline,
-            FontWeight(parley::FontWeight::BOLD),
-            TextColor(Paint::Solid(Color::from_rgb8(127, 74, 32))),
-            Fill(Paint::Solid(Color::from_rgb8(255, 233, 193))),
-        ),
-    );
-    ui.append(panel, emphasis);
-    text(ui, emphasis, "Nested styles ");
-    let nested = text(ui, emphasis, "combine naturally");
-    ui.set_props(nested, (FontStyle(parley::FontStyle::Italic),));
-    text(
-        ui,
-        panel,
-        ". Emoji and fallback fonts work alongside them: 🎉 안녕하세요.",
-    );
+            // Children inherit bold and color; the nested text adds italics.
+            cx.div()
+                .display_outer(DisplayOuter::Inline)
+                .font_weight(parley::FontWeight::BOLD)
+                .text_color(solid(Color::from_rgb8(127, 74, 32)))
+                .fill(solid(Color::from_rgb8(255, 233, 193)))
+                .children(|cx| {
+                    cx.text("Nested styles ").build();
+                    cx.text("combine naturally")
+                        .font_style(parley::FontStyle::Italic)
+                        .build();
+                });
+            cx.text(". Emoji and fallback fonts work alongside them: 🎉 안녕하세요.")
+                .build();
+        },
+    )
 }
 
-fn typography_sample(ui: &mut Ui, root: NodeKey) {
-    let panel = panel(
-        ui,
-        root,
+fn typography_sample(cx: &UiCx) -> NodeKey {
+    panel(
+        cx,
         "04 / Font families + spacing",
         Color::from_rgb8(242, 238, 250),
-    );
-    let serif = ui.create(
-        Node::Box,
-        (
-            Font(parley::FontFamily::from("serif")),
-            FontSize(StyleUnit::Px(22.0)),
-            LineHeight(StyleUnit::Em(1.4)),
-        ),
-    );
-    ui.append(panel, serif);
-    text(ui, serif, "A serif voice, with ");
-    let italic = text(ui, serif, "room to breathe.");
-    ui.set_props(italic, (FontStyle(parley::FontStyle::Italic),));
+        |cx| {
+            cx.div()
+                .font(parley::FontFamily::from("serif"))
+                .font_size(px(22))
+                .line_height(em(1.4))
+                .children(|cx| {
+                    cx.text("A serif voice, with ").build();
+                    cx.text("room to breathe.")
+                        .font_style(parley::FontStyle::Italic)
+                        .build();
+                });
 
-    let code = ui.create(
-        Node::Box,
-        (
-            Font(parley::FontFamily::from("monospace")),
-            FontSize(StyleUnit::Px(14.0)),
-            Padding(Rect::new_axis(StyleUnit::Px(8.0), StyleUnit::Px(10.0))),
-            Fill(Paint::Solid(Color::from_rgb8(227, 220, 241))),
-        ),
-    );
-    ui.append(panel, code);
-    let keyword = text(ui, code, "let ");
-    ui.set_props(
-        keyword,
-        (
-            FontWeight(parley::FontWeight::BOLD),
-            TextColor(Paint::Solid(Color::from_rgb8(96, 65, 177))),
-        ),
-    );
-    text(ui, code, "message = ");
-    let string = text(ui, code, "\"Hello, Comet!\"");
-    ui.set_props(
-        string,
-        (TextColor(Paint::Solid(Color::from_rgb8(31, 111, 87))),),
-    );
-    text(ui, code, ";");
+            cx.div()
+                .font(parley::FontFamily::from("monospace"))
+                .font_size(px(14))
+                .padding(axis(px(8), px(10)))
+                .fill(solid(Color::from_rgb8(227, 220, 241)))
+                .children(|cx| {
+                    cx.text("let ")
+                        .font_weight(parley::FontWeight::BOLD)
+                        .text_color(solid(Color::from_rgb8(96, 65, 177)))
+                        .build();
+                    cx.text("message = ").build();
+                    cx.text("\"Hello, Comet!\"")
+                        .text_color(solid(Color::from_rgb8(31, 111, 87)))
+                        .build();
+                    cx.text(";").build();
+                });
 
-    let spaced = ui.create(
-        Node::Box,
-        (
-            FontSize(StyleUnit::Px(12.0)),
-            FontWeight(parley::FontWeight::SEMI_BOLD),
-            LetterSpacing(StyleUnit::Px(2.0)),
-            WordSpacing(StyleUnit::Px(4.0)),
-            Padding(Rect::new_invidiual(
-                StyleUnit::Px(12.0),
-                StyleUnit::ZERO,
-                StyleUnit::ZERO,
-                StyleUnit::ZERO,
-            )),
-        ),
-    );
-    ui.append(panel, spaced);
-    text(ui, spaced, "LETTER SPACING / WORD SPACING");
+            cx.div()
+                .font_size(px(12))
+                .font_weight(parley::FontWeight::SEMI_BOLD)
+                .letter_spacing(px(2))
+                .word_spacing(px(4))
+                .padding(sides(px(12), px(0), px(0), px(0)))
+                .children(|cx| cx.text("LETTER SPACING / WORD SPACING").build());
+        },
+    )
 }
 
-fn panel(ui: &mut Ui, root: NodeKey, label: &str, color: Color) -> NodeKey {
-    let panel = ui.create(
-        Node::Box,
-        (
-            Fill(Paint::Solid(color)),
-            BorderRadius(Rect::new_all(StyleUnit::Px(12.0))),
-            Padding(Rect::new_all(StyleUnit::Px(16.0))),
-            flex_style::FlexBasis(AutoValue::Value(StyleUnit::Px(420.0))),
-            flex_style::FlexGrow(1.0),
-            MinSize(LayoutSize::new(
-                AutoValue::Value(StyleUnit::ZERO),
-                AutoValue::Auto,
-            )),
-        ),
-    );
-    ui.append(root, panel);
-    let heading = ui.create(
-        Node::Box,
-        (
-            FontSize(StyleUnit::Px(14.0)),
-            FontWeight(parley::FontWeight::SEMI_BOLD),
-            TextColor(Paint::Solid(Color::from_rgb8(97, 109, 128))),
-            Padding(Rect::new_invidiual(
-                StyleUnit::ZERO,
-                StyleUnit::ZERO,
-                StyleUnit::Px(12.0),
-                StyleUnit::ZERO,
-            )),
-        ),
-    );
-    ui.append(panel, heading);
-    text(ui, heading, label);
-    panel
+/// A section of the sample, with a heading above `body`.
+fn panel(cx: &UiCx, label: &str, color: Color, body: impl FnOnce(&UiCx)) -> NodeKey {
+    cx.div()
+        .fill(solid(color))
+        .border_radius(all(px(12)))
+        .padding(all(px(16)))
+        .flex_basis(AutoValue::from(px(420)))
+        .flex_grow(1.0)
+        .min_size(size(px(0), auto()))
+        .children(|cx| {
+            cx.div()
+                .font_size(px(14))
+                .font_weight(parley::FontWeight::SEMI_BOLD)
+                .text_color(solid(MUTED))
+                .padding(sides(px(0), px(0), px(12), px(0)))
+                .children(|cx| cx.text(label).build());
+            body(cx);
+        })
 }
 
-fn badge(ui: &mut Ui, parent: NodeKey, label: &str, color: Color) {
-    let badge = ui.create(
-        Node::Box,
-        (
-            DisplayOuter::Inline,
-            DisplayInner::FlowRoot,
-            Fill(Paint::Solid(color)),
-            BorderRadius(Rect::new_all(StyleUnit::Px(6.0))),
-            Padding(Rect::new_axis(StyleUnit::Px(2.0), StyleUnit::Px(6.0))),
-        ),
-    );
-
-    ui.append(parent, badge);
-    text(ui, badge, "✨ ");
-    text(ui, badge, label);
+fn badge(cx: &UiCx, label: &str, color: Color) -> NodeKey {
+    cx.div()
+        .display_outer(DisplayOuter::Inline)
+        .display_inner(DisplayInner::FlowRoot)
+        .fill(solid(color))
+        .border_radius(all(px(6)))
+        .padding(axis(px(2), px(6)))
+        .children(|cx| {
+            cx.text("✨ ").build();
+            cx.text(label).build();
+        })
 }
 
-fn text(ui: &mut Ui, parent: NodeKey, value: &str) -> NodeKey {
-    let node = ui.create(Node::Text, (Text(value.into()),));
-    ui.append(parent, node);
-    node
+fn solid(color: Color) -> Paint {
+    Paint::Solid(color)
 }
