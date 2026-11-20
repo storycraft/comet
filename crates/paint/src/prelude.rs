@@ -3,7 +3,7 @@ pub use crate::layer::{
     PaintLayerItem, PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree,
 };
 pub use crate::painter::CometPainter;
-pub use crate::pre_paint::{
-    FragmentData, LayoutInputData, builder::PrePaintTreeBuilder, tree::PrePaintTree,
+pub use crate::prepaint::{
+    FragmentData, LayoutInputData, builder::PrepaintTreeBuilder, tree::PrepaintTree,
 };
 pub use crate::style::*;

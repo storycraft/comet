@@ -15,7 +15,7 @@ use comet_layout::{
 use comet_paint::{
     layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
-    pre_paint::{builder::PrePaintTreeBuilder, tree::PrePaintTree},
+    prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
     style::{BorderFill, BorderRadius, Fill, OutlineFill, OutlineWidth, TextColor},
 };
 use comet_tree::{
@@ -154,9 +154,9 @@ fn draw(
 ) {
     // Fresh trees resolve every fragment, so no flags are needed.
     let dirty = &mut DirtyMap::new();
-    let mut pre_paint = PrePaintTree::new();
-    PrePaintTreeBuilder::new()
-        .build(ui, inputs, dirty, tree, units, &mut pre_paint, root, false)
+    let mut prepaint = PrepaintTree::new();
+    PrepaintTreeBuilder::new()
+        .build(ui, inputs, dirty, tree, units, &mut prepaint, root, false)
         .unwrap();
     let mut layers = PaintLayerTree::new();
     let layer_root = PaintLayerBuilder::new()
@@ -164,13 +164,13 @@ fn draw(
             tree,
             inputs,
             dirty,
-            &pre_paint,
+            &prepaint,
             &mut layers,
             tree.items[root].source,
         )
         .unwrap();
     painter.draw(
-        ui, inputs, tree, &pre_paint, &layers, layer_root, viewport, 1.0, scene,
+        ui, inputs, tree, &prepaint, &layers, layer_root, viewport, 1.0, scene,
     );
 }
 

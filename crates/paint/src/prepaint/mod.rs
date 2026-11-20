@@ -1,6 +1,6 @@
 //! Paint data resolved for a fragment tree before painting.
 //!
-//! A [`PrePaintTree`](tree::PrePaintTree) holds the [`FragmentData`] of every
+//! A [`PrepaintTree`](tree::PrepaintTree) holds the [`FragmentData`] of every
 //! fragment, such as its transform relative to its parent fragment, and the
 //! [`LayoutInputData`] of every layout input item. Data only depends on the
 //! fragment or item itself, and fragment data on its item, so any fragment can

@@ -2,7 +2,7 @@
 //!
 //! A [`PaintLayerTree`](tree::PaintLayerTree) groups the fragments under a
 //! root fragment into layers, like stacking contexts in CSS. A box fragment
-//! with a [stacking](crate::pre_paint::FragmentData::stacking) z index, such
+//! with a [stacking](crate::prepaint::FragmentData::stacking) z index, such
 //! as one whose item sets a transform, an opacity, a filter or a z index,
 //! starts a child layer it owns. A layer covers its owner fragment and its
 //! descendants, except those starting layers of their own and their
@@ -11,7 +11,7 @@
 //! A layer paints its owner, then its child layers with a negative z index,
 //! then the rest of its fragments in tree order, then its other child layers.
 //! It paints with the transform of its owner fragment, looked up in the
-//! [`PrePaintTree`](crate::pre_paint::tree::PrePaintTree), and the opacity and
+//! [`PrepaintTree`](crate::prepaint::tree::PrepaintTree), and the opacity and
 //! filters of its owner's item.
 
 pub mod builder;

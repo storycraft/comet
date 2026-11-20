@@ -19,7 +19,7 @@ use comet_layout::{
 use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
-    pre_paint::{FragmentData, LayoutInputData, builder::PrePaintTreeBuilder, tree::PrePaintTree},
+    prepaint::{FragmentData, LayoutInputData, builder::PrepaintTreeBuilder, tree::PrepaintTree},
     style::{
         BorderRadius, Fill, OutlineFill, OutlineOffset, OutlineWidth, TextColor, Transform,
         TransformOrigin,
@@ -46,8 +46,8 @@ struct Fixture {
     inputs: LayoutInputTree,
     dirty: DirtyMap,
     fragments: FragmentTree,
-    pre_paint: PrePaintTree,
-    resolver: PrePaintTreeBuilder,
+    prepaint: PrepaintTree,
+    resolver: PrepaintTreeBuilder,
     input_builder: LayoutInputTreeBuilder,
     builder: FragmentTreeBuilder,
     root: Option<FragmentKey>,
@@ -107,7 +107,7 @@ impl Fixture {
             &mut self.dirty,
             &self.fragments,
             &UNITS,
-            &mut self.pre_paint,
+            &mut self.prepaint,
             key,
             false,
         )
@@ -128,24 +128,24 @@ impl Fixture {
     }
 
     fn data(&self, node: NodeKey) -> &LayoutInputData {
-        self.pre_paint.get(self.item(node)).unwrap()
+        self.prepaint.get(self.item(node)).unwrap()
     }
 
     fn border_radius(&self, key: FragmentKey) -> Option<RoundedRectRadii> {
-        self.pre_paint.fragment(key)?.border_radius
+        self.prepaint.fragment(key)?.border_radius
     }
 
     /// The border radii of a fragment, square at its joins, or `None` if it
     /// has no border radius.
     fn border_radii(&self, key: FragmentKey) -> Option<RoundedRectRadii> {
-        let data = self.pre_paint.fragment(key)?;
+        let data = self.prepaint.fragment(key)?;
         data.border_radius?;
 
         Some(data.border_radii(&self.fragments.items[key]))
     }
 
     fn fragment(&self, key: FragmentKey) -> &FragmentData {
-        self.pre_paint.fragment(key).unwrap()
+        self.prepaint.fragment(key).unwrap()
     }
 
     /// The data of a node's box fragment.
@@ -200,7 +200,7 @@ impl Fixture {
                 &self.fragments,
                 &self.inputs,
                 &self.dirty,
-                &self.pre_paint,
+                &self.prepaint,
                 &mut layers,
                 self.input_root.unwrap(),
             )
@@ -216,7 +216,7 @@ impl Fixture {
             ui,
             &self.inputs,
             &self.fragments,
-            &self.pre_paint,
+            &self.prepaint,
             &layers,
             root,
             SCENE_VIEWPORT,
@@ -404,11 +404,11 @@ fn split_fragments_square_joins_and_resolve_percentages_against_their_own_size()
     let first = fragments[0];
     let width = f.fragments.items[first].layout.size.width;
     assert!(
-        f.pre_paint
+        f.prepaint
             .hit_local(&f.fragments, first, Point::new(width - 0.5, 0.5))
     );
     assert!(
-        !f.pre_paint
+        !f.prepaint
             .hit_local(&f.fragments, first, Point::new(0.5, 0.5))
     );
 
@@ -966,7 +966,7 @@ fn local_hits_follow_the_rounded_border_box() {
     let mut f = Fixture::default();
     let root_fragment = f.build(&ui, root);
     let rounded = f.box_of(rounded);
-    let hit = |key, x, y| f.pre_paint.hit_local(&f.fragments, key, Point::new(x, y));
+    let hit = |key, x, y| f.prepaint.hit_local(&f.fragments, key, Point::new(x, y));
 
     // Local coordinates start at the border box corner, whatever its layout
     // location.
@@ -1182,7 +1182,7 @@ impl Fixture {
             ui,
             &self.inputs,
             &self.fragments,
-            &self.pre_paint,
+            &self.prepaint,
             &layers,
             root,
             SCENE_VIEWPORT.scale_from_origin(scale_factor),
@@ -1282,9 +1282,9 @@ impl Fixture {
 
     /// The pre-paint tree of `root`, resolved from scratch. Its marks go to
     /// a copy of the flags, which are left as they are.
-    fn full_resolve(&self, ui: &Ui, root: FragmentKey) -> PrePaintTree {
-        let mut full = PrePaintTree::new();
-        PrePaintTreeBuilder::new()
+    fn full_resolve(&self, ui: &Ui, root: FragmentKey) -> PrepaintTree {
+        let mut full = PrepaintTree::new();
+        PrepaintTreeBuilder::new()
             .build(
                 ui,
                 &self.inputs,
@@ -1307,13 +1307,13 @@ impl Fixture {
             let source = self.fragments.items[key].source;
 
             // Generations differ by design: only the values must match.
-            let (data, expected) = (self.pre_paint.fragment(key), full.fragment(key));
+            let (data, expected) = (self.prepaint.fragment(key), full.fragment(key));
             assert!(
                 data.zip(expected)
                     .is_some_and(|(data, expected)| data == expected),
                 "{key:?}: {data:?} != {expected:?}"
             );
-            assert_eq!(self.pre_paint.get(source), full.get(source), "{source:?}");
+            assert_eq!(self.prepaint.get(source), full.get(source), "{source:?}");
         }
     }
 }
@@ -1376,7 +1376,7 @@ fn incremental_resolves_follow_changed_fragments_only() {
         before
     );
     assert_eq!(
-        f.pre_paint.get(f.item(bottom)),
+        f.prepaint.get(f.item(bottom)),
         f.full_resolve(&ui, fragment_root).get(f.item(bottom))
     );
 }
@@ -1407,10 +1407,10 @@ fn resolves_both_changed_and_marked_fragments() {
     f.layout(&ui, root);
     f.mark(marked);
 
-    let pre_paint = DirtyFlags::NEED_PRE_PAINT;
-    assert_eq!(f.dirty.entry(f.item(marked)).flags, pre_paint);
-    assert_eq!(f.dirty.entry(f.item(wrapper)).child_bits, pre_paint);
-    assert!(f.dirty.entry(f.item(root)).child_bits.contains(pre_paint));
+    let prepaint = DirtyFlags::NEED_PRE_PAINT;
+    assert_eq!(f.dirty.entry(f.item(marked)).flags, prepaint);
+    assert_eq!(f.dirty.entry(f.item(wrapper)).child_bits, prepaint);
+    assert!(f.dirty.entry(f.item(root)).child_bits.contains(prepaint));
 
     f.resolve_changed(&ui, fragment_root);
     f.assert_matches_full_resolve(&ui, fragment_root);
@@ -1418,7 +1418,7 @@ fn resolves_both_changed_and_marked_fragments() {
     assert!(f.boxed(marked).border_radius.is_some());
 
     // The resolver keeps the flags for the caller to clear.
-    assert_eq!(f.dirty.entry(f.item(marked)).flags, pre_paint);
+    assert_eq!(f.dirty.entry(f.item(marked)).flags, prepaint);
     f.clear_flags();
     assert!(f.dirty.entry(f.item(marked)).flags.is_empty());
     assert!(f.dirty.entry(f.item(root)).child_bits.is_empty());
@@ -1501,9 +1501,9 @@ fn viewport_changes_resolve_viewport_dependent_paint_values_again() {
     // 10vw and 5vw of the 120px wide viewport.
     assert_eq!(radius(&f, relative), 12.0);
     assert_eq!(f.data(relative).outline_width, 6.0);
-    assert!(f.pre_paint.depends_viewport(f.item(relative)));
-    assert!(!f.pre_paint.depends_viewport(f.item(absolute)));
-    assert!(!f.pre_paint.depends_viewport(f.item(root)));
+    assert!(f.prepaint.depends_viewport(f.item(relative)));
+    assert!(!f.prepaint.depends_viewport(f.item(absolute)));
+    assert!(!f.prepaint.depends_viewport(f.item(root)));
 
     let wide = LayoutConstraint::new_root(Size::new(200.0, 400.0), 16.0).units;
     let resolve = |f: &mut Fixture, ui: &Ui, units, viewport_changed| {
@@ -1514,7 +1514,7 @@ fn viewport_changes_resolve_viewport_dependent_paint_values_again() {
                 &mut f.dirty,
                 &f.fragments,
                 units,
-                &mut f.pre_paint,
+                &mut f.prepaint,
                 fragment_root,
                 viewport_changed,
             )
@@ -1531,7 +1531,7 @@ fn viewport_changes_resolve_viewport_dependent_paint_values_again() {
     assert_eq!(radius(&f, relative), 20.0);
     assert_eq!(f.data(relative).outline_width, 10.0);
     assert_eq!(f.boxed(absolute), &absolute_data);
-    assert!(f.pre_paint.depends_viewport(f.item(relative)));
+    assert!(f.prepaint.depends_viewport(f.item(relative)));
 
     // Dropping the viewport units stops tracking the item.
     ui.set_props(
@@ -1545,7 +1545,7 @@ fn viewport_changes_resolve_viewport_dependent_paint_values_again() {
     resolve(&mut f, &ui, &wide, false);
     f.clear_flags();
     assert_eq!(radius(&f, relative), 2.0);
-    assert!(!f.pre_paint.depends_viewport(f.item(relative)));
+    assert!(!f.prepaint.depends_viewport(f.item(relative)));
 
     resolve(&mut f, &ui, &UNITS, true);
     assert_eq!(radius(&f, relative), 2.0);

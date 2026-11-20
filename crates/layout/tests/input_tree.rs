@@ -586,12 +586,12 @@ fn full_layout_resolves_and_marks_the_subtree() {
 
     // Every item under the marked one is marked, and those whose font size
     // changed need pre-paint.
-    let pre_paint = FULL | DirtyFlags::NEED_PRE_PAINT;
-    assert_eq!(dirty.entry(key_of(child)).flags, pre_paint);
-    assert_eq!(dirty.entry(key_of(text)).flags, pre_paint);
+    let prepaint = FULL | DirtyFlags::NEED_PRE_PAINT;
+    assert_eq!(dirty.entry(key_of(child)).flags, prepaint);
+    assert_eq!(dirty.entry(key_of(text)).flags, prepaint);
     assert_eq!(dirty.entry(key_of(fixed)).flags, FULL);
     assert!(dirty.entry(key_of(root)).flags.is_empty());
-    assert_eq!(dirty.entry(key_of(root)).child_bits, pre_paint);
+    assert_eq!(dirty.entry(key_of(root)).child_bits, prepaint);
     // The unmarked sibling was skipped.
     assert!(dirty.entry(key_of(sibling)).flags.is_empty());
 
@@ -984,7 +984,7 @@ fn deleting_and_moving_children_keeps_the_others_unflagged() {
 }
 
 #[test]
-fn only_font_size_changes_mark_pre_paint() {
+fn only_font_size_changes_mark_prepaint() {
     const PRE_PAINT: DirtyFlags = DirtyFlags::NEED_PRE_PAINT;
 
     let mut ui = Ui::new();

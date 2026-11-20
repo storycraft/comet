@@ -12,17 +12,17 @@ use comet_tree::ui::{Props, Ui};
 use kurbo::{Affine, Point, RoundedRectRadii, Size};
 
 use crate::{
-    pre_paint::{FragmentData, LayoutInputData, tree::PrePaintTree},
+    prepaint::{FragmentData, LayoutInputData, tree::PrepaintTree},
     style::{
         BackdropFilter, BorderRadius, Filter, Opacity, OutlineOffset, OutlineWidth, Transform,
         TransformOrigin, ZIndex,
     },
 };
 
-/// Builds a [`PrePaintTree`] for a fragment tree. Keep it to reuse its
+/// Builds a [`PrepaintTree`] for a fragment tree. Keep it to reuse its
 /// buffers across resolves.
 #[derive(Default)]
-pub struct PrePaintTreeBuilder {
+pub struct PrepaintTreeBuilder {
     /// Fragments to visit.
     pending: Vec<FragmentKey>,
     /// Layout input items to resolve.
@@ -40,7 +40,7 @@ struct Sources<'a> {
     units: &'a UnitResolveContext,
 }
 
-impl PrePaintTreeBuilder {
+impl PrepaintTreeBuilder {
     pub fn new() -> Self {
         Self::default()
     }
@@ -63,14 +63,14 @@ impl PrePaintTreeBuilder {
     /// [`DirtyEntry::child_bits`](comet_layout::dirty_map::DirtyEntry::child_bits)
     /// have [`DirtyFlags::NEED_PRE_PAINT`], or when it has no data in `tree`.
     /// The former reaches the lines and anonymous blocks of a laid out box.
-    /// A [cleared](PrePaintTree::clear) `tree` resolves every fragment.
+    /// A [cleared](PrepaintTree::clear) `tree` resolves every fragment.
     ///
     /// Data only depends on the fragment or item itself, so ancestors are not
     /// resolved. `dirty` is not cleared; the layer build reads it too, so
     /// call [`DirtyMap::clear`] after building layers.
     ///
     /// Items one of whose fragments gains, loses or changes the z index of
-    /// its [stacking](crate::pre_paint::FragmentData::stacking) context are
+    /// its [stacking](crate::prepaint::FragmentData::stacking) context are
     /// marked [`DirtyFlags::NEED_LAYER`] in `dirty`, for the layer build. A
     /// fragment without data before counts as starting none.
     ///
@@ -80,7 +80,7 @@ impl PrePaintTreeBuilder {
     /// its fragments, use `vw` or `vh` is resolved again with all of its
     /// fragments. Pass it when the viewport in `units` differs from the
     /// last successful call. The root font size is not tracked: resolve into a new
-    /// or [cleared](PrePaintTree::clear) tree when it changes.
+    /// or [cleared](PrepaintTree::clear) tree when it changes.
     ///
     /// `inputs` is the input tree `fragments` were built from, and `tree`
     /// belongs to them. `units` resolves border radii and transform origins,
@@ -99,7 +99,7 @@ impl PrePaintTreeBuilder {
         dirty: &mut DirtyMap,
         fragments: &FragmentTree,
         units: &UnitResolveContext,
-        tree: &mut PrePaintTree,
+        tree: &mut PrepaintTree,
         root: FragmentKey,
         viewport_changed: bool,
     ) -> Option<()> {

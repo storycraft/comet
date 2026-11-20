@@ -6,7 +6,7 @@ use kurbo::Point;
 
 use crate::{
     layer::{PaintLayerKey, tree::PaintLayerTree},
-    pre_paint::tree::PrePaintTree,
+    prepaint::tree::PrepaintTree,
 };
 
 /// Finds the fragment painted on top under a point. Keep it to reuse its
@@ -35,7 +35,7 @@ struct Visit {
 struct Sources<'a> {
     layers: &'a PaintLayerTree,
     fragments: &'a FragmentTree,
-    pre_paint: &'a PrePaintTree,
+    prepaint: &'a PrepaintTree,
 }
 
 impl PaintHitTester {
@@ -54,7 +54,7 @@ impl PaintHitTester {
     /// hit when `point` falls in its border box, rounded with its border
     /// radius, after mapping it through the transforms of the fragment and
     /// its ancestors, including the ancestors of `root`'s owner. See
-    /// [`PrePaintTree::hit_local`].
+    /// [`PrepaintTree::hit_local`].
     ///
     /// Points outside the clip of a box clipping its overflow do not hit its
     /// descendants, like the painter, and their subtrees are not searched.
@@ -66,22 +66,22 @@ impl PaintHitTester {
     /// anonymous blocks are never hit, and neither are fragments whose
     /// transforms collapse them to no area.
     ///
-    /// `pre_paint` must be resolved for `fragments`, and `layers` built for
+    /// `prepaint` must be resolved for `fragments`, and `layers` built for
     /// them. Returns `None` if `root` is not in `layers`. Fragments missing
-    /// from `fragments` or `pre_paint` are never hit, and neither are their
+    /// from `fragments` or `prepaint` are never hit, and neither are their
     /// descendants.
     pub fn hit(
         &mut self,
         layers: &PaintLayerTree,
         fragments: &FragmentTree,
-        pre_paint: &PrePaintTree,
+        prepaint: &PrepaintTree,
         root: PaintLayerKey,
         point: Point,
     ) -> Option<FragmentKey> {
         let sources = Sources {
             layers,
             fragments,
-            pre_paint,
+            prepaint,
         };
         let owner = layers.layers.get(root)?.owner;
 
@@ -97,7 +97,7 @@ impl PaintHitTester {
         let mut point = point;
 
         for &key in self.chain.iter().rev() {
-            point = pre_paint.fragment(key)?.inverse_transform? * point;
+            point = prepaint.fragment(key)?.inverse_transform? * point;
         }
 
         self.pending.clear();
@@ -113,7 +113,7 @@ impl PaintHitTester {
         point: Point,
     ) -> Option<FragmentKey> {
         let owner = sources.layers.layers.get(key)?.owner;
-        let point = sources.pre_paint.fragment(owner)?.inverse_transform? * point;
+        let point = sources.prepaint.fragment(owner)?.inverse_transform? * point;
         // The owner's clip bounds its descendants, child layers included.
         let inside = inside_clip(sources, owner, point);
 
@@ -149,7 +149,7 @@ impl PaintHitTester {
         }
 
         sources
-            .pre_paint
+            .prepaint
             .hit_local(sources.fragments, owner, point)
             .then_some(owner)
     }
@@ -183,7 +183,7 @@ impl PaintHitTester {
         let mut point = point;
 
         for &key in self.chain.iter().rev() {
-            point = sources.pre_paint.fragment(key)?.inverse_transform? * point;
+            point = sources.prepaint.fragment(key)?.inverse_transform? * point;
 
             if !inside_clip(sources, key, point) {
                 return None;
@@ -227,7 +227,7 @@ impl PaintHitTester {
                 if !matches!(
                     fragment.item,
                     FragmentItem::Line { .. } | FragmentItem::AnonymousBlock { .. }
-                ) && sources.pre_paint.hit_local(sources.fragments, key, point)
+                ) && sources.prepaint.hit_local(sources.fragments, key, point)
                 {
                     self.pending.truncate(base);
                     return Some(key);
@@ -243,7 +243,7 @@ impl PaintHitTester {
             }
 
             let Some(point) = sources
-                .pre_paint
+                .prepaint
                 .fragment(key)
                 .and_then(|data| data.inverse_transform)
                 .map(|inverse| inverse * point)
@@ -293,7 +293,7 @@ fn inside_clip(sources: Sources<'_>, key: FragmentKey, point: Point) -> bool {
         return true;
     };
     let (x, y) = sources
-        .pre_paint
+        .prepaint
         .get(fragment.source)
         .map_or((false, false), |data| data.clip);
 
@@ -304,7 +304,7 @@ fn inside_clip(sources: Sources<'_>, key: FragmentKey, point: Point) -> bool {
     // Clipping on both axes follows the rounded corners of the box, so its
     // clip is the area hitting it.
     if x && y {
-        return sources.pre_paint.hit_local(sources.fragments, key, point);
+        return sources.prepaint.hit_local(sources.fragments, key, point);
     }
 
     // Clipping on one axis stays square, unbounded on the other.

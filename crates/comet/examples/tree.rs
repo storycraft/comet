@@ -16,7 +16,7 @@ use comet_layout::{
 use comet_paint::{
     layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
-    pre_paint::{builder::PrePaintTreeBuilder, tree::PrePaintTree},
+    prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
 };
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use kurbo::Affine;
@@ -52,15 +52,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &constraint,
         )
         .ok_or("could not build fragment tree")?;
-    let mut pre_paint = PrePaintTree::new();
-    PrePaintTreeBuilder::new()
+    let mut prepaint = PrepaintTree::new();
+    PrepaintTreeBuilder::new()
         .build(
             &ui,
             &inputs,
             &mut dirty,
             &fragments,
             &constraint.units,
-            &mut pre_paint,
+            &mut prepaint,
             root,
             false,
         )
@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &fragments,
             &inputs,
             &dirty,
-            &pre_paint,
+            &prepaint,
             &mut layers,
             input_root,
         )
@@ -115,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &ui,
                 &inputs,
                 &fragments,
-                &pre_paint,
+                &prepaint,
                 &layers,
                 layer_root,
                 kurbo::Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),

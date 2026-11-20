@@ -9,13 +9,13 @@ use comet_layout::{
 use kurbo::{Point, Shape};
 use slotmap::{SecondaryMap, SparseSecondaryMap};
 
-use crate::pre_paint::{FragmentData, LayoutInputData};
+use crate::prepaint::{FragmentData, LayoutInputData};
 
 /// Paint data of the fragments of a fragment tree, such as their transforms
 /// relative to their parents, and of the layout input items they were built
 /// from.
 ///
-/// Filled by a [`PrePaintTreeBuilder`](super::builder::PrePaintTreeBuilder),
+/// Filled by a [`PrepaintTreeBuilder`](super::builder::PrepaintTreeBuilder),
 /// which resolves the fragments of the layout input items marked
 /// [`DirtyFlags::NEED_PRE_PAINT`], including those the fragment builder laid
 /// out, and the fragments without data.
@@ -23,7 +23,7 @@ use crate::pre_paint::{FragmentData, LayoutInputData};
 /// is never returned for the fragments and items reusing their slots, and is
 /// overwritten when those are resolved.
 #[derive(Default)]
-pub struct PrePaintTree {
+pub struct PrepaintTree {
     pub(super) fragment_mapping: SecondaryMap<FragmentKey, FragmentData>,
     pub(super) layout_mapping: SecondaryMap<LayoutInputKey, LayoutInputData>,
     /// Items whose paint values, or those of their fragments, use `vw` or
@@ -35,7 +35,7 @@ pub struct PrePaintTree {
     pub(super) ink_margin: f64,
 }
 
-impl PrePaintTree {
+impl PrepaintTree {
     pub fn new() -> Self {
         Self::default()
     }
@@ -96,7 +96,7 @@ impl PrePaintTree {
     }
 }
 
-impl Index<FragmentKey> for PrePaintTree {
+impl Index<FragmentKey> for PrepaintTree {
     type Output = FragmentData;
 
     fn index(&self, key: FragmentKey) -> &FragmentData {
@@ -104,7 +104,7 @@ impl Index<FragmentKey> for PrePaintTree {
     }
 }
 
-impl Index<LayoutInputKey> for PrePaintTree {
+impl Index<LayoutInputKey> for PrepaintTree {
     type Output = LayoutInputData;
 
     fn index(&self, key: LayoutInputKey) -> &LayoutInputData {

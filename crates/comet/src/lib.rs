@@ -19,7 +19,7 @@ use comet_paint::{
     hit::PaintHitTester,
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
-    pre_paint::{builder::PrePaintTreeBuilder, tree::PrePaintTree},
+    prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
     style::{OutlineFill, OutlineOffset, OutlineWidth},
 };
 use comet_tree::{node::NodeKey, ui::Ui};
@@ -49,14 +49,14 @@ pub fn run(ui: Ui, root: NodeKey) -> Result<(), Box<dyn Error>> {
         inputs: LayoutInputTree::new(),
         dirty: DirtyMap::new(),
         fragments: FragmentTree::new(),
-        pre_paint: PrePaintTree::new(),
-        pre_paint_resolver: PrePaintTreeBuilder::new(),
+        prepaint: PrepaintTree::new(),
+        prepaint_resolver: PrepaintTreeBuilder::new(),
         layers: PaintLayerTree::new(),
         layer_builder: PaintLayerBuilder::new(),
         layer_root: None,
         viewport: None,
         input_viewport: None,
-        pre_paint_viewport: None,
+        prepaint_viewport: None,
         hit_tester: PaintHitTester::new(),
         cursor: None,
         hovered: None,
@@ -75,8 +75,8 @@ struct App {
     /// Changes of `inputs` not consumed by the layout yet.
     dirty: DirtyMap,
     fragments: FragmentTree,
-    pre_paint: PrePaintTree,
-    pre_paint_resolver: PrePaintTreeBuilder,
+    prepaint: PrepaintTree,
+    prepaint_resolver: PrepaintTreeBuilder,
     layers: PaintLayerTree,
     layer_builder: PaintLayerBuilder,
     /// Root layer of `layers`, from the last layout. `None` until a layout
@@ -87,9 +87,9 @@ struct App {
     /// Logical viewport `inputs` was resolved with, kept when a later step
     /// of the layout fails.
     input_viewport: Option<Size<f64>>,
-    /// Logical viewport `pre_paint` was last resolved with, kept when a
+    /// Logical viewport `prepaint` was last resolved with, kept when a
     /// resolve fails, so the next one resolves viewport units again.
-    pre_paint_viewport: Option<Size<f64>>,
+    prepaint_viewport: Option<Size<f64>>,
     // TODO: Temporary hover outline, drawn around the node under the cursor.
     // Replace with real input handling.
     hit_tester: PaintHitTester,
@@ -186,7 +186,7 @@ impl ApplicationHandler for App {
                         &self.ui,
                         &self.inputs,
                         &self.fragments,
-                        &self.pre_paint,
+                        &self.prepaint,
                         &self.layers,
                         layer_root,
                         physical,
@@ -274,7 +274,7 @@ impl App {
         // Positions and clips follow the layout, so resolve the fragments of
         // the items it laid out, which it marked, and of the other marked
         // items.
-        let resolved = self.resolve_pre_paint(&constraint.units, fragment_root);
+        let resolved = self.resolve_prepaint(&constraint.units, fragment_root);
 
         // Layers keep their keys, so building from the root again only places
         // the layers whose fragments gained, lost or reordered a layer.
@@ -283,7 +283,7 @@ impl App {
                 &self.fragments,
                 &self.inputs,
                 &self.dirty,
-                &self.pre_paint,
+                &self.prepaint,
                 &mut self.layers,
                 input_root,
             )
@@ -302,22 +302,22 @@ impl App {
     /// values using viewport units resolved again when `units` has another
     /// viewport than the last successful resolve. The viewport is kept on
     /// failure, for the next resolve.
-    fn resolve_pre_paint(&mut self, units: &UnitResolveContext, root: FragmentKey) -> Option<()> {
+    fn resolve_prepaint(&mut self, units: &UnitResolveContext, root: FragmentKey) -> Option<()> {
         let viewport_changed = self
-            .pre_paint_viewport
+            .prepaint_viewport
             .is_some_and(|previous| previous != units.viewport);
 
-        self.pre_paint_resolver.build(
+        self.prepaint_resolver.build(
             &self.ui,
             &self.inputs,
             &mut self.dirty,
             &self.fragments,
             units,
-            &mut self.pre_paint,
+            &mut self.prepaint,
             root,
             viewport_changed,
         )?;
-        self.pre_paint_viewport = Some(units.viewport);
+        self.prepaint_viewport = Some(units.viewport);
 
         Some(())
     }
@@ -346,7 +346,7 @@ impl App {
         // The flag is kept for the next layout, which clears every flag after
         // resolving. Only the fragment builder could clear it otherwise, and
         // a node that no longer matches the layout is resolved then instead.
-        let _ = self.resolve_pre_paint(&units, root);
+        let _ = self.resolve_prepaint(&units, root);
     }
 
     /// Outline the node under the cursor, from the last frame's layout, and
@@ -382,7 +382,7 @@ impl App {
         let key = self.hit_tester.hit(
             &self.layers,
             &self.fragments,
-            &self.pre_paint,
+            &self.prepaint,
             self.layer_root?,
             self.cursor?,
         )?;

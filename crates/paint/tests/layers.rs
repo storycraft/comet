@@ -19,7 +19,7 @@ use comet_paint::{
     hit::PaintHitTester,
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
-    pre_paint::{builder::PrePaintTreeBuilder, tree::PrePaintTree},
+    prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
     style::{BackdropFilter, BorderRadius, Fill, Filter, Opacity, Transform, ZIndex},
 };
 use comet_tree::{
@@ -42,7 +42,7 @@ struct Fixture {
     inputs: LayoutInputTree,
     dirty: DirtyMap,
     fragments: FragmentTree,
-    pre_paint: PrePaintTree,
+    prepaint: PrepaintTree,
     layers: PaintLayerTree,
     /// Root layer of `layers`.
     root: PaintLayerKey,
@@ -73,15 +73,15 @@ impl Fixture {
             )
             .unwrap();
 
-        let mut pre_paint = PrePaintTree::new();
-        PrePaintTreeBuilder::new()
+        let mut prepaint = PrepaintTree::new();
+        PrepaintTreeBuilder::new()
             .build(
                 ui,
                 &inputs,
                 &mut dirty,
                 &fragments,
                 &UNITS,
-                &mut pre_paint,
+                &mut prepaint,
                 root,
                 false,
             )
@@ -94,7 +94,7 @@ impl Fixture {
                 &fragments,
                 &inputs,
                 &dirty,
-                &pre_paint,
+                &prepaint,
                 &mut layers,
                 input_root,
             )
@@ -105,7 +105,7 @@ impl Fixture {
             inputs,
             dirty,
             fragments,
-            pre_paint,
+            prepaint,
             layers,
             root,
             builder,
@@ -119,14 +119,14 @@ impl Fixture {
 
         self.dirty
             .mark_node(&self.inputs, node, DirtyFlags::NEED_PRE_PAINT);
-        PrePaintTreeBuilder::new()
+        PrepaintTreeBuilder::new()
             .build(
                 ui,
                 &self.inputs,
                 &mut self.dirty,
                 &self.fragments,
                 &UNITS,
-                &mut self.pre_paint,
+                &mut self.prepaint,
                 fragment_root,
                 false,
             )
@@ -138,7 +138,7 @@ impl Fixture {
                 &self.fragments,
                 &self.inputs,
                 &self.dirty,
-                &self.pre_paint,
+                &self.prepaint,
                 &mut self.layers,
                 input_root,
             )
@@ -172,7 +172,7 @@ impl Fixture {
         PaintHitTester::new().hit(
             &self.layers,
             &self.fragments,
-            &self.pre_paint,
+            &self.prepaint,
             self.root,
             Point::new(x, y),
         )
@@ -184,7 +184,7 @@ impl Fixture {
             ui,
             &self.inputs,
             &self.fragments,
-            &self.pre_paint,
+            &self.prepaint,
             &self.layers,
             self.root,
             SCENE_VIEWPORT,
@@ -754,7 +754,7 @@ fn building_again_keeps_layer_keys() {
             &f.fragments,
             &f.inputs,
             &f.dirty,
-            &f.pre_paint,
+            &f.prepaint,
             &mut f.layers,
             input_root,
         )
@@ -840,14 +840,14 @@ fn updates_match_full_builds() {
     for item in items {
         f.dirty.mark(&f.inputs, item, DirtyFlags::NEED_PRE_PAINT);
     }
-    PrePaintTreeBuilder::new()
+    PrepaintTreeBuilder::new()
         .build(
             &ui,
             &f.inputs,
             &mut f.dirty,
             &f.fragments,
             &UNITS,
-            &mut f.pre_paint,
+            &mut f.prepaint,
             fragment_root,
             false,
         )
@@ -859,7 +859,7 @@ fn updates_match_full_builds() {
             &f.fragments,
             &f.inputs,
             &f.dirty,
-            &f.pre_paint,
+            &f.prepaint,
             &mut f.layers,
             input_root,
         )
@@ -872,7 +872,7 @@ fn updates_match_full_builds() {
             &f.fragments,
             &f.inputs,
             &f.dirty,
-            &f.pre_paint,
+            &f.prepaint,
             &mut full,
             input_root,
         )
@@ -902,7 +902,7 @@ fn stale_root_layers_hit_nothing() {
         PaintHitTester::new().hit(
             &f.layers,
             &f.fragments,
-            &f.pre_paint,
+            &f.prepaint,
             old_root,
             Point::new(1.0, 1.0)
         ),
@@ -926,7 +926,7 @@ fn hit_testers_can_be_reused() {
         tester.hit(
             &f.layers,
             &f.fragments,
-            &f.pre_paint,
+            &f.prepaint,
             f.root,
             Point::new(x, y),
         )
@@ -944,7 +944,7 @@ fn hit_testers_can_be_reused() {
             &f.fragments,
             &f.inputs,
             &f.dirty,
-            &f.pre_paint,
+            &f.prepaint,
             &mut f.layers,
             input_root,
         )
@@ -1001,12 +1001,12 @@ fn hits_negative_layers_below_contents_from_the_last() {
 struct Pipeline {
     input_builder: LayoutInputTreeBuilder,
     fragment_builder: FragmentTreeBuilder,
-    resolver: PrePaintTreeBuilder,
+    resolver: PrepaintTreeBuilder,
     builder: PaintLayerBuilder,
     inputs: LayoutInputTree,
     dirty: DirtyMap,
     fragments: FragmentTree,
-    pre_paint: PrePaintTree,
+    prepaint: PrepaintTree,
     layers: PaintLayerTree,
 }
 
@@ -1040,7 +1040,7 @@ impl Pipeline {
                 &mut self.dirty,
                 &self.fragments,
                 &UNITS,
-                &mut self.pre_paint,
+                &mut self.prepaint,
                 root,
                 false,
             )
@@ -1052,7 +1052,7 @@ impl Pipeline {
                 &self.fragments,
                 &self.inputs,
                 &self.dirty,
-                &self.pre_paint,
+                &self.prepaint,
                 &mut self.layers,
                 input_root,
             )
@@ -1084,7 +1084,7 @@ impl Pipeline {
                 &self.fragments,
                 &self.inputs,
                 &self.dirty,
-                &self.pre_paint,
+                &self.prepaint,
                 &mut full,
                 input_root,
             )

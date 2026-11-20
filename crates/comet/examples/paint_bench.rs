@@ -28,7 +28,7 @@ use comet_layout_flex::{flex, styles as flex_style};
 use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
-    pre_paint::{builder::PrePaintTreeBuilder, tree::PrePaintTree},
+    prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
     style::Fill,
 };
 use comet_tree::{
@@ -55,7 +55,7 @@ struct Laid {
     ui: Ui,
     inputs: LayoutInputTree,
     fragments: FragmentTree,
-    pre_paint: PrePaintTree,
+    prepaint: PrepaintTree,
     layers: PaintLayerTree,
     layer_root: PaintLayerKey,
 }
@@ -117,15 +117,15 @@ fn build(sizing: Sizing, panels: usize) -> Laid {
             &constraint,
         )
         .expect("layout");
-    let mut pre_paint = PrePaintTree::new();
-    PrePaintTreeBuilder::new()
+    let mut prepaint = PrepaintTree::new();
+    PrepaintTreeBuilder::new()
         .build(
             &ui,
             &inputs,
             &mut dirty,
             &fragments,
             &constraint.units,
-            &mut pre_paint,
+            &mut prepaint,
             fragment_root,
             false,
         )
@@ -136,7 +136,7 @@ fn build(sizing: Sizing, panels: usize) -> Laid {
             &fragments,
             &inputs,
             &dirty,
-            &pre_paint,
+            &prepaint,
             &mut layers,
             input_root,
         )
@@ -147,7 +147,7 @@ fn build(sizing: Sizing, panels: usize) -> Laid {
         ui,
         inputs,
         fragments,
-        pre_paint,
+        prepaint,
         layers,
         layer_root,
     }
@@ -189,7 +189,7 @@ impl Bench {
                     &laid.ui,
                     &laid.inputs,
                     &laid.fragments,
-                    &laid.pre_paint,
+                    &laid.prepaint,
                     &laid.layers,
                     laid.layer_root,
                     viewport,
@@ -232,7 +232,7 @@ impl Bench {
                         &laid.ui,
                         &laid.inputs,
                         &laid.fragments,
-                        &laid.pre_paint,
+                        &laid.prepaint,
                         &laid.layers,
                         laid.layer_root,
                         viewport,

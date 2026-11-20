@@ -18,12 +18,12 @@ use slotmap::SecondaryMap;
 
 use crate::{
     layer::{PaintLayerKey, tree::PaintLayerTree},
-    pre_paint::{FragmentData, LayoutInputData, tree::PrePaintTree},
+    prepaint::{FragmentData, LayoutInputData, tree::PrepaintTree},
     style::{BackdropFilter, BorderFill, Fill, Filter, Opacity, OutlineFill, TextColor},
 };
 
 /// Paints final fragments in the order of their [`PaintLayerTree`], with the
-/// [`PrePaintTree`] resolved for them. Keep it to reuse its buffers across
+/// [`PrepaintTree`] resolved for them. Keep it to reuse its buffers across
 /// paints.
 #[derive(Default)]
 pub struct CometPainter {
@@ -87,13 +87,13 @@ impl Transforms {
     /// The transforms mapping the local coordinates of `key` to the scene,
     /// multiplied from the root down, or `None` if a fragment on the way is
     /// not resolved.
-    fn of(tree: &FragmentTree, pre_paint: &PrePaintTree, key: FragmentKey) -> Option<Self> {
+    fn of(tree: &FragmentTree, prepaint: &PrepaintTree, key: FragmentKey) -> Option<Self> {
         let parent = match tree.items.parent(key) {
-            Some(parent) => Self::of(tree, pre_paint, parent)?,
+            Some(parent) => Self::of(tree, prepaint, parent)?,
             None => Self::IDENTITY,
         };
 
-        Some(parent.then(pre_paint.fragment(key)?))
+        Some(parent.then(prepaint.fragment(key)?))
     }
 }
 
@@ -103,7 +103,7 @@ struct Sources<'a> {
     ui: &'a Ui,
     inputs: &'a LayoutInputTree,
     tree: &'a FragmentTree,
-    pre_paint: &'a PrePaintTree,
+    prepaint: &'a PrepaintTree,
     layers: &'a PaintLayerTree,
     /// The scene's viewport, in physical pixels.
     viewport: Rect,
@@ -118,7 +118,7 @@ impl CometPainter {
 
     /// Paint the fragments under the owner of `root`, a layer of `layers`.
     /// `inputs` is the input tree the fragments were built from, and
-    /// `pre_paint` and `layers` must be resolved and built for them. Paints
+    /// `prepaint` and `layers` must be resolved and built for them. Paints
     /// nothing if `root` is not in `layers`.
     ///
     /// Each layer paints its owner fragment, then its child layers with a
@@ -151,7 +151,7 @@ impl CometPainter {
     /// painted. Their descendants are skipped with them only when the
     /// fragment's [overflow](comet_layout::fragment::FragmentBox::overflow),
     /// grown by the pre-paint tree's
-    /// [ink margin](PrePaintTree::ink_margin), is outside too, since children
+    /// [ink margin](PrepaintTree::ink_margin), is outside too, since children
     /// may paint outside their parents. Child layers are visited on their own,
     /// so they paint wherever their transforms place them.
     #[allow(clippy::too_many_arguments)]
@@ -160,7 +160,7 @@ impl CometPainter {
         ui: &Ui,
         inputs: &LayoutInputTree,
         tree: &FragmentTree,
-        pre_paint: &PrePaintTree,
+        prepaint: &PrepaintTree,
         layers: &PaintLayerTree,
         root: PaintLayerKey,
         viewport: Rect,
@@ -175,7 +175,7 @@ impl CometPainter {
             return;
         };
         let parent = match tree.items.parent(item.owner) {
-            Some(parent) => Transforms::of(tree, pre_paint, parent),
+            Some(parent) => Transforms::of(tree, prepaint, parent),
             None => Some(Transforms::IDENTITY),
         };
         let Some(parent) = parent else {
@@ -195,7 +195,7 @@ impl CometPainter {
             ui,
             inputs,
             tree,
-            pre_paint,
+            prepaint,
             layers,
             viewport,
             scale_factor,
@@ -223,7 +223,7 @@ impl CometPainter {
         };
         let (Some(fragment), Some(own)) = (
             sources.tree.items.get(owner),
-            sources.pre_paint.fragment(owner),
+            sources.prepaint.fragment(owner),
         ) else {
             return;
         };
@@ -355,7 +355,7 @@ impl CometPainter {
 
         for &key in self.chain.iter().rev() {
             let (Some(fragment), Some(own)) =
-                (sources.tree.items.get(key), sources.pre_paint.fragment(key))
+                (sources.tree.items.get(key), sources.prepaint.fragment(key))
             else {
                 continue;
             };
@@ -425,7 +425,7 @@ impl CometPainter {
             }
 
             let (Some(fragment), Some(own)) =
-                (sources.tree.items.get(key), sources.pre_paint.fragment(key))
+                (sources.tree.items.get(key), sources.prepaint.fragment(key))
             else {
                 continue;
             };
@@ -526,15 +526,15 @@ impl CometPainter {
             ui,
             inputs,
             tree,
-            pre_paint,
+            prepaint,
             viewport,
             ..
         } = sources;
         let Some(fragment) = tree.items.get(key) else {
             return;
         };
-        let data = pre_paint.get(fragment.source);
-        let paint_data = pre_paint.fragment(key);
+        let data = prepaint.get(fragment.source);
+        let paint_data = prepaint.fragment(key);
         let rect = local_rect(fragment);
         let bounds = box_bounds(fragment, data, rect);
         let transform = transforms.transform;
@@ -607,7 +607,7 @@ fn subtree_visible(
     transforms: Transforms,
     clip: Option<Rect>,
 ) -> bool {
-    let margin = sources.pre_paint.ink_margin();
+    let margin = sources.prepaint.ink_margin();
     let bounds = transforms
         .transform
         .transform_rect_bbox(fragment.layout.overflow.inflate(margin, margin));
@@ -627,7 +627,7 @@ fn push_clip(
     scene: &mut impl PaintScene,
 ) -> (Option<Rect>, bool) {
     let axes = sources
-        .pre_paint
+        .prepaint
         .get(fragment.source)
         .map_or((false, false), |data| data.clip);
 
@@ -640,7 +640,7 @@ fn push_clip(
     // Clipping on both axes follows the rounded corners of the box.
     // TODO:: horizontal, vertical curve clip for round rect.
     let radii = sources
-        .pre_paint
+        .prepaint
         .fragment(key)
         .filter(|data| data.border_radius.is_some())
         .map(|data| data.border_radii(fragment));
@@ -686,7 +686,7 @@ fn draw_backdrop(
     }
 
     let border = sources
-        .pre_paint
+        .prepaint
         .fragment(key)
         .map_or(rect.to_rounded_rect(0.0), |data| data.border_rect(fragment));
 

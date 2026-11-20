@@ -6,12 +6,12 @@ use comet_layout::{
 
 use crate::{
     layer::{PaintLayerItem, PaintLayerKey, tree::PaintLayerTree},
-    pre_paint::tree::PrePaintTree,
+    prepaint::tree::PrepaintTree,
 };
 
 /// Builds and updates a [`PaintLayerTree`] for a fragment tree, from the
-/// [stacking](crate::pre_paint::FragmentData::stacking) z indices resolved in
-/// its [`PrePaintTree`]. Keep it to reuse its buffers: once the trees settle,
+/// [stacking](crate::prepaint::FragmentData::stacking) z indices resolved in
+/// its [`PrepaintTree`]. Keep it to reuse its buffers: once the trees settle,
 /// building again allocates nothing.
 #[derive(Default)]
 pub struct PaintLayerBuilder {
@@ -59,7 +59,7 @@ impl PaintLayerBuilder {
     /// For each item whose
     /// [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags)
     /// have [`DirtyFlags::NEED_LAYER`], the
-    /// [stacking](crate::pre_paint::FragmentData::stacking) of each of its
+    /// [stacking](crate::prepaint::FragmentData::stacking) of each of its
     /// fragments is compared with the layer the fragment starts: when it
     /// gains, loses or changes the z index of its layer, the child layers of
     /// the layer it paints in are placed again. So are those of a layer one
@@ -70,7 +70,7 @@ impl PaintLayerBuilder {
     /// Otherwise, such as on the first build or after a new root, every layer
     /// is built and layers of other fragments are deleted.
     ///
-    /// Build from the same `pre_paint` every time, after resolving it for
+    /// Build from the same `prepaint` every time, after resolving it for
     /// `fragments`, and before clearing `dirty`. Fragments without
     /// pre-paint data start no layer. Layers whose owner still starts one
     /// keep their keys. Returns `None` if `root` has no box fragment in
@@ -80,7 +80,7 @@ impl PaintLayerBuilder {
         fragments: &FragmentTree,
         inputs: &LayoutInputTree,
         dirty: &DirtyMap,
-        pre_paint: &PrePaintTree,
+        prepaint: &PrepaintTree,
         tree: &mut PaintLayerTree,
         root: LayoutInputKey,
     ) -> Option<PaintLayerKey> {
@@ -90,10 +90,10 @@ impl PaintLayerBuilder {
 
         let root_layer = match tree.layer_of(root_fragment) {
             Some(layer) if tree.layers.parent(layer).is_none() => {
-                self.update(fragments, inputs, dirty, pre_paint, tree, root, layer);
+                self.update(fragments, inputs, dirty, prepaint, tree, root, layer);
                 layer
             }
-            _ => self.build_root(fragments, pre_paint, tree, root_fragment),
+            _ => self.build_root(fragments, prepaint, tree, root_fragment),
         };
 
         self.delete_detached(tree);
@@ -106,7 +106,7 @@ impl PaintLayerBuilder {
     fn build_root(
         &mut self,
         fragments: &FragmentTree,
-        pre_paint: &PrePaintTree,
+        prepaint: &PrepaintTree,
         tree: &mut PaintLayerTree,
         root: FragmentKey,
     ) -> PaintLayerKey {
@@ -119,7 +119,7 @@ impl PaintLayerBuilder {
         };
         tree.layers[root_layer].z_index = 0;
 
-        self.rebuild(fragments, pre_paint, tree, root_layer, true);
+        self.rebuild(fragments, prepaint, tree, root_layer, true);
 
         // Layers of fragments outside `root`, such as previous roots, were
         // not reached.
@@ -142,7 +142,7 @@ impl PaintLayerBuilder {
         fragments: &FragmentTree,
         inputs: &LayoutInputTree,
         dirty: &DirtyMap,
-        pre_paint: &PrePaintTree,
+        prepaint: &PrepaintTree,
         tree: &mut PaintLayerTree,
         root: LayoutInputKey,
         root_layer: PaintLayerKey,
@@ -181,7 +181,7 @@ impl PaintLayerBuilder {
                         continue;
                     }
 
-                    let stacking = pre_paint.fragment(fragment).and_then(|data| data.stacking);
+                    let stacking = prepaint.fragment(fragment).and_then(|data| data.stacking);
                     let current = tree
                         .layer_of(fragment)
                         .map(|layer| tree.layers[layer].z_index);
@@ -240,7 +240,7 @@ impl PaintLayerBuilder {
             // deleted by the layer it paints in, which is placed again.
             let owner = item.owner;
             let starts = layer == root_layer
-                || pre_paint
+                || prepaint
                     .fragment(owner)
                     .is_some_and(|data| data.stacking.is_some());
 
@@ -248,7 +248,7 @@ impl PaintLayerBuilder {
                 continue;
             }
 
-            self.rebuild(fragments, pre_paint, tree, layer, false);
+            self.rebuild(fragments, prepaint, tree, layer, false);
         }
     }
 
@@ -260,7 +260,7 @@ impl PaintLayerBuilder {
     fn rebuild(
         &mut self,
         fragments: &FragmentTree,
-        pre_paint: &PrePaintTree,
+        prepaint: &PrepaintTree,
         tree: &mut PaintLayerTree,
         layer: PaintLayerKey,
         deep: bool,
@@ -273,7 +273,7 @@ impl PaintLayerBuilder {
         self.push_children(fragments, owner, layer);
 
         while let Some(Visit { fragment, layer }) = self.pending.pop() {
-            let stacking = pre_paint.fragment(fragment).and_then(|data| data.stacking);
+            let stacking = prepaint.fragment(fragment).and_then(|data| data.stacking);
 
             let Some(z_index) = stacking else {
                 self.push_children(fragments, fragment, layer);
