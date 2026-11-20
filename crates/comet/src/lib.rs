@@ -139,11 +139,8 @@ impl ApplicationHandler<accesskit_winit::Event> for App {
             AccessKitEvent::ActionRequested(request) => {
                 if request.action == Action::Click {
                     let path = {
-                        let tree = self.ui.tree().borrow();
-                        let target = self
-                            .pipeline
-                            .accessibility_target(&tree, request.target_node);
-                        ancestors(&tree.ui, target)
+                        let target = self.pipeline.accessibility_target(request.target_node);
+                        ancestors(&self.ui.tree().borrow().ui, target)
                     };
                     run_click(&path);
                 }
@@ -210,7 +207,7 @@ impl ApplicationHandler<accesskit_winit::Event> for App {
     fn about_to_wait(&mut self, _: &ActiveEventLoop) {
         self.ui.poll();
 
-        let changed = self.ui.tree().borrow_mut().take_redraw();
+        let changed = !self.ui.tree().borrow().changes().is_empty();
         if (changed || event::animating())
             && let Some(win) = &self.win
         {
@@ -221,6 +218,9 @@ impl ApplicationHandler<accesskit_winit::Event> for App {
 
 impl App {
     fn redraw(&mut self, win: &Window) {
+        // This frame shows every change so far. Changes are taken even
+        // without a frame, so they do not ask for one again.
+        self.pipeline.take_changes(&mut self.ui.tree().borrow_mut());
         let size = win.inner_size();
 
         if size.width == 0 || size.height == 0 || !self.renderer.is_active() {
@@ -245,8 +245,6 @@ impl App {
         );
 
         let mut tree = self.ui.tree().borrow_mut();
-        // This frame shows every change so far.
-        tree.take_redraw();
         if self
             .pipeline
             .layout(&mut tree, self.ui.root(), viewport)
@@ -269,12 +267,9 @@ impl App {
     /// The node under the cursor and its ancestors, innermost first, from the
     /// last frame's layout.
     fn path_under_cursor(&mut self) -> Vec<NodeKey> {
-        let tree = self.ui.tree().borrow();
-        let hit = self
-            .cursor
-            .and_then(|cursor| self.pipeline.hit(&tree, cursor));
+        let hit = self.cursor.and_then(|cursor| self.pipeline.hit(cursor));
 
-        ancestors(&tree.ui, hit)
+        ancestors(&self.ui.tree().borrow().ui, hit)
     }
 
     /// Call the click handlers of the node under the cursor and its

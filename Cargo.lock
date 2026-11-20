@@ -764,6 +764,7 @@ dependencies = [
  "accesskit",
  "any_spawner",
  "anyrender",
+ "bitflags 2.13.2",
  "comet-accesskit",
  "comet-layout",
  "comet-layout-flex",
@@ -772,6 +773,7 @@ dependencies = [
  "kurbo",
  "peniko",
  "reactive_graph",
+ "rustc-hash",
  "tokio",
 ]
 

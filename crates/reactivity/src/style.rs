@@ -109,7 +109,7 @@ pub trait Styled: Sized {
         filter: paint::Filter => Arc<anyrender::Filter>;
         backdrop_filter: paint::BackdropFilter => Arc<anyrender::Filter>;
 
-        // Accessibility. Changes are not sent to the accessibility tree yet.
+        // Accessibility.
         role: comet_accesskit::style::Role => accesskit::Role;
     }
 }

@@ -5,7 +5,6 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use comet_layout::dirty_map::DirtyFlags;
 use comet_tree::{
     builder::{NodeBuilder, ReservedNodeKey},
     node::{Node, NodeKey, Text},
@@ -16,7 +15,10 @@ use reactive_graph::{
     owner::{Owner, on_cleanup},
 };
 
-use crate::{prop::ReactiveProp, tree::UiTree};
+use crate::{
+    prop::{PropFlags, ReactiveProp},
+    tree::UiTree,
+};
 
 /// Context for building nodes in a shared [`UiTree`].
 ///
@@ -130,7 +132,7 @@ impl<'a> NodeBuild<'a> {
 
     /// Bind a prop to `f`. It runs now for the initial value, then again
     /// whenever a signal it read changes, writing the prop into the tree and
-    /// marking its [`ReactiveProp::DIRTY`] flags.
+    /// recording its [`ReactiveProp::DIRTY`] flags.
     pub fn style_with<P: ReactiveProp>(mut self, f: impl Fn() -> P + 'static) -> Self {
         let node = self.key();
         let tree = Rc::downgrade(&self.cx.tree);
@@ -174,19 +176,16 @@ impl<'a> NodeBuild<'a> {
     fn create(&mut self) -> NodeKey {
         let reserved = self.key.take().expect("node is created once");
         let mut tree = self.cx.tree.borrow_mut();
-        let UiTree {
-            ui, inputs, dirty, ..
-        } = &mut *tree;
 
-        let key = ui
+        let key = tree
+            .ui
             .create_prebuilt(reserved, self.builder.build(self.kind))
             .expect("reserved key is created once");
 
         if let Some(parent) = self.cx.parent {
-            ui.append(parent, key);
-            // New children are built with the parent's children. Nothing is
-            // marked before the parent is laid out.
-            dirty.mark_node(inputs, parent, DirtyFlags::NEED_CHILDREN);
+            tree.ui.append(parent, key);
+            // New children are built with the parent's children.
+            tree.mark(parent, PropFlags::CHILDREN);
         }
 
         key

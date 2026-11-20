@@ -6,10 +6,12 @@ use comet_accesskit::{
     tree::{fragment_key, node_id},
 };
 use comet_layout::{
+    dirty_map::DirtyMap,
     fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
+        tree::LayoutInputTree,
     },
     style::{
         LayoutConstraint,
@@ -22,16 +24,20 @@ use comet_paint::{
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
 };
-use comet_reactivity::UiTree;
-use comet_tree::node::NodeKey;
+use comet_reactivity::{PropFlags, UiTree};
+use comet_tree::{node::NodeKey, ui::Ui};
 
 /// Font size of the root element, used for `rem`.
 const ROOT_FONT_SIZE: f64 = 16.0;
 
-/// Every step is incremental: a layout without marked changes or a new
-/// viewport does little work.
+/// Every step is incremental: a layout without changes or a new viewport
+/// does little work.
 #[derive(Default)]
 pub(crate) struct Pipeline {
+    /// Layout items of the UI.
+    inputs: LayoutInputTree,
+    /// Changes taken from the UI and not consumed by the layout yet.
+    dirty: DirtyMap,
     input_builder: LayoutInputTreeBuilder,
     fragment_builder: FragmentTreeBuilder,
     fragments: FragmentTree,
@@ -56,12 +62,30 @@ pub(crate) struct Pipeline {
 }
 
 impl Pipeline {
-    /// Lay out the changes marked in `tree` at `viewport` and place the
-    /// layers. On failure, nothing is painted until a later layout succeeds.
+    /// Take the changes recorded in `tree`, to be consumed by the next
+    /// layout: layout flags are marked on the layout items, and nodes with
+    /// accessibility changes are kept to be marked in the accessibility
+    /// tree. Nodes not laid out yet have nothing to mark: a new node is laid
+    /// out with the children of its parent.
+    pub fn take_changes(&mut self, tree: &mut UiTree) {
+        for (node, flags) in tree.take_changes() {
+            let layout = flags.layout();
+            if !layout.is_empty() {
+                self.dirty.mark_node(&self.inputs, node, layout);
+            }
+
+            if flags.contains(PropFlags::A11Y) && self.a11y.active {
+                self.a11y.marks.push(node);
+            }
+        }
+    }
+
+    /// Take the changes of `tree`, then lay them out at `viewport` and place
+    /// the layers. On failure, nothing is painted until a later layout
+    /// succeeds.
     pub fn layout(&mut self, tree: &mut UiTree, root: NodeKey, viewport: Size<f64>) -> Option<()> {
-        let UiTree {
-            ui, inputs, dirty, ..
-        } = tree;
+        self.take_changes(tree);
+        let ui = &tree.ui;
         // Cleared until the layout succeeds.
         let previous_viewport = self.viewport.take();
         // Cleared until the layers are placed. The layer tree keeps the root
@@ -74,46 +98,42 @@ impl Pipeline {
         if self
             .input_viewport
             .is_some_and(|previous| previous != viewport)
-            && let Some(key) = inputs.item_for_node(root)
+            && let Some(key) = self.inputs.item_for_node(root)
         {
-            inputs.invalidate_viewport(dirty, key);
+            self.inputs.invalidate_viewport(&mut self.dirty, key);
         }
         let request = BuildRequest::new(root, ROOT_FONT_SIZE, viewport);
-        let input_root = self.input_builder.build(ui, inputs, dirty, request)?;
+        let input_root =
+            self.input_builder
+                .build(ui, &mut self.inputs, &mut self.dirty, request)?;
         self.input_viewport = Some(viewport);
 
         let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE)
             .with_viewport_changed(previous_viewport.is_some_and(|previous| previous != viewport));
         let Some(fragment_root) = self.fragment_builder.build(
             ui,
-            inputs,
-            dirty,
+            &self.inputs,
+            &mut self.dirty,
             input_root,
             &mut self.fragments,
             &constraint,
         ) else {
-            dirty.clear(inputs, input_root);
+            self.dirty.clear(&self.inputs, input_root);
             return None;
         };
 
         // Positions and clips follow the layout, so resolve the fragments of
         // the items it laid out, which it marked, and of the other marked
         // items.
-        let resolved = self.resolve_prepaint(tree, &constraint.units, fragment_root);
-        let UiTree {
-            ui: _,
-            inputs,
-            dirty,
-            ..
-        } = tree;
+        let resolved = self.resolve_prepaint(ui, &constraint.units, fragment_root);
 
         // Layers keep their keys, so building from the root again only places
         // the layers whose fragments gained, lost or reordered a layer.
         let layer_root = resolved.and_then(|()| {
             self.layer_builder.build(
                 &self.fragments,
-                inputs,
-                dirty,
+                &self.inputs,
+                &self.dirty,
                 &self.prepaint,
                 &mut self.layers,
                 input_root,
@@ -124,8 +144,8 @@ impl Pipeline {
         // kept, so the next layout resolves the items laid out by this one
         // again.
         self.layer_root = Some(layer_root?);
-        self.build_accessibility(tree, input_root);
-        tree.dirty.clear(&tree.inputs, input_root);
+        self.build_accessibility(ui, input_root);
+        self.dirty.clear(&self.inputs, input_root);
         self.viewport = Some(viewport);
 
         Some(())
@@ -136,7 +156,7 @@ impl Pipeline {
     /// viewport than the last successful resolve.
     fn resolve_prepaint(
         &mut self,
-        tree: &mut UiTree,
+        ui: &Ui,
         units: &UnitResolveContext,
         root: FragmentKey,
     ) -> Option<()> {
@@ -145,9 +165,9 @@ impl Pipeline {
             .is_some_and(|previous| previous != units.viewport);
 
         self.prepaint_builder.build(
-            &tree.ui,
-            &tree.inputs,
-            &mut tree.dirty,
+            ui,
+            &self.inputs,
+            &mut self.dirty,
             &self.fragments,
             units,
             &mut self.prepaint,
@@ -174,7 +194,7 @@ impl Pipeline {
 
         self.painter.draw(
             &tree.ui,
-            &tree.inputs,
+            &self.inputs,
             &self.fragments,
             &self.prepaint,
             &self.layers,
@@ -186,7 +206,7 @@ impl Pipeline {
     }
 
     /// The node under `point`, in logical units, from the last layout.
-    pub fn hit(&mut self, tree: &UiTree, point: kurbo::Point) -> Option<NodeKey> {
+    pub fn hit(&mut self, point: kurbo::Point) -> Option<NodeKey> {
         let key = self.hit_tester.hit(
             &self.layers,
             &self.fragments,
@@ -196,7 +216,7 @@ impl Pipeline {
         )?;
         let source = self.fragments.items.get(key)?.source;
 
-        Some(tree.inputs.items.get(source)?.node)
+        Some(self.inputs.items.get(source)?.node)
     }
 }
 
@@ -213,6 +233,9 @@ pub(crate) struct Accessibility {
     root: Option<FragmentKey>,
     /// Scale factor of the last update, applied to the root node.
     scale_factor: Option<f64>,
+    /// Nodes with accessibility changes taken from the UI, marked in the
+    /// tree by the next build.
+    marks: Vec<NodeKey>,
 }
 
 impl Pipeline {
@@ -224,22 +247,29 @@ impl Pipeline {
         a11y.tree.clear();
         a11y.root = None;
         a11y.scale_factor = None;
+        // A new tree resolves every node.
+        a11y.marks.clear();
     }
 
     /// Build the accessibility tree for the last layout. A failed build
     /// starts over with the next one, which sends the whole tree again.
-    fn build_accessibility(&mut self, tree: &UiTree, root: LayoutInputKey) {
+    fn build_accessibility(&mut self, ui: &Ui, root: LayoutInputKey) {
         let a11y = &mut self.a11y;
         if !a11y.active {
             return;
         }
 
+        // Marked after the layout, on the fragments the nodes have now.
+        for node in a11y.marks.drain(..) {
+            a11y.tree.mark_node(&self.inputs, &self.fragments, node);
+        }
+
         a11y.root = a11y
             .builder
             .build(
-                &tree.ui,
-                &tree.inputs,
-                &tree.dirty,
+                ui,
+                &self.inputs,
+                &self.dirty,
                 &self.fragments,
                 &self.prepaint,
                 &mut a11y.tree,
@@ -296,9 +326,9 @@ impl Pipeline {
 
     /// The source node of an accessibility node, such as the target of an
     /// action request.
-    pub fn accessibility_target(&self, tree: &UiTree, id: NodeId) -> Option<NodeKey> {
+    pub fn accessibility_target(&self, id: NodeId) -> Option<NodeKey> {
         let source = self.fragments.items.get(fragment_key(id))?.source;
 
-        Some(tree.inputs.items.get(source)?.node)
+        Some(self.inputs.items.get(source)?.node)
     }
 }

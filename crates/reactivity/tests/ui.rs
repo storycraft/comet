@@ -2,10 +2,14 @@ use std::{cell::RefCell, rc::Rc};
 
 use any_spawner::Executor;
 use anyrender::Paint;
+use comet_accesskit::style::Role;
 use comet_layout::{
-    dirty_map::DirtyFlags,
+    dirty_map::DirtyMap,
     fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
-    input::builder::{BuildRequest, LayoutInputTreeBuilder},
+    input::{
+        builder::{BuildRequest, LayoutInputTreeBuilder},
+        tree::LayoutInputTree,
+    },
     style::{
         LayoutConstraint,
         bx::{DisplayInner, DisplayOuter, FontSize, MinSize, Padding},
@@ -15,7 +19,7 @@ use comet_layout::{
 use comet_layout_flex::styles::Gap;
 use comet_paint::style::TextColor;
 use comet_reactivity::{
-    UiCx, UiTree,
+    PropFlags, UiCx, UiTree,
     prelude::{FlexStyled, Styled, auto, axis, percent, px, vh},
 };
 use comet_tree::node::{Node, NodeKey, Text};
@@ -50,31 +54,47 @@ fn shared() -> Rc<RefCell<UiTree>> {
     Rc::new(RefCell::new(UiTree::new()))
 }
 
-fn layout(tree: &mut UiTree, root: NodeKey, fragments: &mut FragmentTree) {
-    let viewport = Size::new(800.0, 600.0);
-    let UiTree {
-        ui, inputs, dirty, ..
-    } = tree;
-
-    let input_root = LayoutInputTreeBuilder::new()
-        .build(ui, inputs, dirty, BuildRequest::new(root, 16.0, viewport))
-        .expect("input tree");
-    FragmentTreeBuilder::new()
-        .build(
-            ui,
-            inputs,
-            dirty,
-            input_root,
-            fragments,
-            &LayoutConstraint::new_root(viewport, 16.0),
-        )
-        .expect("fragment tree");
-    dirty.clear(inputs, input_root);
+/// The layout steps of one UI, consuming the changes recorded in it.
+#[derive(Default)]
+struct Layout {
+    inputs: LayoutInputTree,
+    dirty: DirtyMap,
+    fragments: FragmentTree,
 }
 
-fn flags(tree: &UiTree, node: NodeKey) -> DirtyFlags {
-    let item = tree.inputs.item_for_node(node).expect("laid out");
-    tree.dirty.entry(item).flags
+impl Layout {
+    fn layout(&mut self, tree: &mut UiTree, root: NodeKey) {
+        let viewport = Size::new(800.0, 600.0);
+        let Self {
+            inputs,
+            dirty,
+            fragments,
+        } = self;
+        for (node, flags) in tree.take_changes() {
+            dirty.mark_node(inputs, node, flags.layout());
+        }
+
+        let ui = &tree.ui;
+        let input_root = LayoutInputTreeBuilder::new()
+            .build(ui, inputs, dirty, BuildRequest::new(root, 16.0, viewport))
+            .expect("input tree");
+        FragmentTreeBuilder::new()
+            .build(
+                ui,
+                inputs,
+                dirty,
+                input_root,
+                fragments,
+                &LayoutConstraint::new_root(viewport, 16.0),
+            )
+            .expect("fragment tree");
+        dirty.clear(inputs, input_root);
+    }
+}
+
+/// The flags recorded for `node` since the changes were last taken.
+fn flags(tree: &UiTree, node: NodeKey) -> PropFlags {
+    tree.changes().get(&node).copied().unwrap_or_default()
 }
 
 #[tokio::test]
@@ -109,9 +129,9 @@ async fn builds_nodes_with_initial_values() {
             .map(|&child| ui.prop::<Text>(child).unwrap().0.clone())
             .collect();
         assert_eq!(texts, ["a", "b"]);
-        // Initial values are not changes.
-        drop(tree);
-        assert!(!cx.tree().borrow_mut().take_redraw());
+        // Initial values are not changes: only the new children are.
+        assert_eq!(flags(&tree, root), PropFlags::CHILDREN);
+        assert!(children.iter().all(|&child| flags(&tree, child).is_empty()));
     })
     .await;
 }
@@ -140,10 +160,9 @@ async fn bindings_write_changes_and_mark_flags() {
         });
         let text = text.unwrap();
 
-        let mut fragments = FragmentTree::new();
-        layout(&mut tree.borrow_mut(), root, &mut fragments);
+        tree.borrow_mut().take_changes().for_each(drop);
 
-        // Repaint only: nothing is marked, but a redraw is requested.
+        // Repaint only: no layout flags.
         set_red.set(255);
         settle().await;
         {
@@ -152,24 +171,29 @@ async fn bindings_write_changes_and_mark_flags() {
                 *tree.ui.prop::<TextColor>(text).unwrap(),
                 TextColor(paint(255))
             );
-            assert_eq!(flags(&tree, text), DirtyFlags::empty());
-            assert!(tree.take_redraw());
+            assert_eq!(flags(&tree, text), PropFlags::RENDER);
+            assert!(flags(&tree, text).layout().is_empty());
+            tree.take_changes().for_each(drop);
         }
 
+        // Flags add up until taken.
         set_pad.set(8.0);
+        set_red.set(0);
         settle().await;
-        assert_eq!(flags(&tree.borrow(), root), DirtyFlags::NEED_BOX_LAYOUT);
-        layout(&mut tree.borrow_mut(), root, &mut fragments);
-
+        assert_eq!(flags(&tree.borrow(), root), PropFlags::BOX_LAYOUT);
         set_size.set(20.0);
         settle().await;
-        assert_eq!(flags(&tree.borrow(), root), DirtyFlags::NEED_FULL_LAYOUT);
-        assert!(tree.borrow_mut().take_redraw());
+        assert_eq!(
+            flags(&tree.borrow(), root),
+            PropFlags::FULL_LAYOUT | PropFlags::BOX_LAYOUT
+        );
+        assert_eq!(flags(&tree.borrow(), text), PropFlags::RENDER);
+        assert_eq!(tree.borrow_mut().take_changes().count(), 2);
 
         // Equal values are skipped.
         set_size.set(20.0);
         settle().await;
-        assert!(!tree.borrow_mut().take_redraw());
+        assert!(tree.borrow().changes().is_empty());
     })
     .await;
 }
@@ -193,22 +217,24 @@ async fn text_changes_relayout() {
         });
         let badge = badge.unwrap();
 
-        let mut fragments = FragmentTree::new();
-        let width = |tree: &UiTree, fragments: &FragmentTree| {
-            let item = tree.inputs.item_for_node(badge).unwrap();
+        let mut layout = Layout::default();
+        let width = |layout: &Layout| {
+            let item = layout.inputs.item_for_node(badge).unwrap();
+            let fragments = &layout.fragments;
             fragments.items[fragments.box_fragment(item).unwrap()]
                 .layout
                 .size
                 .width
         };
 
-        layout(&mut tree.borrow_mut(), root, &mut fragments);
-        let short = width(&tree.borrow(), &fragments);
+        layout.layout(&mut tree.borrow_mut(), root);
+        let short = width(&layout);
 
         set_label.set("a much longer label".to_owned());
         settle().await;
-        layout(&mut tree.borrow_mut(), root, &mut fragments);
-        let long = width(&tree.borrow(), &fragments);
+        assert_eq!(flags(&tree.borrow(), badge), PropFlags::empty());
+        layout.layout(&mut tree.borrow_mut(), root);
+        let long = width(&layout);
 
         assert!(long > short, "{long} > {short}");
     })
@@ -303,7 +329,30 @@ async fn unbuilt_nodes_are_released() {
         set_size.set(20.0);
         settle().await;
         assert_eq!(tree.borrow().ui.kind(key), None);
-        assert!(!tree.borrow_mut().take_redraw());
+        assert!(tree.borrow().changes().is_empty());
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn accessibility_changes_are_not_layout_changes() {
+    run(async || {
+        let tree = shared();
+        let cx = UiCx::new(tree.clone());
+        let (role, set_role) = signal(accesskit::Role::Button);
+
+        let root = cx.build(|cx| cx.div().role(role).build());
+        tree.borrow_mut().take_changes().for_each(drop);
+
+        set_role.set(accesskit::Role::Link);
+        settle().await;
+        let tree = tree.borrow();
+        assert_eq!(
+            *tree.ui.prop::<Role>(root).unwrap(),
+            Role(accesskit::Role::Link)
+        );
+        assert_eq!(flags(&tree, root), PropFlags::A11Y);
+        assert!(flags(&tree, root).layout().is_empty());
     })
     .await;
 }
