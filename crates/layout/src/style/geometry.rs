@@ -73,6 +73,12 @@ impl<T> AutoValue<T> {
     }
 }
 
+impl<T> From<T> for AutoValue<T> {
+    fn from(value: T) -> Self {
+        Self::Value(value)
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, derive_more::Display)]
 #[display("Size({width}, {height})")]
 pub struct Size<T> {
