@@ -129,24 +129,26 @@ impl<'a> NodeBuild<'a> {
     pub fn style_with<P: ReactiveProp>(mut self, f: impl Fn() -> P + 'static) -> Self {
         let node = self.key();
         let tree = Rc::downgrade(&self.cx.tree);
-        // Receives the value of the synchronous first run.
-        let initial = Rc::new(RefCell::new(None::<P>));
 
+        // The synchronous first run returns its value, kept by the effect
+        // until taken below. Later runs get `Some(None)` back as their
+        // previous value, write into the tree and return `None`.
         let effect = self.cx.owner.with(|| {
-            let initial = initial.clone();
-            RenderEffect::new(move |ran: Option<()>| {
+            RenderEffect::new(move |prev: Option<Option<P>>| {
                 let value = f();
-                match ran {
-                    None => *initial.borrow_mut() = Some(value),
-                    Some(()) => write(&tree, node, value),
+                if prev.is_none() {
+                    return Some(value);
                 }
+
+                write(&tree, node, value);
+                None
             })
         });
-        self.cx.owner.with(|| on_cleanup(move || drop(effect)));
 
-        if let Some(value) = initial.borrow_mut().take() {
+        if let Some(value) = effect.with_value_mut(Option::take).flatten() {
             self.builder.add(value);
         }
+        self.cx.owner.with(|| on_cleanup(move || drop(effect)));
         self
     }
 
