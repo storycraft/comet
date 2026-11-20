@@ -1227,3 +1227,178 @@ fn nested_inline_content_changing_kind_changes_its_owners_mode() {
     );
     assert!(item_kinds(&f, f.box_of(paragraph)).contains(&"box"));
 }
+
+fn overflow_of(f: &Fixture, node: NodeKey) -> kurbo::Rect {
+    f.fragments.items[f.box_of(node)].layout.overflow
+}
+
+fn hidden() -> bx::Overflow {
+    bx::Overflow(Point::new(
+        comet_layout::style::taffy::Overflow::Hidden,
+        comet_layout::style::taffy::Overflow::Hidden,
+    ))
+}
+
+#[test]
+fn overflow_covers_descendants_in_every_direction() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let parent = ui.create(Node::Box, (fixed_size(100.0, 50.0),));
+    // Shifted up and left, and wider than the parent.
+    let child = ui.create(
+        Node::Box,
+        (
+            bx::Inset(Rect::new_invidiual(
+                px(-10.0),
+                AutoValue::Auto,
+                AutoValue::Auto,
+                px(-20.0),
+            )),
+            fixed_size(200.0, 30.0),
+        ),
+    );
+    // Overflows the child downwards.
+    let grandchild = ui.create(Node::Box, (fixed_size(10.0, 300.0),));
+    ui.append(root, parent);
+    ui.append(parent, child);
+    ui.append(child, grandchild);
+
+    let mut f = Fixture::new();
+    f.build(&ui, root);
+
+    assert_eq!(
+        overflow_of(&f, grandchild),
+        kurbo::Rect::new(0.0, 0.0, 10.0, 300.0)
+    );
+    assert_eq!(
+        overflow_of(&f, child),
+        kurbo::Rect::new(0.0, 0.0, 200.0, 300.0)
+    );
+    assert_eq!(
+        overflow_of(&f, parent),
+        kurbo::Rect::new(-20.0, -10.0, 180.0, 290.0)
+    );
+    // The root follows its overflowing descendants too.
+    assert_eq!(overflow_of(&f, root).y1, 290.0);
+}
+
+#[test]
+fn clipping_boxes_contribute_only_their_border_box() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let parent = ui.create(Node::Box, (fixed_size(100.0, 50.0),));
+    let clipper = ui.create(Node::Box, (fixed_size(40.0, 20.0), hidden()));
+    let content = ui.create(Node::Box, (fixed_size(10.0, 300.0),));
+    ui.append(root, parent);
+    ui.append(parent, clipper);
+    ui.append(clipper, content);
+
+    let mut f = Fixture::new();
+    f.build(&ui, root);
+
+    // The clipper covers its content, which its parent does not see.
+    assert_eq!(
+        overflow_of(&f, clipper),
+        kurbo::Rect::new(0.0, 0.0, 40.0, 300.0)
+    );
+    assert_eq!(
+        overflow_of(&f, parent),
+        kurbo::Rect::new(0.0, 0.0, 100.0, 50.0)
+    );
+}
+
+#[test]
+fn hoisted_boxes_extend_the_overflow_of_the_boxes_between() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let wrapper = ui.create(
+        Node::Box,
+        (
+            bx::Position(Position::Static),
+            margin(30.0, 0.0),
+            fixed_size(100.0, 50.0),
+        ),
+    );
+    let abs = ui.create(
+        Node::Box,
+        (
+            bx::Position(Position::Absolute),
+            bx::Inset(Rect::new_invidiual(
+                px(5.0),
+                AutoValue::Auto,
+                AutoValue::Auto,
+                px(7.0),
+            )),
+            fixed_size(10.0, 10.0),
+        ),
+    );
+    ui.append(root, wrapper);
+    ui.append(wrapper, abs);
+
+    let mut f = Fixture::new();
+    let (root_key, _) = f.build(&ui, root);
+
+    // Placed at (7, -25) in the static wrapper, above its border box.
+    assert_eq!(
+        overflow_of(&f, wrapper),
+        kurbo::Rect::new(0.0, -25.0, 100.0, 50.0)
+    );
+
+    // A cached root layout keeps it.
+    f.dirty.clear(&f.tree, root_key);
+    f.build(&ui, root);
+
+    assert_eq!(
+        overflow_of(&f, wrapper),
+        kurbo::Rect::new(0.0, -25.0, 100.0, 50.0)
+    );
+}
+
+#[test]
+fn inline_content_extends_the_overflow_with_its_atomic_inlines() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let paragraph = ui.create(Node::Box, (fixed_size(200.0, 20.0),));
+    let inline_block = atomic(&mut ui, 20.0);
+    // Overflows the 10px tall atomic inline.
+    let tall = ui.create(Node::Box, (fixed_size(10.0, 100.0),));
+    ui.append(root, paragraph);
+    let label = text(&mut ui, "a ");
+    ui.append(paragraph, label);
+    ui.append(paragraph, inline_block);
+    ui.append(inline_block, tall);
+
+    let mut f = Fixture::new();
+    f.build(&ui, root);
+
+    let atomic_fragment = f.box_of(inline_block);
+    assert_eq!(
+        f.fragments.items[atomic_fragment].layout.overflow,
+        kurbo::Rect::new(0.0, 0.0, 20.0, 100.0)
+    );
+
+    // Every fragment between the paragraph and the atomic inline covers it.
+    let mut extent = f.fragments.items[atomic_fragment].layout.extent();
+    let mut ancestor = f.fragments.items.parent(atomic_fragment);
+    let paragraph_fragment = f.box_of(paragraph);
+
+    while let Some(key) = ancestor {
+        let layout = &f.fragments.items[key].layout;
+        assert!(
+            layout.overflow.contains_rect(extent),
+            "{:?} does not cover {extent:?}",
+            f.fragments.items[key].item
+        );
+
+        if key == paragraph_fragment {
+            break;
+        }
+
+        extent = layout.extent();
+        ancestor = f.fragments.items.parent(key);
+    }
+
+    assert!(overflow_of(&f, paragraph).height() > 100.0);
+    // Taffy passes the extended overflow up to the root.
+    assert!(overflow_of(&f, root).height() > 100.0);
+}

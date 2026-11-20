@@ -278,6 +278,7 @@ impl Engine<'_> {
         fragment.size = size;
         fragment.padding = conv::from_rect(layout.padding, f64::from);
         fragment.border = conv::from_rect(layout.border, f64::from);
+        fragment.overflow = overflow(layout);
     }
 }
 
@@ -337,5 +338,44 @@ fn cache_key(state: &NodeState, input: &taffy::LayoutInput) -> taffy::LayoutInpu
             ..*input
         },
         _ => *input,
+    }
+}
+
+/// The layout overflow of a box laid out by Taffy, in its local coordinates:
+/// its border box, with Taffy's scrollable overflow rectangle moved from the
+/// scroll origin, the top-left corner of the padding box, to the border box.
+pub(crate) fn overflow(layout: &taffy::Layout) -> kurbo::Rect {
+    let rect = layout.scrollable_overflow_rect;
+    let (x, y) = (f64::from(layout.border.left), f64::from(layout.border.top));
+    let content = kurbo::Rect::new(
+        x + f64::from(rect.left),
+        y + f64::from(rect.top),
+        x + f64::from(rect.right),
+        y + f64::from(rect.bottom),
+    );
+    let border_box = kurbo::Rect::new(
+        0.0,
+        0.0,
+        f64::from(layout.size.width),
+        f64::from(layout.size.height),
+    );
+
+    border_box.union(content)
+}
+
+/// `content`, an area in the local coordinates of a box with `border`, as a
+/// Taffy scrollable overflow rectangle, measured from the top-left corner of
+/// its padding box. The inverse of [`overflow`] for the content.
+pub(crate) fn scrollable_overflow(
+    content: kurbo::Rect,
+    border: taffy::Rect<f32>,
+) -> taffy::Rect<f32> {
+    let (x, y) = (f64::from(border.left), f64::from(border.top));
+
+    taffy::Rect {
+        left: (content.x0 - x) as f32,
+        right: (content.x1 - x) as f32,
+        top: (content.y0 - y) as f32,
+        bottom: (content.y1 - y) as f32,
     }
 }

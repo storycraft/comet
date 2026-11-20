@@ -118,4 +118,28 @@ pub struct FragmentBox {
     pub padding: Rect<f64>,
     pub border: Rect<f64>,
     pub baseline: Option<f64>,
+    /// Layout overflow: the area covered by the border box and by the
+    /// overflow of every descendant fragment, in local coordinates with the
+    /// border box's top-left corner at the origin. Descendants clipped by a
+    /// box clipping its overflow only contribute that box's border box.
+    ///
+    /// Boxes and anonymous blocks take it from Taffy's scrollable overflow
+    /// rectangle, extended by their inline content and by the out-of-flow
+    /// boxes placed under them. Transforms are not applied, and neither is
+    /// paint outside of layout, such as outlines or glyph ink.
+    pub overflow: kurbo::Rect,
+}
+
+impl FragmentBox {
+    /// The border box, in local coordinates.
+    pub fn border_box(&self) -> kurbo::Rect {
+        kurbo::Rect::new(0.0, 0.0, self.size.width, self.size.height)
+    }
+
+    /// The area covered by the fragment and its descendants, in the local
+    /// coordinates of its parent: its [overflow](Self::overflow), placed at
+    /// its location.
+    pub fn extent(&self) -> kurbo::Rect {
+        self.overflow + kurbo::Vec2::new(self.location.x, self.location.y)
+    }
 }

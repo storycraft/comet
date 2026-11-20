@@ -19,6 +19,7 @@ use rustc_hash::FxHashMap;
 use taffy::{ResolveOrZero, style::CoreStyle};
 
 use super::{Engine, FragmentKey, Mode};
+use crate::fragment::adapter::scrollable_overflow;
 use crate::{
     fragment::{InlineLayout, tree::FragmentTree},
     input::{LayoutInputKey, LayoutInputKind},
@@ -85,13 +86,21 @@ impl Engine<'_> {
             self.prepare(fragment, available);
             let align = self.alignment(fragment);
             self.break_lines(fragment, width, align);
-            self.emit(
+            let content = self.emit(
                 fragment,
                 taffy::Point {
                     x: inset.left,
                     y: inset.top,
                 },
             );
+
+            // Taffy only knows the measured lines. Atomic inlines and
+            // overflowing lines can reach further, so the emitted content
+            // extends the overflow passed up to the parent.
+            if let Some(content) = content {
+                let content = scrollable_overflow(content, border);
+                output.scrollable_overflow_rect = union(output.scrollable_overflow_rect, content);
+            }
 
             // Fragments of runs are linked once the owner's runs are emitted.
             if self
@@ -263,5 +272,15 @@ impl Engine<'_> {
     fn alignment(&self, fragment: FragmentKey) -> Alignment {
         let owner = self.fragments.items[fragment].source;
         self.tree.items[owner].text_style.align
+    }
+}
+
+/// The smallest rectangle containing `a` and `b`.
+fn union(a: taffy::Rect<f32>, b: taffy::Rect<f32>) -> taffy::Rect<f32> {
+    taffy::Rect {
+        left: a.left.min(b.left),
+        right: a.right.max(b.right),
+        top: a.top.min(b.top),
+        bottom: a.bottom.max(b.bottom),
     }
 }

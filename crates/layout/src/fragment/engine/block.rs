@@ -120,6 +120,22 @@ impl Engine<'_> {
                 items[hoisted].layout.location = location;
                 dirty.mark(tree, items[hoisted].source, DirtyFlags::NEED_PRE_PAINT);
             }
+
+            // Taffy adds the box to the overflow of its containing block
+            // alone, so the boxes in between cover it too. Their overflow is
+            // written again whenever they are laid out, so this only grows
+            // it until then.
+            let mut extent = items[hoisted].layout.extent();
+            let mut ancestor = items.parent(hoisted);
+
+            while let Some(key) = ancestor
+                && key != containing
+            {
+                let layout = &mut items[key].layout;
+                layout.overflow = layout.overflow.union(extent);
+                extent = layout.extent();
+                ancestor = items.parent(key);
+            }
         }
     }
 

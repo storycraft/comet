@@ -18,7 +18,15 @@ use crate::{
 impl Engine<'_> {
     /// Replace the lines of a fragment owning them with its broken and aligned
     /// inline layout. `origin` is the content box offset from the border box.
-    pub(super) fn emit(&mut self, fragment: FragmentKey, origin: taffy::Point<f32>) {
+    ///
+    /// Returns the area covered by the emitted lines and their descendants,
+    /// with the [overflow](FragmentBox::overflow) of each, in the fragment's
+    /// local coordinates. `None` without lines.
+    pub(super) fn emit(
+        &mut self,
+        fragment: FragmentKey,
+        origin: taffy::Point<f32>,
+    ) -> Option<kurbo::Rect> {
         self.release_children(fragment);
 
         let Scratch {
@@ -38,7 +46,7 @@ impl Engine<'_> {
             .state()
             .and_then(|key| states.get(key)?.inline.as_deref())
         else {
-            return;
+            return None;
         };
 
         let mut emitter = Emitter {
@@ -62,6 +70,7 @@ impl Engine<'_> {
         }
 
         emitter.fit_spans();
+        emitter.fit_overflow()
     }
 
     /// Chain the inline and glyph run fragments of each source across the
@@ -294,6 +303,23 @@ impl Emitter<'_> {
         fragment
     }
 
+    /// Set the [overflow](FragmentBox::overflow) of the emitted lines, spans
+    /// and glyph runs to their extents, after the spans are fitted. Atomic
+    /// inlines keep the overflow of their own layout. Returns the union of
+    /// the lines' extents.
+    fn fit_overflow(&mut self) -> Option<kurbo::Rect> {
+        let mut extent: Option<kurbo::Rect> = None;
+        let mut line = self.items.first_child(self.fragment);
+
+        while let Some(key) = line {
+            let line_extent = fit_overflow(self.items, key);
+            extent = Some(extent.map_or(line_extent, |extent| extent.union(line_extent)));
+            line = self.items.next_sibling(key);
+        }
+
+        extent
+    }
+
     /// Fit inline spans to their contents. Nested spans finish before their parents.
     fn fit_spans(&mut self) {
         while let Some(span) = self.spans.pop() {
@@ -327,4 +353,24 @@ impl Emitter<'_> {
             }
         }
     }
+}
+
+/// Set the [overflow](FragmentBox::overflow) of an emitted line, span or
+/// glyph run, and of its descendants, to cover its border box and the
+/// extents of its children. Boxes keep the overflow of their own layout.
+/// Returns its extent in its parent's coordinates.
+fn fit_overflow(items: &mut SlotTree<FragmentKey, Fragment>, key: FragmentKey) -> kurbo::Rect {
+    if !items[key].item.is_box() {
+        let mut overflow = items[key].layout.border_box();
+        let mut child = items.first_child(key);
+
+        while let Some(next) = child {
+            overflow = overflow.union(fit_overflow(items, next));
+            child = items.next_sibling(next);
+        }
+
+        items[key].layout.overflow = overflow;
+    }
+
+    items[key].layout.extent()
 }
