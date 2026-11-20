@@ -12,7 +12,7 @@ use comet_layout::{
     style::{
         LayoutConstraint, bx,
         geometry::{AutoValue, Rect as LayoutRect, Size, StyleUnit, UnitResolveContext},
-        taffy::Overflow,
+        taffy::{Overflow, Position},
     },
 };
 use comet_paint::{
@@ -1310,4 +1310,108 @@ fn reordered_atomic_inlines_reorder_their_layers() {
     let by_node = [second, first].map(|node| p.layer_of(node).unwrap());
     assert_eq!(p.children(root_layer), by_node);
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(root_layer));
+}
+
+fn top_left(top: f64, left: f64) -> bx::Inset {
+    bx::Inset(LayoutRect::new_invidiual(
+        AutoValue::Value(StyleUnit::Px(top)),
+        AutoValue::Auto,
+        AutoValue::Auto,
+        AutoValue::Value(StyleUnit::Px(left)),
+    ))
+}
+
+#[test]
+fn hits_descendants_overflowing_their_parents() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let parent = ui.create(Node::Box, (fixed(20.0, 20.0),));
+    // Moved out of the parent, to (60, 30)..(80, 40).
+    let moved = ui.create(Node::Box, (fixed(20.0, 10.0), top_left(30.0, 60.0)));
+    ui.append(root, parent);
+    ui.append(parent, moved);
+
+    let f = Fixture::build(&ui, root);
+
+    assert_eq!(f.hit(65.0, 35.0), Some(f.box_of(moved)));
+    // Its far corner, on the edge of the parent's overflow.
+    assert_eq!(f.hit(79.9, 39.9), Some(f.box_of(moved)));
+    assert_eq!(f.hit(10.0, 10.0), Some(f.box_of(parent)));
+    assert_eq!(f.hit(40.0, 10.0), Some(f.box_of(root)));
+    // Below the 20px tall root, beside the moved box.
+    assert_eq!(f.hit(40.0, 35.0), None);
+}
+
+#[test]
+fn hits_hoisted_boxes_placed_outside_their_parents() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    // Static, so the root positions the absolute box, above the wrapper.
+    let wrapper = ui.create(
+        Node::Box,
+        (
+            bx::Position(Position::Static),
+            fixed(40.0, 20.0),
+            bx::Margin(LayoutRect::new_invidiual(
+                AutoValue::Value(StyleUnit::Px(100.0)),
+                AutoValue::Value(StyleUnit::ZERO),
+                AutoValue::Value(StyleUnit::ZERO),
+                AutoValue::Value(StyleUnit::ZERO),
+            )),
+        ),
+    );
+    let inner = ui.create(
+        Node::Box,
+        (bx::Position(Position::Static), fixed(40.0, 20.0)),
+    );
+    let abs = ui.create(
+        Node::Box,
+        (
+            bx::Position(Position::Absolute),
+            top_left(5.0, 7.0),
+            fixed(10.0, 10.0),
+        ),
+    );
+    ui.append(root, wrapper);
+    ui.append(wrapper, inner);
+    ui.append(inner, abs);
+
+    let f = Fixture::build(&ui, root);
+
+    assert_eq!(f.hit(10.0, 10.0), Some(f.box_of(abs)));
+    assert_eq!(f.hit(10.0, 110.0), Some(f.box_of(inner)));
+}
+
+#[test]
+fn hits_content_of_atomic_inlines_below_their_line() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let paragraph = ui.create(Node::Box, (fixed(200.0, 20.0),));
+    let inline_block = ui.create(
+        Node::Box,
+        (
+            bx::DisplayOuter::Inline,
+            bx::DisplayInner::FlowRoot,
+            fixed(20.0, 10.0),
+        ),
+    );
+    // Overflows the atomic inline, far below the line and the paragraph.
+    let tall = ui.create(Node::Box, (fixed(10.0, 100.0),));
+    ui.append(root, paragraph);
+    ui.append(paragraph, inline_block);
+    ui.append(inline_block, tall);
+
+    let f = Fixture::build(&ui, root);
+    let tall_box = f.box_of(tall);
+
+    // Somewhere in its lower half, in scene coordinates.
+    let mut origin = Point::ZERO;
+    let mut key = Some(tall_box);
+    while let Some(k) = key {
+        let location = f.fragments.items[k].layout.location;
+        origin += kurbo::Vec2::new(location.x, location.y);
+        key = f.fragments.items.parent(k);
+    }
+
+    assert_eq!(f.hit(origin.x + 5.0, origin.y + 80.0), Some(tall_box));
 }
