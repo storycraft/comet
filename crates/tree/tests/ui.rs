@@ -351,3 +351,73 @@ fn properties_and_required_node_kind() {
     assert!(ui.prop_mut::<Width>(key).is_none());
     assert!(ui.remove_prop::<Text>(key).is_none());
 }
+
+#[test]
+fn prebuilt_node_fills_reserved_key() {
+    let mut ui = Ui::new();
+    let parent = ui.create(Node::Box, ());
+    let reserved = ui.reserve_node();
+    let key = reserved.key();
+
+    // A reserved key is not a node yet.
+    assert!(ui.props(key).is_none());
+    assert_eq!(ui.kind(key), None);
+    ui.set_props(key, (Text("ignored".into()),));
+    assert_eq!(ui.append(parent, key), None);
+    assert_eq!(ui.first_child(parent), None);
+
+    let mut builder = NodeBuilder::new();
+    builder.add(Text("first".into())).add(Text("hello".into()));
+    assert!(builder.has::<Text>());
+
+    let created = ui.create_prebuilt(reserved, builder.build(Node::Text));
+    assert_eq!(created, Some(key));
+
+    assert_eq!(ui.kind(key), Some(Node::Text));
+    assert_eq!(ui.kind(key), Some(Node::Text));
+    assert_eq!(ui.prop::<Text>(key).unwrap().0, "hello");
+    assert_eq!(ui.parent(key), None);
+
+    ui.append(parent, key);
+    assert_eq!(ui.first_child(parent), Some(key));
+
+    // Building empties the builder for reuse.
+    assert!(!builder.has::<Text>());
+    let other = ui.reserve_node();
+    let other_key = ui.create_prebuilt(other, builder.build(Node::Box)).unwrap();
+    assert_eq!(ui.kind(other_key), Some(Node::Box));
+    assert!(ui.prop::<Text>(other_key).is_none());
+
+    builder.add(Text("dropped".into()));
+    builder.clear();
+    assert!(!builder.has::<Text>());
+}
+
+#[test]
+fn dropped_built_node_clears_builder() {
+    let mut builder = NodeBuilder::new();
+    builder.add(Text("unused".into()));
+    drop(builder.build(Node::Text));
+    assert!(!builder.has::<Text>());
+}
+
+#[test]
+fn deleting_reserved_key_releases_it() {
+    let mut ui = Ui::new();
+    let node = ui.create(Node::Box, ());
+    let reserved = ui.reserve_node();
+    let key = reserved.key();
+
+    ui.delete(key);
+    assert!(ui.props(key).is_none());
+    assert_eq!(
+        ui.create_prebuilt(reserved, NodeBuilder::new().build(Node::Box)),
+        None
+    );
+    assert!(ui.props(key).is_none());
+    assert_eq!(ui.kind(node), Some(Node::Box));
+
+    // Deleting again is a no-op.
+    ui.delete(key);
+    assert_eq!(ui.kind(node), Some(Node::Box));
+}

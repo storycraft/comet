@@ -8,9 +8,10 @@ pub mod cursor;
 
 use core::ops::Deref;
 
-use hecs::{Entity, EntityBuilder, EntityRef, Ref, RefMut, World};
+use hecs::{Entity, EntityRef, Ref, RefMut, World};
 
 use crate::{
+    builder::{BuiltNode, NodeBuilder, ReservedNodeKey},
     node::{Node, NodeKey},
     style::{StyleProp, StyleProps},
 };
@@ -20,7 +21,7 @@ use self::cursor::Cursor;
 #[derive(Default)]
 pub struct Ui {
     world: World,
-    builder: EntityBuilder,
+    builder: NodeBuilder,
 }
 
 impl Ui {
@@ -30,13 +31,33 @@ impl Ui {
 
     pub fn create(&mut self, kind: Node, props: impl StyleProps) -> NodeKey {
         NodeKey(
-            self.world.spawn(
-                self.builder
-                    .add(UiNode::new(kind))
-                    .add_bundle(props)
-                    .build(),
-            ),
+            self.world
+                .spawn(self.builder.add_bundle(props).build(kind).0),
         )
+    }
+
+    /// Reserve a key for a node created later with
+    /// [`Self::create_prebuilt`]. Until then the key has no props, not even
+    /// a node kind, and every method treats it as invalid.
+    pub fn reserve_node(&self) -> ReservedNodeKey {
+        ReservedNodeKey(NodeKey(self.world.reserve_entity()))
+    }
+
+    /// Create a node built with a [`NodeBuilder`] at a reserved key and
+    /// return the key. Returns `None` without changes if a node was already
+    /// created at the key, or the key was invalidated by [`Self::clear`].
+    pub fn create_prebuilt(
+        &mut self,
+        key: ReservedNodeKey,
+        node: BuiltNode<'_>,
+    ) -> Option<NodeKey> {
+        let key = key.0;
+        if self.ui_node(key.0).is_some() {
+            return None;
+        }
+
+        self.world.insert(key.0, node.0).ok()?;
+        Some(key)
     }
 
     pub fn kind(&self, key: NodeKey) -> Option<Node> {
@@ -44,7 +65,10 @@ impl Ui {
     }
 
     pub fn props(&self, key: NodeKey) -> Option<Props<'_>> {
-        Some(Props(self.world.entity(key.0).ok()?))
+        let entity = self.world.entity(key.0).ok()?;
+
+        // Reserved keys have no `UiNode` until created.
+        entity.has::<UiNode>().then_some(Props(entity))
     }
 
     pub fn prop<T: StyleProp>(&self, key: NodeKey) -> Option<Ref<'_, T>> {
@@ -56,12 +80,15 @@ impl Ui {
         self.props(key)?.get_mut::<T>()
     }
 
-    /// Insert or replace properties. A nonexistent key is ignored.
+    /// Insert or replace properties. A nonexistent or reserved key is ignored.
     pub fn set_props(&mut self, key: NodeKey, props: impl StyleProps) {
-        let _ = self.world.insert(key.0, props);
+        if self.ui_node(key.0).is_some() {
+            let _ = self.world.insert(key.0, props);
+        }
     }
 
     pub fn remove_prop<T: StyleProp>(&mut self, key: NodeKey) -> Option<T> {
+        self.ui_node(key.0)?;
         self.world.remove_one::<T>(key.0).ok()
     }
 
@@ -236,9 +263,12 @@ impl Ui {
         old
     }
 
-    /// Delete a whole subtree.
+    /// Delete a whole subtree. A [reserved](Self::reserve_node) key not
+    /// created yet is released, so [`Self::create_prebuilt`] ignores it.
     pub fn delete(&mut self, id: NodeKey) {
         if self.ui_node(id.0).is_none() {
+            // Only reserved keys exist without a `UiNode`.
+            let _ = self.world.despawn(id.0);
             return;
         }
 
@@ -341,7 +371,7 @@ impl<'a> Props<'a> {
 
 /// Private component containing an immutable kind and links maintained by `Ui`.
 #[derive(Clone, Copy)]
-struct UiNode {
+pub(crate) struct UiNode {
     kind: Node,
     parent: Option<Entity>,
 
@@ -354,7 +384,7 @@ struct UiNode {
 
 impl UiNode {
     #[inline]
-    const fn new(kind: Node) -> Self {
+    pub(crate) const fn new(kind: Node) -> Self {
         Self {
             kind,
             parent: None,
