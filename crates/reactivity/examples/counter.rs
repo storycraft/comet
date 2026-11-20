@@ -33,9 +33,10 @@ fn app(cx: &UiCx) -> NodeKey {
         .min_size(size(auto(), vh(100)))
         .fill(Paint::Solid(Color::from_rgb8(239, 242, 247)))
         .text_color(Paint::Solid(Color::from_rgb8(36, 46, 63)))
-        .child(counter)
-        .child(spinner)
-        .build()
+        .children(|cx| {
+            counter(cx);
+            spinner(cx);
+        })
 }
 
 fn counter(cx: &UiCx) -> NodeKey {
@@ -48,18 +49,13 @@ fn counter(cx: &UiCx) -> NodeKey {
         .align_items(AlignItems::CENTER)
         .justify_content(JustifyContent::CENTER)
         .gap(size(px(16), px(16)))
-        // Text changes lay out again.
-        .child(move |cx| {
+        .children(|cx| {
+            // Text changes lay out again.
             cx.text_with(move || format!("Clicked {} times", count.get()))
                 .font_size(px(28))
-                .build()
+                .build();
+            button(cx, "Count up", move || set_count.update(|count| *count += 1));
         })
-        .child(move |cx| {
-            button(cx, "Count up", move || {
-                set_count.update(|count| *count += 1)
-            })
-        })
-        .build()
 }
 
 fn button(cx: &UiCx, label: &str, on_click: impl Fn() + 'static) -> NodeKey {
@@ -79,8 +75,7 @@ fn button(cx: &UiCx, label: &str, on_click: impl Fn() + 'static) -> NodeKey {
                 Color::from_rgb8(96, 125, 240)
             })
         }))
-        .child(|cx| cx.text(label).build())
-        .build();
+        .children(|cx| cx.text(label).build());
 
     common::on_click(button, on_click);
     common::on_hover(button, move |value| set_hovered.set(value));
@@ -110,7 +105,7 @@ fn spinner(cx: &UiCx) -> NodeKey {
     cx.div()
         .size(size(percent(50), auto()))
         .position(Position::Relative)
-        .child(move |cx| {
+        .children(|cx| {
             cx.div()
                 .position(Position::Absolute)
                 .inset(sides(percent(50), auto(), auto(), percent(50)))
@@ -120,5 +115,4 @@ fn spinner(cx: &UiCx) -> NodeKey {
                 .transform(transform)
                 .build()
         })
-        .build()
 }

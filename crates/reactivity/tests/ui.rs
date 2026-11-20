@@ -88,9 +88,10 @@ async fn builds_nodes_with_initial_values() {
             cx.div()
                 .style((Padding(Rect::new_all(StyleUnit::Px(4.0))),))
                 .style_with(move || FontSize(StyleUnit::Px(size.get())))
-                .child(|cx| cx.text("a").build())
-                .child(|cx| cx.text_with(|| "b".to_owned()).build())
-                .build()
+                .children(|cx| {
+                    cx.text("a").build();
+                    cx.text_with(|| "b".to_owned()).build();
+                })
         });
 
         let tree = tree.borrow();
@@ -129,14 +130,13 @@ async fn bindings_write_changes_and_mark_flags() {
             cx.div()
                 .style_with(move || FontSize(StyleUnit::Px(size.get())))
                 .style_with(move || Padding(Rect::new_all(StyleUnit::Px(pad.get()))))
-                .child(|cx| {
+                .children(|cx| {
                     text = Some(
                         cx.text("text")
                             .style_with(move || TextColor(paint(red.get())))
                             .build(),
                     );
                 })
-                .build()
         });
         let text = text.unwrap();
 
@@ -183,16 +183,13 @@ async fn text_changes_relayout() {
 
         let mut badge = None;
         let root = cx.build(|cx| {
-            cx.div()
-                .child(|cx| {
-                    badge = Some(
-                        cx.div()
-                            .style((DisplayOuter::Inline, DisplayInner::FlowRoot))
-                            .child(move |cx| cx.text_with(move || label.get()).build())
-                            .build(),
-                    );
-                })
-                .build()
+            cx.div().children(|cx| {
+                badge = Some(
+                    cx.div()
+                        .style((DisplayOuter::Inline, DisplayInner::FlowRoot))
+                        .children(|cx| cx.text_with(move || label.get()).build()),
+                );
+            })
         });
         let badge = badge.unwrap();
 

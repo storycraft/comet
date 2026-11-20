@@ -90,18 +90,16 @@ impl UiCx {
     }
 }
 
-type ChildFn<'a> = Box<dyn FnOnce(&UiCx) + 'a>;
-
 /// A node being built. Created with [`UiCx::div`] or [`UiCx::text`] and
-/// finished with [`Self::build`].
-#[must_use = "the node is only created by `build`"]
+/// finished with [`Self::build`], or with [`Self::children`] to build its
+/// children as well.
+#[must_use = "the node is only created by `build` or `children`"]
 pub struct NodeBuild<'a> {
     cx: &'a UiCx,
     kind: Node,
-    /// Taken by `build`; released on drop otherwise.
+    /// Taken when the node is created; released on drop otherwise.
     key: Option<ReservedNodeKey>,
     builder: NodeBuilder,
-    children: Vec<ChildFn<'a>>,
 }
 
 impl<'a> NodeBuild<'a> {
@@ -111,13 +109,12 @@ impl<'a> NodeBuild<'a> {
             cx,
             kind,
             builder: NodeBuilder::new(),
-            children: Vec::new(),
         }
     }
 
     /// The key the node will have once built.
     pub fn key(&self) -> NodeKey {
-        self.key.as_ref().expect("key taken by build").key()
+        self.key.as_ref().expect("node is created once").key()
     }
 
     /// Add props, replacing earlier ones of the same types.
@@ -153,48 +150,36 @@ impl<'a> NodeBuild<'a> {
         self
     }
 
-    /// Run `child` once the node exists, with the node as its context's
-    /// parent. Children are run in the order they were added.
-    pub fn child<R>(mut self, child: impl FnOnce(&UiCx) -> R + 'a) -> Self {
-        self.children.push(Box::new(move |cx| {
-            child(cx);
-        }));
-        self
+    /// Create the node and append it to the context's parent. Returns the
+    /// node's key.
+    pub fn build(mut self) -> NodeKey {
+        self.create()
     }
 
-    /// Create the node, append it to the context's parent, then run its
-    /// children. Returns the node's key.
-    pub fn build(mut self) -> NodeKey {
-        let reserved = self.key.take().expect("key taken by build");
+    /// Create the node like [`Self::build`], then build its children with
+    /// `children`, whose context appends to the node. Returns the node's key.
+    pub fn children<R>(mut self, children: impl FnOnce(&UiCx) -> R) -> NodeKey {
+        let key = self.create();
+        self.cx.with_parent(Some(key)).build(children);
+        key
+    }
 
-        let key = {
-            let mut tree = self.cx.tree.borrow_mut();
-            let UiTree {
-                ui, inputs, dirty, ..
-            } = &mut *tree;
+    fn create(&mut self) -> NodeKey {
+        let reserved = self.key.take().expect("node is created once");
+        let mut tree = self.cx.tree.borrow_mut();
+        let UiTree {
+            ui, inputs, dirty, ..
+        } = &mut *tree;
 
-            let key = ui
-                .create_prebuilt(reserved, self.builder.build(self.kind))
-                .expect("reserved key is created once");
+        let key = ui
+            .create_prebuilt(reserved, self.builder.build(self.kind))
+            .expect("reserved key is created once");
 
-            if let Some(parent) = self.cx.parent {
-                ui.append(parent, key);
-                // New children are built with the parent's children. Nothing
-                // is marked before the parent is laid out.
-                dirty.mark_node(inputs, parent, DirtyFlags::NEED_CHILDREN);
-            }
-
-            key
-        };
-
-        let children = core::mem::take(&mut self.children);
-        if !children.is_empty() {
-            let cx = self.cx.with_parent(Some(key));
-            cx.build(|cx| {
-                for child in children {
-                    child(cx);
-                }
-            });
+        if let Some(parent) = self.cx.parent {
+            ui.append(parent, key);
+            // New children are built with the parent's children. Nothing is
+            // marked before the parent is laid out.
+            dirty.mark_node(inputs, parent, DirtyFlags::NEED_CHILDREN);
         }
 
         key
@@ -203,7 +188,7 @@ impl<'a> NodeBuild<'a> {
 
 impl Drop for NodeBuild<'_> {
     fn drop(&mut self) {
-        // Bindings stay with the owner but write nothing to a missing node.
+        // Not built: bindings stay with the owner but write nothing to a missing node.
         if let Some(key) = self.key.take()
             && let Ok(mut tree) = self.cx.tree.try_borrow_mut()
         {
