@@ -1,10 +1,10 @@
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{FragmentItem, FragmentKey, tree::FragmentTree},
-    input::{LayoutInputKey, tree::LayoutInputTree},
+    input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
 };
 use comet_paint::prepaint::tree::PrepaintTree;
-use comet_tree::ui::Ui;
+use comet_tree::{node::Node, ui::Ui};
 use kurbo::Affine;
 use parley::PositionedLayoutItem;
 
@@ -30,8 +30,9 @@ pub struct A11yTreeBuilder {
     /// Items to visit, with their accessibility parent item and whether it
     /// was resolved.
     pending: Vec<Visit>,
-    /// Fragments of the item being visited.
-    fragments: Vec<FragmentKey>,
+    /// Fragments of the item being visited, with the item whose fragments
+    /// hold their nodes.
+    fragments: Vec<(FragmentKey, Option<LayoutInputKey>)>,
     /// Parents of new fragments that were not resolved themselves, resolved
     /// at the end for their new children, with their item and its parent.
     parents: Vec<(FragmentKey, LayoutInputKey, Option<LayoutInputKey>)>,
@@ -82,7 +83,10 @@ impl A11yTreeBuilder {
     /// Each node has its fragment's role, its border box as bounds, the
     /// transform mapping it into its parent node, from the pre-paint
     /// transforms, and the nodes of its child items' fragments as children.
-    /// Glyph runs are labelled with their text.
+    /// Glyph runs carry their text as a [`TextRun`](accesskit::Role::TextRun):
+    /// its value and the metrics of its characters. Platform adapters never
+    /// expose text runs themselves, only through an ancestor whose text they
+    /// make up, such as a [`Label`](accesskit::Role::Label).
     ///
     /// The fragments of an item are resolved:
     /// - when its flags in `dirty` have [`DirtyFlags::NEED_LAYER`], which
@@ -162,23 +166,31 @@ impl A11yTreeBuilder {
             let entry = dirty.entry(item);
             let flags = tree.flags.get(item).copied().unwrap_or_default();
 
+            // Its linked fragments, then the glyph runs inside its own box,
+            // held by the box.
             own.clear();
-            own.extend(fragments.fragments(item));
-            let missing = own.iter().any(|&key| !tree.nodes.contains_key(key));
+            own.extend(fragments.fragments(item).map(|key| (key, parent)));
+            if let Some(&(first, _)) = own.first() {
+                own.extend(sources.own_runs(item, first).map(|key| (key, Some(item))));
+            }
+            let missing = own.iter().any(|&(key, _)| !tree.nodes.contains_key(key));
 
             let resolve = missing
                 || flags.contains(A11yFlags::DIRTY)
                 || entry.flags.intersects(RESOLVE)
                 || (parent_resolved
                     && parent.is_some_and(|parent| {
-                        own.iter()
-                            .any(|&key| sources.contained(key, parent).is_none())
+                        own.iter().any(|&(key, holder)| {
+                            holder == Some(parent) && sources.contained(key, parent).is_none()
+                        })
                     }));
 
-            for &key in own.iter() {
+            for &(key, holder) in own.iter() {
                 // The parent lists its new child only once resolved again.
+                // A new run in the item's own box resolves the item.
                 if !tree.nodes.contains_key(key)
                     && !parent_resolved
+                    && holder == parent
                     && let Some(parent) = parent
                 {
                     let parent_key = sources.parent_fragment(key, parent)?;
@@ -187,7 +199,7 @@ impl A11yTreeBuilder {
                 }
 
                 if resolve {
-                    sources.resolve(tree, key, item, parent)?;
+                    sources.resolve(tree, key, item, holder)?;
                 }
             }
 
@@ -261,14 +273,18 @@ impl Sources<'_> {
         parent: Option<LayoutInputKey>,
     ) -> Option<accesskit::Node> {
         let fragment = self.fragments.items.get(key)?;
-        let props = self.ui.props(self.inputs.items.get(item)?.node)?;
+        let node = self.inputs.items.get(item)?.node;
+        let props = self.ui.props(node)?;
 
+        // Glyph runs are text runs whatever the node's role. Without a role,
+        // texts are labels and boxes generic containers.
         let role = match fragment.item {
             FragmentItem::GlyphRun { .. } => accesskit::Role::TextRun,
-            _ => {
-                let Role(role) = props.get_cloned().unwrap_or_default();
-                role
-            }
+            _ => match props.get_cloned() {
+                Some(Role(role)) => role,
+                None if self.ui.kind(node) == Some(Node::Text) => accesskit::Role::Label,
+                None => accesskit::Role::GenericContainer,
+            },
         };
 
         let mut node = accesskit::Node::new(role);
@@ -284,14 +300,12 @@ impl Sources<'_> {
             node.set_transform(accesskit::Affine::new(transform.as_coeffs()));
         }
 
-        let mut children = Vec::new();
+        let mut children: Vec<_> = self.own_runs(item, key).map(node_id).collect();
         self.children(key, item, item, &mut children);
         node.set_children(children);
 
-        if let FragmentItem::GlyphRun { line, item } = fragment.item
-            && let Some(text) = self.glyph_run_text(key, line, item)
-        {
-            node.set_label(text);
+        if let FragmentItem::GlyphRun { line, item } = fragment.item {
+            self.text_run(&mut node, key, line, item);
         }
 
         Some(node)
@@ -320,6 +334,35 @@ impl Sources<'_> {
                     .map(node_id),
             );
         }
+    }
+
+    /// The glyph runs of `item` inside `key`, when it is the item's own box,
+    /// such as the box of a text in a flex container. They are not linked
+    /// with the box.
+    fn own_runs(
+        &self,
+        item: LayoutInputKey,
+        key: FragmentKey,
+    ) -> impl Iterator<Item = FragmentKey> {
+        let items = &self.fragments.items;
+        // Only texts own glyph runs, which saves walking other boxes.
+        let own_box = self
+            .inputs
+            .items
+            .get(item)
+            .is_some_and(|input| input.kind == LayoutInputKind::Text)
+            && items
+                .get(key)
+                .is_some_and(|fragment| fragment.item.is_box() && fragment.source == item);
+
+        own_box
+            .then(|| items.descendants(key))
+            .into_iter()
+            .flatten()
+            .filter(move |&key| {
+                matches!(items[key].item, FragmentItem::GlyphRun { .. })
+                    && items[key].source == item
+            })
     }
 
     /// The nearest ancestor item of `item` with fragments.
@@ -380,28 +423,94 @@ impl Sources<'_> {
             })
     }
 
-    /// The text of a glyph run fragment, from the inline layout of the line
-    /// containing it.
-    fn glyph_run_text(&self, key: FragmentKey, line: usize, item: usize) -> Option<&str> {
+    /// Set the text of a glyph run fragment on its node, from the inline
+    /// layout of the line containing it, as `accesskit` expects of a
+    /// [`TextRun`](accesskit::Role::TextRun): its value, the length of each
+    /// character, their positions and widths in the text direction, the
+    /// characters starting words, and the text runs before and after it on
+    /// the same line.
+    ///
+    /// A character is a cluster: the smallest unit of text the layout
+    /// places. Text runs are only exposed through an ancestor whose text
+    /// they make up, such as a [`Label`](accesskit::Role::Label).
+    fn text_run(&self, node: &mut accesskit::Node, key: FragmentKey, line: usize, item: usize) {
         let items = &self.fragments.items;
-        let line_key = core::iter::successors(items.parent(key), |&key| items.parent(key))
-            .find(|&key| matches!(items[key].item, FragmentItem::Line { .. }))?;
-        let inline = self.fragments.inline_layout(line_key)?;
-        let line = inline.layout.get(line)?;
-        let Some(PositionedLayoutItem::GlyphRun(run)) = line.items().nth(item) else {
-            return None;
+        let Some(line_key) = core::iter::successors(items.parent(key), |&key| items.parent(key))
+            .find(|&key| matches!(items[key].item, FragmentItem::Line { .. }))
+        else {
+            return;
+        };
+        let Some(inline) = self.fragments.inline_layout(line_key) else {
+            return;
+        };
+        let Some(PositionedLayoutItem::GlyphRun(run)) = inline
+            .layout
+            .get(line)
+            .and_then(|line| line.items().nth(item))
+        else {
+            return;
         };
 
         // The shaping run may hold the text of other items, whose styles
-        // differ: only the clusters of the glyph run's style are its text.
+        // differ: only the clusters of the glyph run's style are its text,
+        // in logical order.
         let style = run.style_index();
-        let range = run
+        let mut range: Option<core::ops::Range<usize>> = None;
+        let mut lengths = Vec::new();
+        let mut positions = Vec::new();
+        let mut widths = Vec::new();
+        let mut word_starts = Vec::new();
+        let mut position = 0.0;
+        for cluster in run
             .run()
             .clusters()
             .filter(|cluster| cluster.style_index() == style)
-            .map(|cluster| cluster.text_range())
-            .reduce(|range, cluster| range.start.min(cluster.start)..range.end.max(cluster.end))?;
+        {
+            let text = cluster.text_range();
+            // Word starts are bytes in `accesskit`: later ones are left out.
+            if cluster.is_word_boundary()
+                && let Ok(index) = u8::try_from(lengths.len())
+            {
+                word_starts.push(index);
+            }
+            // A run has one direction, so the first character in logical
+            // order is the first in the text direction.
+            lengths.push(u8::try_from(text.len()).unwrap_or(u8::MAX));
+            positions.push(position);
+            widths.push(cluster.advance());
+            position += cluster.advance();
+            range = Some(match range {
+                Some(range) => range.start.min(text.start)..range.end.max(text.end),
+                None => text,
+            });
+        }
+        let Some(value) = range.and_then(|range| inline.text.get(range)) else {
+            return;
+        };
 
-        inline.text.get(range)
+        node.set_value(value);
+        node.set_character_lengths(lengths);
+        node.set_character_positions(positions);
+        node.set_character_widths(widths);
+        node.set_word_starts(word_starts);
+        node.set_text_direction(if run.run().is_rtl() {
+            accesskit::TextDirection::RightToLeft
+        } else {
+            accesskit::TextDirection::LeftToRight
+        });
+
+        // Glyph runs of a line are in visual order.
+        let runs: Vec<_> = items
+            .descendants(line_key)
+            .filter(|&key| matches!(items[key].item, FragmentItem::GlyphRun { .. }))
+            .collect();
+        if let Some(index) = runs.iter().position(|&run| run == key) {
+            if let Some(&previous) = index.checked_sub(1).and_then(|index| runs.get(index)) {
+                node.set_previous_on_line(node_id(previous));
+            }
+            if let Some(&next) = runs.get(index + 1) {
+                node.set_next_on_line(node_id(next));
+            }
+        }
     }
 }

@@ -117,13 +117,13 @@ impl Harness {
         ids
     }
 
-    /// Labels of the nodes in the accessibility tree, in tree order.
-    fn labels(&self) -> String {
+    /// Values of the nodes in the accessibility tree, in tree order.
+    fn texts(&self) -> String {
         let mut labels = String::new();
         let mut pending = vec![node_id(self.root())];
         while let Some(id) = pending.pop() {
             let node = self.node(id);
-            labels.extend(node.label());
+            labels.extend(node.value());
             pending.extend(node.children().iter().rev());
         }
         labels
@@ -233,7 +233,7 @@ fn follows_the_ui_tree() {
         run_node.transform(),
         Some(&accesskit::Affine::new(placed.as_coeffs()))
     );
-    assert_eq!(h.labels(), "Hello comet");
+    assert_eq!(h.texts(), "Hello comet");
 }
 
 #[test]
@@ -256,7 +256,7 @@ fn nodes_follow_the_order_of_the_ui() {
     ui.append(root, tail);
     h.build(root);
 
-    assert_eq!(h.labels(), "head inner block tail");
+    assert_eq!(h.texts(), "head inner block tail");
 
     // The block is a child of the span's first fragment, placed like its
     // box.
@@ -287,7 +287,104 @@ fn nodes_follow_the_order_of_the_ui() {
     h.ui.set_props(inner, (Text("changed ".into()),));
     h.mark(inner, DirtyFlags::NEED_FULL_LAYOUT);
     h.build(root);
-    assert_eq!(h.labels(), "head changed block tail");
+    assert_eq!(h.texts(), "head changed block tail");
+    h.assert_consistent();
+}
+
+#[test]
+fn text_runs_carry_their_characters() {
+    let mut h = Harness::default();
+    let (root, card, text) = sample(&mut h.ui);
+    h.ui.set_props(card, (Role(AxRole::Label),));
+    let update = h.build(root);
+
+    let item = h.inputs.item_for_node(text).unwrap();
+    let runs: Vec<_> = h.fragments.fragments(item).collect();
+    for (index, &run) in runs.iter().enumerate() {
+        let node = h.node(node_id(run));
+        let value = node.value().unwrap();
+        let lengths = node.character_lengths();
+        assert!(node.label().is_none());
+        assert_eq!(
+            lengths
+                .iter()
+                .map(|&length| usize::from(length))
+                .sum::<usize>(),
+            value.len()
+        );
+        assert_eq!(node.character_positions().unwrap().len(), lengths.len());
+        assert_eq!(node.character_widths().unwrap().len(), lengths.len());
+        assert_eq!(
+            node.text_direction(),
+            Some(accesskit::TextDirection::LeftToRight)
+        );
+        assert_eq!(
+            node.next_on_line(),
+            runs.get(index + 1).copied().map(node_id)
+        );
+    }
+
+    // A label exposes the text of its runs, as platform adapters read it.
+    let root_id = node_id(h.root());
+    let tree = accesskit_consumer::Tree::new(
+        accesskit::TreeUpdate {
+            nodes: update,
+            tree: Some(accesskit::TreeInfo::new(root_id)),
+            tree_id: accesskit::TreeId::ROOT,
+            focus: root_id,
+        },
+        false,
+    );
+    let card_fragment = h
+        .fragments
+        .box_fragment(h.inputs.item_for_node(card).unwrap())
+        .unwrap();
+    let label = tree
+        .state()
+        .root()
+        .children()
+        .find(|node| node.locate().0 == node_id(card_fragment))
+        .unwrap();
+    assert_eq!(label.value().as_deref(), Some("Hello comet"));
+    // Adapters name a label with its value.
+    assert!(label.label_comes_from_value());
+}
+
+#[test]
+fn roles_default_by_node_kind() {
+    let mut h = Harness::default();
+    let (root, card, text) = sample(&mut h.ui);
+    // An explicit role on a text does not reach its glyph runs.
+    h.ui.set_props(text, (Role(AxRole::Heading),));
+    h.build(root);
+
+    let card_item = h.inputs.item_for_node(card).unwrap();
+    let card_fragment = h.fragments.box_fragment(card_item).unwrap();
+    assert_eq!(
+        h.node(node_id(card_fragment)).role(),
+        AxRole::GenericContainer
+    );
+    let item = h.inputs.item_for_node(text).unwrap();
+    for run in h.fragments.fragments(item) {
+        assert_eq!(h.node(node_id(run)).role(), AxRole::TextRun);
+    }
+}
+
+#[test]
+fn texts_with_boxes_are_labels_of_their_runs() {
+    let mut h = Harness::default();
+    let root = h.ui.create(Node::Text, (Text("Boxed text".into()),));
+    h.build(root);
+
+    // The text's box holds its glyph runs, which it is not linked with.
+    let root_fragment = h.root();
+    let root_node = h.node(node_id(root_fragment));
+    assert_eq!(root_node.role(), AxRole::Label);
+    assert!(!root_node.children().is_empty());
+    for &child in root_node.children() {
+        assert_eq!(h.node(child).role(), AxRole::TextRun);
+    }
+    assert_eq!(h.texts(), "Boxed text");
     h.assert_consistent();
 }
 
@@ -350,7 +447,7 @@ fn text_and_children_changes_update_the_tree() {
     h.mark(text, DirtyFlags::NEED_FULL_LAYOUT);
     let update = h.build(root);
     assert!(!update.is_empty());
-    assert_eq!(h.labels(), "Bye");
+    assert_eq!(h.texts(), "Bye");
     h.assert_consistent();
 
     // A removed child leaves its parent's children.

@@ -707,6 +707,7 @@ name = "comet-accesskit"
 version = "0.1.0"
 dependencies = [
  "accesskit",
+ "accesskit_consumer",
  "bitflags 2.13.2",
  "comet-layout",
  "comet-paint",
