@@ -1,6 +1,6 @@
 use accesskit::{NodeId, Role as AxRole};
 use comet_accesskit::{
-    AxNodeKind, AxTree, AxTreeBuilder, AxKey,
+    AxKey, AxNodeKind, AxTree, AxTreeBuilder,
     style::Role,
     tree::{ax_key, node_id},
 };

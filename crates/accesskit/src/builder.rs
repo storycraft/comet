@@ -11,7 +11,7 @@ use parley::PositionedLayoutItem;
 use crate::{
     AxFlags,
     style::Role,
-    tree::{AxNode, AxNodeKind, AxTree, AxKey, node_id},
+    tree::{AxKey, AxNode, AxNodeKind, AxTree, node_id},
 };
 
 /// Layout flags of an item whose node is resolved again:

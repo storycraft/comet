@@ -13,7 +13,7 @@ pub mod tree;
 use bitflags::bitflags;
 
 pub use builder::AxTreeBuilder;
-pub use tree::{AxNode, AxNodeKind, AxTree, AxKey};
+pub use tree::{AxKey, AxNode, AxNodeKind, AxTree};
 
 bitflags! {
     /// Accessibility changes of a layout input item, set with

@@ -2,7 +2,7 @@
 
 use accesskit::{NodeId, TreeId, TreeInfo, TreeUpdate};
 use comet_accesskit::{
-    AxTree, AxTreeBuilder, AxKey,
+    AxKey, AxTree, AxTreeBuilder,
     tree::{ax_key, node_id},
 };
 use comet_layout::{
