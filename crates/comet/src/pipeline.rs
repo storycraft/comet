@@ -2,8 +2,8 @@
 
 use accesskit::{NodeId, TreeId, TreeInfo, TreeUpdate};
 use comet_accesskit::{
-    A11yTree, A11yTreeBuilder,
-    tree::{fragment_key, node_id},
+    AxTree, AxTreeBuilder, AxKey,
+    tree::{ax_key, node_id},
 };
 use comet_layout::{
     dirty_map::DirtyMap,
@@ -224,13 +224,13 @@ impl Pipeline {
 /// technology is active.
 #[derive(Default)]
 pub(crate) struct Accessibility {
-    tree: A11yTree,
-    builder: A11yTreeBuilder,
+    tree: AxTree,
+    builder: AxTreeBuilder,
     /// Whether the platform adapter is active, so the tree is built.
     active: bool,
-    /// Root fragment of the last successful build. `None` until one
-    /// succeeds, or after one fails.
-    root: Option<FragmentKey>,
+    /// Root node of the last successful build. `None` until one succeeds,
+    /// or after one fails.
+    root: Option<AxKey>,
     /// Scale factor of the last update, applied to the root node.
     scale_factor: Option<f64>,
     /// Nodes with accessibility changes taken from the UI, marked in the
@@ -275,7 +275,7 @@ impl Pipeline {
                 &mut a11y.tree,
                 root,
             )
-            .and_then(|()| self.fragments.box_fragment(root));
+            .and_then(|()| a11y.tree.item_node(root));
 
         if a11y.root.is_none() {
             a11y.tree.clear();
@@ -327,8 +327,8 @@ impl Pipeline {
     /// The source node of an accessibility node, such as the target of an
     /// action request.
     pub fn accessibility_target(&self, id: NodeId) -> Option<NodeKey> {
-        let source = self.fragments.items.get(fragment_key(id))?.source;
+        let item = self.a11y.tree.get(ax_key(id))?.item;
 
-        Some(self.inputs.items.get(source)?.node)
+        Some(self.inputs.items.get(item)?.node)
     }
 }

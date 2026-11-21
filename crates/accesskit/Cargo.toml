@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 comet-layout = { workspace = true }
 comet-paint = { workspace = true }
+comet-slotmap-tree = { workspace = true }
 comet-tree = { workspace = true }
 
 accesskit = "0.25.2"

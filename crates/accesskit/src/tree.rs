@@ -1,50 +1,69 @@
 use accesskit::NodeId;
-use comet_layout::{
-    fragment::FragmentKey,
-    input::{LayoutInputKey, tree::LayoutInputTree},
-};
+use comet_layout::input::{LayoutInputKey, tree::LayoutInputTree};
+use comet_slotmap_tree::SlotTree;
 use comet_tree::node::NodeKey;
-use slotmap::{Key, KeyData, SecondaryMap};
+use slotmap::{Key, KeyData, SecondaryMap, new_key_type};
 
-use crate::A11yFlags;
+use crate::AxFlags;
 
-/// The accessibility node of one fragment.
+new_key_type! {
+    /// Key of a node in an [`AxTree`], and its [`NodeId`].
+    pub struct AxKey;
+}
+
+/// What a node of an [`AxTree`] stands for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AxNodeKind {
+    /// A layout input item.
+    Item,
+    /// A glyph run of a text item, as a [`TextRun`](accesskit::Role::TextRun)
+    /// inside the item's node.
+    TextRun,
+}
+
+/// One node of an [`AxTree`].
 #[derive(Debug, Clone, PartialEq)]
-pub struct A11yNode {
-    /// The node last resolved for the fragment.
+pub struct AxNode {
+    /// The node last resolved.
     pub node: accesskit::Node,
+    /// The layout input item it belongs to.
+    pub item: LayoutInputKey,
+    pub kind: AxNodeKind,
+    /// Whether the node was resolved. New nodes are listed by their parent
+    /// before they are resolved themselves.
+    pub(crate) resolved: bool,
 }
 
 /// Accessibility nodes of a layout, following the layout input tree in the
-/// order of the UI: each item has a node for each of its fragments, its box
-/// or its inline and glyph run fragments on every line, holding the nodes of
-/// its child items. Line boxes and anonymous blocks have no nodes.
+/// order of the UI: each item has one node, holding the nodes of its child
+/// items, and a text item also holds a [`TextRun`](accesskit::Role::TextRun)
+/// node for each of its glyph runs, before them.
 ///
-/// Node ids are the fragment keys, so nodes keep their ids as long as their
-/// fragments keep their keys. Built and updated by an
-/// [`A11yTreeBuilder`](crate::builder::A11yTreeBuilder).
-///
-/// Keys are generational: nodes left behind by deleted fragments are never
-/// returned for fragments reusing their slots, and are overwritten when those
-/// are resolved. A build from a root fragment without a node drops them.
+/// Nodes are kept in a [`SlotTree`] mirroring the accessibility tree, and
+/// their keys are their [`NodeId`]s, so they keep their ids as long as their
+/// items exist. Text run nodes are reused in order when the text is laid out
+/// again. Built and updated by an
+/// [`AxTreeBuilder`](crate::builder::AxTreeBuilder).
 #[derive(Debug, Default)]
-pub struct A11yTree {
-    pub(crate) nodes: SecondaryMap<FragmentKey, A11yNode>,
+pub struct AxTree {
+    pub(crate) nodes: SlotTree<AxKey, AxNode>,
+    /// Node of each layout input item. Entries of deleted nodes are stale.
+    pub(crate) items: SecondaryMap<LayoutInputKey, AxKey>,
     /// Accessibility changes of the layout input items, cleared by the
     /// builder once visited.
-    pub(crate) flags: SecondaryMap<LayoutInputKey, A11yFlags>,
-    /// Fragments whose nodes changed since the last update.
-    pub(crate) changed: Vec<FragmentKey>,
+    pub(crate) flags: SecondaryMap<LayoutInputKey, AxFlags>,
+    /// Nodes changed since the last update.
+    pub(crate) changed: Vec<AxKey>,
 }
 
-impl A11yTree {
+impl AxTree {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Fragments whose nodes changed since the last
-    /// [update](Self::take_update), possibly more than once each.
-    pub fn changed(&self) -> &[FragmentKey] {
+    /// Nodes changed since the last [update](Self::take_update), possibly
+    /// more than once each, and possibly deleted since.
+    pub fn changed(&self) -> &[AxKey] {
         &self.changed
     }
 
@@ -67,29 +86,41 @@ impl A11yTree {
         nodes
     }
 
-    /// The node of a fragment.
-    pub fn get(&self, key: FragmentKey) -> Option<&A11yNode> {
+    /// The nodes, in a tree mirroring the accessibility tree.
+    pub fn nodes(&self) -> &SlotTree<AxKey, AxNode> {
+        &self.nodes
+    }
+
+    pub fn get(&self, key: AxKey) -> Option<&AxNode> {
         self.nodes.get(key)
     }
 
+    /// The node of a layout input item.
+    pub fn item_node(&self, item: LayoutInputKey) -> Option<AxKey> {
+        self.items
+            .get(item)
+            .copied()
+            .filter(|&key| self.nodes.get(key).is_some_and(|node| node.item == item))
+    }
+
     /// Accessibility changes of a layout input item.
-    pub fn flags(&self, key: LayoutInputKey) -> A11yFlags {
+    pub fn flags(&self, key: LayoutInputKey) -> AxFlags {
         self.flags.get(key).copied().unwrap_or_default()
     }
 
-    /// Mark a layout input item [`A11yFlags::DIRTY`], and its ancestors
-    /// [`A11yFlags::CHILD_DIRTY`] up to the root item, so the next build
-    /// resolves its nodes again.
+    /// Mark a layout input item [`AxFlags::DIRTY`], and its ancestors
+    /// [`AxFlags::CHILD_DIRTY`] up to the root item, so the next build
+    /// resolves its node again.
     pub fn mark(&mut self, inputs: &LayoutInputTree, key: LayoutInputKey) {
-        self.insert_flags(key, A11yFlags::DIRTY);
+        self.insert_flags(key, AxFlags::DIRTY);
 
         let mut ancestor = inputs.items.parent(key);
         while let Some(key) = ancestor {
             // Ancestors of a marked item are marked already.
-            if self.flags(key).contains(A11yFlags::CHILD_DIRTY) {
+            if self.flags(key).contains(AxFlags::CHILD_DIRTY) {
                 break;
             }
-            self.insert_flags(key, A11yFlags::CHILD_DIRTY);
+            self.insert_flags(key, AxFlags::CHILD_DIRTY);
             ancestor = inputs.items.parent(key);
         }
     }
@@ -102,7 +133,7 @@ impl A11yTree {
         }
     }
 
-    fn insert_flags(&mut self, key: LayoutInputKey, flags: A11yFlags) {
+    fn insert_flags(&mut self, key: LayoutInputKey, flags: AxFlags) {
         match self.flags.get_mut(key) {
             Some(current) => current.insert(flags),
             None => {
@@ -113,17 +144,64 @@ impl A11yTree {
 
     pub fn clear(&mut self) {
         self.nodes.clear();
+        self.items.clear();
         self.flags.clear();
         self.changed.clear();
     }
+
+    /// The node of `item`, inserted unresolved if it has none.
+    pub(crate) fn item_node_or_insert(&mut self, item: LayoutInputKey) -> AxKey {
+        if let Some(key) = self.item_node(item) {
+            return key;
+        }
+
+        let key = self.nodes.insert(AxNode {
+            node: accesskit::Node::default(),
+            item,
+            kind: AxNodeKind::Item,
+            resolved: false,
+        });
+        self.items.insert(item, key);
+        key
+    }
+
+    /// Store a resolved node, adding it to the changed list when it differs
+    /// from its previous node.
+    pub(crate) fn set_node(&mut self, key: AxKey, node: accesskit::Node) {
+        let Some(entry) = self.nodes.get_mut(key) else {
+            return;
+        };
+
+        if !entry.resolved || entry.node != node {
+            entry.node = node;
+            entry.resolved = true;
+            self.changed.push(key);
+        }
+    }
+
+    /// Make `children` the children of `parent`, in order, deleting its
+    /// other children with their subtrees.
+    pub(crate) fn set_children(&mut self, parent: AxKey, children: &[AxKey]) {
+        for &child in children {
+            self.nodes.append(parent, child);
+        }
+
+        // The children left before the appended ones are no longer listed.
+        let first = children.first().copied();
+        while let Some(child) = self.nodes.first_child(parent)
+            && Some(child) != first
+        {
+            self.nodes.delete_node(child);
+        }
+    }
 }
 
-/// The node id of a fragment.
-pub fn node_id(key: FragmentKey) -> NodeId {
+/// The node id of a node.
+pub fn node_id(key: AxKey) -> NodeId {
     NodeId(key.data().as_ffi())
 }
 
-/// The fragment of a node id, such as the target of an action request.
-pub fn fragment_key(id: NodeId) -> FragmentKey {
+/// The key of a node id, such as the target of an action request.
+pub fn ax_key(id: NodeId) -> AxKey {
     KeyData::from_ffi(id.0).into()
 }

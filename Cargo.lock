@@ -711,6 +711,7 @@ dependencies = [
  "bitflags 2.13.2",
  "comet-layout",
  "comet-paint",
+ "comet-slotmap-tree",
  "comet-tree",
  "kurbo",
  "parley",

@@ -9,42 +9,39 @@ use kurbo::Affine;
 use parley::PositionedLayoutItem;
 
 use crate::{
-    A11yFlags,
+    AxFlags,
     style::Role,
-    tree::{A11yNode, A11yTree, node_id},
+    tree::{AxNode, AxNodeKind, AxTree, AxKey, node_id},
 };
 
-/// Layout flags of an item whose fragments are resolved again:
+/// Layout flags of an item whose node is resolved again:
 /// - [`DirtyFlags::NEED_LAYER`]: a paint property of the item changed.
 /// - [`DirtyFlags::NEED_CHILDREN`]: its children changed. It includes
 ///   [`DirtyFlags::NEED_LAYER`].
 /// - [`DirtyFlags::NEED_PRE_PAINT`]: its fragments were laid out, moved or
-///   resized, or their transforms changed, so their bounds or transforms may
-///   have changed.
+///   resized, or their transforms changed, so its bounds, transform or text
+///   runs may have changed.
 const RESOLVE: DirtyFlags = DirtyFlags::NEED_LAYER.union(DirtyFlags::NEED_PRE_PAINT);
 
-/// Builds and updates an [`A11yTree`] for a layout. Keep it to reuse its
+/// Builds and updates an [`AxTree`] for a layout. Keep it to reuse its
 /// buffers across builds.
 #[derive(Default)]
-pub struct A11yTreeBuilder {
-    /// Items to visit, with their accessibility parent item and whether it
-    /// was resolved.
+pub struct AxTreeBuilder {
+    /// Items to visit.
     pending: Vec<Visit>,
-    /// Fragments of the item being visited, with the item whose fragments
-    /// hold their nodes.
-    fragments: Vec<(FragmentKey, Option<LayoutInputKey>)>,
-    /// Parents of new fragments that were not resolved themselves, resolved
-    /// at the end for their new children, with their item and its parent.
-    parents: Vec<(FragmentKey, LayoutInputKey, Option<LayoutInputKey>)>,
+    /// Children of the node being resolved.
+    children: Vec<AxKey>,
+    /// Existing text run nodes of the item being resolved, reused in order.
+    runs: Vec<AxKey>,
 }
 
 #[derive(Clone, Copy)]
 struct Visit {
     item: LayoutInputKey,
-    /// Nearest ancestor item with fragments, whose fragments hold the nodes
-    /// of this item's fragments.
-    parent: Option<LayoutInputKey>,
-    /// Whether the fragments of `parent` were resolved in this build.
+    /// Fragment whose space the parent node is in: the box of the nearest
+    /// ancestor item with one. `None` for the root.
+    space: Option<FragmentKey>,
+    /// Whether the parent node was resolved in this build.
     parent_resolved: bool,
 }
 
@@ -57,63 +54,59 @@ struct Sources<'a> {
     prepaint: &'a PrepaintTree,
 }
 
-impl A11yTreeBuilder {
+impl AxTreeBuilder {
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Build into `tree` the nodes of the items under the layout input item
-    /// `root` that need it, adding the fragments whose nodes changed to the
-    /// tree's [changed](A11yTree::changed) list, sent and cleared by
-    /// [`A11yTree::take_update`].
+    /// `root` that need it, adding the nodes that changed to the tree's
+    /// [changed](AxTree::changed) list, sent and cleared by
+    /// [`AxTree::take_update`].
     ///
     /// The tree follows the layout input tree, in the order of the UI: each
-    /// item has a node for each of its [fragments](FragmentTree::fragments),
-    /// its box or its inline and glyph run fragments on every line, and the
-    /// nodes of its child items are children of its own nodes. Line boxes
-    /// and anonymous blocks have no nodes. Items without fragments are left
-    /// out, their children taking their place.
+    /// item has one node, whose children are the nodes of its child items. A
+    /// text item's node also holds a [`TextRun`](accesskit::Role::TextRun)
+    /// node for each of its glyph runs, before them, carrying their text and
+    /// the metrics of their characters. Platform adapters expose text runs
+    /// only through the text's node, a [`Label`](accesskit::Role::Label)
+    /// unless the text has another role.
     ///
-    /// A child item's fragment is a child of the parent item's fragment
-    /// containing it in the fragment tree, such as the span of an inline
-    /// element on the same line. A fragment not contained in any, such as a
-    /// block splitting an inline element, is a child of the parent item's
-    /// first fragment.
+    /// An item with a box fragment has the box's border box as bounds, and
+    /// the transform mapping the box into its parent node, from the
+    /// pre-paint transforms. Other items, such as inline elements and texts
+    /// in an inline flow, are in the space of their parent node, with the
+    /// area covering their fragments as bounds. Text runs have their glyph
+    /// run's box as bounds and the transform mapping it into the text's
+    /// node.
     ///
-    /// Each node has its fragment's role, its border box as bounds, the
-    /// transform mapping it into its parent node, from the pre-paint
-    /// transforms, and the nodes of its child items' fragments as children.
-    /// Glyph runs carry their text as a [`TextRun`](accesskit::Role::TextRun):
-    /// its value and the metrics of its characters. Platform adapters never
-    /// expose text runs themselves, only through an ancestor whose text they
-    /// make up, such as a [`Label`](accesskit::Role::Label).
-    ///
-    /// The fragments of an item are resolved:
+    /// The node of an item is resolved:
     /// - when its flags in `dirty` have [`DirtyFlags::NEED_LAYER`], which
     ///   [`DirtyFlags::NEED_CHILDREN`] includes, or
     ///   [`DirtyFlags::NEED_PRE_PAINT`],
-    /// - when it is [`A11yFlags::DIRTY`] in `tree`,
-    /// - when a fragment has no node, and then so is the parent fragment,
-    ///   for its new children,
-    /// - when its parent item was resolved and a fragment is not contained
-    ///   in the parent's fragments, as its transform depends on them.
+    /// - when it is [`AxFlags::DIRTY`] in `tree`,
+    /// - when it is new, or has a child item without a node,
+    /// - when its parent node was resolved and its box is not inside the
+    ///   parent's space in the fragment tree, as its transform depends on
+    ///   both.
     ///
     /// Items are visited from the root, going into the children of an item
     /// only when its flags or child bits in `dirty` have one of those layout
-    /// flags, when it is [`A11yFlags::CHILD_DIRTY`], or when one of its
-    /// fragments has no node. Resolved nodes equal to their previous node are
-    /// not added to the changed list.
+    /// flags, when it is [`AxFlags::CHILD_DIRTY`], or when its node is new.
+    /// Resolved nodes equal to their previous node are not added to the
+    /// changed list. Nodes of items no longer listed by their parent are
+    /// deleted with it.
     ///
-    /// When the root item's box fragment has no node in `tree`, such as on
-    /// the first build or after a new root, every node is resolved and other
-    /// nodes are dropped, so the next update sends the whole tree.
+    /// When the root item has no resolved node in `tree`, such as on the
+    /// first build or after a new root, the tree is cleared and every node is
+    /// resolved, so the next update sends the whole tree.
     ///
     /// Build after resolving `prepaint` for `fragments`, and before clearing
     /// `dirty`. Returns `None` if `root` has no box fragment, or if an item
     /// no longer matches the UI or a fragment has no pre-paint data. Nodes
     /// resolved before the failure stay in `tree`, without their flags
     /// cleared, so the next build resolves them again; build from a
-    /// [cleared](A11yTree::clear) tree to send a complete tree again.
+    /// [cleared](AxTree::clear) tree to send a complete tree again.
     #[allow(clippy::too_many_arguments)]
     pub fn build(
         &mut self,
@@ -122,10 +115,10 @@ impl A11yTreeBuilder {
         dirty: &DirtyMap,
         fragments: &FragmentTree,
         prepaint: &PrepaintTree,
-        tree: &mut A11yTree,
+        tree: &mut AxTree,
         root: LayoutInputKey,
     ) -> Option<()> {
-        let root_fragment = fragments.box_fragment(root)?;
+        fragments.box_fragment(root)?;
         let sources = Sources {
             ui,
             inputs,
@@ -134,91 +127,70 @@ impl A11yTreeBuilder {
         };
         let Self {
             pending,
-            fragments: own,
-            parents,
+            children,
+            runs,
         } = self;
         pending.clear();
-        parents.clear();
 
-        // A root without a node, new or never built, resolves every node.
-        if !tree.nodes.contains_key(root_fragment) {
+        // A root without a resolved node, new or never built, resolves every
+        // node.
+        let root_resolved = tree
+            .item_node(root)
+            .and_then(|key| tree.get(key))
+            .is_some_and(|node| node.resolved && tree.nodes.parent(tree.items[root]).is_none());
+        if !root_resolved {
             tree.clear();
-        } else {
-            // Fragments changed by earlier builds and deleted since are no
-            // longer in the tree.
-            tree.changed
-                .retain(|&key| fragments.items.get(key).is_some());
         }
+        tree.item_node_or_insert(root);
 
         pending.push(Visit {
             item: root,
-            parent: None,
+            space: None,
             parent_resolved: true,
         });
 
         while let Some(Visit {
             item,
-            parent,
+            space,
             parent_resolved,
         }) = pending.pop()
         {
             inputs.items.get(item)?;
+            let key = tree.item_node_or_insert(item);
             let entry = dirty.entry(item);
-            let flags = tree.flags.get(item).copied().unwrap_or_default();
+            let flags = tree.flags(item);
+            let missing = !tree.nodes[key].resolved;
+            let own_box = fragments.box_fragment(item);
 
-            // Its linked fragments, then the glyph runs inside its own box,
-            // held by the box.
-            own.clear();
-            own.extend(fragments.fragments(item).map(|key| (key, parent)));
-            if let Some(&(first, _)) = own.first() {
-                own.extend(sources.own_runs(item, first).map(|key| (key, Some(item))));
-            }
-            let missing = own.iter().any(|&(key, _)| !tree.nodes.contains_key(key));
+            let descend = missing
+                || flags.contains(AxFlags::CHILD_DIRTY)
+                || (entry.flags | entry.child_bits).intersects(RESOLVE);
 
             let resolve = missing
-                || flags.contains(A11yFlags::DIRTY)
+                || flags.contains(AxFlags::DIRTY)
                 || entry.flags.intersects(RESOLVE)
+                || (descend
+                    && inputs
+                        .items
+                        .children(item)
+                        .any(|child| tree.item_node(child).is_none()))
                 || (parent_resolved
-                    && parent.is_some_and(|parent| {
-                        own.iter().any(|&(key, holder)| {
-                            holder == Some(parent) && sources.contained(key, parent).is_none()
-                        })
-                    }));
+                    && own_box
+                        .zip(space)
+                        .is_some_and(|(own, space)| !sources.contains(space, own)));
 
-            for &(key, holder) in own.iter() {
-                // The parent lists its new child only once resolved again.
-                // A new run in the item's own box resolves the item.
-                if !tree.nodes.contains_key(key)
-                    && !parent_resolved
-                    && holder == parent
-                    && let Some(parent) = parent
-                {
-                    let parent_key = sources.parent_fragment(key, parent)?;
-                    let grandparent = sources.parent_item(parent);
-                    parents.push((parent_key, parent, grandparent));
-                }
-
-                if resolve {
-                    sources.resolve(tree, key, item, holder)?;
-                }
+            if resolve {
+                sources.resolve(tree, key, item, own_box, space, children, runs)?;
             }
 
-            if missing
-                || flags.contains(A11yFlags::CHILD_DIRTY)
-                || (entry.flags | entry.child_bits).intersects(RESOLVE)
-            {
-                // Items without fragments leave their children to the parent.
-                let (parent, parent_resolved) = if own.is_empty() {
-                    (parent, parent_resolved)
-                } else {
-                    (Some(item), resolve)
-                };
+            if descend {
+                let space = own_box.or(space);
                 // Popped in order.
                 let start = pending.len();
                 pending.extend(inputs.items.children(item).map(|item| Visit {
                     item,
-                    parent,
-                    parent_resolved,
+                    space,
+                    parent_resolved: resolve,
                 }));
                 pending[start..].reverse();
             }
@@ -226,191 +198,161 @@ impl A11yTreeBuilder {
             tree.flags.remove(item);
         }
 
-        parents.sort_unstable_by_key(|&(key, ..)| key);
-        parents.dedup_by_key(|&mut (key, ..)| key);
-        for &(key, item, parent) in parents.iter() {
-            sources.resolve(tree, key, item, parent)?;
-        }
-
         Some(())
     }
 }
 
 impl Sources<'_> {
-    /// Resolve the node of `key`, a fragment of `item`, into `tree`, adding
-    /// it to the changed list when it differs from its previous node.
-    /// `parent` is the item whose fragments hold it.
+    /// Resolve the node of `item` at `key`, with its text run nodes, and
+    /// list the nodes of its child items, inserting the missing ones. `own`
+    /// is its box, and `space` the fragment whose space its parent node is
+    /// in.
+    #[allow(clippy::too_many_arguments)]
     fn resolve(
         &self,
-        tree: &mut A11yTree,
-        key: FragmentKey,
+        tree: &mut AxTree,
+        key: AxKey,
         item: LayoutInputKey,
-        parent: Option<LayoutInputKey>,
+        own: Option<FragmentKey>,
+        space: Option<FragmentKey>,
+        children: &mut Vec<AxKey>,
+        runs: &mut Vec<AxKey>,
     ) -> Option<()> {
-        let node = self.resolve_node(key, item, parent)?;
+        let input = self.inputs.items.get(item)?;
+        let props = self.ui.props(input.node)?;
 
-        match tree.nodes.get_mut(key) {
-            Some(old) if old.node == node => {}
-            Some(old) => {
-                old.node = node;
-                tree.changed.push(key);
+        // Without a role, texts are labels and boxes generic containers.
+        let role = match props.get_cloned() {
+            Some(Role(role)) => role,
+            None if self.ui.kind(input.node) == Some(Node::Text) => accesskit::Role::Label,
+            None => accesskit::Role::GenericContainer,
+        };
+        let mut node = accesskit::Node::new(role);
+
+        match (own, space) {
+            (Some(own), space) => {
+                let size = self.fragments.items.get(own)?.layout.size;
+                node.set_bounds(accesskit::Rect::new(0.0, 0.0, size.width, size.height));
+                let transform = match space {
+                    Some(space) => self.relative_transform(own, space)?,
+                    // The root has no parent node.
+                    None => self.prepaint.fragment(own)?.transform,
+                };
+                if transform != Affine::IDENTITY {
+                    node.set_transform(accesskit::Affine::new(transform.as_coeffs()));
+                }
             }
-            None => {
-                tree.nodes.insert(key, A11yNode { node });
-                tree.changed.push(key);
+            // In the space of the parent node, covering its fragments.
+            (None, Some(space)) => {
+                let mut bounds: Option<kurbo::Rect> = None;
+                for fragment in self.fragments.fragments(item) {
+                    let size = self.fragments.items.get(fragment)?.layout.size;
+                    let rect = self
+                        .relative_transform(fragment, space)?
+                        .transform_rect_bbox(kurbo::Rect::from_origin_size(
+                            (0.0, 0.0),
+                            (size.width, size.height),
+                        ));
+                    bounds = Some(bounds.map_or(rect, |bounds| bounds.union(rect)));
+                }
+                if let Some(bounds) = bounds {
+                    node.set_bounds(accesskit::Rect::new(
+                        bounds.x0, bounds.y0, bounds.x1, bounds.y1,
+                    ));
+                }
+            }
+            (None, None) => return None,
+        }
+
+        // Text runs first, reusing the existing ones in order.
+        children.clear();
+        runs.clear();
+        runs.extend(
+            tree.nodes
+                .children(key)
+                .filter(|&child| tree.nodes[child].kind == AxNodeKind::TextRun),
+        );
+        if input.kind == LayoutInputKind::Text {
+            let run_space = own.or(space)?;
+            let glyph_runs: Vec<_> = self.glyph_runs(item, own).collect();
+            for index in 0..glyph_runs.len() {
+                let run_key = runs.get(index).copied().unwrap_or_else(|| {
+                    tree.nodes.insert(AxNode {
+                        node: accesskit::Node::default(),
+                        item,
+                        kind: AxNodeKind::TextRun,
+                        resolved: false,
+                    })
+                });
+                children.push(run_key);
+            }
+            for (index, &run) in glyph_runs.iter().enumerate() {
+                let previous = index
+                    .checked_sub(1)
+                    .map(|index| (glyph_runs[index], children[index]));
+                let next = glyph_runs
+                    .get(index + 1)
+                    .map(|&run| (run, children[index + 1]));
+                let run_node = self.text_run(run, run_space, previous, next)?;
+                tree.set_node(children[index], run_node);
             }
         }
+
+        for child in self.inputs.items.children(item) {
+            children.push(tree.item_node_or_insert(child));
+        }
+
+        node.set_children(children.iter().copied().map(node_id).collect::<Vec<_>>());
+        tree.set_children(key, children);
+        tree.set_node(key, node);
 
         Some(())
     }
 
-    /// Resolve the node of one fragment from the UI, its layout and its
-    /// pre-paint data.
-    fn resolve_node(
-        &self,
-        key: FragmentKey,
-        item: LayoutInputKey,
-        parent: Option<LayoutInputKey>,
-    ) -> Option<accesskit::Node> {
-        let fragment = self.fragments.items.get(key)?;
-        let node = self.inputs.items.get(item)?.node;
-        let props = self.ui.props(node)?;
-
-        // Glyph runs are text runs whatever the node's role. Without a role,
-        // texts are labels and boxes generic containers.
-        let role = match fragment.item {
-            FragmentItem::GlyphRun { .. } => accesskit::Role::TextRun,
-            _ => match props.get_cloned() {
-                Some(Role(role)) => role,
-                None if self.ui.kind(node) == Some(Node::Text) => accesskit::Role::Label,
-                None => accesskit::Role::GenericContainer,
-            },
-        };
-
-        let mut node = accesskit::Node::new(role);
-        let size = fragment.layout.size;
-        node.set_bounds(accesskit::Rect::new(0.0, 0.0, size.width, size.height));
-
-        let transform = match parent {
-            Some(parent) => self.relative_transform(key, self.parent_fragment(key, parent)?)?,
-            // The root has no parent fragment.
-            None => self.prepaint.fragment(key)?.transform,
-        };
-        if transform != Affine::IDENTITY {
-            node.set_transform(accesskit::Affine::new(transform.as_coeffs()));
-        }
-
-        let mut children: Vec<_> = self.own_runs(item, key).map(node_id).collect();
-        self.children(key, item, item, &mut children);
-        node.set_children(children);
-
-        if let FragmentItem::GlyphRun { line, item } = fragment.item {
-            self.text_run(&mut node, key, line, item);
-        }
-
-        Some(node)
-    }
-
-    /// Add to `children` the nodes of the fragments of the child items of
-    /// `items`, in order, whose parent fragment is `key`, a fragment of
-    /// `item`. Children without fragments are replaced by their children.
-    fn children(
-        &self,
-        key: FragmentKey,
-        item: LayoutInputKey,
-        items: LayoutInputKey,
-        children: &mut Vec<accesskit::NodeId>,
-    ) {
-        for child in self.inputs.items.children(items) {
-            let mut fragments = self.fragments.fragments(child).peekable();
-            if fragments.peek().is_none() {
-                self.children(key, item, child, children);
-                continue;
-            }
-
-            children.extend(
-                fragments
-                    .filter(|&child| self.parent_fragment(child, item) == Some(key))
-                    .map(node_id),
-            );
-        }
-    }
-
-    /// The glyph runs of `item` inside `key`, when it is the item's own box,
-    /// such as the box of a text in a flex container. They are not linked
+    /// The glyph runs of a text item in order: its linked fragments in an
+    /// inline flow, or the runs inside its own box, which are not linked
     /// with the box.
-    fn own_runs(
+    fn glyph_runs(
         &self,
         item: LayoutInputKey,
-        key: FragmentKey,
+        own: Option<FragmentKey>,
     ) -> impl Iterator<Item = FragmentKey> {
         let items = &self.fragments.items;
-        // Only texts own glyph runs, which saves walking other boxes.
-        let own_box = self
-            .inputs
-            .items
-            .get(item)
-            .is_some_and(|input| input.kind == LayoutInputKind::Text)
-            && items
-                .get(key)
-                .is_some_and(|fragment| fragment.item.is_box() && fragment.source == item);
-
-        own_box
-            .then(|| items.descendants(key))
+        let in_box = own.map(|own| items.descendants(own)).into_iter().flatten();
+        let linked = own
+            .is_none()
+            .then(|| self.fragments.fragments(item))
             .into_iter()
-            .flatten()
-            .filter(move |&key| {
-                matches!(items[key].item, FragmentItem::GlyphRun { .. })
-                    && items[key].source == item
-            })
+            .flatten();
+
+        in_box.chain(linked).filter(move |&key| {
+            matches!(items[key].item, FragmentItem::GlyphRun { .. }) && items[key].source == item
+        })
     }
 
-    /// The nearest ancestor item of `item` with fragments.
-    fn parent_item(&self, item: LayoutInputKey) -> Option<LayoutInputKey> {
-        let items = &self.inputs.items;
-        core::iter::successors(items.parent(item), |&item| items.parent(item))
-            .find(|&item| self.fragments.fragments(item).next().is_some())
-    }
-
-    /// The fragment of `parent` holding the node of `key`: the one containing
-    /// it, or else its first fragment.
-    fn parent_fragment(&self, key: FragmentKey, parent: LayoutInputKey) -> Option<FragmentKey> {
-        self.contained(key, parent)
-            .or_else(|| self.fragments.fragments(parent).next())
-    }
-
-    /// The nearest ancestor of `key` with a node, if it is a fragment of
-    /// `parent`. Line boxes and anonymous blocks have no nodes.
-    fn contained(&self, key: FragmentKey, parent: LayoutInputKey) -> Option<FragmentKey> {
+    /// Whether `ancestor` is `key` or one of its ancestors.
+    fn contains(&self, ancestor: FragmentKey, key: FragmentKey) -> bool {
         let items = &self.fragments.items;
-        let ancestor =
-            core::iter::successors(items.parent(key), |&key| items.parent(key)).find(|&key| {
-                !matches!(
-                    items[key].item,
-                    FragmentItem::Line { .. } | FragmentItem::AnonymousBlock { .. }
-                )
-            })?;
-
-        (items[ancestor].source == parent).then_some(ancestor)
+        core::iter::successors(Some(key), |&key| items.parent(key)).any(|key| key == ancestor)
     }
 
-    /// The transform mapping `key` into `parent`. Without `parent` among
-    /// the ancestors of `key`, it goes through the root fragment.
-    fn relative_transform(&self, key: FragmentKey, parent: FragmentKey) -> Option<Affine> {
+    /// The transform mapping `key` into `space`. Without `space` among the
+    /// ancestors of `key`, it goes through the root fragment.
+    fn relative_transform(&self, key: FragmentKey, space: FragmentKey) -> Option<Affine> {
         let items = &self.fragments.items;
         let mut transform = Affine::IDENTITY;
         let mut current = Some(key);
 
         // Usually an ancestor: no inverse is needed.
         while let Some(key) = current {
-            if key == parent {
+            if key == space {
                 return Some(transform);
             }
             transform = self.prepaint.fragment(key)?.transform * transform;
             current = items.parent(key);
         }
 
-        Some(self.root_transform(parent)?.inverse() * transform)
+        Some(self.root_transform(space)?.inverse() * transform)
     }
 
     /// The transform mapping `key` into the space of the root fragment's
@@ -423,32 +365,50 @@ impl Sources<'_> {
             })
     }
 
-    /// Set the text of a glyph run fragment on its node, from the inline
-    /// layout of the line containing it, as `accesskit` expects of a
-    /// [`TextRun`](accesskit::Role::TextRun): its value, the length of each
-    /// character, their positions and widths in the text direction, the
-    /// characters starting words, and the text runs before and after it on
-    /// the same line.
+    /// The line box containing a glyph run.
+    fn line(&self, key: FragmentKey) -> Option<FragmentKey> {
+        let items = &self.fragments.items;
+        core::iter::successors(items.parent(key), |&key| items.parent(key))
+            .find(|&key| matches!(items[key].item, FragmentItem::Line { .. }))
+    }
+
+    /// The [`TextRun`](accesskit::Role::TextRun) node of a glyph run, in the
+    /// space of `space`, from the inline layout of the line containing it,
+    /// as `accesskit` expects: its value, the length of each character,
+    /// their positions and widths in the text direction, the characters
+    /// starting words, and the runs of the same text before and after it on
+    /// the same line, given with their node keys.
     ///
     /// A character is a cluster: the smallest unit of text the layout
-    /// places. Text runs are only exposed through an ancestor whose text
-    /// they make up, such as a [`Label`](accesskit::Role::Label).
-    fn text_run(&self, node: &mut accesskit::Node, key: FragmentKey, line: usize, item: usize) {
-        let items = &self.fragments.items;
-        let Some(line_key) = core::iter::successors(items.parent(key), |&key| items.parent(key))
-            .find(|&key| matches!(items[key].item, FragmentItem::Line { .. }))
-        else {
-            return;
+    /// places.
+    fn text_run(
+        &self,
+        key: FragmentKey,
+        space: FragmentKey,
+        previous: Option<(FragmentKey, AxKey)>,
+        next: Option<(FragmentKey, AxKey)>,
+    ) -> Option<accesskit::Node> {
+        let fragment = self.fragments.items.get(key)?;
+        let FragmentItem::GlyphRun { line, item } = fragment.item else {
+            return None;
         };
-        let Some(inline) = self.fragments.inline_layout(line_key) else {
-            return;
-        };
+
+        let mut node = accesskit::Node::new(accesskit::Role::TextRun);
+        let size = fragment.layout.size;
+        node.set_bounds(accesskit::Rect::new(0.0, 0.0, size.width, size.height));
+        let transform = self.relative_transform(key, space)?;
+        if transform != Affine::IDENTITY {
+            node.set_transform(accesskit::Affine::new(transform.as_coeffs()));
+        }
+
+        let line_key = self.line(key)?;
+        let inline = self.fragments.inline_layout(line_key)?;
         let Some(PositionedLayoutItem::GlyphRun(run)) = inline
             .layout
             .get(line)
             .and_then(|line| line.items().nth(item))
         else {
-            return;
+            return Some(node);
         };
 
         // The shaping run may hold the text of other items, whose styles
@@ -485,7 +445,7 @@ impl Sources<'_> {
             });
         }
         let Some(value) = range.and_then(|range| inline.text.get(range)) else {
-            return;
+            return Some(node);
         };
 
         node.set_value(value);
@@ -499,18 +459,18 @@ impl Sources<'_> {
             accesskit::TextDirection::LeftToRight
         });
 
-        // Glyph runs of a line are in visual order.
-        let runs: Vec<_> = items
-            .descendants(line_key)
-            .filter(|&key| matches!(items[key].item, FragmentItem::GlyphRun { .. }))
-            .collect();
-        if let Some(index) = runs.iter().position(|&run| run == key) {
-            if let Some(&previous) = index.checked_sub(1).and_then(|index| runs.get(index)) {
-                node.set_previous_on_line(node_id(previous));
-            }
-            if let Some(&next) = runs.get(index + 1) {
-                node.set_next_on_line(node_id(next));
-            }
+        // Lines are only followed within one text, whose node holds them.
+        if let Some((run, run_key)) = previous
+            && self.line(run) == Some(line_key)
+        {
+            node.set_previous_on_line(node_id(run_key));
         }
+        if let Some((run, run_key)) = next
+            && self.line(run) == Some(line_key)
+        {
+            node.set_next_on_line(node_id(run_key));
+        }
+
+        Some(node)
     }
 }
