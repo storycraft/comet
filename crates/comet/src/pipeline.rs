@@ -259,9 +259,9 @@ impl Pipeline {
             return;
         }
 
-        // Marked after the layout, on the fragments the nodes have now.
+        // Marked after the layout, on the items the nodes have now.
         for node in a11y.marks.drain(..) {
-            a11y.tree.mark_node(&self.inputs, &self.fragments, node);
+            a11y.tree.mark_node(&self.inputs, node);
         }
 
         a11y.root = a11y
