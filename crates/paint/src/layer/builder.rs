@@ -46,35 +46,14 @@ impl PaintLayerBuilder {
     /// fragment of `root`. The root fragment always starts the root layer,
     /// with z index 0, whatever its stacking.
     ///
-    /// When `tree` already holds the root layer of the root fragment, only
-    /// the layers with changes are placed again. Items are visited from
-    /// `root`, going into the children of an item whose
-    /// [`DirtyEntry::child_bits`](comet_layout::dirty_map::DirtyEntry::child_bits)
-    /// in `dirty` have [`DirtyFlags::NEED_LAYER`], which the pre-paint
-    /// resolve marks on items whose fragments gained, lost or changed the z
-    /// index of their stacking context, and which
-    /// [`DirtyFlags::NEED_CHILDREN`] includes.
-    /// The child layers of the layer enclosing an item marked
-    /// [`DirtyFlags::NEED_CHILDREN`] are placed again, in their new order.
-    /// For each item whose
-    /// [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags)
-    /// have [`DirtyFlags::NEED_LAYER`], the
-    /// [stacking](crate::prepaint::FragmentData::stacking) of each of its
-    /// fragments is compared with the layer the fragment starts: when it
-    /// gains, loses or changes the z index of its layer, the child layers of
-    /// the layer it paints in are placed again. So are those of a layer one
-    /// of whose child layers lost its owner. Layers started by
-    /// new fragments are built, and layers whose owner no longer starts one
-    /// are deleted, their child layers moving to the layer they paint in.
-    ///
-    /// Otherwise, such as on the first build or after a new root, every layer
-    /// is built and layers of other fragments are deleted.
+    /// When `tree` already holds the root layer, only the layers affected by
+    /// changes marked in `dirty` are updated. Layers whose owner still starts
+    /// one keep their keys.
     ///
     /// Build from the same `prepaint` every time, after resolving it for
     /// `fragments`, and before clearing `dirty`. Fragments without
-    /// pre-paint data start no layer. Layers whose owner still starts one
-    /// keep their keys. Returns `None` if `root` has no box fragment in
-    /// `fragments`.
+    /// pre-paint data start no layer. Returns `None` if `root` has no box
+    /// fragment in `fragments`.
     pub fn build(
         &mut self,
         fragments: &FragmentTree,
