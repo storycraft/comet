@@ -111,6 +111,9 @@ impl Engine<'_> {
             inline.text = builder.build_into(&mut inline.layout);
             inline.boxes = boxes;
             inline.shaped = true;
+            // The run index refers to the previous text until emitted again.
+            inline.lines.clear();
+            inline.runs.clear();
         } else {
             let (layout, text) = builder.build();
 
@@ -121,6 +124,8 @@ impl Engine<'_> {
                 shaped: true,
                 first_baseline: None,
                 last_baseline: None,
+                lines: Vec::new(),
+                runs: Vec::new(),
             }));
         }
     }

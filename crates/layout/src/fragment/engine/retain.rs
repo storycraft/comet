@@ -102,6 +102,10 @@ impl Engine<'_> {
                 Some(key),
                 "state of a deleted fragment"
             );
+
+            if let Some(inline) = state.inline.as_deref() {
+                check_run_index(&self.fragments.items, state.fragment, inline);
+            }
         }
 
         if let Some(root) = self.fragments.box_fragment(self.root) {
@@ -131,5 +135,47 @@ impl Engine<'_> {
             self.drop_state(fragment);
             self.release(fragment);
         }
+    }
+}
+
+/// Check that the run index of an inline layout matches its emitted lines.
+#[cfg(debug_assertions)]
+fn check_run_index(
+    items: &comet_slotmap_tree::SlotTree<FragmentKey, crate::fragment::Fragment>,
+    owner: FragmentKey,
+    inline: &crate::fragment::InlineLayout,
+) {
+    use crate::fragment::FragmentItem;
+
+    if inline.lines.is_empty() {
+        assert!(inline.runs.is_empty(), "runs without lines");
+        return;
+    }
+
+    for (index, &line) in inline.lines.iter().enumerate() {
+        assert_eq!(items.parent(line), Some(owner), "line of another owner");
+        assert_eq!(items[line].item, FragmentItem::Line { line: index });
+    }
+
+    for pair in inline.runs.windows(2) {
+        assert!(
+            (pair[0].line, pair[0].start) <= (pair[1].line, pair[1].start),
+            "unsorted run index"
+        );
+    }
+
+    for entry in &inline.runs {
+        let mut parent = items.parent(entry.fragment);
+        while let Some(key) = parent
+            && matches!(items[key].item, FragmentItem::Inline { .. })
+        {
+            parent = items.parent(key);
+        }
+        assert_eq!(
+            parent,
+            Some(inline.lines[entry.line]),
+            "run outside its line"
+        );
+        assert!(entry.start <= entry.end && entry.end <= inline.text.len());
     }
 }
