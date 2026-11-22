@@ -11,7 +11,7 @@ use comet_tree::ui::{Props, Ui};
 
 use crate::{
     layer::{PaintLayerItem, PaintLayerKey, tree::PaintLayerTree},
-    style::{BackdropFilter, Filter, Opacity, Transform, ZIndex},
+    style::{BackdropFilter, Filter, MixBlend, Opacity, Transform, ZIndex},
 };
 
 /// Builds and updates a [`PaintLayerTree`] for a fragment tree, from the
@@ -59,9 +59,11 @@ impl PaintLayerBuilder {
     /// with z index 0, whatever its styles.
     ///
     /// A box fragment starts a layer when its item sets a [`Transform`], an
-    /// [`Opacity`], a [`Filter`] or a [`BackdropFilter`], whatever its value,
+    /// [`Opacity`], a [`Filter`], a [`BackdropFilter`] or a [`MixBlend`],
+    /// whatever its value,
     /// or a [`ZIndex`] other than auto. An auto z index counts as 0. Each
-    /// layer resolves its opacity and filters from its owner's item.
+    /// layer resolves its opacity, filters and blend mode from its owner's
+    /// item.
     ///
     /// When `tree` already holds the root layer, only the layers affected by
     /// changes marked in `dirty` are updated. Layers whose owner still starts
@@ -317,6 +319,7 @@ impl PaintLayerBuilder {
             opacity: 1.0,
             filter: None,
             backdrop_filter: None,
+            blend_mode: None,
             pass: self.pass,
         });
         tree.by_owner.insert(owner, layer);
@@ -404,7 +407,8 @@ impl Sources<'_> {
         stacking(self.props(fragment.source)?)
     }
 
-    /// Resolve the opacity and filters of a layer from its owner's item.
+    /// Resolve the opacity, filters and blend mode of a layer from its
+    /// owner's item.
     fn resolve(&self, item: &mut PaintLayerItem) {
         let fragment = self.fragments.items.get(item.owner);
         let props = fragment.and_then(|fragment| self.props(fragment.source));
@@ -421,6 +425,9 @@ impl Sources<'_> {
             let effects = props.get::<BackdropFilter>()?;
             Some(filter(&effects.0, fragment.layout.border_box()))
         });
+        item.blend_mode = props
+            .and_then(|props| props.get_cloned())
+            .map(|MixBlend(mode)| mode);
     }
 }
 
@@ -435,7 +442,8 @@ fn stacking(props: Props<'_>) -> Option<i32> {
     let starts = props.get::<Transform>().is_some()
         || props.get::<Opacity>().is_some()
         || props.get::<Filter>().is_some()
-        || props.get::<BackdropFilter>().is_some();
+        || props.get::<BackdropFilter>().is_some()
+        || props.get::<MixBlend>().is_some();
 
     starts.then_some(0)
 }

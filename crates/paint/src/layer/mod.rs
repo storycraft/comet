@@ -2,16 +2,16 @@
 //!
 //! A [`PaintLayerTree`](tree::PaintLayerTree) groups the fragments under a
 //! root fragment into layers, like stacking contexts in CSS. A box fragment
-//! whose item sets a transform, an opacity, a filter, a backdrop filter or a
-//! z index other than auto starts a child layer it owns. A layer covers its owner fragment and its
+//! whose item sets a transform, an opacity, a filter, a backdrop filter, a
+//! mix blend mode or a z index other than auto starts a child layer it owns. A layer covers its owner fragment and its
 //! descendants, except those starting layers of their own and their
 //! descendants.
 //!
 //! A layer paints its owner, then its child layers with a negative z index,
 //! then the rest of its fragments in tree order, then its other child layers.
 //! It paints with the transform of its owner fragment, looked up in the
-//! [`PrepaintTree`](crate::prepaint::tree::PrepaintTree), and the opacity and
-//! filters resolved into the layer from its owner's item.
+//! [`PrepaintTree`](crate::prepaint::tree::PrepaintTree), and the opacity,
+//! filters and blend mode resolved into the layer from its owner's item.
 
 pub mod builder;
 pub mod tree;
@@ -19,6 +19,7 @@ pub mod tree;
 use std::sync::Arc;
 
 use comet_layout::fragment::FragmentKey;
+use peniko::BlendMode;
 use slotmap::new_key_type;
 
 new_key_type! {
@@ -54,6 +55,11 @@ pub struct PaintLayerItem {
     /// box, grown by the expansion of each effect. `None` if the owner sets
     /// no backdrop filter.
     pub backdrop_filter: Option<Arc<anyrender::Filter>>,
+
+    /// Blend mode the layer is composited with onto what is painted behind
+    /// it, from its owner's [`MixBlend`](crate::style::MixBlend). `None` if
+    /// the owner sets none.
+    pub blend_mode: Option<BlendMode>,
 
     /// The last build or update that reached the layer, to find the layers
     /// it left behind.

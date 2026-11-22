@@ -52,6 +52,8 @@ define_style_props!(
     #[derive(Debug, Clone, PartialEq)]
     pub BackdropFilter: Vec<FilterEffect>;
 
+    /// Blend mode a box and its contents are composited with onto what is
+    /// painted behind them.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub MixBlend: BlendMode;
 );

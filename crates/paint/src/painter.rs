@@ -124,8 +124,9 @@ impl CometPainter {
     /// Each layer paints its owner fragment, then its child layers with a
     /// negative z index, then its other fragments in tree order, then its
     /// other child layers, with the opacity and filters of its owner's item.
-    /// A layer with an opacity below 1 or a [`Filter`](crate::style::Filter) paints into a group,
-    /// blended with that opacity and filtered in the owner's local
+    /// A layer with an opacity below 1, a [`Filter`](crate::style::Filter)
+    /// or a [`MixBlend`](crate::style::MixBlend) paints into a group, blended
+    /// with that opacity and blend mode and filtered in the owner's local
     /// coordinates. A transparent layer is skipped, and so is the group of a
     /// layer whose owner collapses. A
     /// [`BackdropFilter`](crate::style::BackdropFilter) filters what is
@@ -208,7 +209,7 @@ impl CometPainter {
     }
 
     /// Paint a layer, after its owner's backdrop filter and inside a group
-    /// with its owner's opacity and filter. `parent` maps the local
+    /// with its owner's opacity, filter and blend mode. `parent` maps the local
     /// coordinates of the owner's parent to the scene, and `clip` bounds the
     /// clips the owner paints inside of, already pushed.
     fn draw_layer(
@@ -252,7 +253,8 @@ impl CometPainter {
             );
         }
 
-        let group = opacity < 1.0 || filter.is_some();
+        let blend_mode = layer.blend_mode;
+        let group = opacity < 1.0 || filter.is_some() || blend_mode.is_some();
 
         if group {
             // A collapsed owner paints nothing, and its contents with it.
@@ -262,7 +264,7 @@ impl CometPainter {
 
             scene.push_layer(
                 peniko::Fill::NonZero,
-                BlendMode::default(),
+                blend_mode.unwrap_or_default(),
                 opacity,
                 transforms.transform,
                 &inverse.transform_rect_bbox(sources.viewport),

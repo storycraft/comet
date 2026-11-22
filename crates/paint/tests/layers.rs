@@ -18,14 +18,14 @@ use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
-    style::{BackdropFilter, BorderRadius, Fill, Filter, Opacity, Transform, ZIndex},
+    style::{BackdropFilter, BorderRadius, Fill, Filter, MixBlend, Opacity, Transform, ZIndex},
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,
 };
 use kurbo::{Affine, Point, Rect, Shape};
-use peniko::Color;
+use peniko::{BlendMode, Color, Mix};
 
 const VIEWPORT: Size<f64> = Size::new(120.0, 400.0);
 const SCENE_VIEWPORT: Rect = Rect::new(0.0, 0.0, 120.0, 400.0);
@@ -577,6 +577,51 @@ fn filters_of_collapsed_owners_paint_nothing() {
     let f = Fixture::build(&ui, root);
 
     assert!(commands(&f.draw(&ui)).is_empty());
+}
+
+#[test]
+fn mix_blend_modes_start_layers_and_blend_their_group() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let blended = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 20.0),
+            MixBlend(BlendMode::from(Mix::Multiply)),
+            Fill(Paint::Solid(RED)),
+        ),
+    );
+    ui.append(root, blended);
+
+    let mut f = Fixture::build(&ui, root);
+    let layer = f.layer_of(blended);
+
+    assert_eq!(f.layers.layers.len(), 2);
+    assert_eq!(f.layers.layers[layer].z_index, 0);
+    assert_eq!(
+        f.layers.layers[layer].blend_mode,
+        Some(BlendMode::from(Mix::Multiply))
+    );
+
+    let blends = |scene: &Scene| -> Vec<BlendMode> {
+        scene
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                RenderCommand::PushLayer(layer) => Some(layer.blend),
+                _ => None,
+            })
+            .collect()
+    };
+    // Opaque and unfiltered, but grouped for the blend mode.
+    assert_eq!(blends(&f.draw(&ui)), [BlendMode::from(Mix::Multiply)]);
+
+    // Changing the blend mode updates the layer in place.
+    ui.set_props(blended, (MixBlend(BlendMode::from(Mix::Screen)),));
+    f.update(&ui, blended);
+
+    assert_eq!(f.layer_of(blended), layer);
+    assert_eq!(blends(&f.draw(&ui)), [BlendMode::from(Mix::Screen)]);
 }
 
 /// A margin pulling a box up over the previous one.

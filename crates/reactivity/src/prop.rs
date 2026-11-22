@@ -158,6 +158,7 @@ reactive_props!(LAYER =>
     paint::Opacity,
     paint::Filter,
     paint::BackdropFilter,
+    paint::MixBlend,
 );
 
 // Read by the painter every frame.

@@ -16,10 +16,10 @@ accesskit = "0.25.2"
 anyrender = "0.15.0"
 bitflags = "2.10.0"
 kurbo = "0.13.1"
+peniko = "0.6.0"
 rustc-hash = "2.1.3"
 reactive_graph = { version = "0.2.16", features = ["effects"] }
 
 [dev-dependencies]
 any_spawner = { version = "0.3.0", features = ["tokio"] }
 tokio = { version = "1.54.1", features = ["macros", "rt", "time"] }
-peniko = "0.6.0"
