@@ -12,7 +12,7 @@ use comet_tree::{
 };
 use reactive_graph::{
     effect::RenderEffect,
-    owner::{Owner, on_cleanup},
+    owner::{Owner, StoredValue},
 };
 
 use crate::{
@@ -60,8 +60,8 @@ impl UiCx {
     /// and is cleaned up with it.
     pub fn child(&self) -> Self {
         let owner = self.owner.child();
-        let kept = owner.clone();
-        self.owner.with(|| on_cleanup(move || drop(kept)));
+        // Owners hold their children weakly: the parent's arena keeps it.
+        self.owner.with(|| StoredValue::new(owner.clone()));
 
         Self::with_owner(self.tree.clone(), owner)
     }
@@ -152,7 +152,8 @@ impl<'a> NodeBuild<'a> {
         if let Some(value) = effect.with_value_mut(Option::take).flatten() {
             self.builder.add(value);
         }
-        self.cx.owner.with(|| on_cleanup(move || drop(effect)));
+        // Kept until the owner is cleaned up.
+        self.cx.owner.with(|| StoredValue::new(effect));
         self
     }
 
