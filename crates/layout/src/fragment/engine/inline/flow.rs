@@ -3,14 +3,13 @@
 use comet_tree::node::Text;
 
 use super::{
-    super::{Engine, FragmentItem, FragmentKey, Mode, NodeState, content_changed, layout_changed},
+    super::{
+        Engine, FragmentItem, FragmentKey, Mode, NodeState, PAINT_CHANGED, content_changed,
+        layout_changed,
+    },
     events::{InlineEvents, Op},
 };
-use crate::{
-    dirty_map::{DirtyFlags, DirtyMap},
-    input::LayoutInputKey,
-    taffy::style,
-};
+use crate::{dirty_map::DirtyMap, input::LayoutInputKey, taffy::style};
 
 impl Engine<'_> {
     /// Whether block boxes interrupt the inline content of an item.
@@ -163,8 +162,7 @@ impl Engine<'_> {
             }
             None => {
                 let style = style::resolve(None, &self.style_constraint(owner));
-                self.dirty
-                    .mark(self.tree, owner, DirtyFlags::NEED_PRE_PAINT);
+                self.dirty.mark(self.tree, owner, PAINT_CHANGED);
                 self.fragments.insert_with_state(
                     owner,
                     |state| FragmentItem::AnonymousBlock { state },

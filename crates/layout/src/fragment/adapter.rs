@@ -4,11 +4,10 @@ use taffy::{CacheTree, LayoutPartialTree, TraversePartialTree};
 
 use super::{
     FragmentKey, StateKey,
-    engine::{Engine, node_id, state_of},
+    engine::{Engine, PAINT_CHANGED, node_id, state_of},
     state::{Mode, NodeLayoutBits, NodeState},
 };
 use crate::{
-    dirty_map::DirtyFlags,
     style::geometry::{Point, Size},
     taffy::{conv, style::Style},
 };
@@ -269,8 +268,7 @@ impl Engine<'_> {
         // the root on every build, so only moved or resized fragments are
         // marked for pre-paint.
         if fragment.layout.location != location || fragment.layout.size != size {
-            self.dirty
-                .mark(self.tree, fragment.source, DirtyFlags::NEED_PRE_PAINT);
+            self.dirty.mark(self.tree, fragment.source, PAINT_CHANGED);
         }
 
         let fragment = &mut fragment.layout;

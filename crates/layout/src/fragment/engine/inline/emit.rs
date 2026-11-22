@@ -4,9 +4,12 @@ use comet_slotmap_tree::SlotTree;
 use rustc_hash::FxHashMap;
 use slotmap::{SecondaryMap, SlotMap};
 
-use super::{super::Engine, Scratch};
+use super::{
+    super::{Engine, PAINT_CHANGED},
+    Scratch,
+};
 use crate::{
-    dirty_map::{DirtyFlags, DirtyMap},
+    dirty_map::DirtyMap,
     fragment::{
         Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, RunEntry, StateKey,
         state::NodeState, tree::FragmentTree,
@@ -301,8 +304,7 @@ impl Emitter<'_> {
 
         if self.items[atomic].layout.location != location {
             self.items[atomic].layout.location = location;
-            self.dirty
-                .mark(self.tree, child, DirtyFlags::NEED_PRE_PAINT);
+            self.dirty.mark(self.tree, child, PAINT_CHANGED);
         }
         self.items.append(parent, atomic);
         self.record(atomic, item, start, end);
@@ -321,8 +323,7 @@ impl Emitter<'_> {
 
     /// Insert a new fragment, marking its item as laid out in this build.
     fn insert(&mut self, fragment: Fragment) -> FragmentKey {
-        self.dirty
-            .mark(self.tree, fragment.source, DirtyFlags::NEED_PRE_PAINT);
+        self.dirty.mark(self.tree, fragment.source, PAINT_CHANGED);
         self.items.insert(fragment)
     }
 

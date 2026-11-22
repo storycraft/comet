@@ -4,10 +4,11 @@
 
 use taffy::style::CoreStyle;
 
-use super::{Engine, FragmentEngine, FragmentKey, Mode, StateKey, node_id, state_of};
+use super::{
+    Engine, FragmentEngine, FragmentKey, Mode, PAINT_CHANGED, StateKey, node_id, state_of,
+};
 use crate::{
     container::ContainerContext,
-    dirty_map::DirtyFlags,
     fragment::tree::FragmentTree,
     input::LayoutInputKind,
     style::{bx::DisplayInner, geometry::Point},
@@ -118,7 +119,7 @@ impl Engine<'_> {
 
             if items[hoisted].layout.location != location {
                 items[hoisted].layout.location = location;
-                dirty.mark(tree, items[hoisted].source, DirtyFlags::NEED_PRE_PAINT);
+                dirty.mark(tree, items[hoisted].source, PAINT_CHANGED);
             }
 
             // Taffy adds the box to the overflow of its containing block

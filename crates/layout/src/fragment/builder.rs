@@ -36,7 +36,9 @@ impl FragmentTreeBuilder {
     /// Every item one of whose fragments the build created, moved or resized
     /// is marked
     /// [`DirtyFlags::NEED_PRE_PAINT`](crate::dirty_map::DirtyFlags::NEED_PRE_PAINT)
-    /// in `dirty`, so later steps resolve its paint data again. Fragments
+    /// and [`DirtyFlags::NEED_LAYER`](crate::dirty_map::DirtyFlags::NEED_LAYER)
+    /// in `dirty`, so later steps resolve its paint data and layers again.
+    /// Overflow changes alone are not marked. Fragments
     /// laid out again in place, such as unchanged siblings, are not marked.
     ///
     /// `constraint` supplies the viewport and root font size used to resolve

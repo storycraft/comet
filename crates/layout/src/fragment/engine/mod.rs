@@ -41,6 +41,11 @@ pub(crate) fn state_of(id: taffy::NodeId) -> StateKey {
     KeyData::from_ffi(id.into()).into()
 }
 
+/// Flags marking an item one of whose fragments a build created, moved or
+/// resized: later steps resolve its paint data and its layers again.
+pub(crate) const PAINT_CHANGED: DirtyFlags =
+    DirtyFlags::NEED_PRE_PAINT.union(DirtyFlags::NEED_LAYER);
+
 /// Whether the content of an item with `flags` changed: its child list, or,
 /// with [`DirtyFlags::NEED_FULL_LAYOUT`], which includes
 /// [`DirtyFlags::NEED_CHILDREN`], its kind, text style or content. Its box
@@ -50,10 +55,12 @@ pub(in crate::fragment::engine) fn content_changed(flags: DirtyFlags) -> bool {
     flags.contains(DirtyFlags::NEED_CHILDREN)
 }
 
-/// Whether an item with `flags` needs layout. [`DirtyFlags::NEED_PRE_PAINT`]
-/// alone is a paint change for later steps, so the item keeps its layout.
+/// Whether an item with `flags` needs layout. [`PAINT_CHANGED`] flags alone
+/// are paint changes for later steps, so the item keeps its layout.
+/// [`DirtyFlags::NEED_CHILDREN`], which includes
+/// [`DirtyFlags::NEED_LAYER`], still does.
 pub(in crate::fragment::engine) fn layout_changed(flags: DirtyFlags) -> bool {
-    !flags.difference(DirtyFlags::NEED_PRE_PAINT).is_empty()
+    !flags.difference(PAINT_CHANGED).is_empty()
 }
 
 /// Buffers retained by the builder between builds.
@@ -194,7 +201,7 @@ impl Engine<'_> {
 
         self.fragments.first.insert(key, fragment);
         self.scratch.created.insert(fragment);
-        self.dirty.mark(self.tree, key, DirtyFlags::NEED_PRE_PAINT);
+        self.dirty.mark(self.tree, key, PAINT_CHANGED);
         self.propagate_bits(key, bits);
 
         fragment
