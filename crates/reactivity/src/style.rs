@@ -107,6 +107,8 @@ pub trait Styled: Sized {
         filter: paint::Filter => Vec<anyrender::filters::FilterEffect>;
         backdrop_filter: paint::BackdropFilter => Vec<anyrender::filters::FilterEffect>;
         mix_blend: paint::MixBlend => peniko::BlendMode;
+        scroll_left: paint::ScrollLeft => f64;
+        scroll_top: paint::ScrollTop => f64;
 
         // Accessibility.
         role: comet_accesskit::style::Role => accesskit::Role;

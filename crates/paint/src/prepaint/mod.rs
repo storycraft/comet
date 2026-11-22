@@ -17,7 +17,7 @@ pub mod tree;
 #[cfg(doc)]
 use comet_layout::dirty_map::DirtyFlags;
 use comet_layout::fragment::Fragment;
-use kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii};
+use kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii, Vec2};
 
 /// Paint data of a layout input item, shared by all fragments it generates.
 #[derive(Debug, Clone, PartialEq)]
@@ -38,6 +38,55 @@ pub struct LayoutInputData {
     /// size. Negative offsets draw the outline inside the box. Percentages
     /// resolve to 0, and so does an item setting none.
     pub outline_offset: f64,
+
+    /// Scroll position requested by the item's
+    /// [`ScrollLeft`](crate::style::ScrollLeft) and
+    /// [`ScrollTop`](crate::style::ScrollTop), at least 0. Zero unless the
+    /// item is a scroll container, scrolling or hiding its overflow on an
+    /// axis. Not clamped to the scrollable range, which follows the layout:
+    /// see [`Self::scroll_offset`].
+    ///
+    /// A scroll container never splits, so it generates a single box
+    /// fragment the offset applies to.
+    pub scroll: Vec2,
+}
+
+impl LayoutInputData {
+    /// The scroll offset the box fragment of this item applies to its
+    /// descendants: the [requested scroll](Self::scroll), clamped to the
+    /// range its content overflows the padding box by, towards the right
+    /// and bottom. Zero for fragments other than boxes.
+    ///
+    /// The fragment's [overflow](comet_layout::fragment::FragmentBox::overflow)
+    /// includes its border box, so content reaching into the border without
+    /// passing the border box does not scroll.
+    pub fn scroll_offset(&self, fragment: &Fragment) -> Vec2 {
+        if self.scroll == Vec2::ZERO || !fragment.item.is_box() {
+            return Vec2::ZERO;
+        }
+
+        let layout = &fragment.layout;
+        // Content passing the border box edge by `excess` overflows the
+        // padding box by the border width more.
+        let range = |excess: f64, border: f64| {
+            if excess > 0.0 { excess + border } else { 0.0 }
+        };
+        let max = Vec2::new(
+            range(
+                layout.overflow.x1 - layout.size.width,
+                layout.border.right_bottom.x,
+            ),
+            range(
+                layout.overflow.y1 - layout.size.height,
+                layout.border.right_bottom.y,
+            ),
+        );
+
+        Vec2::new(
+            self.scroll.x.min(max.x).max(0.0),
+            self.scroll.y.min(max.y).max(0.0),
+        )
+    }
 }
 
 /// Paint data of a fragment.

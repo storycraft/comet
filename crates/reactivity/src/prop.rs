@@ -147,6 +147,8 @@ reactive_props!(PRE_PAINT =>
     paint::BorderRadius,
     paint::OutlineWidth,
     paint::OutlineOffset,
+    paint::ScrollLeft,
+    paint::ScrollTop,
 );
 
 // Resolved into the transform by the pre-paint step, and starts a layer.

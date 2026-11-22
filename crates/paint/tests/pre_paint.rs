@@ -21,15 +21,15 @@ use comet_paint::{
     painter::CometPainter,
     prepaint::{FragmentData, LayoutInputData, builder::PrepaintTreeBuilder, tree::PrepaintTree},
     style::{
-        BorderRadius, Fill, OutlineFill, OutlineOffset, OutlineWidth, TextColor, Transform,
-        TransformOrigin,
+        BorderRadius, Fill, OutlineFill, OutlineOffset, OutlineWidth, ScrollLeft, ScrollTop,
+        TextColor, Transform, TransformOrigin,
     },
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,
 };
-use kurbo::{Affine, Point, Rect, RoundedRectRadii, Shape};
+use kurbo::{Affine, Point, Rect, RoundedRectRadii, Shape, Vec2};
 use peniko::Color;
 
 const VIEWPORT: Size<f64> = Size::new(120.0, 400.0);
@@ -1577,4 +1577,135 @@ fn hiding_overflow_on_one_axis_clips_both() {
     assert_eq!(f.clip(scroller), (true, true));
     assert_eq!(f.clip(scrolled), (true, true));
     assert_eq!(f.clip(clipped), (false, true));
+}
+
+#[test]
+fn scroll_resolves_only_for_scroll_containers() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let hiding = ui.create(
+        Node::Box,
+        (fixed(10.0, 10.0), hidden(), ScrollLeft(3.0), ScrollTop(7.0)),
+    );
+    // Scrolling one axis makes both scroll.
+    let one_axis = ui.create(
+        Node::Box,
+        (
+            fixed(10.0, 10.0),
+            bx::Overflow(LayoutPoint::new(Overflow::Visible, Overflow::Scroll)),
+            ScrollLeft(3.0),
+            ScrollTop(7.0),
+        ),
+    );
+    let clipping = ui.create(
+        Node::Box,
+        (
+            fixed(10.0, 10.0),
+            bx::Overflow(LayoutPoint::new(Overflow::Clip, Overflow::Clip)),
+            ScrollLeft(3.0),
+            ScrollTop(7.0),
+        ),
+    );
+    let visible = ui.create(
+        Node::Box,
+        (fixed(10.0, 10.0), ScrollLeft(3.0), ScrollTop(7.0)),
+    );
+    let negative = ui.create(
+        Node::Box,
+        (
+            fixed(10.0, 10.0),
+            hidden(),
+            ScrollLeft(-4.0),
+            ScrollTop(f64::NAN),
+        ),
+    );
+    for node in [hiding, one_axis, clipping, visible, negative] {
+        ui.append(root, node);
+    }
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    assert_eq!(f.data(hiding).scroll, Vec2::new(3.0, 7.0));
+    assert_eq!(f.data(one_axis).scroll, Vec2::new(3.0, 7.0));
+    assert_eq!(f.data(clipping).scroll, Vec2::ZERO);
+    assert_eq!(f.data(visible).scroll, Vec2::ZERO);
+    assert_eq!(f.data(negative).scroll, Vec2::ZERO);
+    assert_eq!(f.data(root).scroll, Vec2::ZERO);
+}
+
+#[test]
+fn scroll_offset_clamps_to_the_overflowing_content() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let scroller = ui.create(
+        Node::Box,
+        (
+            fixed(50.0, 30.0),
+            bx::Border(LayoutRect::new_all(StyleUnit::Px(2.0))),
+            hidden(),
+            ScrollLeft(1000.0),
+            ScrollTop(10.0),
+        ),
+    );
+    let tall = ui.create(Node::Box, (fixed(40.0, 100.0),));
+    ui.append(root, scroller);
+    ui.append(scroller, tall);
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+    let fragment = &f.fragments.items[f.box_of(scroller)];
+
+    // Unclamped as requested.
+    assert_eq!(f.data(scroller).scroll, Vec2::new(1000.0, 10.0));
+    // Nothing overflows horizontally; 10 is within the vertical range.
+    assert_eq!(
+        f.data(scroller).scroll_offset(fragment),
+        Vec2::new(0.0, 10.0)
+    );
+
+    // The content, 100 high from the padding box top, overflows the 26 high
+    // padding box by 74.
+    ui.set_props(scroller, (ScrollTop(1000.0),));
+    f.mark(scroller);
+    let root_fragment = f.root.unwrap();
+    f.resolve(&ui, root_fragment).unwrap();
+    f.clear_flags();
+    let fragment = &f.fragments.items[f.box_of(scroller)];
+
+    assert_eq!(
+        f.data(scroller).scroll_offset(fragment),
+        Vec2::new(0.0, 74.0)
+    );
+
+    // The range follows the layout without resolving again.
+    ui.set_props(tall, (fixed(40.0, 50.0),));
+    f.dirty
+        .mark_node(&f.inputs, tall, DirtyFlags::NEED_BOX_LAYOUT);
+    f.layout(&ui, root);
+    let fragment = &f.fragments.items[f.box_of(scroller)];
+
+    assert_eq!(
+        f.data(scroller).scroll_offset(fragment),
+        Vec2::new(0.0, 24.0)
+    );
+}
+
+#[test]
+fn scroll_changes_resolve_without_layout() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let scroller = ui.create(Node::Box, (fixed(50.0, 30.0), hidden()));
+    ui.append(root, scroller);
+
+    let mut f = Fixture::default();
+    let root_fragment = f.build(&ui, root);
+    assert_eq!(f.data(scroller).scroll, Vec2::ZERO);
+
+    ui.set_props(scroller, (ScrollTop(5.0),));
+    f.mark(scroller);
+    f.resolve(&ui, root_fragment).unwrap();
+
+    assert_eq!(f.data(scroller).scroll, Vec2::new(0.0, 5.0));
+    f.assert_matches_full_resolve(&ui, root_fragment);
 }

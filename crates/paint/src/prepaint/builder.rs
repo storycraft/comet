@@ -9,11 +9,14 @@ use comet_layout::{
     },
 };
 use comet_tree::ui::{Props, Ui};
-use kurbo::{Affine, Point, RoundedRectRadii, Size};
+use kurbo::{Affine, Point, RoundedRectRadii, Size, Vec2};
 
 use crate::{
     prepaint::{FragmentData, LayoutInputData, tree::PrepaintTree},
-    style::{BorderRadius, OutlineOffset, OutlineWidth, Transform, TransformOrigin},
+    style::{
+        BorderRadius, OutlineOffset, OutlineWidth, ScrollLeft, ScrollTop, Transform,
+        TransformOrigin,
+    },
 };
 
 /// Builds a [`PrepaintTree`] for a fragment tree. Keep it to reuse its
@@ -300,7 +303,20 @@ impl Sources<'_> {
         // overflow stops at the same clips.
         let scroll = overflow.x.is_scroll_container() || overflow.y.is_scroll_container();
 
+        // Only scroll containers scroll. Both axes scroll once either does,
+        // as both clip.
+        let scroll_offset = if scroll {
+            let ScrollLeft(left) = props.get_or_default();
+            let ScrollTop(top) = props.get_or_default();
+
+            // `max` also maps NaN to 0.
+            Vec2::new(left.max(0.0), top.max(0.0))
+        } else {
+            Vec2::ZERO
+        };
+
         Some(LayoutInputData {
+            scroll: scroll_offset,
             clip: (
                 scroll || overflow.x != OverflowMode::Visible,
                 scroll || overflow.y != OverflowMode::Visible,

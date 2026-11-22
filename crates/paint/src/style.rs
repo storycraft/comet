@@ -33,6 +33,18 @@ define_style_props!(
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub TransformOrigin: Point<StyleUnit> = Point::new(StyleUnit::Percent(0.5), StyleUnit::Percent(0.5));
 
+    /// Horizontal scroll position of a scroll container, in logical pixels
+    /// from the left edge of its content. Only boxes whose
+    /// [`Overflow`](comet_layout::style::bx::Overflow) scrolls or hides
+    /// their overflow on an axis scroll; others ignore it. Clamped to the
+    /// scrollable range when used.
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub ScrollLeft: f64 = 0.0;
+    /// Vertical scroll position of a scroll container, in logical pixels
+    /// from the top edge of its content. See [`ScrollLeft`].
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub ScrollTop: f64 = 0.0;
+
     // Text draw styles
     #[derive(Debug, Clone, PartialEq)]
     pub TextColor: Paint = Paint::Solid(Color::BLACK);
