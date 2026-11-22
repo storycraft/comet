@@ -163,7 +163,7 @@ struct Emitter<'a> {
     span_parents: &'a mut FxHashMap<LayoutInputKey, FragmentKey>,
     spans: &'a mut Vec<FragmentKey>,
     /// Items whose fragments perform layout are marked
-    /// [`DirtyFlags::NEED_PRE_PAINT`] in it.
+    /// [`PAINT_CHANGED`] in it.
     dirty: &'a mut DirtyMap,
     /// Leaf fragments of the emitted lines, in emission order.
     runs: &'a mut Vec<RunEntry>,

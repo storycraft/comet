@@ -55,12 +55,11 @@ pub(in crate::fragment::engine) fn content_changed(flags: DirtyFlags) -> bool {
     flags.contains(DirtyFlags::NEED_CHILDREN)
 }
 
-/// Whether an item with `flags` needs layout. [`PAINT_CHANGED`] flags alone
-/// are paint changes for later steps, so the item keeps its layout.
-/// [`DirtyFlags::NEED_CHILDREN`], which includes
-/// [`DirtyFlags::NEED_LAYER`], still does.
+/// Whether an item with `flags` needs layout: [`DirtyFlags::NEED_BOX_LAYOUT`],
+/// which every flag laying out a box includes. Paint flags, such as
+/// [`PAINT_CHANGED`], are left to later steps.
 pub(in crate::fragment::engine) fn layout_changed(flags: DirtyFlags) -> bool {
-    !flags.difference(PAINT_CHANGED).is_empty()
+    flags.contains(DirtyFlags::NEED_BOX_LAYOUT)
 }
 
 /// Buffers retained by the builder between builds.
@@ -83,7 +82,7 @@ pub(crate) struct Engine<'a> {
     pub ui: &'a Ui,
     pub tree: &'a LayoutInputTree,
     /// Input changes to consume. Items whose fragments perform layout are
-    /// marked [`DirtyFlags::NEED_PRE_PAINT`] in it.
+    /// marked [`PAINT_CHANGED`] in it.
     pub dirty: &'a mut DirtyMap,
     pub fragments: &'a mut FragmentTree,
     pub fonts: &'a mut parley::FontContext,
@@ -243,7 +242,8 @@ impl Engine<'_> {
 
             // Ancestors of flagged items are laid out again too.
             // Paint-only changes are left to later steps.
-            if !force && !viewport && !layout_changed(flags) && !descend {
+            if !force && !viewport && !layout_changed(flags) && !content_changed(flags) && !descend
+            {
                 continue;
             }
 
