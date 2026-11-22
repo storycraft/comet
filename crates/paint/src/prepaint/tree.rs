@@ -60,12 +60,16 @@ impl PrepaintTree {
         self.viewport_dependents.clear();
     }
 
-    /// The scroll offset `fragment` applies to its descendants, clamped to
-    /// its scrollable range: see [`LayoutInputData::scroll_offset`]. Zero if
-    /// its item is not resolved.
+    /// The scroll offset `fragment` applies to its descendants: the
+    /// [scroll](LayoutInputData::scroll) of its item for box fragments, zero
+    /// for others and for unresolved items.
     pub fn scroll_offset(&self, fragment: &Fragment) -> Vec2 {
+        if !fragment.item.is_box() {
+            return Vec2::ZERO;
+        }
+
         self.get(fragment.source)
-            .map_or(Vec2::ZERO, |data| data.scroll_offset(fragment))
+            .map_or(Vec2::ZERO, |data| data.scroll)
     }
 
     /// Whether `point`, in the local coordinates of a fragment, hits the

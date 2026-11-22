@@ -311,8 +311,9 @@ impl Sources<'_> {
                 let ScrollTop(top) = props.get_or_default();
                 let max = scroll_range(&self.fragments.items[fragment]);
 
-                // `max` last also maps NaN to 0.
-                Vec2::new(left.min(max.x).max(0.0), top.min(max.y).max(0.0))
+                // `max` first maps NaN to 0, which `min` would map to the
+                // range instead. The range is at least 0.
+                Vec2::new(left.max(0.0).min(max.x), top.max(0.0).min(max.y))
             }
             _ => Vec2::ZERO,
         };
