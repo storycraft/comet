@@ -27,11 +27,12 @@ use accesskit_winit::{Adapter, WindowEvent as AccessKitEvent};
 use anyrender::WindowRenderer;
 use anyrender_vello_gpu::VelloGpuWindowRenderer;
 use comet_layout::style::geometry::Size;
+use comet_paint::style::ScrollTop;
 use comet_reactivity::UiCx;
 use comet_tree::{node::NodeKey, ui::Ui};
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, MouseButton, WindowEvent},
+    event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy},
     window::{Window, WindowAttributes, WindowId},
 };
@@ -44,6 +45,9 @@ pub use runtime::UiRoot;
 pub use winit;
 
 use crate::pipeline::Pipeline;
+
+/// Distance scrolled by one line of a mouse wheel, in logical units.
+const WHEEL_LINE: f64 = 40.0;
 
 /// Build the UI with `root` and show it in a window opened with
 /// `attributes`, until the window is closed.
@@ -63,6 +67,7 @@ pub fn run(
         pipeline: Pipeline::default(),
         cursor: None,
         hovered: Vec::new(),
+        scroll_top: 0.0,
         start: Instant::now(),
         win: None,
         renderer: VelloGpuWindowRenderer::new(),
@@ -81,6 +86,9 @@ struct App {
     cursor: Option<kurbo::Point>,
     /// Nodes with hover handlers under the cursor.
     hovered: Vec<NodeKey>,
+    /// Vertical scroll of the root scroll container, in logical units, as
+    /// last set from the wheel.
+    scroll_top: f64,
     /// Origin of frame times.
     start: Instant,
     win: Option<Arc<Window>>,
@@ -193,6 +201,7 @@ impl ApplicationHandler<accesskit_winit::Event> for App {
                 button: MouseButton::Left,
                 ..
             } => self.click(),
+            WindowEvent::MouseWheel { delta, .. } => self.scroll(&win, delta),
             // The logical viewport changes with the scale factor. A resize
             // usually follows, but the surface may keep its physical size.
             WindowEvent::ScaleFactorChanged { .. } => win.request_redraw(),
@@ -261,6 +270,32 @@ impl App {
         self.renderer.render(|scene| {
             self.pipeline.paint(&tree, physical, scale_factor, scene);
         });
+    }
+
+    /// Scroll the root scroll container vertically by a wheel `delta`,
+    /// clamped to how far its content overflows in the last frame's layout.
+    /// Scrolling down moves the content up. The scroll is painted in the
+    /// next frame, which the change requests.
+    fn scroll(&mut self, win: &Window, delta: MouseScrollDelta) {
+        let delta = match delta {
+            MouseScrollDelta::LineDelta(_, y) => f64::from(y) * WHEEL_LINE,
+            MouseScrollDelta::PixelDelta(position) => {
+                position.to_logical::<f64>(win.scale_factor()).y
+            }
+        };
+        let root = self.ui.root();
+        let Some(range) = self.pipeline.scroll_range(root) else {
+            return;
+        };
+
+        // The range may have shrunk since the last scroll, so start from
+        // the clamped scroll the frame shows.
+        let top = (self.scroll_top.min(range.y) - delta).clamp(0.0, range.y);
+
+        if top != self.scroll_top {
+            self.scroll_top = top;
+            self.ui.tree().borrow_mut().set_prop(root, ScrollTop(top));
+        }
     }
 
     /// The node under the cursor and its ancestors, innermost first, from the

@@ -4,7 +4,8 @@
 use std::{cell::RefCell, rc::Rc};
 
 use any_spawner::{CustomExecutor, Executor, PinnedFuture, PinnedLocalFuture};
-use comet_reactivity::{UiCx, UiTree};
+use comet_layout::style::{geometry::Point, taffy::Overflow, unit::*};
+use comet_reactivity::{Styled, UiCx, UiTree};
 use comet_tree::node::NodeKey;
 use futures::{
     executor::{LocalPool, LocalSpawner},
@@ -13,11 +14,15 @@ use futures::{
 
 /// A UI built with [`comet_reactivity`], in its own shared [`UiTree`].
 ///
+/// The component is built inside a root scroll container filling the
+/// viewport, which scrolls the UI when it overflows.
+///
 /// Its bindings stop once it is dropped.
 pub struct UiRoot {
     tree: Rc<RefCell<UiTree>>,
     cx: UiCx,
     root: NodeKey,
+    content: NodeKey,
 }
 
 impl UiRoot {
@@ -31,9 +36,21 @@ impl UiRoot {
 
         let tree = Rc::new(RefCell::new(UiTree::new()));
         let cx = UiCx::new(tree.clone());
-        let root = cx.build(component);
+        let mut content = None;
+        let root = cx.build(|cx| {
+            cx.div()
+                .size(size(vw(100), vh(100)))
+                .overflow(Point::new(Overflow::Scroll, Overflow::Scroll))
+                .children(|cx| content = Some(component(cx)))
+        });
+        let content = content.expect("component is built with the root");
 
-        Self { tree, cx, root }
+        Self {
+            tree,
+            cx,
+            root,
+            content,
+        }
     }
 
     pub fn tree(&self) -> &Rc<RefCell<UiTree>> {
@@ -44,9 +61,15 @@ impl UiRoot {
         &self.cx
     }
 
-    /// The node returned by the component.
+    /// The root scroll container, filling the viewport and holding the
+    /// component's node.
     pub fn root(&self) -> NodeKey {
         self.root
+    }
+
+    /// The node returned by the component.
+    pub fn content(&self) -> NodeKey {
+        self.content
     }
 
     /// Re-run the bindings whose signals changed. Do not hold a borrow of

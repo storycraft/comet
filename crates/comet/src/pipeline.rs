@@ -202,6 +202,16 @@ impl Pipeline {
         );
     }
 
+    /// How far the box of `node` can scroll, in logical units, from the last
+    /// layout: see [`FragmentTree::scroll_range`]. `None` if it has no box
+    /// fragment.
+    pub fn scroll_range(&self, node: NodeKey) -> Option<kurbo::Vec2> {
+        let item = self.inputs.item_for_node(node)?;
+
+        self.fragments
+            .scroll_range(self.fragments.box_fragment(item)?)
+    }
+
     /// The node under `point`, in logical units, from the last layout.
     pub fn hit(&mut self, point: kurbo::Point) -> Option<NodeKey> {
         let hit = self.hit_tester.hit(
