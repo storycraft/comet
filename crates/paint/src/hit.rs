@@ -58,30 +58,8 @@ impl PaintHitTester {
     /// layers of `root` in `layers`, with `point` in its local coordinates,
     /// or `None` if no fragment is under it.
     ///
-    /// Fragments are searched in reverse paint order, so fragments painting
-    /// on top are hit first: in each layer, its child layers with a
-    /// non-negative z index from the last, then its other fragments from the
-    /// last painted, children before their parents, then its child layers
-    /// with a negative z index from the last, then its owner. A fragment is
-    /// hit when `point` falls in its border box, rounded with its border
-    /// radius, after mapping it through the transforms of the fragment and
-    /// its ancestors, including the ancestors of `root`'s owner. See
-    /// [`PrepaintTree::hit_local`].
-    ///
-    /// Points outside the clip of a box clipping its overflow do not hit its
-    /// descendants, like the painter, and their subtrees are not searched.
-    /// Neither are the subtrees of fragments whose
-    /// [overflow](comet_layout::fragment::FragmentBox::overflow) does not
-    /// contain the point, since it covers the border boxes of every
-    /// descendant. Child layers are searched on their own.
-    /// Clips of the ancestors of `root`'s owner do not apply. Line boxes and
-    /// anonymous blocks are never hit, and neither are fragments whose
-    /// transforms collapse them to no area.
-    ///
     /// `prepaint` must be resolved for `fragments`, and `layers` built for
-    /// them. Returns `None` if `root` is not in `layers`. Fragments missing
-    /// from `fragments` or `prepaint` are never hit, and neither are their
-    /// descendants.
+    /// them.
     pub fn hit(
         &mut self,
         layers: &PaintLayerTree,
