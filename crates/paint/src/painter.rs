@@ -151,10 +151,8 @@ impl CometPainter {
     /// Fragments painting entirely outside `viewport`, in physical pixels, or
     /// outside their clip are skipped. Fragments touching their edges are
     /// painted. Their descendants are skipped with them only when the
-    /// fragment's [overflow](comet_layout::fragment::FragmentBox::overflow),
-    /// grown by the pre-paint tree's
-    /// [ink margin](PrepaintTree::ink_margin), is outside too, since children
-    /// may paint outside their parents. Child layers are visited on their own,
+    /// fragment's [overflow](comet_layout::fragment::FragmentBox::overflow)
+    /// is outside too, since children may paint outside their parents. Child layers are visited on their own,
     /// so they paint wherever their transforms place them.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
@@ -590,8 +588,7 @@ impl CometPainter {
 }
 
 /// Whether a fragment's descendants may paint inside the viewport and
-/// `clip`: whether its layout overflow, grown by the farthest any fragment
-/// paints outside its border box, overlaps them. `transforms` maps its local
+/// `clip`: whether its layout overflow overlaps them. `transforms` maps its local
 /// coordinates to the scene.
 fn subtree_visible(
     sources: Sources<'_>,
@@ -599,10 +596,9 @@ fn subtree_visible(
     transforms: Transforms,
     clip: Option<Rect>,
 ) -> bool {
-    let margin = sources.prepaint.ink_margin();
     let bounds = transforms
         .transform
-        .transform_rect_bbox(fragment.layout.overflow.inflate(margin, margin));
+        .transform_rect_bbox(fragment.layout.overflow);
 
     bounds.overlaps(sources.viewport) && clip.is_none_or(|clip| bounds.overlaps(clip))
 }

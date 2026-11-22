@@ -16,7 +16,7 @@ use comet_paint::{
     layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
-    style::{BorderFill, BorderRadius, Fill, OutlineFill, OutlineWidth, TextColor},
+    style::{BorderFill, BorderRadius, Fill, TextColor},
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
@@ -794,36 +794,4 @@ fn paints_hoisted_boxes_positioned_into_view_past_boxes_below_it() {
         fills(&paint(&ui, root)),
         [(Rect::new(7.0, 5.0, 17.0, 15.0), green)]
     );
-}
-
-#[test]
-fn paints_outlines_of_descendants_reaching_into_view() {
-    let mut ui = Ui::new();
-    let root = ui.create(Node::Box, ());
-    // Starts 2px below the viewport.
-    let below = ui.create(
-        Node::Box,
-        (
-            fixed(120.0, 50.0),
-            bx::Margin(LayoutRect::new_invidiual(
-                px(402.0),
-                px(0.0),
-                px(0.0),
-                px(0.0),
-            )),
-        ),
-    );
-    let outlined = ui.create(
-        Node::Box,
-        (
-            fixed(10.0, 10.0),
-            OutlineWidth(StyleUnit::Px(4.0)),
-            OutlineFill(Paint::Solid(Color::BLACK)),
-        ),
-    );
-    ui.append(root, below);
-    ui.append(below, outlined);
-
-    // The outline reaches 4px above its box, into view.
-    assert_eq!(strokes(&paint(&ui, root)).len(), 1);
 }

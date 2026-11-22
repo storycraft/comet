@@ -155,11 +155,6 @@ impl PrepaintTreeBuilder {
 
         for &key in items.iter() {
             let data = sources.resolve_item(key)?;
-            let font_size = f64::from(inputs.items[key].text_style.span.font_size);
-            tree.ink_margin = tree
-                .ink_margin
-                .max(data.outline_offset + data.outline_width)
-                .max(font_size);
             tree.layout_mapping.insert(key, data);
 
             // Props alone decide it, and resolving an item reads them again.
