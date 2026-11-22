@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use anyrender::{Filter, filters::FilterEffect};
+use anyrender::filters::FilterEffect;
 use comet::prelude::*;
 use comet_layout::style::{geometry::AutoValue, parley, taffy::Overflow};
 use comet_reactivity::NodeBuild;
@@ -127,27 +125,27 @@ fn filters(cx: &UiCx) {
     caption(cx, "Filters");
     row(cx).children(|cx| {
         card(cx, "blur 1.5", Color::from_rgb8(212, 198, 250))
-            .filter(filter(FilterEffect::blur(1.5)))
+            .filter(vec![FilterEffect::blur(1.5)])
             .build();
 
         card(cx, "drop shadow", Color::WHITE)
-            .filter(filter(FilterEffect::drop_shadow(
+            .filter(vec![FilterEffect::drop_shadow(
                 3.0,
                 4.0,
                 3.0,
                 Color::from_rgba8(36, 46, 63, 90),
-            )))
+            )])
             .build();
 
         // The filter sees the box and its children as one image: the shadow
         // follows the chip poking out of the card too.
         card(cx, "shadow · group", Color::from_rgb8(255, 214, 231))
-            .filter(filter(FilterEffect::drop_shadow(
+            .filter(vec![FilterEffect::drop_shadow(
                 0.0,
                 6.0,
                 2.0,
                 Color::from_rgba8(229, 72, 77, 120),
-            )))
+            )])
             .children(|cx| {
                 chip(cx, Color::from_rgb8(229, 72, 77))
                     .margin(sides(px(6), px(0), px(0), px(96)))
@@ -156,18 +154,10 @@ fn filters(cx: &UiCx) {
 
         // Offsets are in the box's local coordinates, so they turn with it.
         card(cx, "offset · rotated", Color::from_rgb8(222, 242, 233))
-            .filter(filter(FilterEffect::Offset(Vec2::new(12.0, 0.0))))
+            .filter(vec![FilterEffect::Offset(Vec2::new(12.0, 0.0))])
             .transform(Affine::rotate(20f64.to_radians()))
             .build();
     });
-}
-
-fn filter(effect: FilterEffect) -> Arc<Filter> {
-    Arc::new(Filter::single(
-        effect,
-        // TODO:: move out filter to painter
-        kurbo::Rect::ZERO.inflate(f64::MAX, f64::MAX),
-    ))
 }
 
 /// Nested transforms multiply, and overflow clips transformed contents.

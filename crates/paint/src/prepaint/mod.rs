@@ -16,6 +16,8 @@ pub mod tree;
 
 #[cfg(doc)]
 use comet_layout::dirty_map::DirtyFlags;
+use std::sync::Arc;
+
 use comet_layout::fragment::Fragment;
 use kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii};
 
@@ -88,6 +90,24 @@ pub struct FragmentData {
     /// `None` for fragments painting no box, such as line boxes and anonymous
     /// blocks, or items setting no radius.
     pub border_radius: Option<RoundedRectRadii>,
+
+    /// Filter of the fragment and its contents, built from its item's
+    /// [`Filter`](crate::style::Filter) effects, in the fragment's local
+    /// coordinates. The filter region is the fragment's
+    /// [overflow](comet_layout::fragment::FragmentBox::overflow), grown by the
+    /// expansion of each effect.
+    ///
+    /// `None` for fragments other than boxes, or items setting no filter.
+    pub filter: Option<Arc<anyrender::Filter>>,
+
+    /// Filter of what is painted behind the fragment, built from its item's
+    /// [`BackdropFilter`](crate::style::BackdropFilter) effects, in the
+    /// fragment's local coordinates. The filter region is the fragment's
+    /// border box, grown by the expansion of each effect.
+    ///
+    /// `None` for fragments other than boxes, or items setting no backdrop
+    /// filter.
+    pub backdrop_filter: Option<Arc<anyrender::Filter>>,
 }
 
 impl FragmentData {

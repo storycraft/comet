@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use anyrender::Paint;
+use anyrender::{Paint, filters::FilterEffect};
 use comet_layout::style::geometry::{AutoValue, Point, Rect, StyleUnit};
 use comet_tree::style::define_style_props;
 use kurbo::Affine;
@@ -45,9 +43,12 @@ define_style_props!(
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub Opacity: f64 = 1.0;
 
+    /// Filter effects applied in order to a box and its contents, as a list
+    /// of CSS filter functions.
     #[derive(Debug, Clone, PartialEq)]
-    pub Filter: Arc<anyrender::Filter>;
+    pub Filter: Vec<FilterEffect>;
 
+    /// Filter effects applied in order to what is painted behind a box.
     #[derive(Debug, Clone, PartialEq)]
-    pub BackdropFilter: Arc<anyrender::Filter>;
+    pub BackdropFilter: Vec<FilterEffect>;
 );

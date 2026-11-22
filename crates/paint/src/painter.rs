@@ -19,7 +19,7 @@ use slotmap::SecondaryMap;
 use crate::{
     layer::{PaintLayerKey, tree::PaintLayerTree},
     prepaint::{FragmentData, LayoutInputData, tree::PrepaintTree},
-    style::{BackdropFilter, BorderFill, Fill, Filter, Opacity, OutlineFill, TextColor},
+    style::{BorderFill, Fill, Opacity, OutlineFill, TextColor},
 };
 
 /// Paints final fragments in the order of their [`PaintLayerTree`], with the
@@ -124,10 +124,11 @@ impl CometPainter {
     /// Each layer paints its owner fragment, then its child layers with a
     /// negative z index, then its other fragments in tree order, then its
     /// other child layers, with the opacity and filters of its owner's item.
-    /// A layer with an opacity below 1 or a [`Filter`] paints into a group,
+    /// A layer with an opacity below 1 or a [`Filter`](crate::style::Filter) paints into a group,
     /// blended with that opacity and filtered in the owner's local
     /// coordinates. A transparent layer is skipped, and so is the group of a
-    /// layer whose owner collapses. A [`BackdropFilter`] filters what is
+    /// layer whose owner collapses. A
+    /// [`BackdropFilter`](crate::style::BackdropFilter) filters what is
     /// painted behind the owner's border box, rounded with its border radius,
     /// before the layer paints.
     ///
@@ -242,12 +243,8 @@ impl CometPainter {
             return;
         }
 
-        let filter = props
-            .and_then(|props| props.get_cloned())
-            .map(|Filter(filter)| filter);
-        let backdrop_filter = props
-            .and_then(|props| props.get_cloned())
-            .map(|BackdropFilter(filter)| filter);
+        let filter = own.filter.clone();
+        let backdrop_filter = own.backdrop_filter.clone();
         let transforms = parent.then(own);
 
         if let Some(backdrop_filter) = backdrop_filter {

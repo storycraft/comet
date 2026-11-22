@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use anyrender::filters::FilterEffect;
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
@@ -255,6 +258,12 @@ impl Sources<'_> {
             transform_origin,
             stacking: box_props.and_then(stacking),
             border_radius: self.border_radius(fragment, props),
+            filter: box_props
+                .and_then(|props| props.get::<Filter>())
+                .map(|effects| filter(&effects.0, layout.overflow)),
+            backdrop_filter: box_props
+                .and_then(|props| props.get::<BackdropFilter>())
+                .map(|effects| filter(&effects.0, layout.border_box())),
         })
     }
 
@@ -359,6 +368,15 @@ fn stacking(props: Props<'_>) -> Option<i32> {
         || props.get::<BackdropFilter>().is_some();
 
     starts.then_some(0)
+}
+
+/// A filter applying `effects` in order to content within `bounds`, its
+/// region grown by the expansion of each effect.
+fn filter(effects: &[FilterEffect], bounds: kurbo::Rect) -> Arc<anyrender::Filter> {
+    Arc::new(anyrender::Filter::linear_list(
+        effects.iter().cloned(),
+        bounds,
+    ))
 }
 
 /// The inverse of `transform`, or `None` if it collapses an axis and has no

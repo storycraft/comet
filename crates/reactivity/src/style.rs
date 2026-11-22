@@ -11,8 +11,6 @@
 //!     .build()
 //! ```
 
-use std::sync::Arc;
-
 use anyrender::Paint;
 use comet_layout::style::{
     bx,
@@ -106,8 +104,8 @@ pub trait Styled: Sized {
         transform_origin: paint::TransformOrigin => Point<StyleUnit>;
         z_index: paint::ZIndex => AutoValue<i32>;
         opacity: paint::Opacity => f64;
-        filter: paint::Filter => Arc<anyrender::Filter>;
-        backdrop_filter: paint::BackdropFilter => Arc<anyrender::Filter>;
+        filter: paint::Filter => Vec<anyrender::filters::FilterEffect>;
+        backdrop_filter: paint::BackdropFilter => Vec<anyrender::filters::FilterEffect>;
 
         // Accessibility.
         role: comet_accesskit::style::Role => accesskit::Role;
