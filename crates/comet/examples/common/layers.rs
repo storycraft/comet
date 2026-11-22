@@ -1,10 +1,14 @@
 use anyrender::filters::FilterEffect;
 use comet::prelude::*;
-use comet_layout::style::{geometry::AutoValue, parley, taffy::Overflow};
+use comet_layout::style::{
+    geometry::AutoValue,
+    parley,
+    taffy::{Overflow, Position},
+};
 use comet_reactivity::NodeBuild;
 use comet_tree::node::NodeKey;
 use kurbo::{Affine, Vec2};
-use peniko::Color;
+use peniko::{BlendMode, Color, Mix};
 
 use super::{MUTED, panel, solid};
 
@@ -21,12 +25,13 @@ pub(super) fn showcase(cx: &UiCx) {
 
     panel(
         cx,
-        "07 / Opacity, z-index + filters",
+        "07 / Opacity, z-index, filters + blending",
         Color::from_rgb8(240, 244, 250),
         |cx| {
             opacity(cx);
             z_index(cx);
             filters(cx);
+            mix_blend(cx);
         },
     );
 }
@@ -158,6 +163,48 @@ fn filters(cx: &UiCx) {
             .transform(Affine::rotate(20f64.to_radians()))
             .build();
     });
+}
+
+/// Blend modes composite a box and its contents, as one group, onto what is
+/// painted behind it: here the row and its stripe.
+fn mix_blend(cx: &UiCx) {
+    caption(cx, "Mix blend");
+    // The row anchors the stripe running behind the cards.
+    row(cx)
+        .position(Position::Relative)
+        .fill(solid(Color::from_rgb8(255, 196, 120)))
+        .border_radius(all(px(10)))
+        .children(|cx| {
+            // A stripe running behind every card, so each mode shows on two
+            // backdrop colours.
+            cx.div()
+                .position(Position::Absolute)
+                .inset(sides(px(28), px(0), auto(), px(0)))
+                .size(size(auto(), px(18)))
+                .fill(solid(Color::from_rgb8(52, 84, 209)))
+                .build();
+
+            for (label, mix) in [
+                ("normal", Mix::Normal),
+                ("multiply", Mix::Multiply),
+                ("screen", Mix::Screen),
+                ("difference", Mix::Difference),
+            ] {
+                card(cx, label, Color::from_rgb8(120, 200, 170))
+                    .mix_blend(BlendMode::from(mix))
+                    .build();
+            }
+
+            // The card and its chip blend as one image: the chip does not
+            // blend with the card under it.
+            card(cx, "multiply · group", Color::from_rgb8(212, 198, 250))
+                .mix_blend(BlendMode::from(Mix::Multiply))
+                .children(|cx| {
+                    chip(cx, Color::from_rgb8(229, 72, 77))
+                        .margin(axis(px(6), px(0)))
+                        .build();
+                });
+        });
 }
 
 /// Nested transforms multiply, and overflow clips transformed contents.
