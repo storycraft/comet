@@ -51,6 +51,31 @@ impl FragmentTree {
             .or_else(|| self.get_inline(self.items.parent(key)?))
     }
 
+    /// The largest scroll offset of a fragment clipping and scrolling its
+    /// overflow: how far its content overflows its padding box towards the
+    /// right and bottom. `None` if the fragment is not in the tree.
+    ///
+    /// Its [overflow](super::FragmentBox::overflow) includes its border box,
+    /// so only content passing the border box edge scrolls, by that excess
+    /// and the border width.
+    pub fn scroll_range(&self, key: FragmentKey) -> Option<kurbo::Vec2> {
+        let layout = &self.items.get(key)?.layout;
+        let range = |excess: f64, border: f64| {
+            if excess > 0.0 { excess + border } else { 0.0 }
+        };
+
+        Some(kurbo::Vec2::new(
+            range(
+                layout.overflow.x1 - layout.size.width,
+                layout.border.right_bottom.x,
+            ),
+            range(
+                layout.overflow.y1 - layout.size.height,
+                layout.border.right_bottom.y,
+            ),
+        ))
+    }
+
     pub fn clear(&mut self) {
         self.items.clear();
         self.states.clear();

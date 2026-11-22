@@ -47,10 +47,9 @@ pub struct LayoutInputData {
     /// overflow on an axis, with a box fragment.
     ///
     /// A scroll container never splits, so it generates a single box
-    /// fragment the offset applies to. The range follows the fragment's
-    /// [overflow](comet_layout::fragment::FragmentBox::overflow), which
-    /// includes its border box, so content reaching into the border without
-    /// passing the border box does not scroll. The fragment builder marks
+    /// fragment the offset applies to. The range is its
+    /// [scroll range](comet_layout::fragment::tree::FragmentTree::scroll_range),
+    /// which follows its overflow. The fragment builder marks
     /// fragments whose overflow changed, so the offset is resolved again.
     pub scroll: Vec2,
 }
