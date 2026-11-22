@@ -2,7 +2,7 @@ use anyrender::{Paint, filters::FilterEffect};
 use comet_layout::style::geometry::{AutoValue, Point, Rect, StyleUnit};
 use comet_tree::style::define_style_props;
 use kurbo::Affine;
-use peniko::Color;
+use peniko::{BlendMode, Color};
 
 define_style_props!(
     // Box draw styles
@@ -51,4 +51,7 @@ define_style_props!(
     /// Filter effects applied in order to what is painted behind a box.
     #[derive(Debug, Clone, PartialEq)]
     pub BackdropFilter: Vec<FilterEffect>;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub MixBlend: BlendMode;
 );
