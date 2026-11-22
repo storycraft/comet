@@ -25,11 +25,10 @@ use std::{sync::Arc, time::Instant};
 use accesskit::Action;
 use accesskit_winit::{Adapter, WindowEvent as AccessKitEvent};
 use anyrender::WindowRenderer;
-use anyrender_vello_cpu::VelloCpuImageRenderer;
+use anyrender_vello_gpu::VelloGpuWindowRenderer;
 use comet_layout::style::geometry::Size;
 use comet_reactivity::UiCx;
 use comet_tree::{node::NodeKey, ui::Ui};
-use softbuffer_window_renderer::SoftbufferWindowRenderer;
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, MouseButton, WindowEvent},
@@ -66,7 +65,7 @@ pub fn run(
         hovered: Vec::new(),
         start: Instant::now(),
         win: None,
-        renderer: SoftbufferWindowRenderer::new(),
+        renderer: VelloGpuWindowRenderer::new(),
     })?)
 }
 
@@ -85,7 +84,7 @@ struct App {
     /// Origin of frame times.
     start: Instant,
     win: Option<Arc<Window>>,
-    renderer: SoftbufferWindowRenderer<VelloCpuImageRenderer>,
+    renderer: VelloGpuWindowRenderer,
 }
 
 impl ApplicationHandler<accesskit_winit::Event> for App {
