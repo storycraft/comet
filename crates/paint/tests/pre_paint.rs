@@ -21,8 +21,8 @@ use comet_paint::{
     painter::CometPainter,
     prepaint::{FragmentData, LayoutInputData, builder::PrepaintTreeBuilder, tree::PrepaintTree},
     style::{
-        BorderRadius, Fill, OutlineFill, OutlineOffset, OutlineWidth, ScrollLeft, ScrollTop,
-        TextColor, Transform, TransformOrigin,
+        BorderRadius, Fill, Opacity, OutlineFill, OutlineOffset, OutlineWidth, ScrollLeft,
+        ScrollTop, TextColor, Transform, TransformOrigin,
     },
 };
 use comet_tree::{
@@ -1708,4 +1708,161 @@ fn scroll_changes_resolve_without_layout() {
 
     assert_eq!(f.data(scroller).scroll, Vec2::new(0.0, 5.0));
     f.assert_matches_full_resolve(&ui, root_fragment);
+}
+
+/// A root with 5px padding holding a 50x30 scroll container with a 2px
+/// border, scrolled by `scroll`, with `extra` props on the container, and
+/// three 40x20 rows inside. Returns the UI, the root, the container and
+/// the rows.
+fn scroll_fixture(
+    scroll: (ScrollLeft, ScrollTop),
+    extra: impl comet_tree::style::StyleProps,
+) -> (Ui, NodeKey, NodeKey, [NodeKey; 3]) {
+    let mut ui = Ui::new();
+    let root = ui.create(
+        Node::Box,
+        (bx::Padding(LayoutRect::new_all(StyleUnit::Px(5.0))),),
+    );
+    let scroller = ui.create(
+        Node::Box,
+        (
+            fixed(50.0, 30.0),
+            bx::Border(LayoutRect::new_all(StyleUnit::Px(2.0))),
+            hidden(),
+            Fill(Paint::Solid(RED)),
+            scroll.0,
+            scroll.1,
+        ),
+    );
+    ui.set_props(scroller, extra);
+    ui.append(root, scroller);
+
+    let rows = [GREEN, BLUE, RED].map(|color| {
+        let row = ui.create(Node::Box, (fixed(40.0, 20.0), Fill(Paint::Solid(color))));
+        ui.append(scroller, row);
+        row
+    });
+
+    (ui, root, scroller, rows)
+}
+
+#[test]
+fn scroll_containers_move_their_contents_but_not_themselves() {
+    let (ui, root, _, _) = scroll_fixture((ScrollLeft(0.0), ScrollTop(10.0)), ());
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    // The container and its clip stay; the rows move up by 10. The third
+    // row, at 37..57 after scrolling, is outside the clip and skipped.
+    assert_eq!(
+        commands(&f.draw(&ui)),
+        [
+            format!("fill {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
+            format!("clip {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
+            format!("fill {:?}", Rect::new(7.0, -3.0, 47.0, 17.0)),
+            format!("fill {:?}", Rect::new(7.0, 17.0, 47.0, 37.0)),
+            "pop".into(),
+        ]
+    );
+}
+
+#[test]
+fn painted_scroll_is_clamped_to_the_scrollable_range() {
+    let (ui, root, _, _) = scroll_fixture((ScrollLeft(100.0), ScrollTop(1000.0)), ());
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    // 60 high rows overflow the 26 high padding box by 34; nothing
+    // overflows horizontally. Only the last row is in view.
+    assert_eq!(
+        commands(&f.draw(&ui)),
+        [
+            format!("fill {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
+            format!("clip {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
+            format!("fill {:?}", Rect::new(7.0, -7.0, 47.0, 13.0)),
+            format!("fill {:?}", Rect::new(7.0, 13.0, 47.0, 33.0)),
+            "pop".into(),
+        ]
+    );
+}
+
+#[test]
+fn layer_owners_scroll_their_contents() {
+    let (ui, root, _, _) = scroll_fixture((ScrollLeft(0.0), ScrollTop(10.0)), (Opacity(0.5),));
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    let commands = commands(&f.draw(&ui));
+    let fills: Vec<_> = commands
+        .iter()
+        .filter(|command| command.starts_with("fill"))
+        .cloned()
+        .collect();
+
+    assert_eq!(
+        fills,
+        [
+            format!("fill {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
+            format!("fill {:?}", Rect::new(7.0, -3.0, 47.0, 17.0)),
+            format!("fill {:?}", Rect::new(7.0, 17.0, 47.0, 37.0)),
+        ]
+    );
+}
+
+#[test]
+fn child_layers_scroll_with_their_container() {
+    let (mut ui, root, _, rows) = scroll_fixture((ScrollLeft(0.0), ScrollTop(10.0)), ());
+    // The second row starts a layer of its own.
+    ui.set_props(rows[1], (Transform(Affine::IDENTITY),));
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    // The layer paints after the contents, inside the container's clip,
+    // pushed again for it, and scrolled.
+    assert_eq!(
+        commands(&f.draw(&ui)),
+        [
+            format!("fill {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
+            format!("clip {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
+            format!("fill {:?}", Rect::new(7.0, -3.0, 47.0, 17.0)),
+            "pop".into(),
+            format!("clip {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
+            format!("fill {:?}", Rect::new(7.0, 17.0, 47.0, 37.0)),
+            "pop".into(),
+        ]
+    );
+}
+
+#[test]
+fn layers_painted_alone_scroll_with_their_ancestors() {
+    let (mut ui, root, _, rows) = scroll_fixture((ScrollLeft(0.0), ScrollTop(10.0)), ());
+    ui.set_props(rows[1], (Transform(Affine::IDENTITY),));
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    let (layers, _) = f.layers(&ui);
+    let layer = layers.layer_of(f.box_of(rows[1])).unwrap();
+    let mut scene = Scene::new();
+    CometPainter::new().draw(
+        &ui,
+        &f.inputs,
+        &f.fragments,
+        &f.prepaint,
+        &layers,
+        layer,
+        SCENE_VIEWPORT,
+        1.0,
+        &mut scene,
+    );
+
+    // Clips of the ancestors do not apply, but their scroll does.
+    assert_eq!(
+        commands(&scene),
+        [format!("fill {:?}", Rect::new(7.0, 17.0, 47.0, 37.0))]
+    );
 }

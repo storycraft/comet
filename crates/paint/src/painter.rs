@@ -84,12 +84,36 @@ impl Transforms {
         }
     }
 
+    /// The transforms of the contents of a fragment mapping to the scene
+    /// with `self`, scrolled by `offset`: its descendants move against the
+    /// scroll, while the fragment and its clip stay in place.
+    fn scrolled(self, offset: Vec2) -> Self {
+        if offset == Vec2::ZERO {
+            return self;
+        }
+
+        Self {
+            transform: self.transform * Affine::translate(-offset),
+            inverse: self
+                .inverse
+                .map(|inverse| Affine::translate(offset) * inverse),
+        }
+    }
+
+    /// The transforms of the contents of `fragment`, mapping to the scene
+    /// with `self`: scrolled by its scroll offset.
+    fn contents(self, prepaint: &PrepaintTree, fragment: &Fragment) -> Self {
+        self.scrolled(prepaint.scroll_offset(fragment))
+    }
+
     /// The transforms mapping the local coordinates of `key` to the scene,
-    /// multiplied from the root down, or `None` if a fragment on the way is
-    /// not resolved.
+    /// multiplied from the root down with the scroll offsets of its
+    /// ancestors, or `None` if a fragment on the way is not resolved.
     fn of(tree: &FragmentTree, prepaint: &PrepaintTree, key: FragmentKey) -> Option<Self> {
         let parent = match tree.items.parent(key) {
-            Some(parent) => Self::of(tree, prepaint, parent)?,
+            Some(parent) => {
+                Self::of(tree, prepaint, parent)?.contents(prepaint, tree.items.get(parent)?)
+            }
             None => Self::IDENTITY,
         };
 
@@ -142,6 +166,12 @@ impl CometPainter {
     /// border box, rounded with its border radius, including those painting
     /// in other layers. Clips of the root's ancestors do not apply.
     ///
+    /// A scroll container moves its descendants, including those painting
+    /// in other layers, against its clamped
+    /// [scroll offset](crate::prepaint::LayoutInputData::scroll_offset). The
+    /// container itself, its background, border, outline and clip stay in
+    /// place. Scroll offsets of the root's ancestors apply too.
+    ///
     /// Layout and pre-paint data are in logical units. The scene is in
     /// physical pixels: everything paints scaled by `scale_factor`, the
     /// physical pixels per logical unit of the display, and text is shaped at
@@ -175,7 +205,10 @@ impl CometPainter {
             return;
         };
         let parent = match tree.items.parent(item.owner) {
-            Some(parent) => Transforms::of(tree, prepaint, parent),
+            // The owner sits in its parent's scrolled contents.
+            Some(parent) => Transforms::of(tree, prepaint, parent)
+                .zip(tree.items.get(parent))
+                .map(|(transforms, parent)| transforms.contents(prepaint, parent)),
             None => Some(Transforms::IDENTITY),
         };
         let Some(parent) = parent else {
@@ -275,6 +308,9 @@ impl CometPainter {
         // it, child layers included.
         self.draw_fragment(sources, owner, transforms, None, clip, scene);
         let (clip, clipped) = push_clip(sources, owner, fragment, transforms, clip, scene);
+        // Descendants, child layers included, scroll with the owner's
+        // contents; its clip does not.
+        let contents = transforms.contents(sources.prepaint, fragment);
 
         // The first child layer with a non-negative z index, where painting
         // child layers resumes after the contents.
@@ -286,15 +322,15 @@ impl CometPainter {
                 break;
             }
 
-            self.draw_child(sources, child, owner, transforms, clip, scene);
+            self.draw_child(sources, child, owner, contents, clip, scene);
         }
 
         if subtree_visible(sources, fragment, transforms, clip) {
-            self.draw_contents(sources, owner, transforms, clip, scene);
+            self.draw_contents(sources, owner, contents, clip, scene);
         }
 
         for child in sources.layers.layers.cursor(non_negative) {
-            self.draw_child(sources, child, owner, transforms, clip, scene);
+            self.draw_child(sources, child, owner, contents, clip, scene);
         }
 
         if clipped {
@@ -307,9 +343,9 @@ impl CometPainter {
     }
 
     /// Paint a child layer of the layer owned by `owner`, inside the clips of
-    /// the fragments between their owners. `transforms` maps the local
-    /// coordinates of `owner` to the scene, and `clip` bounds the clips its
-    /// contents paint inside of.
+    /// the fragments between their owners and scrolled by them. `transforms`
+    /// maps the coordinates of the contents of `owner`, scrolled, to the
+    /// scene, and `clip` bounds the clips its contents paint inside of.
     fn draw_child(
         &mut self,
         sources: Sources<'_>,
@@ -355,6 +391,7 @@ impl CometPainter {
             let clipped;
             (clip, clipped) = push_clip(sources, key, fragment, transforms, clip, scene);
             pushed += usize::from(clipped);
+            transforms = transforms.contents(sources.prepaint, fragment);
         }
 
         self.draw_layer(sources, child, transforms, clip, scene);
@@ -365,7 +402,8 @@ impl CometPainter {
     }
 
     /// Paint the descendants of a layer's owner in tree order, skipping the
-    /// owners of child layers and their descendants.
+    /// owners of child layers and their descendants. `transforms` maps the
+    /// coordinates of the owner's contents, scrolled, to the scene.
     fn draw_contents(
         &mut self,
         sources: Sources<'_>,
@@ -439,6 +477,8 @@ impl CometPainter {
                 self.pending.push(Visit::PopClip);
             }
 
+            let contents = transforms.contents(sources.prepaint, fragment);
+
             self.pending
                 .extend(
                     sources
@@ -449,7 +489,7 @@ impl CometPainter {
                         .map(|child| Visit::Fragment {
                             key: child,
                             inline_owner,
-                            parent: transforms,
+                            parent: contents,
                             clip: child_clip,
                         }),
                 );

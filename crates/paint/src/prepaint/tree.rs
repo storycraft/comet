@@ -3,10 +3,10 @@ use std::ops::Index;
 #[cfg(doc)]
 use comet_layout::dirty_map::DirtyFlags;
 use comet_layout::{
-    fragment::{FragmentKey, tree::FragmentTree},
+    fragment::{Fragment, FragmentKey, tree::FragmentTree},
     input::LayoutInputKey,
 };
-use kurbo::{Point, Shape};
+use kurbo::{Point, Shape, Vec2};
 use slotmap::{SecondaryMap, SparseSecondaryMap};
 
 use crate::prepaint::{FragmentData, LayoutInputData};
@@ -58,6 +58,14 @@ impl PrepaintTree {
         self.fragment_mapping.clear();
         self.layout_mapping.clear();
         self.viewport_dependents.clear();
+    }
+
+    /// The scroll offset `fragment` applies to its descendants, clamped to
+    /// its scrollable range: see [`LayoutInputData::scroll_offset`]. Zero if
+    /// its item is not resolved.
+    pub fn scroll_offset(&self, fragment: &Fragment) -> Vec2 {
+        self.get(fragment.source)
+            .map_or(Vec2::ZERO, |data| data.scroll_offset(fragment))
     }
 
     /// Whether `point`, in the local coordinates of a fragment, hits the
