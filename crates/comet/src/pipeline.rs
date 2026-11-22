@@ -204,14 +204,14 @@ impl Pipeline {
 
     /// The node under `point`, in logical units, from the last layout.
     pub fn hit(&mut self, point: kurbo::Point) -> Option<NodeKey> {
-        let key = self.hit_tester.hit(
+        let hit = self.hit_tester.hit(
             &self.layers,
             &self.fragments,
             &self.prepaint,
             self.layer_root?,
             point,
         )?;
-        let source = self.fragments.items.get(key)?.source;
+        let source = self.fragments.items.get(hit.fragment)?.source;
 
         Some(self.inputs.items.get(source)?.node)
     }

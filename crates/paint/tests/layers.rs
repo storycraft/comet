@@ -16,7 +16,7 @@ use comet_layout::{
     },
 };
 use comet_paint::{
-    hit::PaintHitTester,
+    hit::{HitTestResult, PaintHitTester},
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
@@ -169,6 +169,11 @@ impl Fixture {
 
     /// The fragment hit at a scene point.
     fn hit(&self, x: f64, y: f64) -> Option<FragmentKey> {
+        self.hit_result(x, y).map(|hit| hit.fragment)
+    }
+
+    /// The hit at a scene point, with the point local to the fragment hit.
+    fn hit_result(&self, x: f64, y: f64) -> Option<HitTestResult> {
         PaintHitTester::new().hit(
             &self.layers,
             &self.fragments,
@@ -664,6 +669,37 @@ fn hits_through_transforms() {
 }
 
 #[test]
+fn hits_hold_the_point_local_to_the_fragment_hit() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let moved = ui.create(
+        Node::Box,
+        (fixed(40.0, 20.0), Transform(Affine::translate((50.0, 0.0)))),
+    );
+    let inner = ui.create(
+        Node::Box,
+        (fixed(10.0, 10.0), Transform(Affine::scale(2.0))),
+    );
+    ui.append(root, moved);
+    ui.append(moved, inner);
+
+    let f = Fixture::build(&ui, root);
+    let result = |key, x, y| {
+        Some(HitTestResult {
+            fragment: f.box_of(key),
+            position: Point::new(x, y),
+        })
+    };
+
+    // The inner box scales by 2 around its centre (5, 5), inside the moved
+    // box at (50, 0).
+    assert_eq!(f.hit_result(46.0, 1.0), result(inner, 0.5, 3.0));
+    assert_eq!(f.hit_result(64.0, 14.0), result(inner, 9.5, 9.5));
+    assert_eq!(f.hit_result(80.0, 15.0), result(moved, 30.0, 15.0));
+    assert_eq!(f.hit_result(10.0, 10.0), result(root, 10.0, 10.0));
+}
+
+#[test]
 fn clips_and_rounded_corners_limit_hits() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
@@ -923,13 +959,15 @@ fn hit_testers_can_be_reused() {
     let mut f = Fixture::build(&ui, root);
     let mut tester = PaintHitTester::new();
     let mut hit = |f: &Fixture, x, y| {
-        tester.hit(
-            &f.layers,
-            &f.fragments,
-            &f.prepaint,
-            f.root,
-            Point::new(x, y),
-        )
+        tester
+            .hit(
+                &f.layers,
+                &f.fragments,
+                &f.prepaint,
+                f.root,
+                Point::new(x, y),
+            )
+            .map(|hit| hit.fragment)
     };
 
     // Points mapped by earlier hits do not leak into later ones.

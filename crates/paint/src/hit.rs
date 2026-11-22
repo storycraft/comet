@@ -9,6 +9,17 @@ use crate::{
     prepaint::tree::PrepaintTree,
 };
 
+/// The fragment found under a point by [`PaintHitTester::hit`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HitTestResult {
+    /// The fragment hit.
+    pub fragment: FragmentKey,
+    /// The point in the local coordinates of [`Self::fragment`], with its
+    /// border box's top-left corner at the origin, after mapping it through
+    /// the transforms of the fragment and its ancestors.
+    pub position: Point,
+}
+
 /// Finds the fragment painted on top under a point. Keep it to reuse its
 /// buffers across hit tests.
 #[derive(Default)]
@@ -44,7 +55,8 @@ impl PaintHitTester {
     }
 
     /// The topmost fragment under `point`, in scene coordinates, among the
-    /// layers of `root` in `layers`, or `None` if no fragment is under it.
+    /// layers of `root` in `layers`, with `point` in its local coordinates,
+    /// or `None` if no fragment is under it.
     ///
     /// Fragments are searched in reverse paint order, so fragments painting
     /// on top are hit first: in each layer, its child layers with a
@@ -77,7 +89,7 @@ impl PaintHitTester {
         prepaint: &PrepaintTree,
         root: PaintLayerKey,
         point: Point,
-    ) -> Option<FragmentKey> {
+    ) -> Option<HitTestResult> {
         let sources = Sources {
             layers,
             fragments,
@@ -111,7 +123,7 @@ impl PaintHitTester {
         sources: Sources<'_>,
         key: PaintLayerKey,
         point: Point,
-    ) -> Option<FragmentKey> {
+    ) -> Option<HitTestResult> {
         let owner = sources.layers.layers.get(key)?.owner;
         let point = sources.prepaint.fragment(owner)?.inverse_transform? * point;
         // The owner's clip bounds its descendants, child layers included.
@@ -151,7 +163,10 @@ impl PaintHitTester {
         sources
             .prepaint
             .hit_local(sources.fragments, owner, point)
-            .then_some(owner)
+            .then_some(HitTestResult {
+                fragment: owner,
+                position: point,
+            })
     }
 
     /// The topmost fragment of a child layer of the layer owned by `owner`
@@ -163,7 +178,7 @@ impl PaintHitTester {
         child: PaintLayerKey,
         owner: FragmentKey,
         point: Point,
-    ) -> Option<FragmentKey> {
+    ) -> Option<HitTestResult> {
         let child_owner = sources.layers.layers.get(child)?.owner;
 
         // Fragments between the owners, innermost first.
@@ -201,7 +216,7 @@ impl PaintHitTester {
         sources: Sources<'_>,
         owner: FragmentKey,
         point: Point,
-    ) -> Option<FragmentKey> {
+    ) -> Option<HitTestResult> {
         let base = self.pending.len();
 
         // Children pop from the last, each after its own children.
@@ -230,7 +245,10 @@ impl PaintHitTester {
                 ) && sources.prepaint.hit_local(sources.fragments, key, point)
                 {
                     self.pending.truncate(base);
-                    return Some(key);
+                    return Some(HitTestResult {
+                        fragment: key,
+                        position: point,
+                    });
                 }
 
                 continue;
