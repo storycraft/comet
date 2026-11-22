@@ -264,10 +264,15 @@ impl Engine<'_> {
         };
         let location = Point::new(layout.location.x as f64, layout.location.y as f64);
         let size = Size::new(layout.size.width as f64, layout.size.height as f64);
+        let overflow = overflow(layout);
         // Taffy writes the layouts of every child of a box it lays out, and of
-        // the root on every build, so only moved or resized fragments are
-        // marked for pre-paint.
-        if fragment.layout.location != location || fragment.layout.size != size {
+        // the root on every build, so only moved or resized fragments, and
+        // those whose overflow changed, are marked for pre-paint. Paint data
+        // such as the scroll range of a scroll container follows the overflow.
+        if fragment.layout.location != location
+            || fragment.layout.size != size
+            || fragment.layout.overflow != overflow
+        {
             self.dirty.mark(self.tree, fragment.source, PAINT_CHANGED);
         }
 
@@ -276,7 +281,7 @@ impl Engine<'_> {
         fragment.size = size;
         fragment.padding = conv::from_rect(layout.padding, f64::from);
         fragment.border = conv::from_rect(layout.border, f64::from);
-        fragment.overflow = overflow(layout);
+        fragment.overflow = overflow;
     }
 }
 

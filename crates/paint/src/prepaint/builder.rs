@@ -303,16 +303,18 @@ impl Sources<'_> {
         // overflow stops at the same clips.
         let scroll = overflow.x.is_scroll_container() || overflow.y.is_scroll_container();
 
-        // Only scroll containers scroll. Both axes scroll once either does,
-        // as both clip.
-        let scroll_offset = if scroll {
-            let ScrollLeft(left) = props.get_or_default();
-            let ScrollTop(top) = props.get_or_default();
+        // Only scroll containers scroll, through their single box fragment.
+        // Both axes scroll once either does, as both clip.
+        let scroll_offset = match self.fragments.box_fragment(key) {
+            Some(fragment) if scroll => {
+                let ScrollLeft(left) = props.get_or_default();
+                let ScrollTop(top) = props.get_or_default();
+                let max = scroll_range(&self.fragments.items[fragment]);
 
-            // `max` also maps NaN to 0.
-            Vec2::new(left.max(0.0), top.max(0.0))
-        } else {
-            Vec2::ZERO
+                // `max` last also maps NaN to 0.
+                Vec2::new(left.min(max.x).max(0.0), top.min(max.y).max(0.0))
+            }
+            _ => Vec2::ZERO,
         };
 
         Some(LayoutInputData {
@@ -325,6 +327,29 @@ impl Sources<'_> {
             outline_offset: outline(props.get_cloned().map(|OutlineOffset(offset)| offset)),
         })
     }
+}
+
+/// The largest scroll offset of a scroll container's box `fragment`: how far
+/// its content overflows its padding box towards the right and bottom.
+///
+/// Its overflow includes its border box, so only content passing the border
+/// box edge scrolls, by that excess and the border width.
+fn scroll_range(fragment: &Fragment) -> Vec2 {
+    let layout = &fragment.layout;
+    let range = |excess: f64, border: f64| {
+        if excess > 0.0 { excess + border } else { 0.0 }
+    };
+
+    Vec2::new(
+        range(
+            layout.overflow.x1 - layout.size.width,
+            layout.border.right_bottom.x,
+        ),
+        range(
+            layout.overflow.y1 - layout.size.height,
+            layout.border.right_bottom.y,
+        ),
+    )
 }
 
 /// The corner radii of a border box of `size`. Percentages resolve against

@@ -32,7 +32,8 @@ impl FragmentTreeBuilder {
     /// Items flagged in `dirty` are laid out again. Flags are not cleared;
     /// call [`DirtyMap::clear`] after building.
     ///
-    /// Items whose fragments were created, moved or resized are marked
+    /// Items whose fragments were created, moved, resized or whose
+    /// [overflow](crate::fragment::FragmentBox::overflow) changed are marked
     /// [`DirtyFlags::NEED_PRE_PAINT`](crate::dirty_map::DirtyFlags::NEED_PRE_PAINT)
     /// and [`DirtyFlags::NEED_LAYER`](crate::dirty_map::DirtyFlags::NEED_LAYER)
     /// in `dirty`.

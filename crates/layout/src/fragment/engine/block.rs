@@ -132,9 +132,16 @@ impl Engine<'_> {
             while let Some(key) = ancestor
                 && key != containing
             {
+                let source = items[key].source;
                 let layout = &mut items[key].layout;
-                layout.overflow = layout.overflow.union(extent);
-                extent = layout.extent();
+                let grown = layout.overflow.union(extent);
+
+                if grown != layout.overflow {
+                    layout.overflow = grown;
+                    dirty.mark(tree, source, PAINT_CHANGED);
+                }
+
+                extent = items[key].layout.extent();
                 ancestor = items.parent(key);
             }
         }

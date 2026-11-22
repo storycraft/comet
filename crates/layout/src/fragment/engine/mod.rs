@@ -41,8 +41,8 @@ pub(crate) fn state_of(id: taffy::NodeId) -> StateKey {
     KeyData::from_ffi(id.into()).into()
 }
 
-/// Flags marking an item one of whose fragments a build created, moved or
-/// resized: later steps resolve its paint data and its layers again.
+/// Flags marking an item one of whose fragments a build created, moved,
+/// resized or changed the overflow of: later steps resolve its paint data and its layers again.
 pub(crate) const PAINT_CHANGED: DirtyFlags =
     DirtyFlags::NEED_PRE_PAINT.union(DirtyFlags::NEED_LAYER);
 
