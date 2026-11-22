@@ -10,13 +10,14 @@ use comet_layout::{
     },
     style::{
         LayoutConstraint,
-        bx::{DisplayOuter, Padding},
-        geometry::{Rect, Size, StyleUnit},
+        bx::{self, DisplayOuter, Padding},
+        geometry::{AutoValue, Point, Rect, Size, StyleUnit},
+        taffy::Overflow,
     },
 };
 use comet_paint::{
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
-    style::Transform,
+    style::{ScrollTop, Transform},
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
@@ -557,4 +558,111 @@ fn changes_add_up_until_taken() {
     // Taking the update clears the changes.
     assert!(h.a11y.changed().is_empty());
     assert!(h.a11y.take_update().is_empty());
+}
+
+fn fixed(width: f64, height: f64) -> bx::Size {
+    bx::Size(Size::new(
+        AutoValue::Value(StyleUnit::Px(width)),
+        AutoValue::Value(StyleUnit::Px(height)),
+    ))
+}
+
+/// A 50x30 scroll container scrolled down by 10, holding three 40x20 rows,
+/// the first with a text, then a text in the container's own flow. Returns
+/// the root, the container, the rows and the texts.
+fn scrolled(ui: &mut Ui) -> (NodeKey, NodeKey, [NodeKey; 3], [NodeKey; 2]) {
+    let root = ui.create(Node::Box, ());
+    let scroller = ui.create(
+        Node::Box,
+        (
+            fixed(50.0, 30.0),
+            bx::Overflow(Point::new(Overflow::Hidden, Overflow::Hidden)),
+            ScrollTop(10.0),
+        ),
+    );
+    ui.append(root, scroller);
+    let rows = [(); 3].map(|_| {
+        let row = ui.create(Node::Box, (fixed(40.0, 20.0),));
+        ui.append(scroller, row);
+        row
+    });
+    let inner = ui.create(Node::Text, (Text("row".into()),));
+    ui.append(rows[0], inner);
+    let flow = ui.create(Node::Text, (Text("after".into()),));
+    ui.append(scroller, flow);
+
+    (root, scroller, rows, [inner, flow])
+}
+
+#[test]
+fn scroll_containers_expose_their_scroll_and_move_their_contents() {
+    let mut h = Harness::default();
+    let (root, scroller, rows, [_, flow]) = scrolled(&mut h.ui);
+    let clipper = h.ui.create(
+        Node::Box,
+        (
+            fixed(10.0, 10.0),
+            bx::Overflow(Point::new(Overflow::Clip, Overflow::Visible)),
+        ),
+    );
+    h.ui.append(root, clipper);
+    h.build(root);
+
+    let node = h.node(h.key(scroller));
+    assert!(node.clips_children());
+    assert_eq!(node.scroll_y(), Some(10.0));
+    assert_eq!(node.scroll_y_min(), Some(0.0));
+    let range = h.fragments.scroll_range(h.box_fragment(scroller)).unwrap();
+    assert!(range.y > 30.0);
+    assert_eq!(node.scroll_y_max(), Some(range.y));
+    assert_eq!(node.scroll_x(), Some(0.0));
+    assert_eq!(node.scroll_x_max(), Some(0.0));
+
+    // Clipping without scrolling has no scroll.
+    let node = h.node(h.key(clipper));
+    assert!(node.clips_children());
+    assert_eq!(node.scroll_y(), None);
+    assert!(!h.node(h.key(root)).clips_children());
+
+    // Rows move up by the scroll, inside the container's node.
+    for (row, y) in rows.into_iter().zip([-10.0, 10.0, 30.0]) {
+        assert_close(
+            transform_of(h.node(h.key(row))),
+            Affine::translate((0.0, y)),
+        );
+    }
+
+    // A text in the container's flow has bounds in its space, scrolled.
+    let bounds = h.node(h.key(flow)).bounds().unwrap();
+    assert_eq!(bounds.y0, 60.0 - 10.0);
+    h.assert_consistent();
+}
+
+#[test]
+fn scrolling_updates_the_nodes_in_the_scrolled_space() {
+    let mut h = Harness::default();
+    let (root, scroller, rows, [inner, flow]) = scrolled(&mut h.ui);
+    h.build(root);
+
+    h.ui.set_props(scroller, (ScrollTop(20.0),));
+    h.mark(scroller, DirtyFlags::NEED_PRE_PAINT);
+    let update = h.build(root);
+
+    // The container, its rows, and the text in its flow with its runs, which
+    // are in its space. The text inside a row stays in the row's space.
+    let mut expected: Vec<_> = [scroller, rows[0], rows[1], rows[2], flow]
+        .into_iter()
+        .map(|node| node_id(h.key(node)))
+        .chain(h.runs(flow).into_iter().map(node_id))
+        .collect();
+    expected.sort();
+    assert_eq!(Harness::ids(&update), expected);
+    assert!(!Harness::ids(&update).contains(&node_id(h.key(inner))));
+
+    assert_eq!(h.node(h.key(scroller)).scroll_y(), Some(20.0));
+    assert_close(
+        transform_of(h.node(h.key(rows[1]))),
+        Affine::translate((0.0, 0.0)),
+    );
+    h.assert_consistent();
 }

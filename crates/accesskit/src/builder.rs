@@ -2,13 +2,14 @@ use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{FragmentItem, FragmentKey, tree::FragmentTree},
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
+    style::bx::Overflow,
 };
 use comet_paint::prepaint::tree::PrepaintTree;
 use comet_tree::{
     node::{Node, NodeKey},
-    ui::Ui,
+    ui::{Props, Ui},
 };
-use kurbo::Affine;
+use kurbo::{Affine, Vec2};
 use parley::PositionedLayoutItem;
 
 use crate::{AxFlags, AxKey, AxNode, AxNodeKind, node_id, style::Role, tree::AxTree};
@@ -42,6 +43,9 @@ struct Visit {
     space: Option<FragmentKey>,
     /// Whether the parent node was resolved in this build.
     parent_resolved: bool,
+    /// Whether the scroll offset of `space` changed in this build, moving
+    /// every node in its space.
+    space_scrolled: bool,
 }
 
 /// What resolving reads from.
@@ -79,6 +83,11 @@ impl AxTreeBuilder {
     /// run's box as bounds and the transform mapping it into the text's
     /// node.
     ///
+    /// Transforms include the scroll offsets of scroll containers, so nodes
+    /// inside follow the scroll. A box clipping its overflow
+    /// [clips its children](accesskit::Node::clips_children), and a scroll
+    /// container also has its scroll offset and range on both axes.
+    ///
     /// The node of an item is resolved:
     /// - when its flags in `dirty` have [`DirtyFlags::NEED_LAYER`], which
     ///   [`DirtyFlags::NEED_CHILDREN`] includes, or
@@ -87,7 +96,9 @@ impl AxTreeBuilder {
     /// - when it is new, or has a child item without a node,
     /// - when its parent node was resolved and its box is not inside the
     ///   parent's space in the fragment tree, as its transform depends on
-    ///   both.
+    ///   both,
+    /// - when the scroll offset of the box whose space it is in changed,
+    ///   along with the items in that space without a box of their own.
     ///
     /// Items are visited from the root, going into the children of an item
     /// only when its flags or child bits in `dirty` have one of those layout
@@ -147,12 +158,14 @@ impl AxTreeBuilder {
             item: root,
             space: None,
             parent_resolved: true,
+            space_scrolled: false,
         });
 
         while let Some(Visit {
             item,
             space,
             parent_resolved,
+            space_scrolled,
         }) = pending.pop()
         {
             inputs.items.get(item)?;
@@ -162,11 +175,15 @@ impl AxTreeBuilder {
             let missing = !tree.nodes[key].resolved;
             let own_box = fragments.box_fragment(item);
 
+            // Items without a box are in the space of their parent node, so
+            // their children are in the scrolled space too.
             let descend = missing
                 || flags.contains(AxFlags::CHILD_DIRTY)
-                || (entry.flags | entry.child_bits).intersects(RESOLVE);
+                || (entry.flags | entry.child_bits).intersects(RESOLVE)
+                || (space_scrolled && own_box.is_none());
 
             let resolve = missing
+                || space_scrolled
                 || flags.contains(AxFlags::DIRTY)
                 || entry.flags.intersects(RESOLVE)
                 || (descend
@@ -179,9 +196,17 @@ impl AxTreeBuilder {
                         .zip(space)
                         .is_some_and(|(own, space)| !sources.contains(space, own)));
 
+            let previous_scroll = scroll_of(&tree.nodes[key].node);
             if resolve {
                 sources.resolve(tree, key, item, own_box, space, children, runs)?;
             }
+
+            // The children of a box are in its space, moved by its scroll.
+            let space_scrolled = match own_box {
+                Some(_) => resolve && scroll_of(&tree.nodes[key].node) != previous_scroll,
+                None => space_scrolled,
+            };
+            let descend = descend || space_scrolled;
 
             if descend {
                 let space = own_box.or(space);
@@ -191,6 +216,7 @@ impl AxTreeBuilder {
                     item,
                     space,
                     parent_resolved: resolve,
+                    space_scrolled,
                 }));
                 pending[start..].reverse();
             }
@@ -239,6 +265,7 @@ impl Sources<'_> {
                 if transform != Affine::IDENTITY {
                     node.set_transform(accesskit::Affine::new(transform.as_coeffs()));
                 }
+                self.set_scroll(&mut node, item, own, props)?;
             }
             // In the space of the parent node, covering its fragments.
             (None, Some(space)) => {
@@ -307,6 +334,39 @@ impl Sources<'_> {
         Some(())
     }
 
+    /// Set the clip and scroll of the node of `item`, generating the box
+    /// `own`, from its pre-paint data and `props`. Scroll containers,
+    /// scrolling or hiding their overflow on an axis, get their scroll
+    /// offset and range on both axes.
+    fn set_scroll(
+        &self,
+        node: &mut accesskit::Node,
+        item: LayoutInputKey,
+        own: FragmentKey,
+        props: Props<'_>,
+    ) -> Option<()> {
+        let Some(data) = self.prepaint.get(item) else {
+            return Some(());
+        };
+
+        if data.clip.0 || data.clip.1 {
+            node.set_clips_children();
+        }
+
+        let Overflow(overflow) = props.get_or_default();
+        if overflow.x.is_scroll_container() || overflow.y.is_scroll_container() {
+            let range = self.fragments.scroll_range(own)?;
+            node.set_scroll_x(data.scroll.x);
+            node.set_scroll_x_min(0.0);
+            node.set_scroll_x_max(range.x);
+            node.set_scroll_y(data.scroll.y);
+            node.set_scroll_y_min(0.0);
+            node.set_scroll_y_max(range.y);
+        }
+
+        Some(())
+    }
+
     /// The role of a node without one, generating `own` if it is a box:
     /// texts are labels, boxes laying out one inline formatting context
     /// groups, and other boxes generic containers. A box split by blocks
@@ -348,8 +408,9 @@ impl Sources<'_> {
         core::iter::successors(Some(key), |&key| items.parent(key)).any(|key| key == ancestor)
     }
 
-    /// The transform mapping `key` into `space`. Without `space` among the
-    /// ancestors of `key`, it goes through the root fragment.
+    /// The transform mapping `key` into `space`, moved by the scroll offsets
+    /// of the fragments it is inside of, `space` included. Without `space`
+    /// among the ancestors of `key`, it goes through the root fragment.
     fn relative_transform(&self, key: FragmentKey, space: FragmentKey) -> Option<Affine> {
         let items = &self.fragments.items;
         let mut transform = Affine::IDENTITY;
@@ -362,19 +423,39 @@ impl Sources<'_> {
             }
             transform = self.prepaint.fragment(key)?.transform * transform;
             current = items.parent(key);
+            if let Some(parent) = current {
+                transform = Affine::translate(-self.scroll(parent)) * transform;
+            }
         }
 
-        Some(self.root_transform(space)?.inverse() * transform)
+        let space = self.root_transform(space)? * Affine::translate(-self.scroll(space));
+        Some(space.inverse() * transform)
     }
 
     /// The transform mapping `key` into the space of the root fragment's
-    /// parent.
+    /// parent, moved by the scroll offsets of its ancestors.
     fn root_transform(&self, key: FragmentKey) -> Option<Affine> {
         let items = &self.fragments.items;
-        core::iter::successors(Some(key), |&key| items.parent(key))
-            .try_fold(Affine::IDENTITY, |transform, key| {
-                Some(self.prepaint.fragment(key)?.transform * transform)
-            })
+        let mut transform = Affine::IDENTITY;
+        let mut current = Some(key);
+
+        while let Some(key) = current {
+            transform = self.prepaint.fragment(key)?.transform * transform;
+            current = items.parent(key);
+            if let Some(parent) = current {
+                transform = Affine::translate(-self.scroll(parent)) * transform;
+            }
+        }
+
+        Some(transform)
+    }
+
+    /// The scroll offset a fragment applies to its descendants.
+    fn scroll(&self, key: FragmentKey) -> Vec2 {
+        self.fragments
+            .items
+            .get(key)
+            .map_or(Vec2::ZERO, |fragment| self.prepaint.scroll_offset(fragment))
     }
 
     /// The line box containing a glyph run.
@@ -485,4 +566,9 @@ impl Sources<'_> {
 
         Some(node)
     }
+}
+
+/// The scroll offset set on a node, to find nodes whose scroll changed.
+fn scroll_of(node: &accesskit::Node) -> (Option<f64>, Option<f64>) {
+    (node.scroll_x(), node.scroll_y())
 }
