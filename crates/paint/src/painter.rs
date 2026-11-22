@@ -168,7 +168,7 @@ impl CometPainter {
     ///
     /// A scroll container moves its descendants, including those painting
     /// in other layers, against its clamped
-    /// [scroll offset](crate::prepaint::LayoutInputData::scroll_offset). The
+    /// [scroll offset](crate::prepaint::LayoutInputData::scroll). The
     /// container itself, its background, border, outline and clip stay in
     /// place. Scroll offsets of the root's ancestors apply too.
     ///

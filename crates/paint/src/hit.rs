@@ -2,7 +2,7 @@
 //! the order fragments paint in.
 
 use comet_layout::fragment::{FragmentItem, FragmentKey, tree::FragmentTree};
-use kurbo::Point;
+use kurbo::{Point, Vec2};
 
 use crate::{
     layer::{PaintLayerKey, tree::PaintLayerTree},
@@ -34,8 +34,9 @@ pub struct PaintHitTester {
 #[derive(Clone, Copy)]
 struct Visit {
     key: FragmentKey,
-    /// The point in the local coordinates of the fragment's parent, or of
-    /// the fragment itself once its children were queued.
+    /// The point in the coordinates of the contents of the fragment's
+    /// parent, scrolled, or in the local coordinates of the fragment itself
+    /// once its children were queued.
     point: Point,
     /// Whether the fragment's children were queued, so it is tested next.
     expanded: bool,
@@ -57,6 +58,9 @@ impl PaintHitTester {
     /// The topmost fragment under `point`, in scene coordinates, among the
     /// layers of `root` in `layers`, with `point` in its local coordinates,
     /// or `None` if no fragment is under it.
+    ///
+    /// Descendants of a scroll container are hit where they paint, moved
+    /// against its scroll offset, as are those of the root's ancestors.
     ///
     /// `prepaint` must be resolved for `fragments`, and `layers` built for
     /// them.
@@ -86,16 +90,18 @@ impl PaintHitTester {
 
         let mut point = point;
 
+        // Each ancestor holds the next in its scrolled contents.
         for &key in self.chain.iter().rev() {
             point = prepaint.fragment(key)?.inverse_transform? * point;
+            point += scroll(sources, key);
         }
 
         self.pending.clear();
         self.hit_layer(sources, root, point)
     }
 
-    /// The topmost fragment of a layer under `point`, in the local
-    /// coordinates of its owner's parent.
+    /// The topmost fragment of a layer under `point`, in the coordinates of
+    /// the contents of its owner's parent, scrolled.
     fn hit_layer(
         &mut self,
         sources: Sources<'_>,
@@ -106,6 +112,9 @@ impl PaintHitTester {
         let point = sources.prepaint.fragment(owner)?.inverse_transform? * point;
         // The owner's clip bounds its descendants, child layers included.
         let inside = inside_clip(sources, owner, point);
+        // Descendants, child layers included, scroll with the owner's
+        // contents; its clip does not.
+        let contents = point + scroll(sources, owner);
 
         if inside {
             // The last child layer with a negative z index, where the search
@@ -118,19 +127,19 @@ impl PaintHitTester {
                     break;
                 }
 
-                if let Some(hit) = self.hit_child(sources, child, owner, point) {
+                if let Some(hit) = self.hit_child(sources, child, owner, contents) {
                     return Some(hit);
                 }
             }
 
             if inside_overflow(sources, owner, point)
-                && let Some(hit) = self.hit_contents(sources, owner, point)
+                && let Some(hit) = self.hit_contents(sources, owner, contents)
             {
                 return Some(hit);
             }
 
             while let Some(child) = negative {
-                if let Some(hit) = self.hit_child(sources, child, owner, point) {
+                if let Some(hit) = self.hit_child(sources, child, owner, contents) {
                     return Some(hit);
                 }
 
@@ -148,8 +157,9 @@ impl PaintHitTester {
     }
 
     /// The topmost fragment of a child layer of the layer owned by `owner`
-    /// under `point`, in the local coordinates of `owner`, inside the clips
-    /// of the fragments between their owners.
+    /// under `point`, in the coordinates of the contents of `owner`,
+    /// scrolled, inside the clips of the fragments between their owners and
+    /// scrolled by them.
     fn hit_child(
         &mut self,
         sources: Sources<'_>,
@@ -181,14 +191,16 @@ impl PaintHitTester {
             if !inside_clip(sources, key, point) {
                 return None;
             }
+
+            point += scroll(sources, key);
         }
 
         self.hit_layer(sources, child, point)
     }
 
-    /// The topmost descendant of a layer's owner under `point`, in the local
-    /// coordinates of the owner, skipping the owners of child layers and
-    /// their descendants.
+    /// The topmost descendant of a layer's owner under `point`, in the
+    /// coordinates of the owner's contents, scrolled, skipping the owners of
+    /// child layers and their descendants.
     fn hit_contents(
         &mut self,
         sources: Sources<'_>,
@@ -254,6 +266,8 @@ impl PaintHitTester {
             });
 
             if inside_overflow(sources, key, point) && inside_clip(sources, key, point) {
+                let point = point + scroll(sources, key);
+
                 self.pending
                     .extend(sources.fragments.items.children(key).map(|child| Visit {
                         key: child,
@@ -265,6 +279,19 @@ impl PaintHitTester {
 
         None
     }
+}
+
+/// The scroll offset a fragment applies to its descendants: a point in its
+/// local coordinates plus the offset is in the coordinates of its scrolled
+/// contents. Zero for missing fragments.
+fn scroll(sources: Sources<'_>, key: FragmentKey) -> Vec2 {
+    sources
+        .fragments
+        .items
+        .get(key)
+        .map_or(Vec2::ZERO, |fragment| {
+            sources.prepaint.scroll_offset(fragment)
+        })
 }
 
 /// Whether `point`, in the local coordinates of a fragment, is inside its

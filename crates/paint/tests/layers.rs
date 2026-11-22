@@ -18,7 +18,9 @@ use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
-    style::{BackdropFilter, BorderRadius, Fill, Filter, MixBlend, Opacity, Transform, ZIndex},
+    style::{
+        BackdropFilter, BorderRadius, Fill, Filter, MixBlend, Opacity, ScrollTop, Transform, ZIndex,
+    },
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
@@ -1485,4 +1487,101 @@ fn hits_content_of_atomic_inlines_below_their_line() {
     }
 
     assert_eq!(f.hit(origin.x + 5.0, origin.y + 80.0), Some(tall_box));
+}
+
+/// A root holding a 50x30 scroll container at the origin, scrolled down by
+/// 10, with `extra` props, and three 40x20 rows inside, with `row_extra`
+/// props on the second. Returns the UI, the root, the container and the
+/// rows.
+fn scrolled_rows(
+    extra: impl comet_tree::style::StyleProps,
+    row_extra: impl comet_tree::style::StyleProps,
+) -> (Ui, NodeKey, NodeKey, [NodeKey; 3]) {
+    let mut ui = Ui::new();
+    // Tall enough to be hit past the container.
+    let root = ui.create(Node::Box, (fixed(120.0, 100.0),));
+    let scroller = ui.create(
+        Node::Box,
+        (
+            fixed(50.0, 30.0),
+            bx::Overflow(comet_layout::style::geometry::Point::new(
+                Overflow::Hidden,
+                Overflow::Hidden,
+            )),
+            ScrollTop(10.0),
+        ),
+    );
+    ui.set_props(scroller, extra);
+    ui.append(root, scroller);
+
+    let rows = [(); 3].map(|_| {
+        let row = ui.create(Node::Box, (fixed(40.0, 20.0),));
+        ui.append(scroller, row);
+        row
+    });
+    ui.set_props(rows[1], row_extra);
+
+    (ui, root, scroller, rows)
+}
+
+/// Rows scrolled up by 10 sit at -10..10, 10..30 and 30..50 in the scene,
+/// the last one hidden past the container's clip at 30.
+fn assert_scrolled_hits(f: &Fixture, root: NodeKey, scroller: NodeKey, rows: [NodeKey; 3]) {
+    let result = |key, x, y| {
+        Some(HitTestResult {
+            fragment: f.box_of(key),
+            position: Point::new(x, y),
+        })
+    };
+
+    assert_eq!(f.hit_result(5.0, 5.0), result(rows[0], 5.0, 15.0));
+    assert_eq!(f.hit_result(5.0, 15.0), result(rows[1], 5.0, 5.0));
+    // The container is hit where no row is; it does not scroll itself.
+    assert_eq!(f.hit_result(45.0, 5.0), result(scroller, 45.0, 5.0));
+    // The third row is clipped away.
+    assert_eq!(f.hit_result(5.0, 35.0), result(root, 5.0, 35.0));
+}
+
+#[test]
+fn hits_follow_the_scroll_of_their_container() {
+    let (ui, root, scroller, rows) = scrolled_rows((), ());
+    let f = Fixture::build(&ui, root);
+
+    assert_scrolled_hits(&f, root, scroller, rows);
+}
+
+#[test]
+fn hits_scroll_with_containers_owning_layers() {
+    let (ui, root, scroller, rows) = scrolled_rows((Opacity(0.5),), ());
+    let f = Fixture::build(&ui, root);
+
+    assert_scrolled_hits(&f, root, scroller, rows);
+}
+
+#[test]
+fn hits_in_child_layers_scroll_with_their_container() {
+    let (ui, root, scroller, rows) = scrolled_rows((), (Transform(Affine::IDENTITY),));
+    let f = Fixture::build(&ui, root);
+
+    assert_scrolled_hits(&f, root, scroller, rows);
+}
+
+#[test]
+fn hits_in_layers_tested_alone_scroll_with_their_ancestors() {
+    let (ui, root, _, rows) = scrolled_rows((), (Transform(Affine::IDENTITY),));
+    let f = Fixture::build(&ui, root);
+
+    assert_eq!(
+        PaintHitTester::new().hit(
+            &f.layers,
+            &f.fragments,
+            &f.prepaint,
+            f.layer_of(rows[1]),
+            Point::new(5.0, 15.0),
+        ),
+        Some(HitTestResult {
+            fragment: f.box_of(rows[1]),
+            position: Point::new(5.0, 5.0),
+        })
+    );
 }
