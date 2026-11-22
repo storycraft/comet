@@ -2,37 +2,9 @@ use accesskit::NodeId;
 use comet_layout::input::{LayoutInputKey, tree::LayoutInputTree};
 use comet_slotmap_tree::SlotTree;
 use comet_tree::node::NodeKey;
-use slotmap::{Key, KeyData, SecondaryMap, new_key_type};
+use slotmap::SecondaryMap;
 
-use crate::AxFlags;
-
-new_key_type! {
-    /// Key of a node in an [`AxTree`], and its [`NodeId`].
-    pub struct AxKey;
-}
-
-/// What a node of an [`AxTree`] stands for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AxNodeKind {
-    /// A layout input item.
-    Item,
-    /// A glyph run of a text item, as a [`TextRun`](accesskit::Role::TextRun)
-    /// inside the item's node.
-    TextRun,
-}
-
-/// One node of an [`AxTree`].
-#[derive(Debug, Clone, PartialEq)]
-pub struct AxNode {
-    /// The node last resolved.
-    pub node: accesskit::Node,
-    /// The layout input item it belongs to.
-    pub item: LayoutInputKey,
-    pub kind: AxNodeKind,
-    /// Whether the node was resolved. New nodes are listed by their parent
-    /// before they are resolved themselves.
-    pub(crate) resolved: bool,
-}
+use crate::{AxFlags, AxKey, AxNode, AxNodeKind, node_id};
 
 /// Accessibility nodes of a layout, following the layout input tree in the
 /// order of the UI: each item has one node, holding the nodes of its child
@@ -43,7 +15,7 @@ pub struct AxNode {
 /// their keys are their [`NodeId`]s, so they keep their ids as long as their
 /// items exist. Text run nodes are reused in order when the text is laid out
 /// again. Built and updated by an
-/// [`AxTreeBuilder`](crate::builder::AxTreeBuilder).
+/// [`AxTreeBuilder`](crate::AxTreeBuilder).
 #[derive(Debug, Default)]
 pub struct AxTree {
     pub(crate) nodes: SlotTree<AxKey, AxNode>,
@@ -194,14 +166,4 @@ impl AxTree {
             self.nodes.delete_node(child);
         }
     }
-}
-
-/// The node id of a node.
-pub fn node_id(key: AxKey) -> NodeId {
-    NodeId(key.data().as_ffi())
-}
-
-/// The key of a node id, such as the target of an action request.
-pub fn ax_key(id: NodeId) -> AxKey {
-    KeyData::from_ffi(id.0).into()
 }

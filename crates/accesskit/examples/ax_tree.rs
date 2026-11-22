@@ -4,7 +4,7 @@
 
 use accesskit::{NodeId, Role as AxRole, TreeId, TreeInfo, TreeUpdate};
 use accesskit_consumer::{NodeRef, Tree, common_filter};
-use comet_accesskit::{AxTree, AxTreeBuilder, style::Role, tree::node_id};
+use comet_accesskit::{AxTree, AxTreeBuilder, node_id, style::Role};
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -68,14 +68,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             false,
         )
         .ok_or("could not resolve the pre-paint tree")?;
-    AxTreeBuilder::new()
+    let root_key = AxTreeBuilder::new()
         .build(
             &ui, &inputs, &dirty, &fragments, &prepaint, &mut tree, input_root,
         )
         .ok_or("could not build the accessibility tree")?;
 
     // The first update holds every node.
-    let root_id = node_id(tree.item_node(input_root).ok_or("missing root node")?);
+    let root_id = node_id(root_key);
     let consumer = Tree::new(
         TreeUpdate {
             nodes: tree.take_update(),

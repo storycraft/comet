@@ -4,15 +4,14 @@ use comet_layout::{
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
 };
 use comet_paint::prepaint::tree::PrepaintTree;
-use comet_tree::{node::Node, ui::Ui};
+use comet_tree::{
+    node::{Node, NodeKey},
+    ui::Ui,
+};
 use kurbo::Affine;
 use parley::PositionedLayoutItem;
 
-use crate::{
-    AxFlags,
-    style::Role,
-    tree::{AxKey, AxNode, AxNodeKind, AxTree, node_id},
-};
+use crate::{AxFlags, AxKey, AxNode, AxNodeKind, node_id, style::Role, tree::AxTree};
 
 /// Layout flags of an item whose node is resolved again:
 /// - [`DirtyFlags::NEED_LAYER`]: a paint property of the item changed.
@@ -102,7 +101,8 @@ impl AxTreeBuilder {
     /// resolved, so the next update sends the whole tree.
     ///
     /// Build after resolving `prepaint` for `fragments`, and before clearing
-    /// `dirty`. Returns `None` if `root` has no box fragment, or if an item
+    /// `dirty`. Returns the root node, the node of `root`, or `None` if
+    /// `root` has no box fragment, or if an item
     /// no longer matches the UI or a fragment has no pre-paint data. Nodes
     /// resolved before the failure stay in `tree`, without their flags
     /// cleared, so the next build resolves them again; build from a
@@ -117,7 +117,7 @@ impl AxTreeBuilder {
         prepaint: &PrepaintTree,
         tree: &mut AxTree,
         root: LayoutInputKey,
-    ) -> Option<()> {
+    ) -> Option<AxKey> {
         fragments.box_fragment(root)?;
         let sources = Sources {
             ui,
@@ -141,7 +141,7 @@ impl AxTreeBuilder {
         if !root_resolved {
             tree.clear();
         }
-        tree.item_node_or_insert(root);
+        let root_key = tree.item_node_or_insert(root);
 
         pending.push(Visit {
             item: root,
@@ -198,7 +198,7 @@ impl AxTreeBuilder {
             tree.flags.remove(item);
         }
 
-        Some(())
+        Some(root_key)
     }
 }
 
@@ -221,15 +221,9 @@ impl Sources<'_> {
         let input = self.inputs.items.get(item)?;
         let props = self.ui.props(input.node)?;
 
-        // Without a role, texts are labels, boxes laying out one inline
-        // formatting context groups, and other boxes generic containers.
         let role = match props.get_cloned() {
             Some(Role(role)) => role,
-            None if self.ui.kind(input.node) == Some(Node::Text) => accesskit::Role::Label,
-            None if own.is_some_and(|own| self.fragments.get_inline(own).is_some()) => {
-                accesskit::Role::Group
-            }
-            None => accesskit::Role::GenericContainer,
+            None => self.default_role(input.node, own),
         };
         let mut node = accesskit::Node::new(role);
 
@@ -311,6 +305,20 @@ impl Sources<'_> {
         tree.set_node(key, node);
 
         Some(())
+    }
+
+    /// The role of a node without one, generating `own` if it is a box:
+    /// texts are labels, boxes laying out one inline formatting context
+    /// groups, and other boxes generic containers. A box split by blocks
+    /// owns no inline layout: its anonymous blocks do.
+    fn default_role(&self, node: NodeKey, own: Option<FragmentKey>) -> accesskit::Role {
+        if self.ui.kind(node) == Some(Node::Text) {
+            accesskit::Role::Label
+        } else if own.is_some_and(|own| self.fragments.get_inline(own).is_some()) {
+            accesskit::Role::Group
+        } else {
+            accesskit::Role::GenericContainer
+        }
     }
 
     /// The glyph runs of a text item in order: its linked fragments in an

@@ -1,9 +1,5 @@
 use accesskit::{NodeId, Role as AxRole};
-use comet_accesskit::{
-    AxKey, AxNodeKind, AxTree, AxTreeBuilder,
-    style::Role,
-    tree::{ax_key, node_id},
-};
+use comet_accesskit::{AxKey, AxNodeKind, AxTree, AxTreeBuilder, ax_key, node_id, style::Role};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},

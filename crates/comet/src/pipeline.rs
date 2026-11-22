@@ -1,10 +1,7 @@
 //! Layout and paint state of a window.
 
 use accesskit::{NodeId, TreeId, TreeInfo, TreeUpdate};
-use comet_accesskit::{
-    AxKey, AxTree, AxTreeBuilder,
-    tree::{ax_key, node_id},
-};
+use comet_accesskit::{AxKey, AxTree, AxTreeBuilder, ax_key, node_id};
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -264,18 +261,15 @@ impl Pipeline {
             a11y.tree.mark_node(&self.inputs, node);
         }
 
-        a11y.root = a11y
-            .builder
-            .build(
-                ui,
-                &self.inputs,
-                &self.dirty,
-                &self.fragments,
-                &self.prepaint,
-                &mut a11y.tree,
-                root,
-            )
-            .and_then(|()| a11y.tree.item_node(root));
+        a11y.root = a11y.builder.build(
+            ui,
+            &self.inputs,
+            &self.dirty,
+            &self.fragments,
+            &self.prepaint,
+            &mut a11y.tree,
+            root,
+        );
 
         if a11y.root.is_none() {
             a11y.tree.clear();
