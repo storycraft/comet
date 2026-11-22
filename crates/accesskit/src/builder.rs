@@ -221,10 +221,14 @@ impl Sources<'_> {
         let input = self.inputs.items.get(item)?;
         let props = self.ui.props(input.node)?;
 
-        // Without a role, texts are labels and boxes generic containers.
+        // Without a role, texts are labels, boxes laying out one inline
+        // formatting context groups, and other boxes generic containers.
         let role = match props.get_cloned() {
             Some(Role(role)) => role,
             None if self.ui.kind(input.node) == Some(Node::Text) => accesskit::Role::Label,
+            None if own.is_some_and(|own| self.fragments.get_inline(own).is_some()) => {
+                accesskit::Role::Group
+            }
             None => accesskit::Role::GenericContainer,
         };
         let mut node = accesskit::Node::new(role);

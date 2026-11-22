@@ -262,7 +262,7 @@ fn follows_the_ui_tree() {
     // bounds.
     let card_fragment = h.box_fragment(card);
     let card_node = h.node(h.key(card));
-    assert_eq!(card_node.role(), AxRole::GenericContainer);
+    assert_eq!(card_node.role(), AxRole::Group);
     assert_eq!(
         transform_of(card_node),
         h.prepaint.fragment(card_fragment).unwrap().transform
@@ -413,11 +413,32 @@ fn roles_default_by_node_kind() {
     let (root, card, text) = sample(&mut h.ui);
     let other = h.ui.create(Node::Text, (Text("other".into()),));
     h.ui.append(root, other);
+    // A box of blocks, and an inline element without a box of its own.
+    let wrapper = h.ui.create(Node::Box, ());
+    let block = h.ui.create(Node::Box, ());
+    h.ui.append(root, wrapper);
+    h.ui.append(wrapper, block);
+    // A box whose inline content is split by a block.
+    let split = h.ui.create(Node::Box, ());
+    let split_text = h.ui.create(Node::Text, (Text("split ".into()),));
+    let split_block = h.ui.create(Node::Box, ());
+    h.ui.append(root, split);
+    h.ui.append(split, split_text);
+    h.ui.append(split, split_block);
+    let span = h.ui.create(Node::Box, (DisplayOuter::Inline,));
+    let spanned = h.ui.create(Node::Text, (Text(" span".into()),));
+    h.ui.append(card, span);
+    h.ui.append(span, spanned);
     // A role on a text applies to its node, not to its runs.
     h.ui.set_props(text, (Role(AxRole::Heading),));
     h.build(root);
 
-    assert_eq!(h.node(h.key(card)).role(), AxRole::GenericContainer);
+    // The card lays out inline content.
+    assert_eq!(h.node(h.key(card)).role(), AxRole::Group);
+    assert_eq!(h.node(h.key(wrapper)).role(), AxRole::GenericContainer);
+    assert_eq!(h.node(h.key(block)).role(), AxRole::GenericContainer);
+    assert_eq!(h.node(h.key(span)).role(), AxRole::GenericContainer);
+    assert_eq!(h.node(h.key(split)).role(), AxRole::GenericContainer);
     assert_eq!(h.node(h.key(text)).role(), AxRole::Heading);
     assert_eq!(h.node(h.key(other)).role(), AxRole::Label);
     for run in h.runs(text) {
@@ -458,12 +479,12 @@ fn marked_nodes_are_resolved_again() {
     h.build(root);
 
     // Roles are not layout changes: they are marked in the tree.
-    h.ui.set_props(card, (Role(AxRole::Group),));
+    h.ui.set_props(card, (Role(AxRole::Region),));
     h.a11y.mark_node(&h.inputs, card);
     let update = h.build(root);
 
     assert_eq!(Harness::ids(&update), [node_id(h.key(card))]);
-    assert_eq!(update[0].1.role(), AxRole::Group);
+    assert_eq!(update[0].1.role(), AxRole::Region);
 }
 
 #[test]
@@ -523,7 +544,7 @@ fn changes_add_up_until_taken() {
     h.build(root);
 
     // Two builds without taking an update.
-    h.ui.set_props(card, (Role(AxRole::Group),));
+    h.ui.set_props(card, (Role(AxRole::Region),));
     h.a11y.mark_node(&h.inputs, card);
     h.layout(root);
     h.ui.set_props(root, (Role(AxRole::Navigation),));

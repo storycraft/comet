@@ -96,8 +96,11 @@ impl FragmentTree {
             .style
     }
 
-    /// The inline layout owned by a box or anonymous block fragment.
-    pub(crate) fn get_inline(&self, fragment: FragmentKey) -> Option<&InlineLayout> {
+    /// The inline layout owned by a box or anonymous block fragment: the
+    /// box of an inline formatting context, without block boxes inside, or
+    /// an anonymous block. A box whose inline content is split by blocks
+    /// owns none; its anonymous blocks do.
+    pub fn get_inline(&self, fragment: FragmentKey) -> Option<&InlineLayout> {
         self.get_state(fragment)?.inline.as_deref()
     }
 
