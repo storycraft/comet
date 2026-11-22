@@ -25,10 +25,7 @@ fn app(cx: &UiCx) -> NodeKey {
         .min_size(size(auto(), vh(100)))
         .fill(Paint::Solid(Color::from_rgb8(239, 242, 247)))
         .text_color(Paint::Solid(Color::from_rgb8(36, 46, 63)))
-        .children(|cx| {
-            counter(cx);
-            spinner(cx);
-        })
+        .children(|cx| [counter(cx), spinner(cx)])
 }
 
 fn counter(cx: &UiCx) -> NodeKey {
@@ -42,13 +39,15 @@ fn counter(cx: &UiCx) -> NodeKey {
         .justify_content(JustifyContent::CENTER)
         .gap(size(px(16), px(16)))
         .children(|cx| {
-            // Text changes lay out again.
-            cx.text_with(move || format!("Clicked {} times", count.get()))
-                .font_size(px(28))
-                .build();
-            button(cx, "Count up", move || {
-                set_count.update(|count| *count += 1)
-            });
+            [
+                // Text changes lay out again.
+                cx.text_with(move || format!("Clicked {} times", count.get()))
+                    .font_size(px(28))
+                    .build(),
+                button(cx, "Count up", move || {
+                    set_count.update(|count| *count += 1)
+                }),
+            ]
         })
 }
 

@@ -25,58 +25,65 @@ pub(super) fn showcase(cx: &UiCx) -> NodeKey {
                 .padding(axis(px(44), px(14)))
                 .fill(solid(Color::WHITE))
                 .border_radius(all(px(10)))
-                .children(stage);
+                .children(stage)
         },
     )
 }
 
-fn stage(cx: &UiCx) {
-    cx.text(
-        "Absolute boxes leave the flow, so this text and the cards below are laid out as if the tags were not there.",
-    )
-    .build();
+fn stage(cx: &UiCx) -> impl IntoView + use<> {
+    let intro = cx
+        .text(
+            "Absolute boxes leave the flow, so this text and the cards below are laid out as if the tags were not there.",
+        )
+        .build();
 
     // A relative card anchors its own absolute badge.
-    card(cx, Color::from_rgb8(224, 233, 255))
+    let relative = card(cx, Color::from_rgb8(224, 233, 255))
         .position(Position::Relative)
         .children(|cx| {
-            cx.text("Relative card").build();
-            tag(
-                cx,
-                Color::from_rgb8(229, 72, 77),
-                sides(px(-8), px(-8), auto(), auto()),
-            )
-            .text_color(solid(Color::WHITE))
-            .border_radius(all(px(10)))
-            .children(|cx| cx.text("3").build());
+            [
+                cx.text("Relative card").build(),
+                tag(
+                    cx,
+                    Color::from_rgb8(229, 72, 77),
+                    sides(px(-8), px(-8), auto(), auto()),
+                )
+                .text_color(solid(Color::WHITE))
+                .border_radius(all(px(10)))
+                .children(|cx| cx.text("3").build()),
+            ]
         });
 
     // A static card is not a containing block: its absolute child is placed
     // against the stage instead.
-    card(cx, Color::from_rgb8(255, 236, 214))
+    let fixed = card(cx, Color::from_rgb8(255, 236, 214))
         .position(Position::Static)
         .children(|cx| {
-            cx.text("Static card").build();
-            tag(
-                cx,
-                Color::from_rgb8(255, 210, 160),
-                sides(auto(), px(12), px(12), auto()),
-            )
-            .children(|cx| cx.text("declared in the static card").build());
+            [
+                cx.text("Static card").build(),
+                tag(
+                    cx,
+                    Color::from_rgb8(255, 210, 160),
+                    sides(auto(), px(12), px(12), auto()),
+                )
+                .children(|cx| cx.text("declared in the static card").build()),
+            ]
         });
 
-    tag(
+    let top_right = tag(
         cx,
         Color::from_rgb8(198, 236, 220),
         sides(px(12), px(12), auto(), auto()),
     )
     .children(|cx| cx.text("top 12 · right 12").build());
-    tag(
+    let bottom_left = tag(
         cx,
         Color::from_rgb8(226, 214, 250),
         sides(auto(), auto(), px(12), px(12)),
     )
     .children(|cx| cx.text("bottom 12 · left 12").build());
+
+    [intro, relative, fixed, top_right, bottom_left]
 }
 
 fn card(cx: &UiCx, color: Color) -> NodeBuild<'_> {

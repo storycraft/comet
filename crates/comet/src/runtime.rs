@@ -5,7 +5,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use any_spawner::{CustomExecutor, Executor, PinnedFuture, PinnedLocalFuture};
 use comet_layout::style::{geometry::Point, taffy::Overflow, unit::*};
-use comet_reactivity::{Styled, UiCx, UiTree};
+use comet_reactivity::{IntoView, Styled, UiCx, UiTree};
 use comet_tree::node::NodeKey;
 use futures::{
     executor::{LocalPool, LocalSpawner},
@@ -14,7 +14,7 @@ use futures::{
 
 /// A UI built with [`comet_reactivity`], in its own shared [`UiTree`].
 ///
-/// The component is built inside a root scroll container filling the
+/// The component's view is attached to a root scroll container filling the
 /// viewport, which scrolls the UI when it overflows.
 ///
 /// Its bindings stop once it is dropped.
@@ -22,7 +22,6 @@ pub struct UiRoot {
     tree: Rc<RefCell<UiTree>>,
     cx: UiCx,
     root: NodeKey,
-    content: NodeKey,
 }
 
 impl UiRoot {
@@ -31,26 +30,19 @@ impl UiRoot {
     /// Sets up the executor of the current thread first, unless one is set up
     /// already. Bindings re-run on it when [`poll`](Self::poll) is called,
     /// which [`run`](crate::run) does for you.
-    pub fn new(component: impl FnOnce(&UiCx) -> NodeKey) -> Self {
+    pub fn new<V: IntoView>(component: impl FnOnce(&UiCx) -> V) -> Self {
         init_executor();
 
         let tree = Rc::new(RefCell::new(UiTree::new()));
         let cx = UiCx::new(tree.clone());
-        let mut content = None;
         let root = cx.build(|cx| {
             cx.div()
                 .size(size(vw(100), vh(100)))
                 .overflow(Point::new(Overflow::Scroll, Overflow::Scroll))
-                .children(|cx| content = Some(component(cx)))
+                .children(component)
         });
-        let content = content.expect("component is built with the root");
 
-        Self {
-            tree,
-            cx,
-            root,
-            content,
-        }
+        Self { tree, cx, root }
     }
 
     pub fn tree(&self) -> &Rc<RefCell<UiTree>> {
@@ -62,14 +54,14 @@ impl UiRoot {
     }
 
     /// The root scroll container, filling the viewport and holding the
-    /// component's node.
+    /// component's nodes.
     pub fn root(&self) -> NodeKey {
         self.root
     }
 
-    /// The node returned by the component.
-    pub fn content(&self) -> NodeKey {
-        self.content
+    /// The nodes of the component's view, children of [`root`](Self::root).
+    pub fn content(&self) -> Vec<NodeKey> {
+        self.tree.borrow().ui.children(self.root).collect()
     }
 
     /// Re-run the bindings whose signals changed. Do not hold a borrow of

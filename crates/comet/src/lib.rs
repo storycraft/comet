@@ -39,6 +39,7 @@ use winit::{
 
 pub use accesskit;
 pub use comet_reactivity as reactivity;
+pub use comet_reactivity::IntoView;
 pub use event::{Interactive, on_frame, on_frame_while};
 pub use reactive_graph;
 pub use runtime::UiRoot;
@@ -49,11 +50,11 @@ use crate::pipeline::Pipeline;
 /// Distance scrolled by one line of a mouse wheel, in logical units.
 const WHEEL_LINE: f64 = 40.0;
 
-/// Build the UI with `root` and show it in a window opened with
+/// Build the UI with the `root` component and show it in a window opened with
 /// `attributes`, until the window is closed.
-pub fn run(
+pub fn run<V: IntoView>(
     attributes: WindowAttributes,
-    root: impl FnOnce(&UiCx) -> NodeKey,
+    root: impl FnOnce(&UiCx) -> V,
 ) -> Result<(), Box<dyn Error>> {
     let ui = UiRoot::new(root);
     let event_loop = EventLoop::<accesskit_winit::Event>::with_user_event().build()?;

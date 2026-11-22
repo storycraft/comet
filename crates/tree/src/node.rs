@@ -32,3 +32,14 @@ impl NodeKey {
 pub struct Text(pub String);
 
 impl StyleProp for Text {}
+
+/// A single node is a view of itself, so components building one node can
+/// return its key.
+impl IntoIterator for NodeKey {
+    type Item = NodeKey;
+    type IntoIter = core::iter::Once<NodeKey>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        core::iter::once(self)
+    }
+}

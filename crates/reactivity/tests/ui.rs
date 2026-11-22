@@ -109,8 +109,10 @@ async fn builds_nodes_with_initial_values() {
                 .style((Padding(Rect::new_all(StyleUnit::Px(4.0))),))
                 .style_with(move || FontSize(StyleUnit::Px(size.get())))
                 .children(|cx| {
-                    cx.text("a").build();
-                    cx.text_with(|| "b".to_owned()).build();
+                    [
+                        cx.text("a").build(),
+                        cx.text_with(|| "b".to_owned()).build(),
+                    ]
                 })
         });
 
@@ -151,11 +153,11 @@ async fn bindings_write_changes_and_mark_flags() {
                 .style_with(move || FontSize(StyleUnit::Px(size.get())))
                 .style_with(move || Padding(Rect::new_all(StyleUnit::Px(pad.get()))))
                 .children(|cx| {
-                    text = Some(
+                    *text.insert(
                         cx.text("text")
                             .style_with(move || TextColor(paint(red.get())))
                             .build(),
-                    );
+                    )
                 })
         });
         let text = text.unwrap();
@@ -208,11 +210,11 @@ async fn text_changes_relayout() {
         let mut badge = None;
         let root = cx.build(|cx| {
             cx.div().children(|cx| {
-                badge = Some(
+                *badge.insert(
                     cx.div()
                         .style((DisplayOuter::Inline, DisplayInner::FlowRoot))
                         .children(|cx| cx.text_with(move || label.get()).build()),
-                );
+                )
             })
         });
         let badge = badge.unwrap();
@@ -330,6 +332,101 @@ async fn unbuilt_nodes_are_released() {
         settle().await;
         assert_eq!(tree.borrow().ui.kind(key), None);
         assert!(tree.borrow().changes().is_empty());
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn built_nodes_attach_only_through_children() {
+    run(async || {
+        let tree = shared();
+        let cx = UiCx::new(tree.clone());
+
+        let a = cx.text("a").build();
+        let b = cx.text("b").build();
+        // Built nodes have no parent until returned to `children`.
+        assert_eq!(tree.borrow().ui.parent(a), None);
+
+        let root = cx.div().children(|_| vec![b, a]);
+
+        let tree = tree.borrow();
+        assert_eq!(tree.ui.children(root).collect::<Vec<_>>(), [b, a]);
+        assert_eq!(tree.ui.parent(a), Some(root));
+        assert_eq!(flags(&tree, root), PropHint::CHILDREN);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn lazy_views_build_while_attached() {
+    run(async || {
+        let tree = shared();
+        let cx = UiCx::new(tree.clone());
+
+        let root = cx.div().children(|cx| {
+            let cx = cx.clone();
+            (0..3).map(move |i| cx.text(i.to_string()).build())
+        });
+
+        let tree = tree.borrow();
+        let texts: Vec<_> = tree
+            .ui
+            .children(root)
+            .map(|child| tree.ui.prop::<Text>(child).unwrap().0.clone())
+            .collect();
+        assert_eq!(texts, ["0", "1", "2"]);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn children_belong_to_a_child_owner() {
+    run(async || {
+        let tree = shared();
+        let cx = UiCx::new(tree.clone());
+        let (size, set_size) = signal(12.0);
+
+        let mut text = None;
+        cx.div().children(|child| {
+            let parent = child.owner().parent().expect("child owner has a parent");
+            assert!(parent == *cx.owner());
+            assert!(*child.owner() != *cx.owner());
+
+            *text.insert(
+                child
+                    .text("text")
+                    .style_with(move || FontSize(StyleUnit::Px(size.get())))
+                    .build(),
+            )
+        });
+        let text = text.unwrap();
+        let font_size = || *tree.borrow().ui.prop::<FontSize>(text).unwrap();
+
+        // The child owner outlives `children`.
+        set_size.set(20.0);
+        settle().await;
+        assert_eq!(font_size(), FontSize(StyleUnit::Px(20.0)));
+
+        // And is cleaned up with its parent.
+        cx.owner().cleanup();
+        set_size.set(30.0);
+        settle().await;
+        assert_eq!(font_size(), FontSize(StyleUnit::Px(20.0)));
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn empty_views_mark_nothing() {
+    run(async || {
+        let tree = shared();
+        let cx = UiCx::new(tree.clone());
+
+        let root = cx.build(|cx| cx.div().children(|_| None));
+
+        let tree = tree.borrow();
+        assert_eq!(tree.ui.children(root).count(), 0);
+        assert!(flags(&tree, root).is_empty());
     })
     .await;
 }

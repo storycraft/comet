@@ -16,11 +16,16 @@ use reactive_graph::{
 };
 
 use crate::{
+    IntoView,
     prop::{PropHint, ReactiveProp},
     tree::UiTree,
 };
 
 /// Context for building nodes in a shared [`UiTree`].
+///
+/// Nodes built with it are not attached to any parent: components return
+/// them as a [`IntoView`], and [`NodeBuild::children`] appends the view returned
+/// by its closure to the node being built.
 ///
 /// Signals and bindings created through it belong to its [`Owner`], and stop
 /// once the last handle to that owner is dropped, so keep the root `UiCx`
@@ -30,7 +35,6 @@ use crate::{
 pub struct UiCx {
     tree: Rc<RefCell<UiTree>>,
     owner: Owner,
-    parent: Option<NodeKey>,
 }
 
 impl UiCx {
@@ -40,11 +44,7 @@ impl UiCx {
     }
 
     pub fn with_owner(tree: Rc<RefCell<UiTree>>, owner: Owner) -> Self {
-        Self {
-            tree,
-            owner,
-            parent: None,
-        }
+        Self { tree, owner }
     }
 
     pub fn tree(&self) -> &Rc<RefCell<UiTree>> {
@@ -55,22 +55,19 @@ impl UiCx {
         &self.owner
     }
 
-    /// Node that nodes built with this context are appended to.
-    pub fn parent(&self) -> Option<NodeKey> {
-        self.parent
-    }
+    /// A context building in the same tree under a new child [`Owner`] of
+    /// this context's owner. The child owner lives as long as this owner,
+    /// and is cleaned up with it.
+    pub fn child(&self) -> Self {
+        let owner = self.owner.child();
+        let kept = owner.clone();
+        self.owner.with(|| on_cleanup(move || drop(kept)));
 
-    /// The same context, appending to `parent` instead.
-    pub fn with_parent(&self, parent: Option<NodeKey>) -> Self {
-        Self {
-            tree: self.tree.clone(),
-            owner: self.owner.clone(),
-            parent,
-        }
+        Self::with_owner(self.tree.clone(), owner)
     }
 
     /// Run a component under this context's owner.
-    pub fn build<R>(&self, component: impl FnOnce(&UiCx) -> R) -> R {
+    pub fn build<V: IntoView>(&self, component: impl FnOnce(&UiCx) -> V) -> V {
         self.owner.with(|| component(self))
     }
 
@@ -159,36 +156,54 @@ impl<'a> NodeBuild<'a> {
         self
     }
 
-    /// Create the node and append it to the context's parent. Returns the
-    /// node's key.
+    /// Create the node, without a parent. Returns the node's key, a
+    /// [`IntoView`] of the node.
     pub fn build(mut self) -> NodeKey {
         self.create()
     }
 
     /// Create the node like [`Self::build`], then build its children with
-    /// `children`, whose context appends to the node. Returns the node's key.
-    pub fn children<R>(mut self, children: impl FnOnce(&UiCx) -> R) -> NodeKey {
+    /// `children` and append the nodes of the view it returns to the node,
+    /// in order. Nodes attached elsewhere are moved. Returns the node's key.
+    ///
+    /// `children` runs with a [child context](UiCx::child), so the signals
+    /// and bindings of the children belong to a child [`Owner`]. The view is
+    /// consumed under that owner too, so it may build nodes lazily.
+    pub fn children<V: IntoView>(mut self, children: impl FnOnce(&UiCx) -> V) -> NodeKey {
         let key = self.create();
-        self.cx.with_parent(Some(key)).build(children);
+        let cx = self.cx.child();
+
+        let attached = cx.owner.with(|| {
+            let mut attached = false;
+            for node in children(&cx) {
+                // Borrowed for each node only, as the view may build the
+                // next one while iterated.
+                let mut tree = cx.tree.borrow_mut();
+                if let Some(old) = tree.ui.append(key, node) {
+                    tree.mark(old, PropHint::CHILDREN);
+                }
+                attached = true;
+            }
+            attached
+        });
+
+        if attached {
+            // New children are built with the parent's children.
+            cx.tree.borrow_mut().mark(key, PropHint::CHILDREN);
+        }
+
         key
     }
 
     fn create(&mut self) -> NodeKey {
         let reserved = self.key.take().expect("node is created once");
-        let mut tree = self.cx.tree.borrow_mut();
 
-        let key = tree
+        self.cx
+            .tree
+            .borrow_mut()
             .ui
             .create_prebuilt(reserved, self.builder.build(self.kind))
-            .expect("reserved key is created once");
-
-        if let Some(parent) = self.cx.parent {
-            tree.ui.append(parent, key);
-            // New children are built with the parent's children.
-            tree.mark(parent, PropHint::CHILDREN);
-        }
-
-        key
+            .expect("reserved key is created once")
     }
 }
 
