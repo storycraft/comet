@@ -28,6 +28,8 @@ bitflags! {
         const FULL_LAYOUT = 1 << 4 | Self::BOX_LAYOUT.bits() | Self::CHILDREN.bits();
         /// Its accessibility nodes are resolved again.
         const A11Y = 1 << 5;
+        /// The layers its fragments start are checked and resolved again.
+        const LAYER = 1 << 6 | Self::RENDER.bits();
     }
 }
 
@@ -38,6 +40,9 @@ impl PropHint {
         let mut flags = DirtyFlags::empty();
         if self.contains(Self::PRE_PAINT) {
             flags = flags.union(DirtyFlags::NEED_PRE_PAINT);
+        }
+        if self.contains(Self::LAYER) {
+            flags = flags.union(DirtyFlags::NEED_LAYER);
         }
         if self.contains(Self::BOX_LAYOUT) {
             flags = flags.union(DirtyFlags::NEED_BOX_LAYOUT);
@@ -56,7 +61,8 @@ impl PropHint {
 ///
 /// Implement it for custom props, choosing the flags of the first step of
 /// each kind that reads the prop. Later layout steps follow from it: a laid
-/// out item is pre-painted again, and the pre-paint step marks layers itself.
+/// out item is pre-painted again, and the pre-paint step marks the layers of
+/// the fragments it changes.
 pub trait ReactiveProp: StyleProp + PartialEq {
     /// Flags recorded for the node when the prop changes.
     const HINT: PropHint;
@@ -67,6 +73,7 @@ const BOX: PropHint = PropHint::BOX_LAYOUT;
 const PRE_PAINT: PropHint = PropHint::PRE_PAINT;
 const REPAINT: PropHint = PropHint::RENDER;
 const A11Y: PropHint = PropHint::A11Y;
+const LAYER: PropHint = PropHint::LAYER;
 
 macro_rules! reactive_props {
     ($flags:expr => $($ty:ty),* $(,)?) => {
@@ -134,13 +141,19 @@ reactive_props!(BOX =>
 // Affects both the layout and the clip resolved by the pre-paint step.
 reactive_props!(BOX.union(PRE_PAINT) => bx::Overflow);
 
-// Resolved by the pre-paint step, which also decides stacking.
+// Resolved by the pre-paint step.
 reactive_props!(PRE_PAINT =>
-    paint::Transform,
     paint::TransformOrigin,
     paint::BorderRadius,
     paint::OutlineWidth,
     paint::OutlineOffset,
+);
+
+// Resolved into the transform by the pre-paint step, and starts a layer.
+reactive_props!(PRE_PAINT.union(LAYER) => paint::Transform);
+
+// Resolved by the layer build, which also decides stacking.
+reactive_props!(LAYER =>
     paint::ZIndex,
     paint::Opacity,
     paint::Filter,

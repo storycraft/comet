@@ -69,14 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("could not resolve pre-paint tree")?;
     let mut layers = PaintLayerTree::new();
     let layer_root = PaintLayerBuilder::new()
-        .build(
-            &fragments,
-            &inputs,
-            &dirty,
-            &prepaint,
-            &mut layers,
-            input_root,
-        )
+        .build(ui, &inputs, &dirty, &fragments, &mut layers, input_root)
         .ok_or("could not build paint layer tree")?;
     dirty.clear(&inputs, input_root);
 

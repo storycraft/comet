@@ -1,13 +1,10 @@
-use std::sync::Arc;
-
-use anyrender::filters::FilterEffect;
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
     input::{LayoutInputKey, tree::LayoutInputTree},
     style::{
         bx::Overflow,
-        geometry::{AutoValue, Point as StylePoint, Rect, StyleUnit, UnitResolveContext},
+        geometry::{Point as StylePoint, Rect, StyleUnit, UnitResolveContext},
         taffy::Overflow as OverflowMode,
     },
 };
@@ -16,10 +13,7 @@ use kurbo::{Affine, Point, RoundedRectRadii, Size};
 
 use crate::{
     prepaint::{FragmentData, LayoutInputData, tree::PrepaintTree},
-    style::{
-        BackdropFilter, BorderRadius, Filter, Opacity, OutlineOffset, OutlineWidth, Transform,
-        TransformOrigin, ZIndex,
-    },
+    style::{BorderRadius, OutlineOffset, OutlineWidth, Transform, TransformOrigin},
 };
 
 /// Builds a [`PrepaintTree`] for a fragment tree. Keep it to reuse its
@@ -72,10 +66,9 @@ impl PrepaintTreeBuilder {
     /// resolved. `dirty` is not cleared; the layer build reads it too, so
     /// call [`DirtyMap::clear`] after building layers.
     ///
-    /// Items one of whose fragments gains, loses or changes the z index of
-    /// its [stacking](crate::prepaint::FragmentData::stacking) context are
-    /// marked [`DirtyFlags::NEED_LAYER`] in `dirty`, for the layer build. A
-    /// fragment without data before counts as starting none.
+    /// Items one of whose fragments gets new data, including fragments
+    /// without data before, are marked [`DirtyFlags::NEED_LAYER`] in `dirty`,
+    /// for the layer build.
     ///
     /// Changes builds cannot see, such as paint styles, must be marked.
     ///
@@ -180,15 +173,12 @@ impl PrepaintTreeBuilder {
 
         for &key in changed.iter() {
             let data = sources.resolve_fragment(key)?;
-            let old = tree.fragment_mapping.get(key);
 
-            // The layers of a changed stacking context are placed again.
-            if old.and_then(|old| old.stacking) != data.stacking {
-                dirty.mark(inputs, fragments.items[key].source, DirtyFlags::NEED_LAYER);
-            }
-
-            if old != Some(&data) {
+            // Layers read the data of their fragments, so changed data
+            // updates the layers too.
+            if tree.fragment_mapping.get(key) != Some(&data) {
                 tree.fragment_mapping.insert(key, data);
+                dirty.mark(inputs, fragments.items[key].source, DirtyFlags::NEED_LAYER);
             }
         }
 
@@ -255,15 +245,7 @@ impl Sources<'_> {
         Some(FragmentData {
             transform,
             inverse_transform: invert(transform),
-            transform_origin,
-            stacking: box_props.and_then(stacking),
             border_radius: self.border_radius(fragment, props),
-            filter: box_props
-                .and_then(|props| props.get::<Filter>())
-                .map(|effects| filter(&effects.0, layout.overflow)),
-            backdrop_filter: box_props
-                .and_then(|props| props.get::<BackdropFilter>())
-                .map(|effects| filter(&effects.0, layout.border_box())),
         })
     }
 
@@ -352,31 +334,6 @@ fn border_radius(
         resolve(radius.right_bottom.y),
         resolve(radius.left_top.x),
     )
-}
-
-/// The z index of the paint layer a box starts, or `None` if it paints in
-/// the layer of its parent. Setting a layer style starts a layer, whatever
-/// its value. An auto z index counts as 0.
-fn stacking(props: Props<'_>) -> Option<i32> {
-    if let AutoValue::Value(z_index) = props.get_or_default::<ZIndex>().0 {
-        return Some(z_index);
-    }
-
-    let starts = props.get::<Transform>().is_some()
-        || props.get::<Opacity>().is_some()
-        || props.get::<Filter>().is_some()
-        || props.get::<BackdropFilter>().is_some();
-
-    starts.then_some(0)
-}
-
-/// A filter applying `effects` in order to content within `bounds`, its
-/// region grown by the expansion of each effect.
-fn filter(effects: &[FilterEffect], bounds: kurbo::Rect) -> Arc<anyrender::Filter> {
-    Arc::new(anyrender::Filter::linear_list(
-        effects.iter().cloned(),
-        bounds,
-    ))
 }
 
 /// The inverse of `transform`, or `None` if it collapses an axis and has no

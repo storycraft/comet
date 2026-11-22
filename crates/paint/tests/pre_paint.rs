@@ -179,28 +179,15 @@ impl Fixture {
         colors
     }
 
-    /// Border boxes of the fragments an item links together, each in its own
-    /// local coordinates.
-    fn linked_rects(&self, node: NodeKey) -> Vec<Rect> {
-        self.fragments
-            .fragments(self.item(node))
-            .map(|key| {
-                let size = self.fragments.items[key].layout.size;
-
-                Rect::from_origin_size(Point::ORIGIN, (size.width, size.height))
-            })
-            .collect()
-    }
-
     /// Build the paint layers of the whole fragment tree, with their root.
-    fn layers(&self) -> (PaintLayerTree, PaintLayerKey) {
+    fn layers(&self, ui: &Ui) -> (PaintLayerTree, PaintLayerKey) {
         let mut layers = PaintLayerTree::new();
         let root = PaintLayerBuilder::new()
             .build(
-                &self.fragments,
+                ui,
                 &self.inputs,
                 &self.dirty,
-                &self.prepaint,
+                &self.fragments,
                 &mut layers,
                 self.input_root.unwrap(),
             )
@@ -211,7 +198,7 @@ impl Fixture {
 
     fn draw(&self, ui: &Ui) -> Scene {
         let mut scene = Scene::new();
-        let (layers, root) = self.layers();
+        let (layers, root) = self.layers(ui);
         CometPainter::new().draw(
             ui,
             &self.inputs,
@@ -299,46 +286,16 @@ fn fragments_resolve_transforms_relative_to_their_parents() {
     assert_eq!(f.transform(root_fragment), Affine::IDENTITY);
     assert_eq!(f.transform(f.box_of(block)), Affine::translate((5.0, 5.0)));
 
-    // The block is transformed around the centre of its own border box.
     let block_fragment = f.fragment(f.box_of(block));
-    assert_eq!(block_fragment.transform_origin, Point::new(20.0, 10.0));
     assert_eq!(
         block_fragment.inverse_transform,
         Some(Affine::translate((-5.0, -5.0)))
     );
     assert_eq!(f.clip(block), (false, false));
 
-    // Each glyph run has its own origin, at its centre.
+    // Glyph runs are placed at their location.
     let runs: Vec<_> = f.fragments.fragments(f.item(content)).collect();
     assert!(!runs.is_empty());
-    for (key, rect) in runs.into_iter().zip(f.linked_rects(content)) {
-        assert_eq!(f.fragment(key).transform_origin, rect.center());
-    }
-}
-
-#[test]
-fn wrapped_inline_elements_transform_each_fragment_around_its_centre() {
-    let mut ui = Ui::new();
-    let root = ui.create(Node::Box, ());
-    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
-    ui.append(root, span);
-    text(
-        &mut ui,
-        span,
-        "one two three four five six seven eight nine ten",
-    );
-
-    let mut f = Fixture::default();
-    f.build(&ui, root);
-
-    let rects = f.linked_rects(span);
-    assert!(rects.len() > 1);
-
-    // Each fragment is transformed around its own centre.
-    let fragments: Vec<_> = f.fragments.fragments(f.item(span)).collect();
-    for (key, rect) in fragments.into_iter().zip(rects) {
-        assert_eq!(f.fragment(key).transform_origin, rect.center());
-    }
 }
 
 #[test]
@@ -575,14 +532,12 @@ fn transforms_multiply_around_their_origins() {
     let outer_transform =
         Affine::translate((50.0, 20.0)) * Affine::scale(2.0) * Affine::translate((-50.0, -20.0));
 
-    assert_eq!(f.boxed(outer).transform_origin, Point::new(50.0, 20.0));
     assert_affine(f.boxed(outer).transform, outer_transform);
     // A translation is the same around any origin. Ancestor transforms are
     // not included.
     assert_affine(f.boxed(inner).transform, Affine::translate((5.0, 0.0)));
 
     // Placed at its location in the outer box, then scaled around its corner.
-    assert_eq!(f.boxed(corner).transform_origin, Point::ORIGIN);
     assert_affine(
         f.boxed(corner).transform,
         Affine::translate((0.0, 10.0)) * Affine::scale(3.0),
@@ -823,14 +778,12 @@ fn resolving_follows_the_layout() {
     let root_fragment = f.root.unwrap();
     f.resolve(&ui, root_fragment).unwrap();
 
-    assert_eq!(f.boxed(clipper).transform_origin, Point::new(25.0, 10.0));
     assert_affine(
         f.transform(clipper_fragment),
         Affine::translate((3.0, 30.0)),
     );
-    // The root grew, so its origin moved, but it stays in place.
+    // The root grew, but it stays in place.
     assert_eq!(f.boxed(root).transform, root_data.transform);
-    assert_ne!(f.boxed(root).transform_origin, root_data.transform_origin);
     f.assert_matches_full_resolve(&ui, root_fragment);
 }
 
@@ -1011,7 +964,7 @@ fn resolving_marked_fragments_leaves_unmarked_descendants_as_they_are() {
 
     // Only the parent's item and fragment are resolved again.
     assert_eq!(f.clip(parent), (true, true));
-    assert_eq!(f.boxed(parent).stacking, Some(0));
+    assert_eq!(f.boxed(parent).transform.as_coeffs()[0], 2.0);
     assert_eq!(f.clip(child), (false, false));
     assert_eq!(f.boxed(child), &child_data);
 
@@ -1020,7 +973,7 @@ fn resolving_marked_fragments_leaves_unmarked_descendants_as_they_are() {
     f.resolve(&ui, f.root.unwrap()).unwrap();
 
     assert_eq!(f.clip(child), (true, true));
-    assert_eq!(f.boxed(child).stacking, Some(0));
+    assert_eq!(f.boxed(child).transform.as_coeffs()[0], 3.0);
 }
 
 #[test]
@@ -1177,7 +1130,7 @@ impl Fixture {
     /// viewport scaled with it.
     fn draw_scaled(&self, ui: &Ui, scale_factor: f64) -> Scene {
         let mut scene = Scene::new();
-        let (layers, root) = self.layers();
+        let (layers, root) = self.layers(ui);
         CometPainter::new().draw(
             ui,
             &self.inputs,
@@ -1417,8 +1370,12 @@ fn resolves_both_changed_and_marked_fragments() {
     assert_affine(f.boxed(wrapper).transform, Affine::translate((0.0, 30.0)));
     assert!(f.boxed(marked).border_radius.is_some());
 
-    // The resolver keeps the flags for the caller to clear.
-    assert_eq!(f.dirty.entry(f.item(marked)).flags, prepaint);
+    // The resolver keeps the flags for the caller to clear, and marks the
+    // layers of the fragments it changed.
+    assert_eq!(
+        f.dirty.entry(f.item(marked)).flags,
+        prepaint | DirtyFlags::NEED_LAYER
+    );
     f.clear_flags();
     assert!(f.dirty.entry(f.item(marked)).flags.is_empty());
     assert!(f.dirty.entry(f.item(root)).child_bits.is_empty());

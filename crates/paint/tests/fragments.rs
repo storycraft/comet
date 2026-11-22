@@ -161,10 +161,10 @@ fn draw(
     let mut layers = PaintLayerTree::new();
     let layer_root = PaintLayerBuilder::new()
         .build(
-            tree,
+            ui,
             inputs,
             dirty,
-            &prepaint,
+            tree,
             &mut layers,
             tree.items[root].source,
         )

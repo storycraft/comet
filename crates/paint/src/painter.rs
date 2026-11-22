@@ -19,7 +19,7 @@ use slotmap::SecondaryMap;
 use crate::{
     layer::{PaintLayerKey, tree::PaintLayerTree},
     prepaint::{FragmentData, LayoutInputData, tree::PrepaintTree},
-    style::{BorderFill, Fill, Opacity, OutlineFill, TextColor},
+    style::{BorderFill, Fill, OutlineFill, TextColor},
 };
 
 /// Paints final fragments in the order of their [`PaintLayerTree`], with the
@@ -219,9 +219,10 @@ impl CometPainter {
         clip: Option<Rect>,
         scene: &mut impl PaintScene,
     ) {
-        let Some(owner) = sources.layers.layers.get(key).map(|item| item.owner) else {
+        let Some(layer) = sources.layers.layers.get(key) else {
             return;
         };
+        let owner = layer.owner;
         let (Some(fragment), Some(own)) = (
             sources.tree.items.get(owner),
             sources.prepaint.fragment(owner),
@@ -229,22 +230,14 @@ impl CometPainter {
             return;
         };
 
-        let props = sources
-            .inputs
-            .items
-            .get(fragment.source)
-            .and_then(|item| sources.ui.props(item.node));
-        let opacity = props.map_or(1.0, |props| {
-            let Opacity(opacity) = props.get_or_default();
-            opacity.clamp(0.0, 1.0)
-        });
+        let opacity = layer.opacity;
 
         if opacity <= 0.0 {
             return;
         }
 
-        let filter = own.filter.clone();
-        let backdrop_filter = own.backdrop_filter.clone();
+        let filter = layer.filter.clone();
+        let backdrop_filter = layer.backdrop_filter.clone();
         let transforms = parent.then(own);
 
         if let Some(backdrop_filter) = backdrop_filter {
@@ -270,7 +263,7 @@ impl CometPainter {
             scene.push_layer(
                 peniko::Fill::NonZero,
                 BlendMode::default(),
-                opacity as f32,
+                opacity,
                 transforms.transform,
                 &inverse.transform_rect_bbox(sources.viewport),
                 filter,

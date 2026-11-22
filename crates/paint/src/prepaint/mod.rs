@@ -16,8 +16,6 @@ pub mod tree;
 
 #[cfg(doc)]
 use comet_layout::dirty_map::DirtyFlags;
-use std::sync::Arc;
-
 use comet_layout::fragment::Fragment;
 use kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii};
 
@@ -47,8 +45,8 @@ pub struct LayoutInputData {
 pub struct FragmentData {
     /// Maps the fragment's local coordinates, with its border box's top-left
     /// corner at the origin, to the local coordinates of its parent fragment.
-    /// Applies its own [`Transform`](crate::style::Transform) around
-    /// [`Self::transform_origin`], then places the fragment at its layout
+    /// Applies its own [`Transform`](crate::style::Transform) around its
+    /// transform origin, then places the fragment at its layout
     /// location: `translate(location + origin) * transform *
     /// translate(-origin)`. Ancestor transforms are not included: multiply
     /// them from the root down to map into scene coordinates.
@@ -61,24 +59,6 @@ pub struct FragmentData {
     /// scene.
     pub inverse_transform: Option<Affine>,
 
-    /// Point the fragment's own transform is applied around, relative to its
-    /// border box's top-left corner. The centre of its border box, unless a
-    /// box sets [`TransformOrigin`](crate::style::TransformOrigin).
-    pub transform_origin: Point,
-
-    /// Z index of the paint layer the fragment starts, or `None` if it paints
-    /// in the layer of its parent. See
-    /// [`PaintLayerTree`](crate::layer::tree::PaintLayerTree).
-    ///
-    /// Only boxes start layers: when their item sets a
-    /// [`Transform`](crate::style::Transform), an
-    /// [`Opacity`](crate::style::Opacity), a
-    /// [`Filter`](crate::style::Filter) or a
-    /// [`BackdropFilter`](crate::style::BackdropFilter), whatever its value,
-    /// or a [`ZIndex`](crate::style::ZIndex) other than auto. An auto z index
-    /// counts as 0.
-    pub stacking: Option<i32>,
-
     /// Corner radii of the fragment's border box, resolved from its item's
     /// [`BorderRadius`](crate::style::BorderRadius) with its font size,
     /// against the fragment's own size: percentages resolve against its
@@ -90,24 +70,6 @@ pub struct FragmentData {
     /// `None` for fragments painting no box, such as line boxes and anonymous
     /// blocks, or items setting no radius.
     pub border_radius: Option<RoundedRectRadii>,
-
-    /// Filter of the fragment and its contents, built from its item's
-    /// [`Filter`](crate::style::Filter) effects, in the fragment's local
-    /// coordinates. The filter region is the fragment's
-    /// [overflow](comet_layout::fragment::FragmentBox::overflow), grown by the
-    /// expansion of each effect.
-    ///
-    /// `None` for fragments other than boxes, or items setting no filter.
-    pub filter: Option<Arc<anyrender::Filter>>,
-
-    /// Filter of what is painted behind the fragment, built from its item's
-    /// [`BackdropFilter`](crate::style::BackdropFilter) effects, in the
-    /// fragment's local coordinates. The filter region is the fragment's
-    /// border box, grown by the expansion of each effect.
-    ///
-    /// `None` for fragments other than boxes, or items setting no backdrop
-    /// filter.
-    pub backdrop_filter: Option<Arc<anyrender::Filter>>,
 }
 
 impl FragmentData {

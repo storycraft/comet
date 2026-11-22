@@ -128,10 +128,10 @@ impl Pipeline {
         // the layers whose fragments gained, lost or reordered a layer.
         let layer_root = resolved.and_then(|()| {
             self.layer_builder.build(
-                &self.fragments,
+                ui,
                 &self.inputs,
                 &self.dirty,
-                &self.prepaint,
+                &self.fragments,
                 &mut self.layers,
                 input_root,
             )
