@@ -6,7 +6,7 @@ use std::time::Instant;
 use accesskit::{Action, ActionRequest, TreeUpdate};
 use comet_layout::style::{bx::Overflow, taffy::Overflow as OverflowKind};
 use comet_paint::style::{ScrollLeft, ScrollTop};
-use comet_reactivity::{IntoView, UiCx};
+use comet_reactivity::UiCx;
 use comet_tree::node::NodeKey;
 use dpi::PhysicalSize;
 use kurbo::{Point, Size, Vec2};
@@ -157,8 +157,9 @@ pub struct Window {
 
 impl Window {
     /// Build the UI with the `root` component, under a new owner providing
-    /// the window's [`WindowState`] as context.
-    pub fn new<V: IntoView>(root: impl FnOnce(&UiCx) -> V) -> Self {
+    /// the window's [`WindowState`] as context. The node it returns is the
+    /// root of the layout.
+    pub fn new(root: impl FnOnce(&UiCx) -> NodeKey) -> Self {
         let owner = Owner::new();
         let (state, writers, listeners) = owner.with(|| {
             let (state, writers) = WindowState::new();
@@ -194,7 +195,7 @@ impl Window {
         &self.ui
     }
 
-    /// The root scroll container, filling the viewport.
+    /// The node built by the root component.
     pub fn root(&self) -> NodeKey {
         self.ui.root()
     }

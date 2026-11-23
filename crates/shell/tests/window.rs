@@ -149,7 +149,7 @@ fn window(log: &Log) -> (Window, Rc<RefCell<Option<Nodes>>>) {
                 inner: inner.unwrap(),
                 second,
             });
-            [outer, second]
+            cx.div().children(|_| [outer, second])
         }
     });
 
@@ -333,7 +333,7 @@ fn wheel_scrolls_the_innermost_scroll_container() {
             .children(|cx| cx.div().size(size(px(100), px(300))).build())
     });
     open(&mut window);
-    let scroller = window.ui().content()[0];
+    let scroller = window.root();
 
     window.pointer_event(&PointerEvent::Scroll(PointerScrollEvent {
         pointer: MOUSE,

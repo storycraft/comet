@@ -17,7 +17,7 @@ use comet_tree::{
 const VIEWPORT: Size<f64> = Size::new(640.0, 920.0);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let sample = comet::UiRoot::new(common::sample_ui);
+    let sample = comet::UiRoot::new(common::app);
     let root = sample.root();
     let ui = &mut sample.tree().borrow_mut().ui;
     let mut tree = LayoutInputTree::new();

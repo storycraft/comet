@@ -4,8 +4,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use any_spawner::{CustomExecutor, Executor, PinnedFuture, PinnedLocalFuture};
-use comet_layout::style::{geometry::Point, taffy::Overflow, unit::*};
-use comet_reactivity::{IntoView, Styled, UiCx, UiTree};
+use comet_reactivity::{UiCx, UiTree};
 use comet_tree::node::NodeKey;
 use futures::{
     executor::{LocalPool, LocalSpawner},
@@ -14,8 +13,8 @@ use futures::{
 
 /// A UI built with [`comet_reactivity`], in its own shared [`UiTree`].
 ///
-/// The component's view is attached to a root scroll container filling the
-/// viewport, which scrolls the UI when it overflows.
+/// The node built by the root component is the root of the layout, laid
+/// out against the viewport.
 ///
 /// Its bindings stop once it is dropped.
 pub struct UiRoot {
@@ -30,17 +29,12 @@ impl UiRoot {
     /// Sets up the executor of the current thread first, unless one is set up
     /// already. Bindings re-run on it when [`poll`](Self::poll) is called,
     /// which [`Window::poll`](crate::Window::poll) does for you.
-    pub fn new<V: IntoView>(component: impl FnOnce(&UiCx) -> V) -> Self {
+    pub fn new(component: impl FnOnce(&UiCx) -> NodeKey) -> Self {
         init_executor();
 
         let tree = Rc::new(RefCell::new(UiTree::new()));
         let cx = UiCx::new(tree.clone());
-        let root = cx.build(|cx| {
-            cx.div()
-                .size(size(vw(100), vh(100)))
-                .overflow(Point::new(Overflow::Scroll, Overflow::Scroll))
-                .children(component)
-        });
+        let root = cx.build(component);
 
         Self { tree, cx, root }
     }
@@ -53,15 +47,9 @@ impl UiRoot {
         &self.cx
     }
 
-    /// The root scroll container, filling the viewport and holding the
-    /// component's nodes.
+    /// The node built by the root component.
     pub fn root(&self) -> NodeKey {
         self.root
-    }
-
-    /// The nodes of the component's view, children of [`root`](Self::root).
-    pub fn content(&self) -> Vec<NodeKey> {
-        self.tree.borrow().ui.children(self.root).collect()
     }
 
     /// Re-run the bindings whose signals changed. Do not hold a borrow of

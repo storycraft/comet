@@ -17,6 +17,7 @@ use accesskit_winit::{Adapter, WindowEvent as AccessKitEvent};
 use anyrender::WindowRenderer;
 use anyrender_vello_gpu::VelloGpuWindowRenderer;
 use comet_reactivity::UiCx;
+use comet_tree::node::NodeKey;
 use comet_shell::{
     Window,
     ui_events::{keyboard::KeyboardEvent, pointer::PointerEvent},
@@ -41,9 +42,9 @@ pub use winit;
 
 /// Build the UI with the `root` component and show it in a window opened with
 /// `attributes`, until the window is closed.
-pub fn run<V: IntoView>(
+pub fn run(
     attributes: WindowAttributes,
-    root: impl FnOnce(&UiCx) -> V,
+    root: impl FnOnce(&UiCx) -> NodeKey,
 ) -> Result<(), Box<dyn Error>> {
     let window = Window::new(root);
     let event_loop = EventLoop::<accesskit_winit::Event>::with_user_event().build()?;

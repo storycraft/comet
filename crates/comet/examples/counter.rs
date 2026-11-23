@@ -10,7 +10,11 @@ use comet::{
     shell::event::{Key, KeyboardEvent, NamedKey},
     winit::window::WindowAttributes,
 };
-use comet_layout::style::{parley, taffy::Position};
+use comet_layout::style::{
+    geometry::Point,
+    parley,
+    taffy::{Overflow, Position},
+};
 use comet_layout_flex::styles::taffy::{AlignItems, FlexDirection, JustifyContent};
 use comet_tree::node::NodeKey;
 use kurbo::Affine;
@@ -20,7 +24,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     comet::run(WindowAttributes::default().with_title("comet counter"), app)
 }
 
+/// The counter in a scroll container filling the window, which scrolls
+/// when it overflows.
 fn app(cx: &UiCx) -> NodeKey {
+    cx.div()
+        .size(size(vw(100), vh(100)))
+        .overflow(Point::new(Overflow::Scroll, Overflow::Scroll))
+        .children(content)
+}
+
+fn content(cx: &UiCx) -> NodeKey {
     // A flex root shrinks to its content without a width; fill the window so
     // the halves below have a width to take.
     cx.div()

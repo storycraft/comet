@@ -219,7 +219,12 @@ fn remove_stops_a_listener_even_from_its_own_call() {
     window.keyboard_event(&key(Key::Character("a".into())));
     window.keyboard_event(&key(Key::Character("b".into())));
 
-    assert_eq!(*log.borrow(), ["listener"], "called once");
+    // Keys also reach the box, the root, without focus.
+    assert_eq!(
+        log.borrow().iter().filter(|entry| *entry == "listener").count(),
+        1,
+        "called once"
+    );
     assert!(!listener.is_active());
     assert_eq!(listener.phase(), None);
 }

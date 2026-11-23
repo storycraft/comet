@@ -7,8 +7,9 @@ use anyrender::Paint;
 use comet::prelude::*;
 use comet_layout::style::{
     bx::{DisplayInner, DisplayOuter},
-    geometry::AutoValue,
+    geometry::{AutoValue, Point},
     parley::{self, Alignment},
+    taffy::Overflow,
 };
 use comet_layout_flex::styles::taffy::FlexWrap;
 use comet_tree::node::NodeKey;
@@ -17,6 +18,20 @@ use peniko::Color;
 pub const BACKGROUND: Color = Color::from_rgb8(239, 242, 247);
 /// Color of captions and headings.
 pub const MUTED: Color = Color::from_rgb8(97, 109, 128);
+
+/// The sample UI in a scroll container filling the window.
+pub fn app(cx: &UiCx) -> NodeKey {
+    scroll_root(cx, sample_ui)
+}
+
+/// A scroll container filling the viewport, holding the node built by
+/// `content`, which scrolls when it overflows the window.
+pub fn scroll_root(cx: &UiCx, content: impl FnOnce(&UiCx) -> NodeKey) -> NodeKey {
+    cx.div()
+        .size(size(vw(100), vh(100)))
+        .overflow(Point::new(Overflow::Scroll, Overflow::Scroll))
+        .children(content)
+}
 
 pub fn sample_ui(cx: &UiCx) -> NodeKey {
     cx.div()

@@ -27,7 +27,7 @@ const HEIGHT: u32 = 1400;
 const SCALE_FACTOR: f64 = 1.0;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let sample = comet::UiRoot::new(common::sample_ui);
+    let sample = comet::UiRoot::new(common::app);
     let (tree, root) = (sample.tree().borrow(), sample.root());
     let ui = &tree.ui;
     // Layout works in logical units.
