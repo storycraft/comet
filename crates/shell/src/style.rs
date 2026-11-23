@@ -85,7 +85,7 @@ define_style_props!(
     /// shows when none does. Without the prop, text nodes show
     /// [`CursorIcon::Text`] and boxes are `Auto`.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub Cursor: AutoValue<Option<CursorIcon>>;
+    pub Cursor: AutoValue<Option<CursorIcon>> = AutoValue::Auto;
 );
 
 /// A prop holding a [`Handler`].

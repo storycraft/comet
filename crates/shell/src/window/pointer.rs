@@ -230,10 +230,13 @@ impl Window {
             let ui = &tree.ui;
 
             for hit in &self.pointer.path {
-                cursor = match ui.prop::<Cursor>(hit.node).map(|prop| prop.0) {
-                    Some(AutoValue::Value(icon)) => icon,
-                    Some(AutoValue::Auto) => cursor,
-                    None => match ui.kind(hit.node) {
+                cursor = match ui
+                    .prop::<Cursor>(hit.node)
+                    .map(|prop| prop.0)
+                    .unwrap_or_default()
+                {
+                    AutoValue::Value(icon) => icon,
+                    AutoValue::Auto => match ui.kind(hit.node) {
                         Some(Node::Text) => Some(CursorIcon::Text),
                         Some(Node::Box) => Some(CursorIcon::Default),
                         // Removed since the hit test.
