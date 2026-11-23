@@ -2,6 +2,7 @@ mod absolute;
 mod flex;
 mod layers;
 mod reactive;
+mod scroll;
 
 use anyrender::Paint;
 use comet::prelude::*;
@@ -68,6 +69,7 @@ pub fn sample_ui(cx: &UiCx) -> NodeKey {
                         transforms,
                         effects,
                         reactive::showcase(cx),
+                        scroll::showcase(cx),
                     ]
                 });
 
