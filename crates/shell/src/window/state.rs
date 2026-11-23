@@ -9,7 +9,7 @@ use reactive_graph::{
     traits::{GetUntracked, Set},
 };
 
-use crate::selection::Selection;
+use crate::{cursor::CursorIcon, selection::Selection};
 
 /// Window state as signals, for components to follow. Provided as context
 /// to the window's components: see [`use_window`].
@@ -26,6 +26,9 @@ pub struct WindowState {
     pub occluded: ReadSignal<bool>,
     /// Whether a pointer is over the window.
     pub pointer_inside: ReadSignal<bool>,
+    /// The mouse cursor to show, `None` hiding it: the
+    /// [`Cursor`](crate::style::Cursor) of the node under the pointer.
+    pub cursor: ReadSignal<Option<CursorIcon>>,
     /// Notified when the user asks to close the window.
     pub close_requested: Trigger,
     /// Keep the window open when the user asks to close it.
@@ -46,6 +49,7 @@ pub(super) struct StateWriters {
     pub focused: WriteSignal<bool>,
     pub occluded: WriteSignal<bool>,
     pub pointer_inside: WriteSignal<bool>,
+    pub cursor: WriteSignal<Option<CursorIcon>>,
 }
 
 impl WindowState {
@@ -56,6 +60,7 @@ impl WindowState {
         let (focused, set_focused) = signal(false);
         let (occluded, set_occluded) = signal(false);
         let (pointer_inside, set_pointer_inside) = signal(false);
+        let (cursor, set_cursor) = signal(Some(CursorIcon::Default));
 
         (
             Self {
@@ -65,6 +70,7 @@ impl WindowState {
                 focused,
                 occluded,
                 pointer_inside,
+                cursor,
                 close_requested: Trigger::new(),
                 prevent_close: RwSignal::new(false),
                 focused_node: RwSignal::new(None),
@@ -77,6 +83,7 @@ impl WindowState {
                 focused: set_focused,
                 occluded: set_occluded,
                 pointer_inside: set_pointer_inside,
+                cursor: set_cursor,
             },
         )
     }

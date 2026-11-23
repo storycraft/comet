@@ -14,6 +14,7 @@
 //!
 //! Signals are only expected to be set on the thread running the window.
 
+pub mod cursor;
 pub mod event;
 pub mod listeners;
 pub mod pipeline;
@@ -25,6 +26,7 @@ pub mod window;
 pub use accesskit;
 pub use ui_events;
 
+pub use cursor::CursorIcon;
 pub use event::{ClickEvent, EventCx, FocusEvent, Handler};
 pub use listeners::{
     FrameCx, FrameEvent, FrameListener, Phase, WindowListener, on_frame, on_frame_while,

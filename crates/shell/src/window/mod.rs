@@ -33,6 +33,7 @@ use self::{
     viewport::Viewport,
 };
 use crate::{
+    cursor::CursorIcon,
     event::{KeyboardEvent, PointerEvent},
     listeners::Listeners,
     pipeline::Pipeline,
@@ -126,6 +127,12 @@ impl Window {
         &mut self.pipeline
     }
 
+    /// The mouse cursor to show, `None` hiding it, also followed by
+    /// [`WindowState::cursor`].
+    pub fn cursor(&self) -> Option<CursorIcon> {
+        self.state.cursor.get_untracked()
+    }
+
     pub fn selection(&self) -> Option<Selection> {
         self.selection.current
     }
@@ -204,6 +211,8 @@ impl Window {
             self.pointer.capture = None;
         }
         self.sync_selection();
+        // Cursors bound to signals change without the pointer moving.
+        self.update_cursor();
 
         self.ui.poll();
     }

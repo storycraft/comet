@@ -1,16 +1,19 @@
-//! Pointer input: hit testing, hover, clicks and wheel scrolling.
+//! Pointer input: hit testing, hover, the cursor, clicks and wheel
+//! scrolling.
 
-use comet_layout::style::{bx::Overflow, taffy::Overflow as OverflowKind};
+use comet_layout::style::{bx::Overflow, geometry::AutoValue, taffy::Overflow as OverflowKind};
 use comet_paint::style::{ScrollLeft, ScrollTop};
-use comet_tree::node::NodeKey;
+use comet_tree::node::{Node, NodeKey};
 use kurbo::Point;
 use ui_events::pointer::PointerButton;
 
 use super::{Window, state::update};
 use crate::{
+    cursor::CursorIcon,
     event::{ClickEvent, Modifiers, PointerEvent, PointerInfo, ScrollDelta},
+    pipeline::Hit,
     style::{
-        Focusable, OnClick, OnPointerDown, OnPointerEnter, OnPointerLeave, OnPointerMove,
+        Cursor, Focusable, OnClick, OnPointerDown, OnPointerEnter, OnPointerLeave, OnPointerMove,
         OnPointerUp, OnScroll,
     },
 };
@@ -20,6 +23,10 @@ use crate::{
 pub(super) struct PointerState {
     /// Pointer position in logical units, the units of the layout.
     pub cursor: Option<Point>,
+    /// The path to the fragment under the pointer at its last event, from
+    /// the root down, hit tested once per event. Empty outside the window or
+    /// over no fragment.
+    pub path: Vec<Hit>,
     /// The pointer of the last pointer event.
     pub info: Option<PointerInfo>,
     /// Nodes under the pointer, innermost first.
@@ -37,11 +44,11 @@ impl Window {
             PointerEvent::Move(update) => {
                 let position = update.current.logical_point();
                 self.pointer.info = Some(update.pointer);
-                self.pointer.cursor = Some(position);
+                self.hit_test(Some(position));
                 self.set_pointer_inside(true);
                 self.update_hover();
 
-                let (path, local) = self.target_path(position);
+                let (path, local) = self.target_path();
                 let prevented = self.dispatch_pointer::<OnPointerMove>(
                     &path,
                     Some(position),
@@ -57,9 +64,9 @@ impl Window {
             PointerEvent::Down(button) => {
                 let position = button.state.logical_point();
                 self.pointer.info = Some(button.pointer);
-                self.pointer.cursor = Some(position);
+                self.hit_test(Some(position));
 
-                let (path, local) = self.target_path(position);
+                let (path, local) = self.target_path();
                 let prevented = self.dispatch_pointer::<OnPointerDown>(
                     &path,
                     Some(position),
@@ -83,16 +90,16 @@ impl Window {
 
                     if button.button == Some(PointerButton::Primary) {
                         let extend = button.state.modifiers.contains(Modifiers::SHIFT);
-                        self.start_selection(position, button.state.count, extend);
+                        self.start_selection(button.state.count, extend);
                     }
                 }
             }
             PointerEvent::Up(button) => {
                 let position = button.state.logical_point();
                 self.pointer.info = Some(button.pointer);
-                self.pointer.cursor = Some(position);
+                self.hit_test(Some(position));
 
-                let (path, local) = self.target_path(position);
+                let (path, local) = self.target_path();
                 self.dispatch_pointer::<OnPointerUp>(
                     &path,
                     Some(position),
@@ -105,7 +112,7 @@ impl Window {
 
                 // Clicked when released over the node it was pressed on.
                 if let Some(pressed) = self.pointer.pressed.take()
-                    && self.hit_path(position).contains(&pressed)
+                    && self.hit_ancestors().contains(&pressed)
                 {
                     let path = self.ancestors(Some(pressed));
                     let click = ClickEvent {
@@ -129,7 +136,7 @@ impl Window {
             }
             PointerEvent::Leave(pointer) => {
                 self.pointer.info = Some(*pointer);
-                self.pointer.cursor = None;
+                self.hit_test(None);
                 self.set_pointer_inside(false);
                 self.update_hover();
                 self.window_pointer(event, None);
@@ -137,9 +144,9 @@ impl Window {
             PointerEvent::Scroll(scroll) => {
                 let position = scroll.state.logical_point();
                 self.pointer.info = Some(scroll.pointer);
-                self.pointer.cursor = Some(position);
+                self.hit_test(Some(position));
 
-                let (path, local) = self.target_path(position);
+                let (path, local) = self.target_path();
                 if !self.dispatch_pointer::<OnScroll>(
                     &path,
                     Some(position),
@@ -157,6 +164,22 @@ impl Window {
         }
     }
 
+    /// Move the pointer to `position`, hit testing the path under it from
+    /// the last layout, or leave the window with `None`.
+    fn hit_test(&mut self, position: Option<Point>) {
+        self.pointer.cursor = position;
+
+        match position {
+            Some(position) => self.pipeline.hit_path(position, &mut self.pointer.path),
+            None => self.pointer.path.clear(),
+        }
+    }
+
+    /// The node under the pointer and its ancestors, innermost first.
+    fn hit_ancestors(&self) -> Vec<NodeKey> {
+        self.ancestors(self.pointer.path.last().map(|hit| hit.node))
+    }
+
     fn set_pointer_inside(&mut self, inside: bool) {
         update(
             self.state.pointer_inside,
@@ -168,11 +191,7 @@ impl Window {
     /// Call the leave handlers of the nodes the pointer left, innermost
     /// first, then the enter handlers of those it entered, outermost first.
     fn update_hover(&mut self) {
-        let path = self
-            .pointer
-            .cursor
-            .map(|cursor| self.hit_path(cursor))
-            .unwrap_or_default();
+        let path = self.hit_ancestors();
         let hovered = &self.pointer.hovered;
         let left: Vec<_> = hovered
             .iter()
@@ -186,6 +205,7 @@ impl Window {
             .filter(|node| !hovered.contains(node))
             .collect();
         self.pointer.hovered = path;
+        self.update_cursor();
 
         let (Some(info), cursor) = (self.pointer.info, self.pointer.cursor) else {
             return;
@@ -196,6 +216,34 @@ impl Window {
         for node in entered {
             self.dispatch::<OnPointerEnter>(&[node], cursor, None, &info);
         }
+    }
+
+    /// Follow the [`Cursor`] under the pointer with
+    /// [`WindowState::cursor`](super::WindowState::cursor), down the hit
+    /// path: each node sets the cursor, or keeps the one above it with
+    /// `Auto`. Without the prop, text nodes show [`CursorIcon::Text`] and
+    /// boxes [`CursorIcon::Default`]. `None` hides it.
+    pub(super) fn update_cursor(&mut self) {
+        let mut cursor = Some(CursorIcon::Default);
+        {
+            let tree = self.ui.tree().borrow();
+            let ui = &tree.ui;
+
+            for hit in &self.pointer.path {
+                cursor = match ui.prop::<Cursor>(hit.node).map(|prop| prop.0) {
+                    Some(AutoValue::Value(icon)) => icon,
+                    Some(AutoValue::Auto) => cursor,
+                    None => match ui.kind(hit.node) {
+                        Some(Node::Text) => Some(CursorIcon::Text),
+                        Some(Node::Box) => Some(CursorIcon::Default),
+                        // Removed since the hit test.
+                        None => cursor,
+                    },
+                };
+            }
+        }
+
+        update(self.state.cursor, self.writers.cursor, cursor);
     }
 
     /// Scroll the innermost scroll container of `path` that can still move
@@ -237,26 +285,17 @@ impl Window {
         }
     }
 
-    /// The node capturing the pointer, or the node under `position`, with
-    /// its ancestors, innermost first, and the position in the local
-    /// coordinates of the fragment hit.
-    fn target_path(&mut self, position: Point) -> (Vec<NodeKey>, Option<Point>) {
+    /// The node capturing the pointer, or the node under it, with its
+    /// ancestors, innermost first, and the pointer in the local coordinates
+    /// of the fragment hit.
+    fn target_path(&self) -> (Vec<NodeKey>, Option<Point>) {
         if let Some(capture) = self.pointer.capture.filter(|&node| self.attached(node)) {
             return (self.ancestors(Some(capture)), None);
         }
 
-        let hit = self.pipeline.hit(position);
         (
-            self.ancestors(hit.map(|hit| hit.node)),
-            hit.map(|hit| hit.position),
+            self.hit_ancestors(),
+            self.pointer.path.last().map(|hit| hit.position),
         )
-    }
-
-    /// The node under `position` and its ancestors, innermost first, from
-    /// the last layout.
-    fn hit_path(&mut self, position: Point) -> Vec<NodeKey> {
-        let hit = self.pipeline.hit(position);
-
-        self.ancestors(hit.map(|hit| hit.node))
     }
 }

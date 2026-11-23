@@ -8,6 +8,7 @@
 //! While an assistive technology is active, the window exposes an
 //! accessibility tree mirroring the layout through `accesskit_winit`.
 
+mod cursor;
 pub mod prelude;
 
 use core::error::Error;
@@ -22,6 +23,7 @@ use comet_shell::{
     ui_events::{keyboard::KeyboardEvent, pointer::PointerEvent},
 };
 use comet_tree::node::NodeKey;
+use reactive_graph::{effect::RenderEffect, traits::Get};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use winit::{
     application::ApplicationHandler,
@@ -57,6 +59,7 @@ pub fn run(
         window,
         reducer: WindowEventReducer::default(),
         win: None,
+        cursor: None,
         renderer: VelloGpuWindowRenderer::new(),
     })?)
 }
@@ -71,6 +74,8 @@ struct App {
     /// Translates winit input events into `ui-events`.
     reducer: WindowEventReducer,
     win: Option<Arc<WinitWindow>>,
+    /// Shows the window's cursor signal over `win`, while it exists.
+    cursor: Option<RenderEffect<()>>,
     renderer: VelloGpuWindowRenderer,
 }
 
@@ -97,6 +102,13 @@ impl ApplicationHandler<accesskit_winit::Event> for App {
             self.renderer.complete_resume();
         }
 
+        // Bindings re-run when the window is polled, after each batch of
+        // events.
+        self.cursor = Some(RenderEffect::new({
+            let (win, cursor) = (win.clone(), self.window.state().cursor);
+            move |_| cursor::set_cursor(&win, cursor.get())
+        }));
+
         win.request_redraw();
         self.win = Some(win);
     }
@@ -105,6 +117,7 @@ impl ApplicationHandler<accesskit_winit::Event> for App {
         self.renderer.suspend();
         self.adapter = None;
         self.window.set_accessibility(false);
+        self.cursor = None;
         self.win.take();
     }
 

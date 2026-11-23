@@ -20,7 +20,7 @@ use comet_layout::{
     },
 };
 use comet_paint::{
-    hit::{PaintHitCursor, PaintHitTester},
+    hit::PaintHitTester,
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
@@ -112,11 +112,12 @@ pub struct UiBuilders {
     pub ax: AxTreeBuilder,
 }
 
-/// A node hit by [`Pipeline::hit`].
+/// A fragment hit by [`Pipeline::hit`], or on the path to it from
+/// [`Pipeline::hit_path`], with its node.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Hit {
     pub node: NodeKey,
-    /// The fragment hit, of `node`.
+    /// The fragment, of `node`.
     pub fragment: FragmentKey,
     /// The point in the local coordinates of `fragment`.
     pub position: Point,
@@ -313,13 +314,35 @@ impl Pipeline {
         })
     }
 
-    /// A cursor walking the fragments on the path to the fragment under
-    /// `point`, in logical units, from the last layout, with the trees to
-    /// pass to [`PaintHitCursor::hit_next`]. `None` until a layout succeeds.
-    pub fn hit_cursor(&mut self, point: Point) -> Option<(PaintHitCursor<'_>, &UiTrees)> {
-        let root = self.layer_root?;
+    /// Fill `path` with the fragments on the path to the fragment under
+    /// `point`, in logical units, from the last layout: from the root down,
+    /// each with the point in its local coordinates. Empty when no fragment
+    /// is under the point, or until a layout succeeds.
+    pub fn hit_path(&mut self, point: Point, path: &mut Vec<Hit>) {
+        path.clear();
+        let Some(root) = self.layer_root else {
+            return;
+        };
+        let trees = &self.trees;
+        let mut cursor = self.builders.hit_tester.cursor(root, point);
 
-        Some((self.builders.hit_tester.cursor(root, point), &self.trees))
+        while let Some(hit) = cursor.hit_next(&trees.layers, &trees.fragments, &trees.prepaint) {
+            let node = trees
+                .fragments
+                .items
+                .get(hit.fragment)
+                .and_then(|fragment| trees.node(fragment.source));
+            let Some(node) = node else {
+                path.clear();
+                return;
+            };
+
+            path.push(Hit {
+                node,
+                fragment: hit.fragment,
+                position: hit.position,
+            });
+        }
     }
 }
 

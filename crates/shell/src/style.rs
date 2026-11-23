@@ -16,8 +16,11 @@
 
 use core::cell::RefCell;
 
+use comet_layout::style::geometry::AutoValue;
 use comet_reactivity::{PropHint, ReactiveProp, Styled};
 use comet_tree::style::define_style_props;
+
+use crate::cursor::CursorIcon;
 use reactive_graph::wrappers::read::Signal;
 
 use crate::event::{
@@ -73,6 +76,16 @@ define_style_props!(
     /// selectable without one.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub Selectable: bool;
+
+    /// The mouse cursor shown over the node and its descendants, or none
+    /// to hide it.
+    ///
+    /// Resolved from the node under the pointer up: the nearest node with a
+    /// cursor other than [`AutoValue::Auto`] decides, and the default cursor
+    /// shows when none does. Without the prop, text nodes show
+    /// [`CursorIcon::Text`] and boxes are `Auto`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub Cursor: AutoValue<Option<CursorIcon>>;
 );
 
 /// A prop holding a [`Handler`].
@@ -120,6 +133,10 @@ impl ReactiveProp for Selectable {
     const HINT: PropHint = PropHint::empty();
 }
 
+impl ReactiveProp for Cursor {
+    const HINT: PropHint = PropHint::empty();
+}
+
 /// Generate helpers setting the handler prop `$prop` to a new [`Handler`].
 macro_rules! handler_helpers {
     ($($(#[$attr:meta])* $name:ident: $prop:ty => $event:ty;)*) => {$(
@@ -132,7 +149,7 @@ macro_rules! handler_helpers {
 }
 
 /// Input helpers of a node being built: handlers of the [`HandlerProp`]
-/// props, [`Focusable`] and [`Selectable`].
+/// props, [`Focusable`], [`Selectable`] and [`Cursor`].
 ///
 /// Each handler is created under the current owner, the owner of the
 /// component building the node, and runs under it. Setting a handler again
@@ -147,6 +164,12 @@ pub trait InputStyled: Styled {
     /// it does without the prop.
     fn selectable(self, value: impl Into<Signal<bool>>) -> Self {
         self.bind::<Selectable, bool>(value)
+    }
+
+    /// Show `value` over the node and its descendants, hide the cursor with
+    /// `None`, or let the ancestors decide with [`AutoValue::Auto`].
+    fn cursor(self, value: impl Into<Signal<AutoValue<Option<CursorIcon>>>>) -> Self {
+        self.bind::<Cursor, AutoValue<Option<CursorIcon>>>(value)
     }
 
     handler_helpers! {

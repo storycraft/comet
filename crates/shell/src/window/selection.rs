@@ -50,8 +50,8 @@ impl Window {
     /// a caret once, a word twice, a line three times or more. With
     /// `extend`, move the extent of the selection there instead. A press
     /// outside selectable text clears the selection, unless extending.
-    pub(super) fn start_selection(&mut self, position: Point, count: u8, extend: bool) {
-        let Some((node, point)) = self.text_at(position) else {
+    pub(super) fn start_selection(&mut self, count: u8, extend: bool) {
+        let Some((node, point)) = self.text_at() else {
             if !extend {
                 self.set_selection(None);
             }
@@ -87,7 +87,7 @@ impl Window {
         let Some(current) = self.selection.current else {
             return;
         };
-        let target = self.text_at(position).or_else(|| {
+        let target = self.text_at().or_else(|| {
             let node = current.extent.node;
             Some((node, self.inline_point(node, position)?))
         });
@@ -104,37 +104,33 @@ impl Window {
         }
     }
 
-    /// The node owning the selectable text under `position`, with the
-    /// position in the coordinates of its inline layout, from the last
-    /// layout.
+    /// The node owning the selectable text under the pointer, with the
+    /// pointer in the coordinates of its inline layout.
     ///
-    /// Walks the path to the fragment under `position` from the root down:
-    /// the innermost box owning an inline layout on it holds the text, and
-    /// the [`Selectable`] prop nearest to the fragment hit decides whether
-    /// it can be selected there, so an unselectable span in selectable text
-    /// is not selected.
-    fn text_at(&mut self, position: Point) -> Option<(NodeKey, Point)> {
+    /// Follows the hit path of the pointer from the root down: the innermost
+    /// box owning an inline layout on it holds the text, and the
+    /// [`Selectable`] prop nearest to the fragment hit decides whether it
+    /// can be selected there, so an unselectable span in selectable text is
+    /// not selected.
+    fn text_at(&self) -> Option<(NodeKey, Point)> {
         let tree = self.ui.tree().borrow();
-        let (mut cursor, trees) = self.pipeline.hit_cursor(position)?;
+        let fragments = &self.pipeline.trees.fragments;
         let mut selectable = true;
         let mut text = None;
 
-        while let Some(hit) = cursor.hit_next(&trees.layers, &trees.fragments, &trees.prepaint) {
-            let fragment = trees.fragments.items.get(hit.fragment)?;
-            let node = trees.node(fragment.source);
-
-            if let Some(prop) = node.and_then(|node| tree.ui.prop::<Selectable>(node)) {
+        for hit in &self.pointer.path {
+            if let Some(prop) = tree.ui.prop::<Selectable>(hit.node) {
                 selectable = prop.0;
             }
 
+            let fragment = fragments.items.get(hit.fragment)?;
             if fragment.item.is_anonymous_block() {
                 // Its inline layout has no node to keep positions in.
                 text = None;
             } else if fragment.item.is_box()
-                && let Some(inline) = trees.fragments.get_inline(hit.fragment)
+                && let Some(inline) = fragments.get_inline(hit.fragment)
             {
-                let origin = inline.origin(&trees.fragments)?;
-                text = node.map(|node| (node, hit.position - origin));
+                text = Some((hit.node, hit.position - inline.origin(fragments)?));
             }
         }
 
