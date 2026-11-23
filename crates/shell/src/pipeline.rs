@@ -20,7 +20,7 @@ use comet_layout::{
     },
 };
 use comet_paint::{
-    hit::PaintHitTester,
+    hit::{PaintHitCursor, PaintHitTester},
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
@@ -72,30 +72,6 @@ impl UiTrees {
         self.fragments.get_inline(fragment)?;
 
         Some(fragment)
-    }
-
-    /// The node of the nearest box fragment owning an inline layout among
-    /// `fragment` and its ancestors, such as the paragraph of a glyph run.
-    /// `None` inside anonymous blocks, whose inline layouts have no node of
-    /// their own.
-    pub fn inline_owner_node(&self, fragment: FragmentKey) -> Option<NodeKey> {
-        let items = &self.fragments.items;
-        let mut next = Some(fragment);
-
-        while let Some(key) = next {
-            let fragment = items.get(key)?;
-            if fragment.item.is_anonymous_block() {
-                return None;
-            }
-
-            if fragment.item.is_box() && self.fragments.get_inline(key).is_some() {
-                return self.node(fragment.source);
-            }
-
-            next = items.parent(key);
-        }
-
-        None
     }
 
     /// Maps the local coordinates of `fragment` to scene coordinates, in
@@ -335,6 +311,15 @@ impl Pipeline {
             fragment: hit.fragment,
             position: hit.position,
         })
+    }
+
+    /// A cursor walking the fragments on the path to the fragment under
+    /// `point`, in logical units, from the last layout, with the trees to
+    /// pass to [`PaintHitCursor::hit_next`]. `None` until a layout succeeds.
+    pub fn hit_cursor(&mut self, point: Point) -> Option<(PaintHitCursor<'_>, &UiTrees)> {
+        let root = self.layer_root?;
+
+        Some((self.builders.hit_tester.cursor(root, point), &self.trees))
     }
 }
 

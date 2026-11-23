@@ -1,5 +1,10 @@
 //! Hit testing of painted fragments, finding the fragment under a point in
 //! the order fragments paint in.
+//!
+//! [`PaintHitTester::cursor`] walks the path to that fragment, from the owner
+//! of the root layer down, with the point in the local coordinates of each
+//! fragment on it, such as for dispatching an event through it.
+//! [`PaintHitTester::hit`] walks it to its end.
 
 use comet_layout::fragment::{FragmentItem, FragmentKey, tree::FragmentTree};
 use kurbo::{Point, Vec2};
@@ -28,6 +33,9 @@ pub struct PaintHitTester {
     pending: Vec<Visit>,
     /// Ancestors of a fragment, innermost first.
     chain: Vec<FragmentKey>,
+    /// Fragments left on the path walked by a [`PaintHitCursor`], innermost
+    /// first.
+    path: Vec<FragmentKey>,
 }
 
 /// A step of searching the fragments of a layer, in reverse paint order.
@@ -57,7 +65,8 @@ impl PaintHitTester {
 
     /// The topmost fragment under `point`, in scene coordinates, among the
     /// layers of `root` in `layers`, with `point` in its local coordinates,
-    /// or `None` if no fragment is under it.
+    /// or `None` if no fragment is under it: the end of the path walked by
+    /// [`iter`](Self::iter).
     ///
     /// Descendants of a scroll container are hit where they paint, moved
     /// against its scroll offset, as are those of the root's ancestors.
@@ -72,11 +81,44 @@ impl PaintHitTester {
         root: PaintLayerKey,
         point: Point,
     ) -> Option<HitTestResult> {
-        let sources = Sources {
+        let mut cursor = self.cursor(root, point);
+        let mut last = None;
+
+        while let Some(hit) = cursor.hit_next(layers, fragments, prepaint) {
+            last = Some(hit);
+        }
+
+        last
+    }
+
+    /// A cursor walking the path to the topmost fragment under `point`, in
+    /// scene coordinates, among the layers of `root`: the owner of `root`,
+    /// then each fragment down to the one hit, through its ancestors in the
+    /// fragment tree, whether or not they are under the point themselves.
+    /// The trees are passed to [`PaintHitCursor::hit_next`].
+    pub fn cursor(&mut self, root: PaintLayerKey, point: Point) -> PaintHitCursor<'_> {
+        PaintHitCursor {
+            tester: self,
+            root,
+            point,
+            started: false,
+        }
+    }
+
+    /// The topmost fragment under `point`, in scene coordinates, with
+    /// `point` in its local coordinates, and `point` in the coordinates of
+    /// the scrolled contents of the parent of the owner of `root`.
+    fn topmost(
+        &mut self,
+        sources: Sources<'_>,
+        root: PaintLayerKey,
+        point: Point,
+    ) -> Option<(HitTestResult, Point)> {
+        let Sources {
             layers,
             fragments,
             prepaint,
-        };
+        } = sources;
         let owner = layers.layers.get(root)?.owner;
 
         // Map the point to the local coordinates of the owner's parent.
@@ -97,7 +139,7 @@ impl PaintHitTester {
         }
 
         self.pending.clear();
-        self.hit_layer(sources, root, point)
+        Some((self.hit_layer(sources, root, point)?, point))
     }
 
     /// The topmost fragment of a layer under `point`, in the coordinates of
@@ -278,6 +320,73 @@ impl PaintHitTester {
         }
 
         None
+    }
+}
+
+/// Walks the path from the owner of a root layer to the fragment painted on
+/// top under a point: see [`PaintHitTester::cursor`].
+pub struct PaintHitCursor<'a> {
+    tester: &'a mut PaintHitTester,
+    root: PaintLayerKey,
+    /// The point in the coordinates of the scrolled contents of the parent
+    /// of the next fragment on the path, once the path is found.
+    point: Point,
+    /// Whether the path was searched.
+    started: bool,
+}
+
+impl PaintHitCursor<'_> {
+    /// The next fragment on the path, from the owner of the root layer down
+    /// to the topmost fragment under the point, with the point in its local
+    /// coordinates. `None` past the end, or if no fragment is under the
+    /// point.
+    ///
+    /// The first call searches the path in the trees, which must be the
+    /// same for every call: see [`PaintHitTester::hit`].
+    pub fn hit_next(
+        &mut self,
+        layers: &PaintLayerTree,
+        fragments: &FragmentTree,
+        prepaint: &PrepaintTree,
+    ) -> Option<HitTestResult> {
+        let sources = Sources {
+            layers,
+            fragments,
+            prepaint,
+        };
+
+        if !self.started {
+            self.started = true;
+            self.tester.path.clear();
+            let (hit, point) = self.tester.topmost(sources, self.root, self.point)?;
+            let owner = layers.layers.get(self.root)?.owner;
+
+            // The hit fragment and its ancestors up to the owner.
+            let mut next = Some(hit.fragment);
+            while let Some(key) = next {
+                self.tester.path.push(key);
+                if key == owner {
+                    break;
+                }
+                next = fragments.items.parent(key);
+            }
+
+            if next.is_none() {
+                self.tester.path.clear();
+                return None;
+            }
+            self.point = point;
+        }
+
+        let key = self.tester.path.pop()?;
+        let local = prepaint.fragment(key)?.inverse_transform? * self.point;
+        // Its children are in its scrolled contents.
+        self.point = local + scroll(sources, key);
+
+        Some(HitTestResult {
+            fragment: key,
+            position: local,
+        })
     }
 }
 

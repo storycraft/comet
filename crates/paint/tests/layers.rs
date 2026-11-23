@@ -179,6 +179,16 @@ impl Fixture {
         )
     }
 
+    /// The hits on the path to the fragment hit at a scene point, from the
+    /// root down.
+    fn hit_path(&self, x: f64, y: f64) -> Vec<HitTestResult> {
+        let mut tester = PaintHitTester::new();
+        let mut cursor = tester.cursor(self.root, Point::new(x, y));
+
+        core::iter::from_fn(|| cursor.hit_next(&self.layers, &self.fragments, &self.prepaint))
+            .collect()
+    }
+
     fn draw(&self, ui: &Ui) -> Scene {
         let mut scene = Scene::new();
         CometPainter::new().draw(
@@ -704,6 +714,46 @@ fn hits_through_transforms() {
     assert_eq!(f.hit(64.0, 14.0), Some(f.box_of(inner)));
     assert_eq!(f.hit(80.0, 15.0), Some(f.box_of(moved)));
     assert_eq!(f.hit(10.0, 10.0), Some(f.box_of(root)));
+}
+
+#[test]
+fn hit_cursor_walks_from_the_root_down_to_the_fragment_hit() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let moved = ui.create(
+        Node::Box,
+        (fixed(40.0, 20.0), Transform(Affine::translate((50.0, 0.0)))),
+    );
+    let inner = ui.create(
+        Node::Box,
+        (fixed(10.0, 10.0), Transform(Affine::scale(2.0))),
+    );
+    ui.append(root, moved);
+    ui.append(moved, inner);
+
+    let f = Fixture::build(&ui, root);
+    let result = |key, x, y| HitTestResult {
+        fragment: f.box_of(key),
+        position: Point::new(x, y),
+    };
+
+    // Each fragment with the point in its own coordinates; the inner box
+    // scales by 2 around its centre (5, 5), inside the moved box at (50, 0).
+    assert_eq!(
+        f.hit_path(46.0, 1.0),
+        [
+            result(root, 46.0, 1.0),
+            result(moved, -4.0, 1.0),
+            result(inner, 0.5, 3.0),
+        ]
+    );
+    assert_eq!(
+        f.hit_path(46.0, 1.0).last().copied(),
+        f.hit_result(46.0, 1.0),
+        "hit is the end of the path"
+    );
+    assert_eq!(f.hit_path(80.0, 15.0).len(), 2, "down to the moved box");
+    assert!(f.hit_path(500.0, 5.0).is_empty(), "nothing under the point");
 }
 
 #[test]

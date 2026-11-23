@@ -1,7 +1,5 @@
 //! Selecting text with a pointer.
 
-use core::iter::successors;
-
 use comet_layout::input::LayoutInputKey;
 use comet_tree::node::NodeKey;
 use kurbo::Point;
@@ -109,14 +107,38 @@ impl Window {
     /// The node owning the selectable text under `position`, with the
     /// position in the coordinates of its inline layout, from the last
     /// layout.
+    ///
+    /// Walks the path to the fragment under `position` from the root down:
+    /// the innermost box owning an inline layout on it holds the text, and
+    /// the [`Selectable`] prop nearest to the fragment hit decides whether
+    /// it can be selected there, so an unselectable span in selectable text
+    /// is not selected.
     fn text_at(&mut self, position: Point) -> Option<(NodeKey, Point)> {
-        let hit = self.pipeline.hit(position)?;
-        let node = self.pipeline.trees.inline_owner_node(hit.fragment)?;
-        if !self.selectable(node) {
-            return None;
+        let tree = self.ui.tree().borrow();
+        let (mut cursor, trees) = self.pipeline.hit_cursor(position)?;
+        let mut selectable = true;
+        let mut text = None;
+
+        while let Some(hit) = cursor.hit_next(&trees.layers, &trees.fragments, &trees.prepaint) {
+            let fragment = trees.fragments.items.get(hit.fragment)?;
+            let node = trees.node(fragment.source);
+
+            if let Some(prop) = node.and_then(|node| tree.ui.prop::<Selectable>(node)) {
+                selectable = prop.0;
+            }
+
+            if fragment.item.is_anonymous_block() {
+                // Its inline layout has no node to keep positions in.
+                text = None;
+            } else if fragment.item.is_box()
+                && let Some(inline) = trees.fragments.get_inline(hit.fragment)
+            {
+                let origin = inline.origin(&trees.fragments)?;
+                text = node.map(|node| (node, hit.position - origin));
+            }
         }
 
-        Some((node, self.inline_point(node, position)?))
+        text.filter(|_| selectable)
     }
 
     /// `position` in the coordinates of the inline layout of `node`.
@@ -140,15 +162,5 @@ impl Window {
         let inline = trees.fragments.get_inline(trees.inline_owner(node)?)?;
 
         Some(f(&inline.layout))
-    }
-
-    /// Whether the text of `node` can be selected: the [`Selectable`] prop
-    /// of it or its nearest ancestor with one.
-    fn selectable(&self, node: NodeKey) -> bool {
-        let tree = self.ui.tree().borrow();
-
-        successors(Some(node), |&node| tree.ui.parent(node))
-            .find_map(|node| tree.ui.prop::<Selectable>(node).map(|prop| prop.0))
-            .unwrap_or(true)
     }
 }

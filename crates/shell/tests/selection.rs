@@ -347,3 +347,34 @@ fn tab_without_focus_moves_around_the_selection() {
         assert_eq!(window.focused(), Some(top), "before the selection");
     }
 }
+
+#[test]
+fn unselectable_spans_in_selectable_text_are_not_selected() {
+    let paragraph = Rc::new(RefCell::new(None));
+    let mut window = Window::new({
+        let paragraph = paragraph.clone();
+        move |cx: &UiCx| {
+            let key = cx.div().size(size(px(400), px(30))).children(|cx| {
+                [
+                    cx.text("Selectable ").build(),
+                    cx.div()
+                        .display_outer(comet_layout::style::bx::DisplayOuter::Inline)
+                        .selectable(false)
+                        .children(|cx| cx.text("not selectable").build()),
+                ]
+            });
+            *paragraph.borrow_mut() = Some(key);
+            cx.div().children(|_| [key])
+        }
+    });
+    open(&mut window);
+    let paragraph = paragraph.borrow().unwrap();
+
+    press(&mut window, 1.0, 10.0, 1, Modifiers::empty());
+    let selection = window.selection().expect("the paragraph's own text");
+    assert_eq!(selection.anchor.node, paragraph, "kept in the paragraph");
+
+    // Far into the span, past "Selectable ".
+    press(&mut window, 150.0, 10.0, 1, Modifiers::empty());
+    assert_eq!(window.selection(), None, "the span cannot be selected");
+}
