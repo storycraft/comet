@@ -72,10 +72,10 @@ define_style_props!(
     pub Focusable: bool = false;
 
     /// Whether pressing the text of the node and its descendants selects
-    /// it. Inherited: the nearest node with the prop decides. Text is
-    /// selectable without one.
+    /// it, or [`AutoValue::Auto`] to keep whether the node above does. Text
+    /// is selectable when no node on the way decides.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub Selectable: bool;
+    pub Selectable: AutoValue<bool> = AutoValue::Auto;
 
     /// The mouse cursor shown over the node and its descendants, or none
     /// to hide it.
@@ -160,10 +160,10 @@ pub trait InputStyled: Styled {
         self.bind::<Focusable, bool>(value)
     }
 
-    /// Let a press select the text of the node and its descendants, which
-    /// it does without the prop.
-    fn selectable(self, value: impl Into<Signal<bool>>) -> Self {
-        self.bind::<Selectable, bool>(value)
+    /// Let a press select the text of the node and its descendants, or not,
+    /// or keep whether the node above does with [`AutoValue::Auto`].
+    fn selectable(self, value: impl Into<Signal<AutoValue<bool>>>) -> Self {
+        self.bind::<Selectable, AutoValue<bool>>(value)
     }
 
     /// Show `value` over the node and its descendants, hide the cursor with

@@ -55,7 +55,7 @@ pub fn button(
         .role(Role::Button)
         .focusable(true)
         // Pressing the label clicks, without selecting it.
-        .selectable(false)
+        .selectable(AutoValue::Value(false))
         .outline_width(px(2))
         .outline_offset(px(2))
         .outline_fill(Signal::derive(move || {

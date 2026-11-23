@@ -2,7 +2,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use comet_layout::style::unit::*;
+use comet_layout::style::{geometry::AutoValue, unit::*};
 use comet_reactivity::{Styled, UiCx};
 use comet_shell::{
     Selection, TextPosition, Window,
@@ -109,7 +109,7 @@ fn window() -> (Window, Rc<RefCell<Nodes>>) {
             let plain = cx
                 .div()
                 .size(size(px(400), px(30)))
-                .selectable(false)
+                .selectable(AutoValue::Value(false))
                 .children(|cx| cx.text("Not selectable").build());
             let after = focusable(cx);
             *nodes = Nodes {
@@ -359,7 +359,7 @@ fn unselectable_spans_in_selectable_text_are_not_selected() {
                     cx.text("Selectable ").build(),
                     cx.div()
                         .display_outer(comet_layout::style::bx::DisplayOuter::Inline)
-                        .selectable(false)
+                        .selectable(AutoValue::Value(false))
                         .children(|cx| cx.text("not selectable").build()),
                 ]
             });
@@ -377,4 +377,47 @@ fn unselectable_spans_in_selectable_text_are_not_selected() {
     // Far into the span, past "Selectable ".
     press(&mut window, 150.0, 10.0, 1, Modifiers::empty());
     assert_eq!(window.selection(), None, "the span cannot be selected");
+}
+
+#[test]
+fn auto_keeps_whether_the_node_above_is_selectable() {
+    // An unselectable paragraph holding a selectable span, then a span
+    // keeping the paragraph's choice.
+    let paragraph = Rc::new(RefCell::new(None));
+    let mut window = Window::new({
+        let paragraph = paragraph.clone();
+        move |cx: &UiCx| {
+            let span = |cx: &UiCx, text: &'static str, selectable| {
+                cx.div()
+                    .display_outer(comet_layout::style::bx::DisplayOuter::Inline)
+                    .selectable(selectable)
+                    .children(|cx| cx.text(text).build())
+            };
+            let key = cx
+                .div()
+                .size(size(px(400), px(30)))
+                .selectable(AutoValue::Value(false))
+                .children(|cx| {
+                    [
+                        span(cx, "Selectable", AutoValue::Value(true)),
+                        span(cx, " not selectable", AutoValue::Auto),
+                    ]
+                });
+            *paragraph.borrow_mut() = Some(key);
+            cx.div().children(|_| [key])
+        }
+    });
+    open(&mut window);
+    let paragraph = paragraph.borrow().unwrap();
+
+    press(&mut window, 1.0, 10.0, 1, Modifiers::empty());
+    let selection = window.selection().expect("the selectable span");
+    assert_eq!(selection.anchor.node, paragraph, "kept in the paragraph");
+
+    press(&mut window, 150.0, 10.0, 1, Modifiers::empty());
+    assert_eq!(
+        window.selection(),
+        None,
+        "the span keeps the paragraph's choice"
+    );
 }

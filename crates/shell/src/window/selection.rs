@@ -1,6 +1,6 @@
 //! Selecting text with a pointer.
 
-use comet_layout::input::LayoutInputKey;
+use comet_layout::{input::LayoutInputKey, style::geometry::AutoValue};
 use comet_tree::node::NodeKey;
 use kurbo::Point;
 use reactive_graph::traits::GetUntracked;
@@ -119,8 +119,10 @@ impl Window {
         let mut text = None;
 
         for hit in &self.pointer.path {
-            if let Some(prop) = tree.ui.prop::<Selectable>(hit.node) {
-                selectable = prop.0;
+            if let Some(prop) = tree.ui.prop::<Selectable>(hit.node)
+                && let AutoValue::Value(value) = prop.0
+            {
+                selectable = value;
             }
 
             let fragment = fragments.items.get(hit.fragment)?;
