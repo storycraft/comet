@@ -12,8 +12,12 @@ pub mod state;
 
 pub mod builder;
 pub mod iter;
+pub mod offset;
 pub mod tree;
 
+use core::ops::Range;
+
+use rustc_hash::FxHashMap;
 use slotmap::new_key_type;
 
 use crate::{
@@ -37,6 +41,11 @@ pub struct InlineLayout {
     pub text: String,
     /// Layout whose span brushes are the items owning the spans.
     pub layout: parley::Layout<Option<LayoutInputKey>>,
+    /// Where the text of each text item ends up in [`Self::text`], after
+    /// white space processing. Ranges are in text order and do not overlap.
+    /// A collapsed space between two text items belongs to the first. See
+    /// [`offset`] to map positions between them.
+    pub offset_mapping: FxHashMap<LayoutInputKey, Range<usize>>,
     /// Items of the inline boxes in `layout`, indexed by inline box id.
     pub(crate) boxes: Vec<LayoutInputKey>,
     /// Whether `layout` matches the current inline content. Line breaking

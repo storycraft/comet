@@ -86,9 +86,9 @@ struct Nodes {
     after: Option<NodeKey>,
 }
 
-/// From the top, 30 high each: a focusable box `before`, paragraphs
-/// `first` and `second`, a paragraph `plain` that cannot be selected, and a
-/// focusable box `after`. Nothing is below y = 150.
+/// From the top, 30 high each: a focusable box `before`, paragraphs of the
+/// text nodes `first` and `second`, a paragraph `plain` that cannot be
+/// selected, and a focusable box `after`. Nothing is below y = 150.
 fn window() -> (Window, Rc<RefCell<Nodes>>) {
     let nodes = Rc::new(RefCell::new(Nodes::default()));
     let window = Window::new({
@@ -97,15 +97,13 @@ fn window() -> (Window, Rc<RefCell<Nodes>>) {
             let mut nodes = nodes.borrow_mut();
             let focusable =
                 |cx: &UiCx| cx.div().size(size(px(400), px(30))).focusable(true).build();
-            let paragraph = |cx: &UiCx, text: &'static str| {
-                cx.div()
-                    .size(size(px(400), px(30)))
-                    .children(|cx| cx.text(text).build())
-            };
+            let paragraph =
+                |cx: &UiCx, text: NodeKey| cx.div().size(size(px(400), px(30))).children(|_| text);
 
             let before = focusable(cx);
-            let first = paragraph(cx, FIRST);
-            let second = paragraph(cx, SECOND);
+            let first = cx.text(FIRST).build();
+            let second = cx.text(SECOND).build();
+            let (first_paragraph, second_paragraph) = (paragraph(cx, first), paragraph(cx, second));
             let plain = cx
                 .div()
                 .size(size(px(400), px(30)))
@@ -119,7 +117,8 @@ fn window() -> (Window, Rc<RefCell<Nodes>>) {
                 after: Some(after),
             };
 
-            cx.div().children(|_| [before, first, second, plain, after])
+            cx.div()
+                .children(|_| [before, first_paragraph, second_paragraph, plain, after])
         }
     });
 
@@ -298,21 +297,21 @@ fn tab_without_focus_moves_around_the_selection() {
         move |cx: &UiCx| {
             let focusable =
                 |cx: &UiCx| cx.div().size(size(px(400), px(30))).focusable(true).build();
-            let paragraph = |cx: &UiCx, text: &'static str| {
-                cx.div()
-                    .size(size(px(400), px(30)))
-                    .children(|cx| cx.text(text).build())
-            };
-            let children = [
-                focusable(cx),
-                paragraph(cx, FIRST),
-                focusable(cx),
-                paragraph(cx, SECOND),
-                focusable(cx),
-            ];
-            *nodes.borrow_mut() = children.to_vec();
+            let paragraph =
+                |cx: &UiCx, text: NodeKey| cx.div().size(size(px(400), px(30))).children(|_| text);
+            let (first, second) = (cx.text(FIRST).build(), cx.text(SECOND).build());
+            let (top, middle, bottom) = (focusable(cx), focusable(cx), focusable(cx));
+            *nodes.borrow_mut() = vec![top, first, middle, second, bottom];
 
-            cx.div().children(|_| children)
+            cx.div().children(|cx| {
+                [
+                    top,
+                    paragraph(cx, first),
+                    middle,
+                    paragraph(cx, second),
+                    bottom,
+                ]
+            })
         }
     });
     open(&mut window);
@@ -350,29 +349,30 @@ fn tab_without_focus_moves_around_the_selection() {
 
 #[test]
 fn unselectable_spans_in_selectable_text_are_not_selected() {
-    let paragraph = Rc::new(RefCell::new(None));
+    let text = Rc::new(RefCell::new(None));
     let mut window = Window::new({
-        let paragraph = paragraph.clone();
+        let text = text.clone();
         move |cx: &UiCx| {
+            let selectable = cx.text("Selectable ").build();
+            *text.borrow_mut() = Some(selectable);
             let key = cx.div().size(size(px(400), px(30))).children(|cx| {
                 [
-                    cx.text("Selectable ").build(),
+                    selectable,
                     cx.div()
                         .display_outer(comet_layout::style::bx::DisplayOuter::Inline)
                         .selectable(AutoValue::Value(false))
                         .children(|cx| cx.text("not selectable").build()),
                 ]
             });
-            *paragraph.borrow_mut() = Some(key);
             cx.div().children(|_| [key])
         }
     });
     open(&mut window);
-    let paragraph = paragraph.borrow().unwrap();
+    let text = text.borrow().unwrap();
 
     press(&mut window, 1.0, 10.0, 1, Modifiers::empty());
     let selection = window.selection().expect("the paragraph's own text");
-    assert_eq!(selection.anchor.node, paragraph, "kept in the paragraph");
+    assert_eq!(selection.anchor.node, text, "kept in its text node");
 
     // Far into the span, past "Selectable ".
     press(&mut window, 150.0, 10.0, 1, Modifiers::empty());
@@ -383,15 +383,17 @@ fn unselectable_spans_in_selectable_text_are_not_selected() {
 fn auto_keeps_whether_the_node_above_is_selectable() {
     // An unselectable paragraph holding a selectable span, then a span
     // keeping the paragraph's choice.
-    let paragraph = Rc::new(RefCell::new(None));
+    let text = Rc::new(RefCell::new(None));
     let mut window = Window::new({
-        let paragraph = paragraph.clone();
+        let text = text.clone();
         move |cx: &UiCx| {
-            let span = |cx: &UiCx, text: &'static str, selectable| {
+            let span = |cx: &UiCx, value: &'static str, selectable| {
+                let node = cx.text(value).build();
+                text.borrow_mut().get_or_insert(node);
                 cx.div()
                     .display_outer(comet_layout::style::bx::DisplayOuter::Inline)
                     .selectable(selectable)
-                    .children(|cx| cx.text(text).build())
+                    .children(|_| node)
             };
             let key = cx
                 .div()
@@ -403,16 +405,15 @@ fn auto_keeps_whether_the_node_above_is_selectable() {
                         span(cx, " not selectable", AutoValue::Auto),
                     ]
                 });
-            *paragraph.borrow_mut() = Some(key);
             cx.div().children(|_| [key])
         }
     });
     open(&mut window);
-    let paragraph = paragraph.borrow().unwrap();
+    let text = text.borrow().unwrap();
 
     press(&mut window, 1.0, 10.0, 1, Modifiers::empty());
     let selection = window.selection().expect("the selectable span");
-    assert_eq!(selection.anchor.node, paragraph, "kept in the paragraph");
+    assert_eq!(selection.anchor.node, text, "in the span's text node");
 
     press(&mut window, 150.0, 10.0, 1, Modifiers::empty());
     assert_eq!(
@@ -423,9 +424,9 @@ fn auto_keeps_whether_the_node_above_is_selectable() {
 }
 
 #[test]
-fn text_between_block_boxes_is_selected_in_its_run() {
-    // A paragraph whose text is split by a focusable block box into two
-    // runs, then a focusable box.
+fn text_between_block_boxes_is_selected() {
+    // A paragraph whose text is split by a focusable block box, so each
+    // text is laid out in its own anonymous block, then a focusable box.
     let nodes = Rc::new(RefCell::new(None));
     let mut window = Window::new({
         let nodes = nodes.clone();
@@ -433,17 +434,16 @@ fn text_between_block_boxes_is_selected_in_its_run() {
             let focusable =
                 |cx: &UiCx| cx.div().size(size(px(400), px(40))).focusable(true).build();
             let block = focusable(cx);
-            let paragraph = cx
-                .div()
-                .children(|cx| [cx.text(FIRST).build(), block, cx.text(SECOND).build()]);
+            let (first, second) = (cx.text(FIRST).build(), cx.text(SECOND).build());
+            let paragraph = cx.div().children(|_| [first, block, second]);
             let after = focusable(cx);
-            *nodes.borrow_mut() = Some((paragraph, block, after));
+            *nodes.borrow_mut() = Some((first, block, second, after));
             cx.div().children(|_| [paragraph, after])
         }
     });
     open(&mut window);
-    let (paragraph, block, after) = nodes.borrow().unwrap();
-    // The second run starts below the block box.
+    let (first, block, second, after) = nodes.borrow().unwrap();
+    // The second text starts below the block box.
     let second_y = {
         let trees = &window.pipeline().trees;
         let layout = trees.fragments.items[trees.box_fragment(block).unwrap()].layout;
@@ -451,49 +451,39 @@ fn text_between_block_boxes_is_selected_in_its_run() {
     };
 
     press(&mut window, 1.0, 5.0, 1, Modifiers::empty());
-    let selection = window.selection().expect("the first run");
-    assert_eq!(selection.anchor.node, paragraph, "kept in the paragraph");
-    assert_eq!(selection.anchor.run, None, "in the first run");
+    let selection = window.selection().expect("the first text");
+    assert_eq!(ends(selection), [(first, 0), (first, 0)]);
 
     drag(&mut window, 399.0, second_y);
     release(&mut window, 399.0, second_y);
-    let selection = window.selection().unwrap();
-    assert_eq!(selection.anchor.run, None, "anchored in the first run");
     assert_eq!(
-        (
-            selection.extent.node,
-            selection.extent.run,
-            selection.extent.index
-        ),
-        (paragraph, Some(block), SECOND.len()),
-        "extended to the end of the second run"
+        ends(window.selection().unwrap()),
+        [(first, 0), (second, SECOND.len())],
+        "extended to the end of the second text"
     );
-    assert!(!selection.is_collapsed());
 
     press(&mut window, 2.0, second_y, 2, Modifiers::empty());
-    let selection = window.selection().unwrap();
     assert_eq!(
-        [selection.anchor, selection.extent].map(|end| (end.run, end.index)),
-        [(Some(block), 0), (Some(block), "Second".len())],
-        "a word of the second run"
+        ends(window.selection().unwrap()),
+        [(second, 0), (second, "Second".len())],
+        "a word of the second text"
     );
 
-    // Focus moves on from after the block box the run follows.
+    // Focus moves on from the text, after the block box.
     tab(&mut window, Modifiers::empty());
     assert_eq!(window.focused(), Some(after), "past the block box");
     window.state().focused_node.set(None);
     window.poll();
     tab(&mut window, Modifiers::SHIFT);
-    assert_eq!(
-        window.focused(),
-        Some(block),
-        "the block box before the run"
-    );
+    assert_eq!(window.focused(), Some(block), "the block box before");
 
-    // The run goes with the block box it follows.
+    // Positions are kept in text nodes, whatever inline layout holds them.
+    let selection = window.selection();
     window.ui().tree().borrow_mut().ui.remove_parent(block);
     window.poll();
-    assert_eq!(window.selection(), None, "its run left the tree");
+    assert!(window.layout(), "lays out the merged text");
+    assert_eq!(window.selection(), selection, "kept as the runs merge");
+    assert_eq!(window.selection_rects().len(), 1, "and highlighted");
 }
 
 #[test]
@@ -548,19 +538,18 @@ fn the_highlight_covers_the_runs_between_block_boxes() {
         let nodes = nodes.clone();
         move |cx: &UiCx| {
             let block = cx.div().size(size(px(400), px(40))).build();
-            let paragraph = cx
-                .div()
-                .children(|cx| [cx.text(FIRST).build(), block, cx.text(SECOND).build()]);
-            *nodes.borrow_mut() = Some((paragraph, block));
+            let (first, second) = (cx.text(FIRST).build(), cx.text(SECOND).build());
+            let paragraph = cx.div().children(|_| [first, block, second]);
+            *nodes.borrow_mut() = Some((first, second));
             cx.div().children(|_| [paragraph])
         }
     });
     open(&mut window);
-    let (paragraph, block) = nodes.borrow().unwrap();
+    let (first_text, second_text) = nodes.borrow().unwrap();
 
     window.state().selection.set(Some(Selection::new(
-        TextPosition::new(paragraph, 6, Default::default()),
-        TextPosition::new(paragraph, 3, Default::default()).in_run(Some(block)),
+        TextPosition::new(first_text, 6, Default::default()),
+        TextPosition::new(second_text, 3, Default::default()),
     )));
     window.poll();
     let rects = window.selection_rects();
@@ -582,24 +571,26 @@ fn the_highlight_goes_into_and_out_of_inline_boxes_in_order() {
     let mut window = Window::new({
         let nodes = nodes.clone();
         move |cx: &UiCx| {
+            let (hello, inner, world) = (
+                cx.text("Hello ").build(),
+                cx.text("inner").build(),
+                cx.text(" world").build(),
+            );
             let inline_box = cx
                 .div()
                 .display_outer(DisplayOuter::Inline)
                 .display_inner(DisplayInner::FlowRoot)
-                .children(|cx| cx.text("inner").build());
-            let paragraph = cx.div().size(size(px(400), px(30))).children(|cx| {
-                [
-                    cx.text("Hello ").build(),
-                    inline_box,
-                    cx.text(" world").build(),
-                ]
-            });
-            *nodes.borrow_mut() = Some((paragraph, inline_box));
+                .children(|_| inner);
+            let paragraph = cx
+                .div()
+                .size(size(px(400), px(30)))
+                .children(|_| [hello, inline_box, world]);
+            *nodes.borrow_mut() = Some((hello, inline_box, inner, world));
             cx.div().children(|_| [paragraph])
         }
     });
     open(&mut window);
-    let (paragraph, inline_box) = nodes.borrow().unwrap();
+    let (hello, inline_box, inner, world) = nodes.borrow().unwrap();
     let bounds = {
         let trees = &window.pipeline().trees;
         let fragment = trees.box_fragment(inline_box).unwrap();
@@ -635,29 +626,67 @@ fn the_highlight_goes_into_and_out_of_inline_boxes_in_order() {
         );
         (before, inside, after)
     };
-    let outer = |index| TextPosition::new(paragraph, index, Default::default());
-    let inner = |index| TextPosition::new(inline_box, index, Default::default());
-    // "Hello " is 6 bytes, then the box's U+FFFC of 3.
-    let box_end = 6 + '\u{FFFC}'.len_utf8();
+    let at = |node, index| TextPosition::new(node, index, Default::default());
+    let (hello, world) = (|index| at(hello, index), |index| at(world, index));
+    let inner = |index| at(inner, index);
 
     assert_eq!(
-        rects(&mut window, outer(1), inner(3)),
+        rects(&mut window, hello(1), inner(3)),
         (1, 1, 0),
         "into the box"
     );
     assert_eq!(
-        rects(&mut window, inner(3), outer(1)),
+        rects(&mut window, inner(3), hello(1)),
         (1, 1, 0),
         "either way"
     );
     assert_eq!(
-        rects(&mut window, inner(2), outer(box_end + 3)),
+        rects(&mut window, inner(2), world(3)),
         (0, 1, 1),
         "out of the box"
     );
     assert_eq!(
-        rects(&mut window, outer(1), outer(box_end + 3)),
+        rects(&mut window, hello(1), world(3)),
         (1, 1, 1),
         "across the whole box: its text, not its character"
+    );
+}
+
+#[test]
+fn positions_are_offsets_into_their_own_text_node() {
+    // "Hello " and "world" in one paragraph, "world" in a span.
+    let nodes = Rc::new(RefCell::new(None));
+    let mut window = Window::new({
+        let nodes = nodes.clone();
+        move |cx: &UiCx| {
+            let (hello, world) = (cx.text("Hello ").build(), cx.text("world").build());
+            *nodes.borrow_mut() = Some((hello, world));
+            let span = cx
+                .div()
+                .display_outer(comet_layout::style::bx::DisplayOuter::Inline)
+                .children(|_| world);
+            let paragraph = cx
+                .div()
+                .size(size(px(400), px(30)))
+                .children(|_| [hello, span]);
+            cx.div().children(|_| [paragraph])
+        }
+    });
+    open(&mut window);
+    let (hello, world) = nodes.borrow().unwrap();
+
+    press(&mut window, 1.0, 10.0, 1, Modifiers::empty());
+    drag(&mut window, 399.0, 10.0);
+    assert_eq!(
+        ends(window.selection().unwrap()),
+        [(hello, 0), (world, "world".len())],
+        "from the first text node to the end of the second"
+    );
+
+    press(&mut window, 399.0, 10.0, 2, Modifiers::empty());
+    assert_eq!(
+        ends(window.selection().unwrap()),
+        [(world, 0), (world, "world".len())],
+        "\"world\" from the start of its own node"
     );
 }

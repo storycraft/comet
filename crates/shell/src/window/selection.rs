@@ -1,13 +1,16 @@
 //! Selecting text with a pointer.
 
-use comet_layout::{fragment::FragmentKey, input::LayoutInputKey};
-use comet_tree::node::NodeKey;
+use core::cmp::Ordering;
+
+use comet_layout::fragment::{FragmentKey, InlineLayout};
+use comet_tree::node::Text;
 use kurbo::Point;
+use parley::Affinity::{Downstream, Upstream};
 use reactive_graph::traits::GetUntracked;
 
 use super::{Window, state::update_rw};
 use crate::{
-    selection::{InlineText, Selection, TextPosition},
+    selection::{Selection, TextPosition},
     style::Selectable,
 };
 
@@ -40,11 +43,7 @@ impl Window {
         }
 
         if self.selection.current.is_some_and(|selection| {
-            [selection.anchor, selection.extent]
-                .iter()
-                .flat_map(|position| [Some(position.node), position.run])
-                .flatten()
-                .any(|node| !self.attached(node))
+            !self.attached(selection.anchor.node) || !self.attached(selection.extent.node)
         }) {
             self.set_selection(None);
         }
@@ -55,7 +54,7 @@ impl Window {
     /// `extend`, move the extent of the selection there instead. A press
     /// outside selectable text clears the selection, unless extending.
     pub(super) fn start_selection(&mut self, count: u8, extend: bool) {
-        let Some((text, point)) = self.text_at() else {
+        let Some((owner, point)) = self.text_at() else {
             if !extend {
                 self.set_selection(None);
             }
@@ -64,22 +63,36 @@ impl Window {
         let (x, y) = (point.x as f32, point.y as f32);
         let current = self.selection.current.filter(|_| extend);
 
-        let selection = self.with_inline_layout(text, |layout| match current {
-            Some(current) => Selection::new(
-                current.anchor,
-                TextPosition::from_cursor(text, parley::Cursor::from_point(layout, x, y)),
-            ),
-            None => Selection::from_parley(
-                text,
-                match count {
-                    0 | 1 => parley::Selection::from_point(layout, x, y),
-                    2 => parley::Selection::word_from_point(layout, x, y),
-                    _ => parley::Selection::line_from_point(layout, x, y),
-                },
-            ),
+        let selection = self.with_inline_layout(owner, |inline| {
+            let layout = &inline.layout;
+            match current {
+                Some(current) => Some(Selection::new(
+                    current.anchor,
+                    self.position_at(inline, parley::Cursor::from_point(layout, x, y), None)?,
+                )),
+                None => {
+                    let selection = match count {
+                        0 | 1 => parley::Selection::from_point(layout, x, y),
+                        2 => parley::Selection::word_from_point(layout, x, y),
+                        _ => parley::Selection::line_from_point(layout, x, y),
+                    };
+                    let (anchor, focus) = (selection.anchor(), selection.focus());
+                    // The start of a range is in the text after it, and its
+                    // end in the text before it, whatever their affinity.
+                    let (anchor_side, focus_side) = match anchor.index().cmp(&focus.index()) {
+                        Ordering::Less => (Some(Downstream), Some(Upstream)),
+                        Ordering::Greater => (Some(Upstream), Some(Downstream)),
+                        Ordering::Equal => (None, None),
+                    };
+                    Some(Selection::new(
+                        self.position_at(inline, anchor, anchor_side)?,
+                        self.position_at(inline, focus, focus_side)?,
+                    ))
+                }
+            }
         });
 
-        if let Some(selection) = selection {
+        if let Some(selection) = selection.flatten() {
             self.set_selection(Some(selection));
             self.selection.selecting = true;
         }
@@ -92,24 +105,59 @@ impl Window {
             return;
         };
         let target = self.text_at().or_else(|| {
-            let text = current.extent.text();
-            Some((text, self.inline_point(text, position)?))
+            let (owner, _) = self.layout_position(current.extent)?;
+            Some((owner, self.inline_point(owner, position)?))
         });
-        let Some((text, point)) = target else {
+        let Some((owner, point)) = target else {
             return;
         };
 
-        let extent = self.with_inline_layout(text, |layout| {
-            let cursor = parley::Cursor::from_point(layout, point.x as f32, point.y as f32);
-            TextPosition::from_cursor(text, cursor)
+        let extent = self.with_inline_layout(owner, |inline| {
+            let cursor = parley::Cursor::from_point(&inline.layout, point.x as f32, point.y as f32);
+            self.position_at(inline, cursor, None)
         });
-        if let Some(extent) = extent {
+        if let Some(extent) = extent.flatten() {
             self.set_selection(Some(Selection::new(current.anchor, extent)));
         }
     }
 
-    /// The selectable text under the pointer, with the pointer in the
-    /// coordinates of its inline layout.
+    /// The position of the text node at `cursor` in `inline`. At the
+    /// boundary of two text nodes, `side` picks the one before or after it,
+    /// or by default the affinity of `cursor`.
+    fn position_at(
+        &self,
+        inline: &InlineLayout,
+        cursor: parley::Cursor,
+        side: Option<parley::Affinity>,
+    ) -> Option<TextPosition> {
+        let item = inline.item_at(cursor.index(), side.unwrap_or(cursor.affinity()))?;
+        let node = self.pipeline.trees.node(item)?;
+        let tree = self.ui.tree().borrow();
+        let text = tree.ui.prop::<Text>(node)?;
+        let index = inline.source_index(item, &text.0, cursor.index())?;
+
+        Some(TextPosition::new(node, index, cursor.affinity().into()))
+    }
+
+    /// The fragment owning the inline layout holding `position`, and the
+    /// index of `position` in its text, from the last layout.
+    pub(super) fn layout_position(&self, position: TextPosition) -> Option<(FragmentKey, usize)> {
+        let trees = &self.pipeline.trees;
+        let item = trees.inputs.item_for_node(position.node)?;
+        let owner = trees.fragments.inline_layout_of(&trees.inputs, item)?;
+        let tree = self.ui.tree().borrow();
+        let text = tree.ui.prop::<Text>(position.node)?;
+        let index =
+            trees
+                .fragments
+                .get_inline(owner)?
+                .layout_index(item, &text.0, position.index)?;
+
+        Some((owner, index))
+    }
+
+    /// The fragment owning the selectable text under the pointer, with the
+    /// pointer in the coordinates of its inline layout.
     ///
     /// The innermost box or anonymous block owning an inline layout on the
     /// hit path of the pointer holds the text. A box hit itself, with its
@@ -119,7 +167,7 @@ impl Window {
     /// the node hit up the tree decides whether it can be selected there,
     /// so an unselectable span in selectable text is not selected. Text is
     /// selectable when no node decides.
-    fn text_at(&self) -> Option<(InlineText, Point)> {
+    fn text_at(&self) -> Option<(FragmentKey, Point)> {
         let leaf = self.pointer.path.last().map(|hit| hit.node);
         if !self
             .inherited::<Selectable, _>(leaf, |prop| prop.0)
@@ -128,34 +176,19 @@ impl Window {
             return None;
         }
 
-        let trees = &self.pipeline.trees;
-        let fragments = &trees.fragments;
+        let fragments = &self.pipeline.trees.fragments;
         let mut text = None;
 
         for hit in &self.pointer.path {
-            let Some(inline) = fragments.get_inline(hit.fragment) else {
-                continue;
-            };
-            // An anonymous block belongs to the node of its owner.
-            let run = if fragments.items.get(hit.fragment)?.item.is_anonymous_block() {
-                trees.run_of(hit.fragment)?
-            } else {
-                None
-            };
-
-            text = Some((
-                InlineText {
-                    node: hit.node,
-                    run,
-                },
-                hit.position - inline.origin(fragments)?,
-            ));
+            if let Some(inline) = fragments.get_inline(hit.fragment) {
+                text = Some((hit.fragment, hit.position - inline.origin(fragments)?));
+            }
         }
 
         let leaf = self.pointer.path.last()?;
         if fragments.items.get(leaf.fragment)?.item.is_box()
             && fragments.get_inline(leaf.fragment).is_none()
-            && let Some(run) = self.run_at(leaf.node, leaf.fragment)
+            && let Some(run) = self.run_at(leaf.fragment)
         {
             return Some(run);
         }
@@ -163,23 +196,24 @@ impl Window {
         text
     }
 
-    /// The text of the anonymous block of `owner`, the box fragment of
-    /// `node`, under the pointer, with the pointer in the coordinates of
-    /// its inline layout.
-    fn run_at(&self, node: NodeKey, owner: FragmentKey) -> Option<(InlineText, Point)> {
+    /// The anonymous block of `owner` under the pointer, with the pointer in
+    /// the coordinates of its inline layout.
+    fn run_at(&self, owner: FragmentKey) -> Option<(FragmentKey, Point)> {
         let trees = &self.pipeline.trees;
         let cursor = self.pointer.cursor?;
 
         trees.fragments.items.children(owner).find_map(|child| {
-            let run = trees.run_of(child)?;
+            let fragment = trees.fragments.items.get(child)?;
+            if !fragment.item.is_anonymous_block() {
+                return None;
+            }
             let to_scene = trees.fragment_to_scene(child)?;
             if to_scene.determinant() == 0.0 {
                 return None;
             }
 
             let local = to_scene.inverse() * cursor;
-            let layout = &trees.fragments.items.get(child)?.layout;
-            if !(0.0..layout.size.height).contains(&local.y) {
+            if !(0.0..fragment.layout.size.height).contains(&local.y) {
                 return None;
             }
 
@@ -187,14 +221,13 @@ impl Window {
                 .fragments
                 .get_inline(child)?
                 .origin(&trees.fragments)?;
-            Some((InlineText { node, run }, local - origin))
+            Some((child, local - origin))
         })
     }
 
-    /// `position` in the coordinates of the inline layout of `text`.
-    fn inline_point(&self, text: InlineText, position: Point) -> Option<Point> {
-        let trees = &self.pipeline.trees;
-        let to_scene = trees.inline_to_scene(trees.inline_run(text.node, text.run)?)?;
+    /// `position` in the coordinates of the inline layout owned by `owner`.
+    fn inline_point(&self, owner: FragmentKey, position: Point) -> Option<Point> {
+        let to_scene = self.pipeline.trees.inline_to_scene(owner)?;
         if to_scene.determinant() == 0.0 {
             return None;
         }
@@ -202,17 +235,13 @@ impl Window {
         Some(to_scene.inverse() * position)
     }
 
-    /// Call `f` with the inline layout of `text`, from the last layout.
+    /// Call `f` with the inline layout owned by `owner`, from the last
+    /// layout.
     fn with_inline_layout<R>(
         &self,
-        text: InlineText,
-        f: impl FnOnce(&parley::Layout<Option<LayoutInputKey>>) -> R,
+        owner: FragmentKey,
+        f: impl FnOnce(&InlineLayout) -> R,
     ) -> Option<R> {
-        let trees = &self.pipeline.trees;
-        let inline = trees
-            .fragments
-            .get_inline(trees.inline_run(text.node, text.run)?)?;
-
-        Some(f(&inline.layout))
+        Some(f(self.pipeline.trees.fragments.get_inline(owner)?))
     }
 }

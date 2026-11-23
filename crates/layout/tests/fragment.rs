@@ -355,53 +355,6 @@ fn first_block_margin_collapses_through_mixed_content_without_padding() {
 }
 
 #[test]
-fn anonymous_blocks_are_found_by_the_block_their_run_follows() {
-    let mut ui = Ui::new();
-    let root = ui.create(Node::Box, ());
-    let before = text(&mut ui, "before");
-    let block = sized_block(&mut ui, 20.0);
-    let after = text(&mut ui, "after");
-    ui.append(root, before);
-    ui.append(root, block);
-    ui.append(root, after);
-
-    let mut f = Fixture::new();
-    let (_, root_fragment) = f.build(&ui, root);
-    let owner = f.tree.item_for_node(root).unwrap();
-    let block_item = f.tree.item_for_node(block).unwrap();
-    let run_text = |f: &Fixture, after| {
-        let anonymous = f.fragments.anonymous_block(owner, after)?;
-        assert_eq!(f.fragments.run_after(anonymous), Some(after));
-        Some(f.shaped_text(anonymous))
-    };
-
-    assert_eq!(run_text(&f, None).as_deref(), Some("before"));
-    assert_eq!(run_text(&f, Some(block_item)).as_deref(), Some("after"));
-    assert_eq!(f.fragments.run_after(root_fragment), None, "not a run");
-
-    // A new block splits the first run. Anonymous blocks are reused in
-    // order, but each run is still found by the block it follows.
-    let middle = text(&mut ui, "middle");
-    let split = sized_block(&mut ui, 20.0);
-    ui.after(before, split);
-    ui.after(split, middle);
-    f.dirty.mark_node(&f.tree, root, DirtyFlags::NEED_CHILDREN);
-    f.build(&ui, root);
-    let split_item = f.tree.item_for_node(split).unwrap();
-
-    assert_eq!(run_text(&f, None).as_deref(), Some("before"));
-    assert_eq!(run_text(&f, Some(split_item)).as_deref(), Some("middle"));
-    assert_eq!(run_text(&f, Some(block_item)).as_deref(), Some("after"));
-
-    // Without block boxes there are no runs.
-    ui.delete(split);
-    ui.delete(block);
-    f.dirty.mark_node(&f.tree, root, DirtyFlags::NEED_CHILDREN);
-    f.build(&ui, root);
-    assert_eq!(f.fragments.anonymous_block(owner, None), None);
-}
-
-#[test]
 fn editing_one_run_keeps_the_fragments_of_other_runs() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
@@ -1448,4 +1401,68 @@ fn inline_content_extends_the_overflow_with_its_atomic_inlines() {
     assert!(overflow_of(&f, paragraph).height() > 100.0);
     // Taffy passes the extended overflow up to the root.
     assert!(overflow_of(&f, root).height() > 100.0);
+}
+
+#[test]
+fn offset_mapping_places_each_text_in_the_white_space_processed_text() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let first = text(&mut ui, "  Hello  ");
+    let second = text(&mut ui, "  big ");
+    let badge = atomic(&mut ui, 10.0);
+    let third = text(&mut ui, " end ");
+    for node in [first, second, badge, third] {
+        ui.append(root, node);
+    }
+
+    let mut f = Fixture::new();
+    let (input_root, root_fragment) = f.build(&ui, root);
+    let item = |f: &Fixture, node| f.tree.item_for_node(node).unwrap();
+
+    // Without collapsing, each text is placed as written.
+    let inline = f.fragments.get_inline(root_fragment).unwrap();
+    assert_eq!(inline.offset_mapping[&item(&f, first)], 0..9);
+    assert_eq!(inline.offset_mapping[&item(&f, third)], 18..23);
+
+    // Collapse white space everywhere.
+    let keys: Vec<_> = f.tree.items.descendants(input_root).collect();
+    for key in keys {
+        std::sync::Arc::make_mut(&mut f.tree.items[key].text_style)
+            .span
+            .white_space_collapse = parley::WhiteSpaceCollapse::Collapse;
+    }
+    for node in [first, second, third] {
+        f.dirty
+            .mark_node(&f.tree, node, DirtyFlags::NEED_FULL_LAYOUT);
+    }
+    f.layout(&ui, input_root);
+
+    let inline = f.fragments.get_inline(root_fragment).unwrap();
+    let (first, second, third) = (item(&f, first), item(&f, second), item(&f, third));
+    assert_eq!(inline.text, "Hello big \u{FFFC} end");
+    // A collapsed space between texts belongs to the text before it, but a
+    // text starting with white space collapsing into it takes it.
+    assert_eq!(inline.offset_mapping[&first], 0..5);
+    assert_eq!(inline.offset_mapping[&second], 5..10, "\" big \"");
+    assert_eq!(inline.offset_mapping[&third], 13..17, "\" end\"");
+
+    assert_eq!(inline.layout_index(first, "  Hello  ", 2), Some(0));
+    assert_eq!(inline.layout_index(first, "  Hello  ", 9), Some(5));
+    assert_eq!(inline.layout_index(second, "  big ", 2), Some(6));
+    assert_eq!(inline.source_index(third, " end ", 14), Some(1));
+    assert_eq!(
+        inline.source_index(third, " end ", 99),
+        Some(4),
+        "clamped, before the removed trailing space"
+    );
+
+    use parley::Affinity::{Downstream, Upstream};
+    assert_eq!(inline.item_at(5, Upstream), Some(first));
+    assert_eq!(inline.item_at(5, Downstream), Some(second));
+    assert_eq!(inline.item_at(11, Downstream), Some(second), "in the box");
+    assert_eq!(inline.item_at(13, Downstream), Some(third));
+    assert_eq!(
+        f.fragments.inline_layout_of(&f.tree, third),
+        Some(root_fragment)
+    );
 }

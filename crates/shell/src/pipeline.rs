@@ -74,34 +74,6 @@ impl UiTrees {
         Some(fragment)
     }
 
-    /// The fragment owning the inline layout of `run` in the inline content
-    /// of `node`, from the last layout: the anonymous block holding the run
-    /// after the block box of `run`, or, without `run`, the
-    /// [inline owner](Self::inline_owner) or the anonymous block holding
-    /// the first run.
-    pub fn inline_run(&self, node: NodeKey, run: Option<NodeKey>) -> Option<FragmentKey> {
-        let owner = self.inputs.item_for_node(node)?;
-        let after = match run {
-            Some(run) => Some(self.inputs.item_for_node(run)?),
-            None => match self.inline_owner(node) {
-                Some(fragment) => return Some(fragment),
-                None => None,
-            },
-        };
-
-        self.fragments.anonymous_block(owner, after)
-    }
-
-    /// The run held by `fragment`, if it is an anonymous block, as
-    /// [`Self::inline_run`] takes it: the node of the block box it follows,
-    /// or `None` for the first run.
-    pub fn run_of(&self, fragment: FragmentKey) -> Option<Option<NodeKey>> {
-        match self.fragments.run_after(fragment)? {
-            Some(after) => Some(Some(self.node(after)?)),
-            None => Some(None),
-        }
-    }
-
     /// Maps the local coordinates of `fragment` to scene coordinates, in
     /// logical units: the transforms and scroll offsets of the fragment and
     /// its ancestors, from the last layout.

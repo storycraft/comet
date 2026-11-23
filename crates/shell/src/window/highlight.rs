@@ -12,14 +12,15 @@ use peniko::{Color, Fill};
 use super::Window;
 use crate::{
     pipeline::UiTrees,
-    selection::{InlineText, Selection, TextPosition},
+    selection::{Affinity as TextAffinity, TextPosition},
 };
 
 /// Semi transparent blue.
 const HIGHLIGHT: Color = Color::from_rgba8(0, 120, 255, 96);
 
-/// A position in the text of an inline layout, as parley takes it.
-type End = (usize, Affinity);
+/// An end of the selection in the text of an inline layout: the fragment
+/// owning it, the index, and the affinity.
+type End = (FragmentKey, usize, TextAffinity);
 
 impl Window {
     /// The bounding boxes of the highlight of the selected text, from the
@@ -68,7 +69,15 @@ impl Window {
             return;
         };
 
-        for (owner, range) in selected_ranges(trees, root, selection) {
+        let end = |position: TextPosition| -> Option<End> {
+            let (owner, index) = self.layout_position(position)?;
+            Some((owner, index, position.affinity))
+        };
+        let (Some(anchor), Some(extent)) = (end(selection.anchor), end(selection.extent)) else {
+            return;
+        };
+
+        for (owner, range) in selected_ranges(trees, root, anchor, extent) {
             let (Some(inline), Some(to_scene)) = (
                 trees.fragments.get_inline(owner),
                 trees.inline_to_scene(owner),
@@ -77,7 +86,9 @@ impl Window {
             };
             let layout = &inline.layout;
             // Indices past the text, such as of text edited since, end it.
-            let cursor = |(index, affinity): End| Cursor::from_byte_index(layout, index, affinity);
+            let cursor = |(index, affinity): (usize, Affinity)| {
+                Cursor::from_byte_index(layout, index, affinity)
+            };
 
             parley::Selection::new(cursor(range.start), cursor(range.end))
                 .geometry_with(layout, |rect, _| {
@@ -87,27 +98,10 @@ impl Window {
     }
 }
 
-/// The inline layout `fragment` owns, as positions name it, if it owns one.
-fn inline_text(trees: &UiTrees, fragment: FragmentKey) -> Option<InlineText> {
-    trees.fragments.get_inline(fragment)?;
-    let item = trees.fragments.items.get(fragment)?;
-    let run = if item.item.is_anonymous_block() {
-        trees.run_of(fragment)?
-    } else {
-        None
-    };
-
-    Some(InlineText {
-        node: trees.node(item.source)?,
-        run,
-    })
-}
-
 /// A part of the text of an inline layout, between the inline boxes
 /// holding other inline layouts: positions `start..=end`, with its owner.
 struct Segment {
     owner: FragmentKey,
-    text: InlineText,
     start: usize,
     end: usize,
 }
@@ -132,9 +126,7 @@ impl TextOrder {
 
     fn visit(&mut self, trees: &UiTrees, fragment: FragmentKey) {
         let fragments = &trees.fragments;
-        let (Some(inline), Some(text)) =
-            (fragments.get_inline(fragment), inline_text(trees, fragment))
-        else {
+        let Some(inline) = fragments.get_inline(fragment) else {
             for child in fragments.items.children(fragment) {
                 self.visit(trees, child);
             }
@@ -160,7 +152,6 @@ impl TextOrder {
             let index = inline_box.index;
             self.segments.push(Segment {
                 owner: fragment,
-                text,
                 start,
                 end: index,
             });
@@ -169,7 +160,6 @@ impl TextOrder {
         }
         self.segments.push(Segment {
             owner: fragment,
-            text,
             start,
             end: inline.text.len(),
         });
@@ -187,25 +177,14 @@ impl TextOrder {
         }
     }
 
-    /// Where `position` is in the order: its segment and index. `None` if
-    /// it is not laid out.
-    fn key(&self, position: TextPosition) -> Option<(usize, usize)> {
-        let index = position.index;
-        let text = position.text();
-        let segment = self
-            .segments
-            .iter()
-            .position(|segment| {
-                segment.text == text && (segment.start..=segment.end).contains(&index)
-            })
-            // Past the text, such as of text edited since: its end.
-            .or_else(|| {
-                self.segments
-                    .iter()
-                    .rposition(|segment| segment.text == text)
-            })?;
+    /// Where `end` is in the order: its segment and index. `None` if its
+    /// inline layout is not under the root.
+    fn key(&self, (owner, index, _): End) -> Option<(usize, usize)> {
+        let segment = self.segments.iter().position(|segment| {
+            segment.owner == owner && (segment.start..=segment.end).contains(&index)
+        })?;
 
-        Some((segment, index.min(self.segments[segment].end)))
+        Some((segment, index))
     }
 }
 
@@ -217,16 +196,16 @@ impl TextOrder {
 fn selected_ranges(
     trees: &UiTrees,
     root: FragmentKey,
-    selection: Selection,
-) -> Vec<(FragmentKey, Range<End>)> {
+    anchor: End,
+    extent: End,
+) -> Vec<(FragmentKey, Range<(usize, Affinity)>)> {
     let order = TextOrder::new(trees, root);
-    let (Some(anchor), Some(extent)) = (order.key(selection.anchor), order.key(selection.extent))
-    else {
+    let (Some(anchor_key), Some(extent_key)) = (order.key(anchor), order.key(extent)) else {
         return Vec::new();
     };
     let ((start, start_affinity), (last, last_affinity)) = {
-        let anchor = (anchor, selection.anchor.affinity.into());
-        let extent = (extent, selection.extent.affinity.into());
+        let anchor = (anchor_key, Affinity::from(anchor.2));
+        let extent = (extent_key, Affinity::from(extent.2));
         if anchor.0 <= extent.0 {
             (anchor, extent)
         } else {

@@ -1,6 +1,9 @@
 //! Building the Parley layout of a fragment owning lines.
 
+use core::ops::Range;
+
 use comet_tree::node::Text;
+use rustc_hash::FxHashMap;
 
 use super::{
     super::{Engine, FragmentKey, Mode},
@@ -31,6 +34,14 @@ impl Engine<'_> {
             .map(|inline| std::mem::take(&mut inline.boxes))
             .unwrap_or_default();
         boxes.clear();
+        let mut offsets = self
+            .fragments
+            .get_inline_mut(fragment)
+            .map(|inline| std::mem::take(&mut inline.offset_mapping))
+            .unwrap_or_default();
+        offsets.clear();
+        // The text item the pending white space of the builder follows.
+        let mut last_text = None;
 
         let root_style = span_style(tree, owner);
         let mut builder = self
@@ -75,14 +86,29 @@ impl Engine<'_> {
                         continue;
                     };
 
+                    let pending = builder.has_pending_whitespace();
+                    let before = builder.text().len();
                     if !text.0.is_empty() {
                         builder.push_style_span(span_style(tree, key));
                         builder.push_text(&text.0);
                         builder.pop_style_span();
                     }
+
+                    // A space flushed for white space pending before the
+                    // text belongs to the text it follows, unless this text
+                    // starts with white space collapsing into it.
+                    let start = if text.0.starts_with(char::is_whitespace) {
+                        before
+                    } else {
+                        before + flushed_space(&mut offsets, last_text, pending, &builder, before)
+                    };
+                    offsets.insert(key, start..builder.text().len().max(start));
+                    last_text = Some(key);
                 }
                 // Atomic inline metrics are set after laying out the box.
                 Op::Box(key) | Op::Empty(key) => {
+                    let pending = builder.has_pending_whitespace();
+                    let before = builder.text().len();
                     builder.push_inline_box(parley::InlineBox {
                         id: boxes.len() as u64,
                         index: 0,
@@ -93,6 +119,8 @@ impl Engine<'_> {
                         vertical_align: Default::default(),
                     });
                     boxes.push(key);
+                    flushed_space(&mut offsets, last_text, pending, &builder, before);
+                    last_text = None;
                 }
                 // The run ends at the next block box.
                 Op::Block(_) => break,
@@ -110,6 +138,7 @@ impl Engine<'_> {
         if let Some(inline) = state.inline.as_deref_mut() {
             inline.text = builder.build_into(&mut inline.layout);
             inline.boxes = boxes;
+            inline.offset_mapping = offsets;
             inline.shaped = true;
             // The lines refer to the previous text until emitted again.
             inline.lines.clear();
@@ -119,6 +148,7 @@ impl Engine<'_> {
             state.inline = Some(Box::new(InlineLayout {
                 text,
                 layout,
+                offset_mapping: offsets,
                 boxes,
                 shaped: true,
                 first_baseline: None,
@@ -127,6 +157,32 @@ impl Engine<'_> {
             }));
         }
     }
+}
+
+/// Give the space the builder flushed at `before` for white space pending
+/// before a push to the text item `last` it follows, and return its length:
+/// zero when no space was flushed.
+fn flushed_space(
+    offsets: &mut FxHashMap<LayoutInputKey, Range<usize>>,
+    last: Option<LayoutInputKey>,
+    pending: bool,
+    builder: &parley::TreeBuilder<'_, Option<LayoutInputKey>>,
+    before: usize,
+) -> usize {
+    let len = builder.text()[before..]
+        .chars()
+        .next()
+        .filter(|&c| pending && c != '\u{FFFC}' && c.is_whitespace())
+        .map_or(0, char::len_utf8);
+
+    if len > 0
+        && let Some(range) = last.and_then(|last| offsets.get_mut(&last))
+        && range.end == before
+    {
+        range.end += len;
+    }
+
+    len
 }
 
 /// The item's inherited text style, branded with the item so glyph runs can
