@@ -495,3 +495,169 @@ fn text_between_block_boxes_is_selected_in_its_run() {
     window.poll();
     assert_eq!(window.selection(), None, "its run left the tree");
 }
+
+#[test]
+fn the_highlight_covers_the_selected_text_in_tree_order() {
+    let (mut window, nodes) = window();
+    open(&mut window);
+    let (first, second) = {
+        let nodes = nodes.borrow();
+        (nodes.first.unwrap(), nodes.second.unwrap())
+    };
+    let set = |window: &mut Window, anchor, extent| {
+        window
+            .state()
+            .selection
+            .set(Some(Selection::new(anchor, extent)));
+        window.poll();
+        window.selection_rects()
+    };
+    let at = |node, index| TextPosition::new(node, index, Default::default());
+
+    assert!(
+        set(&mut window, at(first, 3), at(first, 3)).is_empty(),
+        "a caret"
+    );
+
+    // "world" of the first paragraph, made either way.
+    let world = set(&mut window, at(first, 6), at(first, FIRST.len()));
+    assert_eq!(
+        world,
+        set(&mut window, at(first, FIRST.len()), at(first, 6))
+    );
+    let [rect] = world.as_slice() else {
+        panic!("one line: {world:?}");
+    };
+    assert!(rect.x0 > 1.0 && rect.width() > 0.0, "after \"Hello \"");
+    assert!(rect.y0 >= 30.0 && rect.y1 <= 60.0, "in the first paragraph");
+
+    // From "world" to "Second", backwards: both paragraphs, in order.
+    let rects = set(&mut window, at(second, "Second".len()), at(first, 6));
+    let [start, end] = rects.as_slice() else {
+        panic!("one line each: {rects:?}");
+    };
+    assert_eq!(start.x0, rect.x0, "from \"world\"");
+    assert!(start.y1 <= 60.0 && end.y0 >= 60.0 && end.y1 <= 90.0);
+    assert!(end.x0 < 1.0 && end.x1 < rect.x1, "to the end of \"Second\"");
+}
+
+#[test]
+fn the_highlight_covers_the_runs_between_block_boxes() {
+    let nodes = Rc::new(RefCell::new(None));
+    let mut window = Window::new({
+        let nodes = nodes.clone();
+        move |cx: &UiCx| {
+            let block = cx.div().size(size(px(400), px(40))).build();
+            let paragraph = cx
+                .div()
+                .children(|cx| [cx.text(FIRST).build(), block, cx.text(SECOND).build()]);
+            *nodes.borrow_mut() = Some((paragraph, block));
+            cx.div().children(|_| [paragraph])
+        }
+    });
+    open(&mut window);
+    let (paragraph, block) = nodes.borrow().unwrap();
+
+    window.state().selection.set(Some(Selection::new(
+        TextPosition::new(paragraph, 6, Default::default()),
+        TextPosition::new(paragraph, 3, Default::default()).in_run(Some(block)),
+    )));
+    window.poll();
+    let rects = window.selection_rects();
+    let [first, second] = rects.as_slice() else {
+        panic!("one rectangle per run: {rects:?}");
+    };
+    assert!(
+        first.y1 <= second.y0 - 40.0,
+        "the block box is between them"
+    );
+}
+
+#[test]
+fn the_highlight_goes_into_and_out_of_inline_boxes_in_order() {
+    use comet_layout::style::bx::{DisplayInner, DisplayOuter};
+
+    // "Hello [inner] world", the brackets an inline box with its own text.
+    let nodes = Rc::new(RefCell::new(None));
+    let mut window = Window::new({
+        let nodes = nodes.clone();
+        move |cx: &UiCx| {
+            let inline_box = cx
+                .div()
+                .display_outer(DisplayOuter::Inline)
+                .display_inner(DisplayInner::FlowRoot)
+                .children(|cx| cx.text("inner").build());
+            let paragraph = cx.div().size(size(px(400), px(30))).children(|cx| {
+                [
+                    cx.text("Hello ").build(),
+                    inline_box,
+                    cx.text(" world").build(),
+                ]
+            });
+            *nodes.borrow_mut() = Some((paragraph, inline_box));
+            cx.div().children(|_| [paragraph])
+        }
+    });
+    open(&mut window);
+    let (paragraph, inline_box) = nodes.borrow().unwrap();
+    let bounds = {
+        let trees = &window.pipeline().trees;
+        let fragment = trees.box_fragment(inline_box).unwrap();
+        let layout = trees.fragments.items[fragment].layout;
+        trees
+            .fragment_to_scene(fragment)
+            .unwrap()
+            .transform_rect_bbox(layout.border_box())
+    };
+    let rects = |window: &mut Window, anchor, extent| {
+        window
+            .state()
+            .selection
+            .set(Some(Selection::new(anchor, extent)));
+        window.poll();
+        let rects = window.selection_rects();
+        let before = rects
+            .iter()
+            .filter(|rect| rect.x1 <= bounds.x0 + 0.5)
+            .count();
+        let inside = rects
+            .iter()
+            .filter(|rect| rect.x0 >= bounds.x0 - 0.5 && rect.x1 <= bounds.x1 + 0.5)
+            .count();
+        let after = rects
+            .iter()
+            .filter(|rect| rect.x0 >= bounds.x1 - 0.5)
+            .count();
+        assert_eq!(
+            before + inside + after,
+            rects.len(),
+            "nothing over the box edges: {rects:?}"
+        );
+        (before, inside, after)
+    };
+    let outer = |index| TextPosition::new(paragraph, index, Default::default());
+    let inner = |index| TextPosition::new(inline_box, index, Default::default());
+    // "Hello " is 6 bytes, then the box's U+FFFC of 3.
+    let box_end = 6 + '\u{FFFC}'.len_utf8();
+
+    assert_eq!(
+        rects(&mut window, outer(1), inner(3)),
+        (1, 1, 0),
+        "into the box"
+    );
+    assert_eq!(
+        rects(&mut window, inner(3), outer(1)),
+        (1, 1, 0),
+        "either way"
+    );
+    assert_eq!(
+        rects(&mut window, inner(2), outer(box_end + 3)),
+        (0, 1, 1),
+        "out of the box"
+    );
+    assert_eq!(
+        rects(&mut window, outer(1), outer(box_end + 3)),
+        (1, 1, 1),
+        "across the whole box: its text, not its character"
+    );
+}

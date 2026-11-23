@@ -51,6 +51,12 @@ pub struct InlineLayout {
 }
 
 impl InlineLayout {
+    /// Items of the inline boxes in [`Self::layout`], indexed by inline box
+    /// id: atomic inlines and empty inline elements.
+    pub fn boxes(&self) -> &[LayoutInputKey] {
+        &self.boxes
+    }
+
     /// Line fragment of each line of [`Self::layout`], by line index.
     pub fn lines(&self) -> &[FragmentKey] {
         &self.lines

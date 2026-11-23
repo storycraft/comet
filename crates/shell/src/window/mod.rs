@@ -5,6 +5,7 @@
 
 mod dispatch;
 mod focus;
+mod highlight;
 mod keyboard;
 mod pointer;
 mod selection;
@@ -260,13 +261,17 @@ impl Window {
     /// Paint the last layout into `scene`, in physical pixels, with the
     /// selected text highlighted over it.
     pub fn paint(&mut self, scene: &mut impl anyrender::PaintScene) {
-        let tree = self.ui.tree().borrow();
-        self.pipeline.paint(
-            &tree.ui,
-            self.viewport.physical_rect(),
-            self.viewport.scale_factor,
-            scene,
-        );
+        {
+            let tree = self.ui.tree().borrow();
+            self.pipeline.paint(
+                &tree.ui,
+                self.viewport.physical_rect(),
+                self.viewport.scale_factor,
+                scene,
+            );
+        }
+
+        self.paint_selection(scene);
     }
 
     // Accessibility.
