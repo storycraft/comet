@@ -15,7 +15,7 @@ use comet_layout::{
         geometry::{AutoValue, Rect, Size, StyleUnit},
     },
 };
-use comet_layout_flex::{flex as flex_layout, styles as flex};
+use comet_layout_flex::{flex as flex_layout, style as flex};
 use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,

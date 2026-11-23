@@ -16,7 +16,7 @@ use comet_layout::{
         geometry::{AutoValue, Rect, Size, StyleUnit},
     },
 };
-use comet_layout_flex::styles::Gap;
+use comet_layout_flex::style::Gap;
 use comet_paint::style::TextColor;
 use comet_reactivity::{
     PropHint, UiCx, UiTree,

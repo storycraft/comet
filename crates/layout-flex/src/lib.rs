@@ -20,7 +20,7 @@
 mod adapter;
 
 pub mod prelude;
-pub mod styles;
+pub mod style;
 
 use std::sync::{Arc, LazyLock};
 

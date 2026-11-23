@@ -9,7 +9,7 @@ use taffy::{
     LayoutFlexboxContainer, LayoutPartialTree, OofItemStyle, TraversePartialTree,
 };
 
-use crate::styles;
+use crate::style;
 
 const ROOT: taffy::NodeId = taffy::NodeId::new(0);
 
@@ -145,7 +145,7 @@ impl Style {
         macro_rules! prop {
             ($name:ident) => {
                 props
-                    .map(Props::get_or_default::<styles::$name>)
+                    .map(Props::get_or_default::<style::$name>)
                     .unwrap_or_default()
                     .0
             };
@@ -177,7 +177,7 @@ impl Style {
         macro_rules! prop {
             ($name:ident) => {
                 props
-                    .map(Props::get_or_default::<styles::$name>)
+                    .map(Props::get_or_default::<style::$name>)
                     .unwrap_or_default()
                     .0
             };

@@ -6,7 +6,7 @@ use comet_layout::style::{geometry::Point as StylePoint, taffy::Overflow, unit::
 use comet_reactivity::{Styled, UiCx};
 use comet_shell::{
     Handler, Window,
-    styles::{Focusable, OnBlur, OnClick, OnFocus, OnKeyDown, OnPointerDown, OnPointerEnter,
+    style::{Focusable, OnBlur, OnClick, OnFocus, OnKeyDown, OnPointerDown, OnPointerEnter,
         OnPointerLeave},
     ui_events::{
         ScrollDelta,

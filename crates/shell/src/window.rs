@@ -24,7 +24,7 @@ use crate::{
     listeners::{Listeners, Phase, WindowListener},
     pipeline::Pipeline,
     runtime::UiRoot,
-    styles::{
+    style::{
         Focusable, HandlerProp, OnBlur, OnClick, OnFocus, OnKeyDown, OnKeyUp, OnPointerDown,
         OnPointerEnter, OnPointerLeave, OnPointerMove, OnPointerUp, OnScroll,
     },

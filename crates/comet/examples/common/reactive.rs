@@ -2,7 +2,7 @@ use core::f64::consts::TAU;
 
 use comet::prelude::*;
 use comet_layout::style::{parley, taffy::Position};
-use comet_layout_flex::styles::taffy::AlignItems;
+use comet_layout_flex::style::taffy::AlignItems;
 use comet_tree::node::NodeKey;
 use kurbo::Affine;
 use peniko::Color;

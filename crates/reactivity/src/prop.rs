@@ -3,7 +3,7 @@
 use bitflags::bitflags;
 use comet_accesskit::style as a11y;
 use comet_layout::{dirty_map::DirtyFlags, style::bx};
-use comet_layout_flex::styles as flex;
+use comet_layout_flex::style as flex;
 use comet_paint::style as paint;
 use comet_tree::{node::Text, style::StyleProp};
 

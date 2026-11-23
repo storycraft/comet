@@ -18,7 +18,7 @@ pub mod event;
 pub mod listeners;
 pub mod pipeline;
 pub mod runtime;
-pub mod styles;
+pub mod style;
 pub mod window;
 
 pub use accesskit;

@@ -12,7 +12,7 @@ use comet_reactivity::{Styled, UiCx};
 use comet_shell::{
     Handler, Phase, Window, WindowListener, on_frame, on_next_frame, on_window_key,
     on_window_pointer,
-    styles::{Focusable, OnKeyDown, OnPointerDown},
+    style::{Focusable, OnKeyDown, OnPointerDown},
     ui_events::{
         keyboard::{Code, Key, KeyState, KeyboardEvent, Modifiers, NamedKey},
         pointer::{

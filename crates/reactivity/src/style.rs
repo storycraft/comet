@@ -17,7 +17,7 @@ use comet_layout::style::{
     geometry::{AutoValue, Point, Rect, Size, StyleUnit},
     parley, taffy,
 };
-use comet_layout_flex::{flex, styles as flex_style};
+use comet_layout_flex::{flex, style as flex_style};
 use comet_paint::style as paint;
 use reactive_graph::{traits::Get, wrappers::read::Signal};
 

@@ -9,5 +9,5 @@ pub use accesskit::Role;
 pub use comet_shell::{
     ClickEvent, EventCx, FocusEvent, FrameCx, FrameEvent, FrameListener, Handler, Phase,
     WindowListener, WindowState, on_frame, on_frame_while, on_next_frame, on_window_key,
-    on_window_pointer, styles::*, use_window,
+    on_window_pointer, style::*, use_window,
 };

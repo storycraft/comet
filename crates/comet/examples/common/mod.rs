@@ -11,7 +11,7 @@ use comet_layout::style::{
     parley::{self, Alignment},
     taffy::Overflow,
 };
-use comet_layout_flex::styles::taffy::FlexWrap;
+use comet_layout_flex::style::taffy::FlexWrap;
 use comet_tree::node::NodeKey;
 use peniko::Color;
 
