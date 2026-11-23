@@ -2,7 +2,9 @@
 //!
 //! Positions are kept in the text of an inline formatting context, by the
 //! node of its box and a byte offset, so they stay valid when the fragments
-//! are built again. A selection runs from its anchor, where it started, to
+//! are built again. Inline content interrupted by block boxes is laid out in
+//! runs between them, each with its own text: a position there also names
+//! its run by the block box preceding it. A selection runs from its anchor, where it started, to
 //! its extent, where it ends, in either order.
 
 use comet_tree::node::NodeKey;
@@ -42,24 +44,53 @@ impl From<Affinity> for parley::Affinity {
 pub struct TextPosition {
     /// The box of the inline formatting context, owning its inline layout.
     pub node: NodeKey,
-    /// Byte offset into the text of the inline layout: the text after white
+    /// The run of inline content holding the position, when block boxes
+    /// interrupt the inline content of `node`: the block box it follows.
+    /// `None` for the first run, or inline content without block boxes.
+    pub run: Option<NodeKey>,
+    /// Byte offset into the text of the inline layout of the run: the text after white
     /// space processing, where each inline box is one U+FFFC character.
     pub index: usize,
     pub affinity: Affinity,
 }
 
 impl TextPosition {
+    /// A position in the first run of the inline content of `node`.
     pub const fn new(node: NodeKey, index: usize, affinity: Affinity) -> Self {
         Self {
             node,
+            run: None,
             index,
             affinity,
         }
     }
 
-    pub(crate) fn from_cursor(node: NodeKey, cursor: Cursor) -> Self {
-        Self::new(node, cursor.index(), cursor.affinity().into())
+    /// The position in the run of the inline content of `node` following
+    /// the block box `run`, or in its first run.
+    pub const fn in_run(mut self, run: Option<NodeKey>) -> Self {
+        self.run = run;
+        self
     }
+
+    /// The inline layout holding the position.
+    pub(crate) const fn text(&self) -> InlineText {
+        InlineText {
+            node: self.node,
+            run: self.run,
+        }
+    }
+
+    pub(crate) fn from_cursor(text: InlineText, cursor: Cursor) -> Self {
+        Self::new(text.node, cursor.index(), cursor.affinity().into()).in_run(text.run)
+    }
+}
+
+/// An inline layout positions are kept in: the [`TextPosition::node`] and
+/// [`TextPosition::run`] of a position.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct InlineText {
+    pub node: NodeKey,
+    pub run: Option<NodeKey>,
 }
 
 /// A selected range of text, from where it started to where it ends.
@@ -86,13 +117,13 @@ impl Selection {
 
     /// Whether it selects no text.
     pub fn is_collapsed(&self) -> bool {
-        self.anchor.node == self.extent.node && self.anchor.index == self.extent.index
+        self.anchor.text() == self.extent.text() && self.anchor.index == self.extent.index
     }
 
-    pub(crate) fn from_parley(node: NodeKey, selection: parley::Selection) -> Self {
+    pub(crate) fn from_parley(text: InlineText, selection: parley::Selection) -> Self {
         Self::new(
-            TextPosition::from_cursor(node, selection.anchor()),
-            TextPosition::from_cursor(node, selection.focus()),
+            TextPosition::from_cursor(text, selection.anchor()),
+            TextPosition::from_cursor(text, selection.focus()),
         )
     }
 }

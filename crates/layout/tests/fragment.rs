@@ -355,6 +355,53 @@ fn first_block_margin_collapses_through_mixed_content_without_padding() {
 }
 
 #[test]
+fn anonymous_blocks_are_found_by_the_block_their_run_follows() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let before = text(&mut ui, "before");
+    let block = sized_block(&mut ui, 20.0);
+    let after = text(&mut ui, "after");
+    ui.append(root, before);
+    ui.append(root, block);
+    ui.append(root, after);
+
+    let mut f = Fixture::new();
+    let (_, root_fragment) = f.build(&ui, root);
+    let owner = f.tree.item_for_node(root).unwrap();
+    let block_item = f.tree.item_for_node(block).unwrap();
+    let run_text = |f: &Fixture, after| {
+        let anonymous = f.fragments.anonymous_block(owner, after)?;
+        assert_eq!(f.fragments.run_after(anonymous), Some(after));
+        Some(f.shaped_text(anonymous))
+    };
+
+    assert_eq!(run_text(&f, None).as_deref(), Some("before"));
+    assert_eq!(run_text(&f, Some(block_item)).as_deref(), Some("after"));
+    assert_eq!(f.fragments.run_after(root_fragment), None, "not a run");
+
+    // A new block splits the first run. Anonymous blocks are reused in
+    // order, but each run is still found by the block it follows.
+    let middle = text(&mut ui, "middle");
+    let split = sized_block(&mut ui, 20.0);
+    ui.after(before, split);
+    ui.after(split, middle);
+    f.dirty.mark_node(&f.tree, root, DirtyFlags::NEED_CHILDREN);
+    f.build(&ui, root);
+    let split_item = f.tree.item_for_node(split).unwrap();
+
+    assert_eq!(run_text(&f, None).as_deref(), Some("before"));
+    assert_eq!(run_text(&f, Some(split_item)).as_deref(), Some("middle"));
+    assert_eq!(run_text(&f, Some(block_item)).as_deref(), Some("after"));
+
+    // Without block boxes there are no runs.
+    ui.delete(split);
+    ui.delete(block);
+    f.dirty.mark_node(&f.tree, root, DirtyFlags::NEED_CHILDREN);
+    f.build(&ui, root);
+    assert_eq!(f.fragments.anonymous_block(owner, None), None);
+}
+
+#[test]
 fn editing_one_run_keeps_the_fragments_of_other_runs() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());

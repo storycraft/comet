@@ -421,3 +421,77 @@ fn auto_keeps_whether_the_node_above_is_selectable() {
         "the span keeps the paragraph's choice"
     );
 }
+
+#[test]
+fn text_between_block_boxes_is_selected_in_its_run() {
+    // A paragraph whose text is split by a focusable block box into two
+    // runs, then a focusable box.
+    let nodes = Rc::new(RefCell::new(None));
+    let mut window = Window::new({
+        let nodes = nodes.clone();
+        move |cx: &UiCx| {
+            let focusable =
+                |cx: &UiCx| cx.div().size(size(px(400), px(40))).focusable(true).build();
+            let block = focusable(cx);
+            let paragraph = cx
+                .div()
+                .children(|cx| [cx.text(FIRST).build(), block, cx.text(SECOND).build()]);
+            let after = focusable(cx);
+            *nodes.borrow_mut() = Some((paragraph, block, after));
+            cx.div().children(|_| [paragraph, after])
+        }
+    });
+    open(&mut window);
+    let (paragraph, block, after) = nodes.borrow().unwrap();
+    // The second run starts below the block box.
+    let second_y = {
+        let trees = &window.pipeline().trees;
+        let layout = trees.fragments.items[trees.box_fragment(block).unwrap()].layout;
+        layout.location.y + layout.size.height + 5.0
+    };
+
+    press(&mut window, 1.0, 5.0, 1, Modifiers::empty());
+    let selection = window.selection().expect("the first run");
+    assert_eq!(selection.anchor.node, paragraph, "kept in the paragraph");
+    assert_eq!(selection.anchor.run, None, "in the first run");
+
+    drag(&mut window, 399.0, second_y);
+    release(&mut window, 399.0, second_y);
+    let selection = window.selection().unwrap();
+    assert_eq!(selection.anchor.run, None, "anchored in the first run");
+    assert_eq!(
+        (
+            selection.extent.node,
+            selection.extent.run,
+            selection.extent.index
+        ),
+        (paragraph, Some(block), SECOND.len()),
+        "extended to the end of the second run"
+    );
+    assert!(!selection.is_collapsed());
+
+    press(&mut window, 2.0, second_y, 2, Modifiers::empty());
+    let selection = window.selection().unwrap();
+    assert_eq!(
+        [selection.anchor, selection.extent].map(|end| (end.run, end.index)),
+        [(Some(block), 0), (Some(block), "Second".len())],
+        "a word of the second run"
+    );
+
+    // Focus moves on from after the block box the run follows.
+    tab(&mut window, Modifiers::empty());
+    assert_eq!(window.focused(), Some(after), "past the block box");
+    window.state().focused_node.set(None);
+    window.poll();
+    tab(&mut window, Modifiers::SHIFT);
+    assert_eq!(
+        window.focused(),
+        Some(block),
+        "the block box before the run"
+    );
+
+    // The run goes with the block box it follows.
+    window.ui().tree().borrow_mut().ui.remove_parent(block);
+    window.poll();
+    assert_eq!(window.selection(), None, "its run left the tree");
+}

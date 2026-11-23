@@ -10,6 +10,7 @@ use super::{Window, state::update_rw};
 use crate::{
     event::FocusEvent,
     pipeline::UiTrees,
+    selection::TextPosition,
     style::{Focusable, OnBlur, OnFocus},
 };
 
@@ -94,7 +95,9 @@ impl Window {
     /// whichever way it was made.
     pub(super) fn move_focus(&mut self, forward: bool) {
         let ends = match (self.focus.focused, self.selection.current) {
-            (None, Some(selection)) => [Some(selection.anchor.node), Some(selection.extent.node)],
+            (None, Some(selection)) => {
+                [selection.anchor, selection.extent].map(|position| Some(TreePoint::of(position)))
+            }
             _ => [None, None],
         };
         let (order, ends) = self.focus_order(ends);
@@ -126,36 +129,62 @@ impl Window {
     /// in tree order of `ends` are among them, if any is in the tree.
     fn focus_order(
         &self,
-        ends: [Option<NodeKey>; 2],
+        ends: [Option<TreePoint>; 2],
     ) -> (Vec<NodeKey>, Option<(OrderPosition, OrderPosition)>) {
         let tree = self.ui.tree().borrow();
         let ui = &tree.ui;
         let mut order = Vec::new();
         let mut first = None;
         let mut last = None;
-        let mut pending = vec![self.ui.root()];
-
-        while let Some(node) = pending.pop() {
-            let focusable = ui
-                .prop::<Focusable>(node)
-                .is_some_and(|focusable| focusable.0);
-            if ends.contains(&Some(node)) {
-                let found = OrderPosition {
-                    before: order.len(),
-                    focusable,
-                };
+        let mut found = |point: TreePoint, before: usize, focusable: bool| {
+            if ends.contains(&Some(point)) {
+                let found = OrderPosition { before, focusable };
                 first.get_or_insert(found);
                 last = Some(found);
             }
+        };
+        // Nodes to visit, and to leave once their subtree is visited.
+        let mut pending = vec![TreePoint::At(self.ui.root())];
+
+        while let Some(point) = pending.pop() {
+            let TreePoint::At(node) = point else {
+                found(point, order.len(), false);
+                continue;
+            };
+            let focusable = ui
+                .prop::<Focusable>(node)
+                .is_some_and(|focusable| focusable.0);
+            found(point, order.len(), focusable);
             if focusable {
                 order.push(node);
             }
 
+            pending.push(TreePoint::After(node));
             let children: Vec<_> = ui.children(node).collect();
-            pending.extend(children.into_iter().rev());
+            pending.extend(children.into_iter().rev().map(TreePoint::At));
         }
 
         (order, first.zip(last))
+    }
+}
+
+/// A point in tree order.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TreePoint {
+    /// At a node, before its subtree.
+    At(NodeKey),
+    /// After the subtree of a node.
+    After(NodeKey),
+}
+
+impl TreePoint {
+    /// Where a text position is: at the box of its inline content, or after
+    /// the block box its run follows.
+    fn of(position: TextPosition) -> Self {
+        match position.run {
+            Some(run) => Self::After(run),
+            None => Self::At(position.node),
+        }
     }
 }
 

@@ -257,10 +257,10 @@ impl Window {
         laid_out
     }
 
-    /// Paint the last layout into `scene`, in physical pixels.
+    /// Paint the last layout into `scene`, in physical pixels, with the
+    /// selected text highlighted over it.
     pub fn paint(&mut self, scene: &mut impl anyrender::PaintScene) {
         let tree = self.ui.tree().borrow();
-
         self.pipeline.paint(
             &tree.ui,
             self.viewport.physical_rect(),
