@@ -11,15 +11,12 @@ use super::{
 use crate::{
     dirty_map::DirtyMap,
     fragment::{
-        Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, RunEntry, StateKey,
-        state::NodeState, tree::FragmentTree,
+        Fragment, FragmentBox, FragmentItem, FragmentKey, InlineLayout, StateKey, state::NodeState,
+        tree::FragmentTree,
     },
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     style::geometry::{Point, Size},
 };
-
-/// Character standing for an inline box in the text of an inline layout.
-const OBJECT_REPLACEMENT: char = '\u{FFFC}';
 
 impl Engine<'_> {
     /// Replace the lines of a fragment owning them with its broken and aligned
@@ -38,9 +35,7 @@ impl Engine<'_> {
         let Scratch {
             spans,
             span_parents,
-            runs,
             lines,
-            box_indices,
             ..
         } = &mut self.scratch.inline;
         let dirty = &mut *self.dirty;
@@ -53,15 +48,7 @@ impl Engine<'_> {
         let state = items[fragment].item.state()?;
         let InlineLayout { layout, boxes, .. } = states.get(state)?.inline.as_deref()?;
 
-        runs.clear();
         lines.clear();
-        box_indices.clear();
-        box_indices.resize(layout.inline_boxes().len(), 0);
-        for inline_box in layout.inline_boxes() {
-            if let Some(index) = box_indices.get_mut(inline_box.id as usize) {
-                *index = inline_box.index;
-            }
-        }
 
         let mut emitter = Emitter {
             tree: self.tree,
@@ -75,9 +62,7 @@ impl Engine<'_> {
             span_parents,
             spans,
             dirty,
-            runs,
             lines,
-            box_indices,
             line: 0,
             line_key: fragment,
         };
@@ -89,13 +74,10 @@ impl Engine<'_> {
         emitter.fit_spans();
         let extent = emitter.fit_overflow();
 
-        // Lines are in logical order; items within a line are visual.
-        runs.sort_by_key(|run| (run.line, run.start, run.end));
         if let Some(inline) = states
             .get_mut(state)
             .and_then(|state| state.inline.as_deref_mut())
         {
-            std::mem::swap(&mut inline.runs, runs);
             std::mem::swap(&mut inline.lines, lines);
         }
 
@@ -165,12 +147,8 @@ struct Emitter<'a> {
     /// Items whose fragments perform layout are marked
     /// [`PAINT_CHANGED`] in it.
     dirty: &'a mut DirtyMap,
-    /// Leaf fragments of the emitted lines, in emission order.
-    runs: &'a mut Vec<RunEntry>,
     /// Emitted line fragments, by line index.
     lines: &'a mut Vec<FragmentKey>,
-    /// Text index of each inline box, by id.
-    box_indices: &'a [usize],
     /// Index of the current line in the Parley layout.
     line: usize,
     /// Fragment of the current line.
@@ -210,9 +188,7 @@ impl Emitter<'_> {
                 parley::PositionedLayoutItem::GlyphRun(run) => {
                     self.glyph_run(&run, item_index, offset)
                 }
-                parley::PositionedLayoutItem::InlineBox(bx) => {
-                    self.inline_box(&bx, item_index, offset)
-                }
+                parley::PositionedLayoutItem::InlineBox(bx) => self.inline_box(&bx, offset),
             }
         }
     }
@@ -236,7 +212,7 @@ impl Emitter<'_> {
             ..Default::default()
         };
 
-        let key = self.push(
+        self.push(
             source,
             FragmentItem::GlyphRun {
                 line: self.line,
@@ -244,37 +220,14 @@ impl Emitter<'_> {
             },
             layout,
         );
-
-        // The shaping run may hold the text of other items: only the clusters
-        // of the glyph run's style are its text.
-        let style = run.style_index();
-        let (start, end) = run
-            .run()
-            .clusters()
-            .filter(|cluster| cluster.style_index() == style)
-            .map(|cluster| cluster.text_range())
-            .fold((usize::MAX, 0), |(start, end), range| {
-                (start.min(range.start), end.max(range.end))
-            });
-        let (start, end) = if start > end {
-            let start = run.run().text_range().start;
-            (start, start)
-        } else {
-            (start, end)
-        };
-
-        self.record(key, item, start, end);
     }
 
     fn inline_box(
         &mut self,
         bx: &parley::PositionedInlineBox,
-        item: usize,
         (left, top, line_height): (f32, f32, f32),
     ) {
         let child = self.boxes[bx.id as usize];
-        let start = self.box_indices[bx.id as usize];
-        let end = start + OBJECT_REPLACEMENT.len_utf8();
 
         // An empty inline element.
         if self.tree.items[child].kind == LayoutInputKind::Inline {
@@ -284,8 +237,7 @@ impl Emitter<'_> {
                 ..Default::default()
             };
 
-            let key = self.push(child, FragmentItem::Inline { line: self.line }, layout);
-            self.record(key, item, start, end);
+            self.push(child, FragmentItem::Inline { line: self.line }, layout);
             return;
         }
 
@@ -307,18 +259,6 @@ impl Emitter<'_> {
             self.dirty.mark(self.tree, child, PAINT_CHANGED);
         }
         self.items.append(parent, atomic);
-        self.record(atomic, item, start, end);
-    }
-
-    /// Add a leaf fragment of the current line to the run index.
-    fn record(&mut self, fragment: FragmentKey, item: usize, start: usize, end: usize) {
-        self.runs.push(RunEntry {
-            fragment,
-            line: self.line,
-            item,
-            start,
-            end,
-        });
     }
 
     /// Insert a new fragment, marking its item as laid out in this build.

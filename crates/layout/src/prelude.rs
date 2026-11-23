@@ -6,7 +6,6 @@ pub use crate::fragment::{
     Fragment, FragmentBox, FragmentItem, FragmentKey, builder::FragmentTreeBuilder,
     state::NodeLayoutBits, tree::FragmentTree,
 };
-pub use crate::inline::{InlineCursor, InlinePosition};
 pub use crate::input::{
     ChildLayout, LayoutInputItem, LayoutInputKey, LayoutInputKind,
     builder::{BuildRequest, LayoutInputTreeBuilder},

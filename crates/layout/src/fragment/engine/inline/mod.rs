@@ -21,7 +21,7 @@ use taffy::{ResolveOrZero, style::CoreStyle};
 use super::{Engine, FragmentKey, Mode};
 use crate::fragment::adapter::scrollable_overflow;
 use crate::{
-    fragment::{InlineLayout, RunEntry, tree::FragmentTree},
+    fragment::{InlineLayout, tree::FragmentTree},
     input::{LayoutInputKey, LayoutInputKind},
 };
 
@@ -38,12 +38,8 @@ pub(super) struct Scratch {
     ancestors: Vec<LayoutInputKey>,
     /// Atomic inline children of the inline layout being prepared.
     atomics: Vec<LayoutInputKey>,
-    /// Run index being emitted, swapped into the inline layout afterwards.
-    runs: Vec<RunEntry>,
     /// Line fragments being emitted, swapped into the inline layout afterwards.
     lines: Vec<FragmentKey>,
-    /// Text index of each inline box of the layout being emitted, by id.
-    box_indices: Vec<usize>,
 }
 
 /// Result of breaking inline content into lines.
