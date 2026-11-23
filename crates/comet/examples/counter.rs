@@ -2,14 +2,9 @@
 //! square spins on the right, driven by a frame handler.
 
 use core::f64::consts::TAU;
-use std::rc::Rc;
 
 use anyrender::Paint;
-use comet::{
-    prelude::*,
-    shell::event::{Key, KeyboardEvent, NamedKey},
-    winit::window::WindowAttributes,
-};
+use comet::{prelude::*, winit::window::WindowAttributes};
 use comet_layout::style::{
     geometry::Point,
     parley,
@@ -72,7 +67,6 @@ fn counter(cx: &UiCx) -> NodeKey {
 fn button(cx: &UiCx, label: &str, on_click: impl Fn() + 'static) -> NodeKey {
     let (hovered, set_hovered) = signal(false);
     let (focused, set_focused) = signal(false);
-    let on_click = Rc::new(on_click);
 
     cx.div()
         .role(Role::Button)
@@ -99,18 +93,7 @@ fn button(cx: &UiCx, label: &str, on_click: impl Fn() + 'static) -> NodeKey {
         }))
         // Focusable: Tab moves the focus here, and Enter or Space clicks.
         .focusable(true)
-        .on_click({
-            let on_click = on_click.clone();
-            move |_, _| on_click()
-        })
-        .on_key_down(move |cx, event: &KeyboardEvent| {
-            if matches!(&event.key, Key::Named(NamedKey::Enter))
-                || matches!(&event.key, Key::Character(c) if c == " ")
-            {
-                cx.prevent_default();
-                on_click();
-            }
-        })
+        .on_click(move |_, _| on_click())
         .on_focus(move |_, _| set_focused.set(true))
         .on_blur(move |_, _| set_focused.set(false))
         .on_hover(move |value| set_hovered.set(value))

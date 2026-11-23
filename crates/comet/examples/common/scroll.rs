@@ -91,7 +91,11 @@ fn nested(cx: &UiCx) -> NodeKey {
                 .into_iter();
             let after = rows(cx, "Outer", 3, Color::from_rgb8(222, 242, 233));
 
-            before.into_iter().chain(inner).chain(after).collect::<Vec<_>>()
+            before
+                .into_iter()
+                .chain(inner)
+                .chain(after)
+                .collect::<Vec<_>>()
         })
 }
 

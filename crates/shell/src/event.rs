@@ -59,10 +59,12 @@ impl<E: 'static> Handler<E> {
     /// running further up the stack.
     pub(crate) fn call(&self, cx: &mut EventCx, event: &E) -> bool {
         self.0
-            .try_update_value(|inner| match inner.owner.as_ref().and_then(WeakOwner::upgrade) {
-                Some(owner) => owner.with(|| (inner.handler)(cx, event)),
-                None => (inner.handler)(cx, event),
-            })
+            .try_update_value(
+                |inner| match inner.owner.as_ref().and_then(WeakOwner::upgrade) {
+                    Some(owner) => owner.with(|| (inner.handler)(cx, event)),
+                    None => (inner.handler)(cx, event),
+                },
+            )
             .is_some()
     }
 }
@@ -90,7 +92,8 @@ impl<E> fmt::Debug for Handler<E> {
 }
 
 /// A click: a press and release of a pointer button over the same node, or
-/// an activation from an assistive technology.
+/// an activation of the focused node with Enter or Space, or from an
+/// assistive technology.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClickEvent {
     /// `None` for activations without a pointer.

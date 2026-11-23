@@ -308,8 +308,7 @@ impl Window {
         self.redraw = false;
         // This frame shows every change so far. Changes are taken even
         // without a frame, so they do not ask for one again.
-        self.pipeline
-            .take_changes(&mut self.ui.tree().borrow_mut());
+        self.pipeline.take_changes(&mut self.ui.tree().borrow_mut());
 
         if self.physical_size.width == 0 || self.physical_size.height == 0 {
             return false;
@@ -369,14 +368,7 @@ impl Window {
         };
 
         match request.action {
-            Action::Click => {
-                let path = self.ancestors(Some(node));
-                let click = ClickEvent {
-                    button: None,
-                    count: 1,
-                };
-                self.dispatch::<OnClick>(&path, None, None, &click);
-            }
+            Action::Click => self.click(node),
             Action::Focus => self.set_focus(Some(node)),
             Action::Blur if self.focus == Some(node) => self.set_focus(None),
             _ => {}
@@ -506,29 +498,57 @@ impl Window {
 
     /// Dispatch a keyboard event to the focused node, or the root without
     /// focus, and its ancestors, between the capturing and bubbling window
-    /// listeners, then perform its default action: Tab moves the focus.
+    /// listeners, then perform its default action: Tab moves the focus, and
+    /// Enter, when pressed, or Space, when released, clicks the focused node.
     pub fn keyboard_event(&mut self, event: &KeyboardEvent) {
-        let target = self
-            .focus
-            .filter(|&node| self.attached(node))
-            .unwrap_or(self.ui.root());
-        let path = self.ancestors(Some(target));
+        let focus = self.focus.filter(|&node| self.attached(node));
+        let path = self.ancestors(Some(focus.unwrap_or(self.ui.root())));
 
         let prevented = match event.state {
             KeyState::Down => self.dispatch_key::<OnKeyDown>(&path, event),
             KeyState::Up => self.dispatch_key::<OnKeyUp>(&path, event),
         };
 
-        if !prevented
-            && event.state == KeyState::Down
-            && event.key == Key::Named(NamedKey::Tab)
-        {
-            self.move_focus(!event.modifiers.contains(Modifiers::SHIFT));
+        if prevented {
+            return;
+        }
+
+        match (event.state, &event.key) {
+            (KeyState::Down, Key::Named(NamedKey::Tab)) => {
+                self.move_focus(!event.modifiers.contains(Modifiers::SHIFT));
+            }
+            (KeyState::Down, Key::Named(NamedKey::Enter)) => {
+                if let Some(focus) = focus {
+                    self.click(focus);
+                }
+            }
+            (KeyState::Up, Key::Character(text)) if text == " " => {
+                if let Some(focus) = focus {
+                    self.click(focus);
+                }
+            }
+            _ => {}
         }
     }
 
+    /// Click `node` without a pointer, as by the keyboard or an assistive
+    /// technology.
+    fn click(&mut self, node: NodeKey) {
+        let path = self.ancestors(Some(node));
+        let click = ClickEvent {
+            button: None,
+            count: 1,
+        };
+
+        self.dispatch::<OnClick>(&path, None, None, &click);
+    }
+
     fn set_pointer_inside(&mut self, inside: bool) {
-        update(self.state.pointer_inside, self.writers.pointer_inside, inside);
+        update(
+            self.state.pointer_inside,
+            self.writers.pointer_inside,
+            inside,
+        );
     }
 
     /// Dispatch a pointer event: the capturing window listeners get `raw`,
@@ -695,7 +715,10 @@ impl Window {
         let mut pending = vec![self.ui.root()];
 
         while let Some(node) = pending.pop() {
-            if ui.prop::<Focusable>(node).is_some_and(|focusable| focusable.0) {
+            if ui
+                .prop::<Focusable>(node)
+                .is_some_and(|focusable| focusable.0)
+            {
                 order.push(node);
             }
 

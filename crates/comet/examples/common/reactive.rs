@@ -119,13 +119,25 @@ fn spinner(cx: &UiCx) -> impl IntoView + use<> {
     [caption, controls]
 }
 
-/// A button whose fill follows the hover. Fill changes only repaint.
+/// A button whose fill follows the hover, with a ring while focused. Tab
+/// moves the focus to it, and Enter or Space clicks it. Fill and outline
+/// changes only repaint.
 fn button(cx: &UiCx, label: Signal<String>, on_click: impl Fn() + 'static) -> NodeKey {
     let (hovered, set_hovered) = signal(false);
+    let (focused, set_focused) = signal(false);
 
     cx.div()
         .role(Role::Button)
         .focusable(true)
+        .outline_width(px(2))
+        .outline_offset(px(2))
+        .outline_fill(Signal::derive(move || {
+            solid(if focused.get() {
+                Color::from_rgb8(36, 46, 63)
+            } else {
+                Color::TRANSPARENT
+            })
+        }))
         .padding(axis(px(8), px(16)))
         .border_radius(all(px(8)))
         .text_color(solid(Color::WHITE))
@@ -138,6 +150,8 @@ fn button(cx: &UiCx, label: Signal<String>, on_click: impl Fn() + 'static) -> No
             })
         }))
         .on_click(move |_, _| on_click())
+        .on_focus(move |_, _| set_focused.set(true))
+        .on_blur(move |_, _| set_focused.set(false))
         .on_hover(move |value| set_hovered.set(value))
         .children(|cx| cx.text_with(move || label.get()).build())
 }
