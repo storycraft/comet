@@ -98,25 +98,22 @@ fn button(cx: &UiCx, label: &str, on_click: impl Fn() + 'static) -> NodeKey {
             })
         }))
         // Focusable: Tab moves the focus here, and Enter or Space clicks.
-        .style((
-            Focusable(true),
-            OnClick(Handler::new({
-                let on_click = on_click.clone();
-                move |_, _| on_click()
-            })),
-            OnKeyDown(Handler::new(move |cx, event: &KeyboardEvent| {
-                if matches!(&event.key, Key::Named(NamedKey::Enter))
-                    || matches!(&event.key, Key::Character(c) if c == " ")
-                {
-                    cx.prevent_default();
-                    on_click();
-                }
-            })),
-            OnFocus(Handler::new(move |_, _| set_focused.set(true))),
-            OnBlur(Handler::new(move |_, _| set_focused.set(false))),
-            OnPointerEnter(Handler::new(move |_, _| set_hovered.set(true))),
-            OnPointerLeave(Handler::new(move |_, _| set_hovered.set(false))),
-        ))
+        .focusable(true)
+        .on_click({
+            let on_click = on_click.clone();
+            move |_, _| on_click()
+        })
+        .on_key_down(move |cx, event: &KeyboardEvent| {
+            if matches!(&event.key, Key::Named(NamedKey::Enter))
+                || matches!(&event.key, Key::Character(c) if c == " ")
+            {
+                cx.prevent_default();
+                on_click();
+            }
+        })
+        .on_focus(move |_, _| set_focused.set(true))
+        .on_blur(move |_, _| set_focused.set(false))
+        .on_hover(move |value| set_hovered.set(value))
         .children(|cx| cx.text(label).build())
 }
 

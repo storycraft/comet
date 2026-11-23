@@ -125,6 +125,7 @@ fn button(cx: &UiCx, label: Signal<String>, on_click: impl Fn() + 'static) -> No
 
     cx.div()
         .role(Role::Button)
+        .focusable(true)
         .padding(axis(px(8), px(16)))
         .border_radius(all(px(8)))
         .text_color(solid(Color::WHITE))
@@ -136,11 +137,8 @@ fn button(cx: &UiCx, label: Signal<String>, on_click: impl Fn() + 'static) -> No
                 Color::from_rgb8(96, 125, 240)
             })
         }))
-        .style((
-            OnClick(Handler::new(move |_, _| on_click())),
-            OnPointerEnter(Handler::new(move |_, _| set_hovered.set(true))),
-            OnPointerLeave(Handler::new(move |_, _| set_hovered.set(false))),
-        ))
+        .on_click(move |_, _| on_click())
+        .on_hover(move |value| set_hovered.set(value))
         .children(|cx| cx.text_with(move || label.get()).build())
 }
 

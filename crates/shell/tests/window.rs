@@ -1,13 +1,13 @@
-//! Input dispatch to nodes, focus and scrolling of a headless window.
+//! Input dispatch to nodes, focus and scrolling of a headless window, with
+//! handlers set through the `InputStyled` helpers.
 
 use std::{cell::RefCell, rc::Rc};
 
 use comet_layout::style::{geometry::Point as StylePoint, taffy::Overflow, unit::*};
 use comet_reactivity::{Styled, UiCx};
 use comet_shell::{
-    Handler, Window,
-    style::{Focusable, OnBlur, OnClick, OnFocus, OnKeyDown, OnPointerDown, OnPointerEnter,
-        OnPointerLeave},
+    Window,
+    style::InputStyled,
     ui_events::{
         ScrollDelta,
         keyboard::{Code, Key, KeyState, KeyboardEvent, Modifiers, NamedKey},
@@ -99,38 +99,32 @@ fn window(log: &Log) -> (Window, Rc<RefCell<Option<Nodes>>>) {
             let outer = cx
                 .div()
                 .size(size(px(200), px(100)))
-                .style((
-                    Focusable(true),
-                    OnClick(Handler::new({
-                        let log = outer_log.clone();
-                        move |_, _| log("click")
-                    })),
-                    OnKeyDown(Handler::new({
-                        let log = outer_log.clone();
-                        move |cx, _| log(&format!("key({:?})", cx.target() == cx.current_target()))
-                    })),
-                    OnFocus(Handler::new({
-                        let log = outer_log.clone();
-                        move |_, _| log("focus")
-                    })),
-                    OnBlur(Handler::new(move |_, _| outer_log("blur"))),
-                ))
+                .focusable(true)
+                .on_click({
+                    let log = outer_log.clone();
+                    move |_, _| log("click")
+                })
+                .on_key_down({
+                    let log = outer_log.clone();
+                    move |cx, _| log(&format!("key({:?})", cx.target() == cx.current_target()))
+                })
+                .on_focus({
+                    let log = outer_log.clone();
+                    move |_, _| log("focus")
+                })
+                .on_blur(move |_, _| outer_log("blur"))
                 .children(|cx| {
                     let key = cx
                         .div()
                         .size(size(px(100), px(50)))
-                        .style((
-                            Focusable(true),
-                            OnClick(Handler::new({
-                                let log = inner_log.clone();
-                                move |_, _| log("click")
-                            })),
-                            OnPointerEnter(Handler::new({
-                                let log = inner_log.clone();
-                                move |_, _| log("enter")
-                            })),
-                            OnPointerLeave(Handler::new(move |_, _| inner_log("leave"))),
-                        ))
+                        .focusable(true)
+                        .on_click({
+                            let log = inner_log.clone();
+                            move |_, _| log("click")
+                        })
+                        .on_hover(move |entered| {
+                            inner_log(if entered { "enter" } else { "leave" })
+                        })
                         .build();
                     inner = Some(key);
                     key
@@ -138,10 +132,8 @@ fn window(log: &Log) -> (Window, Rc<RefCell<Option<Nodes>>>) {
             let second = cx
                 .div()
                 .size(size(px(200), px(100)))
-                .style((
-                    Focusable(true),
-                    OnFocus(Handler::new(move |_, _| second_log("focus"))),
-                ))
+                .focusable(true)
+                .on_focus(move |_, _| second_log("focus"))
                 .build();
 
             *nodes.borrow_mut() = Some(Nodes {
@@ -206,16 +198,16 @@ fn stop_propagation_skips_ancestors() {
             let parent_log = logger(&log, "parent");
             cx.div()
                 .size(size(px(100), px(100)))
-                .style((OnPointerDown(Handler::new(move |_, _| parent_log("down"))),))
+                .on_pointer_down(move |_, _| parent_log("down"))
                 .children(|cx| {
                     let child_log = logger(&log, "child");
                     let key = cx
                         .div()
                         .size(size(px(50), px(50)))
-                        .style((OnPointerDown(Handler::new(move |cx, _| {
+                        .on_pointer_down(move |cx, _| {
                             child_log("down");
                             cx.stop_propagation();
-                        })),))
+                        })
                         .build();
                     *stopper.borrow_mut() = Some(key);
                     key
