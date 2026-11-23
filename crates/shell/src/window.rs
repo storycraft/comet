@@ -508,41 +508,25 @@ impl Window {
 
     /// Dispatch a keyboard event to the focused node, or the root without
     /// focus, and its ancestors, between the capturing and bubbling window
-    /// listeners, then perform its default action: Tab moves the focus, and
-    /// Enter, when pressed, or Space, when released, clicks the focused node.
+    /// listeners, then perform its default action: Tab moves the focus.
     pub fn keyboard_event(&mut self, event: &KeyboardEvent) {
-        let focus = self.focus.filter(|&node| self.attached(node));
-        let path = self.ancestors(Some(focus.unwrap_or(self.ui.root())));
+        let target = self
+            .focus
+            .filter(|&node| self.attached(node))
+            .unwrap_or(self.ui.root());
+        let path = self.ancestors(Some(target));
 
         let prevented = match event.state {
             KeyState::Down => self.dispatch_key::<OnKeyDown>(&path, event),
             KeyState::Up => self.dispatch_key::<OnKeyUp>(&path, event),
         };
 
-        if prevented {
-            return;
-        }
-
-        match (event.state, &event.key) {
-            (KeyState::Down, Key::Named(NamedKey::Tab)) => {
-                self.move_focus(!event.modifiers.contains(Modifiers::SHIFT));
-            }
-            (KeyState::Down, Key::Named(NamedKey::Enter)) => {
-                if let Some(focus) = focus {
-                    self.click(focus);
-                }
-            }
-            (KeyState::Up, Key::Character(text)) if text == " " => {
-                if let Some(focus) = focus {
-                    self.click(focus);
-                }
-            }
-            _ => {}
+        if !prevented && event.state == KeyState::Down && event.key == Key::Named(NamedKey::Tab) {
+            self.move_focus(!event.modifiers.contains(Modifiers::SHIFT));
         }
     }
 
-    /// Click `node` without a pointer, as by the keyboard or an assistive
-    /// technology.
+    /// Click `node` without a pointer, as by an assistive technology.
     fn click(&mut self, node: NodeKey) {
         let path = self.ancestors(Some(node));
         let click = ClickEvent {

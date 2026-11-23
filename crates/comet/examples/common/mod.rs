@@ -4,8 +4,13 @@ mod layers;
 mod reactive;
 mod scroll;
 
+use std::rc::Rc;
+
 use anyrender::Paint;
-use comet::prelude::*;
+use comet::{
+    prelude::*,
+    shell::event::{Key, NamedKey},
+};
 use comet_layout::style::{
     bx::{DisplayInner, DisplayOuter},
     geometry::{AutoValue, Point},
@@ -35,8 +40,8 @@ pub fn scroll_root(cx: &UiCx, content: impl FnOnce(&UiCx) -> NodeKey) -> NodeKey
 }
 
 /// A button whose fill follows the hover, with a ring while focused. Tab
-/// moves the focus to it, and Enter or Space clicks it. Fill and outline
-/// changes only repaint.
+/// moves the focus to it, and Enter, when pressed, or Space, when released,
+/// clicks it. Fill and outline changes only repaint.
 pub fn button(
     cx: &UiCx,
     label: impl Into<Signal<String>>,
@@ -44,6 +49,7 @@ pub fn button(
 ) -> NodeKey {
     let (hovered, set_hovered) = signal(false);
     let (focused, set_focused) = signal(false);
+    let on_click = Rc::new(on_click);
 
     cx.div()
         .role(Role::Button)
@@ -68,7 +74,28 @@ pub fn button(
                 Color::from_rgb8(96, 125, 240)
             })
         }))
-        .on_click(move |_, _| on_click())
+        .on_click({
+            let on_click = on_click.clone();
+            move |_, _| on_click()
+        })
+        .on_key_down({
+            let on_click = on_click.clone();
+            move |cx, event| match &event.key {
+                Key::Named(NamedKey::Enter) => {
+                    cx.prevent_default();
+                    on_click();
+                }
+                // Clicked on release, like a pointer button.
+                Key::Character(text) if text == " " => cx.prevent_default(),
+                _ => {}
+            }
+        })
+        .on_key_up(move |cx, event| {
+            if matches!(&event.key, Key::Character(text) if text == " ") {
+                cx.prevent_default();
+                on_click();
+            }
+        })
         .on_focus(move |_, _| set_focused.set(true))
         .on_blur(move |_, _| set_focused.set(false))
         .on_hover(move |value| set_hovered.set(value))

@@ -343,45 +343,26 @@ fn wheel_scrolls_the_innermost_scroll_container() {
 }
 
 #[test]
-fn enter_and_space_click_the_focused_node() {
+fn keys_do_not_click_the_focused_node() {
     let log = Log::default();
     let (mut window, nodes) = window(&log);
     open(&mut window);
     let inner = nodes.borrow().as_ref().unwrap().inner;
-    let clicks = |log: &Log| {
-        log.borrow()
-            .iter()
-            .filter(|entry| entry.ends_with("click"))
-            .cloned()
-            .collect::<Vec<_>>()
-    };
-
-    // Without focus, nothing is clicked.
-    window.keyboard_event(&key_down(Key::Named(NamedKey::Enter), Modifiers::empty()));
-    assert!(clicks(&log).is_empty());
 
     window.state().focused_node.set(Some(inner));
     window.poll();
-
-    window.keyboard_event(&key_down(Key::Named(NamedKey::Enter), Modifiers::empty()));
-    assert_eq!(
-        clicks(&log),
-        ["inner:click", "outer:click"],
-        "Enter clicks on press, bubbling"
-    );
-
-    log.borrow_mut().clear();
     let space = key_down(Key::Character(" ".into()), Modifiers::empty());
+    window.keyboard_event(&key_down(Key::Named(NamedKey::Enter), Modifiers::empty()));
     window.keyboard_event(&space);
-    assert!(clicks(&log).is_empty(), "Space does not click on press");
     window.keyboard_event(&KeyboardEvent {
         state: KeyState::Up,
         ..space
     });
-    assert_eq!(
-        clicks(&log),
-        ["inner:click", "outer:click"],
-        "Space clicks on release"
+
+    assert!(
+        !log.borrow().iter().any(|entry| entry.ends_with("click")),
+        "clicking with keys is left to components: {:?}",
+        log.borrow()
     );
 }
 

@@ -92,8 +92,7 @@ impl<E> fmt::Debug for Handler<E> {
 }
 
 /// A click: a press and release of a pointer button over the same node, or
-/// an activation of the focused node with Enter or Space, or from an
-/// assistive technology.
+/// an activation from an assistive technology.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClickEvent {
     /// `None` for activations without a pointer.
