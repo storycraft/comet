@@ -289,7 +289,7 @@ fn selection_follows_the_signal_and_the_tree() {
 }
 
 #[test]
-fn tab_without_focus_starts_from_the_extent() {
+fn tab_without_focus_moves_around_the_selection() {
     // From the top, 30 high each: focusable, paragraph, focusable,
     // paragraph, focusable.
     let nodes = Rc::new(RefCell::new(Vec::new()));
@@ -316,29 +316,34 @@ fn tab_without_focus_starts_from_the_extent() {
         }
     });
     open(&mut window);
-    let [top, first, middle, second, _] = nodes.borrow()[..] else {
+    let [top, first, middle, second, bottom] = nodes.borrow()[..] else {
         unreachable!()
     };
+    assert_ne!(middle, top);
 
-    // Selected backwards, from the second paragraph to the first.
-    press(&mut window, 390.0, 100.0, 1, Modifiers::empty());
-    drag(&mut window, 1.0, 40.0);
-    release(&mut window, 1.0, 40.0);
-    let selection = window.selection().unwrap();
-    assert_eq!(
-        (selection.anchor.node, selection.extent.node),
-        (second, first)
-    );
+    // Forwards, from the first paragraph to the second, then backwards.
+    for (from, to, ends) in [
+        ((1.0, 40.0), (390.0, 100.0), (first, second)),
+        ((390.0, 100.0), (1.0, 40.0), (second, first)),
+    ] {
+        window.state().focused_node.set(None);
+        window.poll();
+        press(&mut window, from.0, from.1, 1, Modifiers::empty());
+        drag(&mut window, to.0, to.1);
+        release(&mut window, to.0, to.1);
+        let selection = window.selection().unwrap();
+        assert_eq!((selection.anchor.node, selection.extent.node), ends);
 
-    tab(&mut window, Modifiers::empty());
-    assert_eq!(
-        window.focused(),
-        Some(middle),
-        "after the extent, not the anchor"
-    );
+        tab(&mut window, Modifiers::empty());
+        assert_eq!(
+            window.focused(),
+            Some(bottom),
+            "after the selection, not inside it"
+        );
 
-    window.state().focused_node.set(None);
-    window.poll();
-    tab(&mut window, Modifiers::SHIFT);
-    assert_eq!(window.focused(), Some(top), "before the extent");
+        window.state().focused_node.set(None);
+        window.poll();
+        tab(&mut window, Modifiers::SHIFT);
+        assert_eq!(window.focused(), Some(top), "before the selection");
+    }
 }

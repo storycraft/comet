@@ -89,20 +89,15 @@ impl Window {
     }
 
     /// Focus the next focusable node in tree order, or the previous one,
-    /// wrapping around. Without focus, start from the extent of the
-    /// selection, where it was moved last, if any.
+    /// wrapping around. Without focus, start after the selection, or before
+    /// it going back, if any: from its end or its start in tree order,
+    /// whichever way it was made.
     pub(super) fn move_focus(&mut self, forward: bool) {
-        let start = self
-            .focus
-            .focused
-            .is_none()
-            .then(|| {
-                self.selection
-                    .current
-                    .map(|selection| selection.extent.node)
-            })
-            .flatten();
-        let (order, start) = self.focus_order(start);
+        let ends = match (self.focus.focused, self.selection.current) {
+            (None, Some(selection)) => [Some(selection.anchor.node), Some(selection.extent.node)],
+            _ => [None, None],
+        };
+        let (order, ends) = self.focus_order(ends);
         let len = order.len();
         if len == 0 {
             return;
@@ -115,11 +110,11 @@ impl Window {
         {
             Some(index) if forward => (index + 1) % len,
             Some(index) => (index + len - 1) % len,
-            None => match start {
-                // The first focusable node after the start, or the last one
-                // before it.
-                Some((before, focusable)) if forward => (before + usize::from(focusable)) % len,
-                Some((before, _)) => (before + len - 1) % len,
+            None => match ends {
+                // The first focusable node after the selection.
+                Some((_, end)) if forward => (end.before + usize::from(end.focusable)) % len,
+                // The last focusable node before the selection.
+                Some((start, _)) => (start.before + len - 1) % len,
                 None if forward => 0,
                 None => len - 1,
             },
@@ -127,21 +122,30 @@ impl Window {
         self.set_focus(Some(order[next]));
     }
 
-    /// The focusable nodes, in tree order, with the number of them before
-    /// `start` and whether it is focusable itself, if it is in the tree.
-    fn focus_order(&self, start: Option<NodeKey>) -> (Vec<NodeKey>, Option<(usize, bool)>) {
+    /// The focusable nodes, in tree order, with where the first and the last
+    /// in tree order of `ends` are among them, if any is in the tree.
+    fn focus_order(
+        &self,
+        ends: [Option<NodeKey>; 2],
+    ) -> (Vec<NodeKey>, Option<(OrderPosition, OrderPosition)>) {
         let tree = self.ui.tree().borrow();
         let ui = &tree.ui;
         let mut order = Vec::new();
-        let mut found = None;
+        let mut first = None;
+        let mut last = None;
         let mut pending = vec![self.ui.root()];
 
         while let Some(node) = pending.pop() {
             let focusable = ui
                 .prop::<Focusable>(node)
                 .is_some_and(|focusable| focusable.0);
-            if Some(node) == start {
-                found = Some((order.len(), focusable));
+            if ends.contains(&Some(node)) {
+                let found = OrderPosition {
+                    before: order.len(),
+                    focusable,
+                };
+                first.get_or_insert(found);
+                last = Some(found);
             }
             if focusable {
                 order.push(node);
@@ -151,8 +155,17 @@ impl Window {
             pending.extend(children.into_iter().rev());
         }
 
-        (order, found)
+        (order, first.zip(last))
     }
+}
+
+/// Where a node is among the focusable nodes in tree order.
+#[derive(Clone, Copy)]
+struct OrderPosition {
+    /// Focusable nodes before it.
+    before: usize,
+    /// Whether it is focusable itself.
+    focusable: bool,
 }
 
 /// The scroll offsets bringing the border box of `node` into view in the
