@@ -29,7 +29,7 @@ impl UiRoot {
     ///
     /// Sets up the executor of the current thread first, unless one is set up
     /// already. Bindings re-run on it when [`poll`](Self::poll) is called,
-    /// which [`run`](crate::run) does for you.
+    /// which [`Window::poll`](crate::Window::poll) does for you.
     pub fn new<V: IntoView>(component: impl FnOnce(&UiCx) -> V) -> Self {
         init_executor();
 

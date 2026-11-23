@@ -12,20 +12,20 @@ comet-layout-flex = { workspace = true }
 comet-paint = { workspace = true }
 comet-reactivity = { workspace = true }
 comet-accesskit = { workspace = true }
+comet-shell = { workspace = true }
 
 anyrender = "0.15.0"
 kurbo = "0.13.1"
 peniko = "0.6.0"
 anyrender_vello_gpu = "0.12.0"
 
-any_spawner = "0.3.0"
-futures = { version = "0.3", default-features = false, features = ["std", "executor"] }
 reactive_graph = { version = "0.2.16", features = ["effects"] }
 
 winit = { version = "0.30.12", features = ["rwh_06"] }
 
 accesskit = "0.25.2"
 accesskit_winit = "0.34.2"
+ui-events-winit = "0.3.0"
 
 [dev-dependencies]
 image = "0.25.8"

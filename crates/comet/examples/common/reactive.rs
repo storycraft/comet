@@ -136,8 +136,11 @@ fn button(cx: &UiCx, label: Signal<String>, on_click: impl Fn() + 'static) -> No
                 Color::from_rgb8(96, 125, 240)
             })
         }))
-        .on_click(on_click)
-        .on_hover(move |value| set_hovered.set(value))
+        .style((
+            OnClick(Handler::new(move |_, _| on_click())),
+            OnPointerEnter(Handler::new(move |_, _| set_hovered.set(true))),
+            OnPointerLeave(Handler::new(move |_, _| set_hovered.set(false))),
+        ))
         .children(|cx| cx.text_with(move || label.get()).build())
 }
 

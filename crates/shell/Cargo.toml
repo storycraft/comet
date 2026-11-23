@@ -7,6 +7,19 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+comet-accesskit.workspace = true
+comet-layout.workspace = true
+comet-paint.workspace = true
 comet-reactivity.workspace = true
+comet-tree.workspace = true
 
-reactive_graph = "0.2.16"
+accesskit = "0.25.2"
+anyrender = "0.15.0"
+dpi = "0.1.2"
+kurbo = "0.13.1"
+peniko = "0.6.0"
+ui-events = { version = "0.3.0", features = ["kurbo"] }
+
+any_spawner = "0.3.0"
+futures = { version = "0.3", default-features = false, features = ["std", "executor"] }
+reactive_graph = { version = "0.2.16", features = ["effects"] }

@@ -1,54 +1,41 @@
-//! Reactive UI in a window.
+//! Reactive UI in a winit window.
 //!
 //! Build the UI with [`comet_reactivity`] components and show it with
-//! [`run`]. Bindings re-run on the event loop thread after every batch of
-//! window events and before every frame; changed props are laid out and
-//! painted again in the next frame. Input and frame handlers are registered
-//! with [`Interactive`] and [`on_frame`].
+//! [`run`]. The window itself is a [`comet_shell::Window`]: this crate feeds
+//! it winit events, translated with `ui-events-winit`, and draws its frames
+//! with vello.
 //!
 //! While an assistive technology is active, the window exposes an
 //! accessibility tree mirroring the layout through `accesskit_winit`.
-//! Click actions call the click handlers of the target and its ancestors.
-//!
-//! Signals are only expected to be set on the event loop thread, from
-//! handlers and bindings. Signals set from other threads do not wake the
-//! event loop.
 
-pub mod event;
-mod pipeline;
 pub mod prelude;
-pub mod runtime;
 
 use core::error::Error;
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 
-use accesskit::Action;
 use accesskit_winit::{Adapter, WindowEvent as AccessKitEvent};
 use anyrender::WindowRenderer;
 use anyrender_vello_gpu::VelloGpuWindowRenderer;
-use comet_layout::style::geometry::Size;
-use comet_paint::style::ScrollTop;
 use comet_reactivity::UiCx;
-use comet_tree::{node::NodeKey, ui::Ui};
+use comet_shell::{
+    Window,
+    ui_events::{keyboard::KeyboardEvent, pointer::PointerEvent},
+};
+use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
+    event::WindowEvent,
     event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy},
-    window::{Window, WindowAttributes, WindowId},
+    window::{Window as WinitWindow, WindowAttributes, WindowId},
 };
 
 pub use accesskit;
 pub use comet_reactivity as reactivity;
 pub use comet_reactivity::IntoView;
-pub use event::{Interactive, on_frame, on_frame_while};
+pub use comet_shell as shell;
+pub use comet_shell::{UiRoot, on_frame, on_frame_while, use_window};
 pub use reactive_graph;
-pub use runtime::UiRoot;
 pub use winit;
-
-use crate::pipeline::Pipeline;
-
-/// Distance scrolled by one line of a mouse wheel, in logical units.
-const WHEEL_LINE: f64 = 40.0;
 
 /// Build the UI with the `root` component and show it in a window opened with
 /// `attributes`, until the window is closed.
@@ -56,7 +43,7 @@ pub fn run<V: IntoView>(
     attributes: WindowAttributes,
     root: impl FnOnce(&UiCx) -> V,
 ) -> Result<(), Box<dyn Error>> {
-    let ui = UiRoot::new(root);
+    let window = Window::new(root);
     let event_loop = EventLoop::<accesskit_winit::Event>::with_user_event().build()?;
     let proxy = event_loop.create_proxy();
 
@@ -64,12 +51,8 @@ pub fn run<V: IntoView>(
         attributes,
         proxy,
         adapter: None,
-        ui,
-        pipeline: Pipeline::default(),
-        cursor: None,
-        hovered: Vec::new(),
-        scroll_top: 0.0,
-        start: Instant::now(),
+        window,
+        reducer: WindowEventReducer::default(),
         win: None,
         renderer: VelloGpuWindowRenderer::new(),
     })?)
@@ -81,18 +64,10 @@ struct App {
     proxy: EventLoopProxy<accesskit_winit::Event>,
     /// Accessibility adapter of the window.
     adapter: Option<Adapter>,
-    ui: UiRoot,
-    pipeline: Pipeline,
-    /// Cursor position in logical units, the units of the layout.
-    cursor: Option<kurbo::Point>,
-    /// Nodes with hover handlers under the cursor.
-    hovered: Vec<NodeKey>,
-    /// Vertical scroll of the root scroll container, in logical units, as
-    /// last set from the wheel.
-    scroll_top: f64,
-    /// Origin of frame times.
-    start: Instant,
-    win: Option<Arc<Window>>,
+    window: Window,
+    /// Translates winit input events into `ui-events`.
+    reducer: WindowEventReducer,
+    win: Option<Arc<WinitWindow>>,
     renderer: VelloGpuWindowRenderer,
 }
 
@@ -100,7 +75,7 @@ impl ApplicationHandler<accesskit_winit::Event> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         // The adapter must be created before the window is first shown.
         let visible = self.attributes.visible;
-        let win: Arc<Window> = event_loop
+        let win: Arc<WinitWindow> = event_loop
             .create_window(self.attributes.clone().with_visible(false))
             .unwrap()
             .into();
@@ -111,6 +86,7 @@ impl ApplicationHandler<accesskit_winit::Event> for App {
         ));
         win.set_visible(visible);
         let size = win.inner_size();
+        self.window.resize(size, win.scale_factor());
 
         if size.width > 0 && size.height > 0 {
             self.renderer
@@ -125,7 +101,7 @@ impl ApplicationHandler<accesskit_winit::Event> for App {
     fn suspended(&mut self, _: &ActiveEventLoop) {
         self.renderer.suspend();
         self.adapter = None;
-        self.pipeline.set_accessibility(false);
+        self.window.set_accessibility(false);
         self.win.take();
     }
 
@@ -141,19 +117,11 @@ impl ApplicationHandler<accesskit_winit::Event> for App {
         match event.window_event {
             // The next layout builds the whole tree, and sends it.
             AccessKitEvent::InitialTreeRequested => {
-                self.pipeline.set_accessibility(true);
+                self.window.set_accessibility(true);
                 win.request_redraw();
             }
-            AccessKitEvent::ActionRequested(request) => {
-                if request.action == Action::Click {
-                    let path = {
-                        let target = self.pipeline.accessibility_target(request.target_node);
-                        ancestors(&self.ui.tree().borrow().ui, target)
-                    };
-                    run_click(&path);
-                }
-            }
-            AccessKitEvent::AccessibilityDeactivated => self.pipeline.set_accessibility(false),
+            AccessKitEvent::ActionRequested(request) => self.window.accessibility_action(&request),
+            AccessKitEvent::AccessibilityDeactivated => self.window.set_accessibility(false),
         }
     }
 
@@ -170,8 +138,10 @@ impl ApplicationHandler<accesskit_winit::Event> for App {
             adapter.process_event(&win, &event);
         }
 
-        match event {
+        match &event {
             WindowEvent::Resized(size) => {
+                self.window.resize(*size, win.scale_factor());
+
                 if size.width == 0 || size.height == 0 {
                     return;
                 }
@@ -183,41 +153,34 @@ impl ApplicationHandler<accesskit_winit::Event> for App {
                         .resume(win.clone(), size.width, size.height, || {});
                     self.renderer.complete_resume();
                 }
-
-                win.request_redraw();
+            }
+            // A resize usually follows, but the surface may keep its
+            // physical size.
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                self.window.resize(win.inner_size(), *scale_factor);
             }
             WindowEvent::RedrawRequested => self.redraw(&win),
-            WindowEvent::CursorMoved { position, .. } => {
-                // Hit testing works in logical units, like the layout.
-                let position = position.to_logical::<f64>(win.scale_factor());
-                self.cursor = Some(kurbo::Point::new(position.x, position.y));
-                self.update_hover();
+            WindowEvent::Focused(focused) => self.window.set_focused(*focused),
+            WindowEvent::Occluded(occluded) => self.window.set_occluded(*occluded),
+            WindowEvent::CloseRequested => {
+                if self.window.request_close() {
+                    event_loop.exit();
+                }
             }
-            WindowEvent::CursorLeft { .. } => {
-                self.cursor = None;
-                self.update_hover();
-            }
-            WindowEvent::MouseInput {
-                state: ElementState::Pressed,
-                button: MouseButton::Left,
-                ..
-            } => self.click(),
-            WindowEvent::MouseWheel { delta, .. } => self.scroll(&win, delta),
-            // The logical viewport changes with the scale factor. A resize
-            // usually follows, but the surface may keep its physical size.
-            WindowEvent::ScaleFactorChanged { .. } => win.request_redraw(),
-            WindowEvent::CloseRequested => event_loop.exit(),
-            _ => {}
+            _ => match self.reducer.reduce(win.scale_factor(), &event) {
+                Some(WindowEventTranslation::Pointer(event)) => self.pointer_event(&event),
+                Some(WindowEventTranslation::Keyboard(event)) => self.keyboard_event(&event),
+                None => {}
+            },
         }
     }
 
     /// Run the bindings woken by this batch of events, then draw a frame if
-    /// they changed the tree or something animates.
+    /// the window needs one.
     fn about_to_wait(&mut self, _: &ActiveEventLoop) {
-        self.ui.poll();
+        self.window.poll();
 
-        let changed = !self.ui.tree().borrow().changes().is_empty();
-        if (changed || event::animating())
+        if self.window.needs_redraw()
             && let Some(win) = &self.win
         {
             win.request_redraw();
@@ -226,123 +189,33 @@ impl ApplicationHandler<accesskit_winit::Event> for App {
 }
 
 impl App {
-    fn redraw(&mut self, win: &Window) {
-        // This frame shows every change so far. Changes are taken even
-        // without a frame, so they do not ask for one again.
-        self.pipeline.take_changes(&mut self.ui.tree().borrow_mut());
-        let size = win.inner_size();
+    fn pointer_event(&mut self, event: &PointerEvent) {
+        self.window.pointer_event(event);
+    }
 
-        if size.width == 0 || size.height == 0 || !self.renderer.is_active() {
-            return;
-        }
+    fn keyboard_event(&mut self, event: &KeyboardEvent) {
+        self.window.keyboard_event(event);
+    }
 
-        // Frame handlers set signals: run the bindings they woke before laying
-        // out, and keep drawing frames while anything animates.
-        event::run_frame(self.start.elapsed());
-        self.ui.poll();
-        if event::animating() {
+    fn redraw(&mut self, win: &WinitWindow) {
+        let laid_out = self.window.layout();
+
+        // Keep drawing frames while anything animates.
+        if self.window.needs_redraw() {
             win.request_redraw();
         }
 
-        // Layout works in logical units: the physical surface divided by the
-        // display's scale factor.
-        let scale_factor = win.scale_factor();
-        let physical = kurbo::Rect::new(0.0, 0.0, size.width as f64, size.height as f64);
-        let viewport = Size::new(
-            physical.width() / scale_factor,
-            physical.height() / scale_factor,
-        );
-
-        let mut tree = self.ui.tree().borrow_mut();
-        if self
-            .pipeline
-            .layout(&mut tree, self.ui.root(), viewport)
-            .is_none()
-        {
+        if !laid_out || !self.renderer.is_active() {
             return;
         }
 
-        if let Some(update) = self.pipeline.take_accessibility_update(scale_factor)
+        if let Some(update) = self.window.take_accessibility_update()
             && let Some(adapter) = &mut self.adapter
         {
             adapter.update_if_active(|| update);
         }
 
-        self.renderer.render(|scene| {
-            self.pipeline.paint(&tree, physical, scale_factor, scene);
-        });
-    }
-
-    /// Scroll the root scroll container vertically by a wheel `delta`,
-    /// clamped to how far its content overflows in the last frame's layout.
-    /// Scrolling down moves the content up. The scroll is painted in the
-    /// next frame, which the change requests.
-    fn scroll(&mut self, win: &Window, delta: MouseScrollDelta) {
-        let delta = match delta {
-            MouseScrollDelta::LineDelta(_, y) => f64::from(y) * WHEEL_LINE,
-            MouseScrollDelta::PixelDelta(position) => {
-                position.to_logical::<f64>(win.scale_factor()).y
-            }
-        };
-        let root = self.ui.root();
-        let Some(range) = self.pipeline.scroll_range(root) else {
-            return;
-        };
-
-        // The range may have shrunk since the last scroll, so start from
-        // the clamped scroll the frame shows.
-        let top = (self.scroll_top.min(range.y) - delta).clamp(0.0, range.y);
-
-        if top != self.scroll_top {
-            self.scroll_top = top;
-            self.ui.tree().borrow_mut().set_prop(root, ScrollTop(top));
-        }
-    }
-
-    /// The node under the cursor and its ancestors, innermost first, from the
-    /// last frame's layout.
-    fn path_under_cursor(&mut self) -> Vec<NodeKey> {
-        let hit = self.cursor.and_then(|cursor| self.pipeline.hit(cursor));
-
-        ancestors(&self.ui.tree().borrow().ui, hit)
-    }
-
-    /// Call the click handlers of the node under the cursor and its
-    /// ancestors, innermost first.
-    fn click(&mut self) {
-        run_click(&self.path_under_cursor());
-    }
-
-    /// Call the hover handlers of the nodes the cursor left, then of those it
-    /// entered.
-    fn update_hover(&mut self) {
-        let path = self.path_under_cursor();
-        let hovered = event::hover_targets(&path);
-
-        let left = self.hovered.iter().filter(|node| !hovered.contains(node));
-        let entered = hovered.iter().filter(|node| !self.hovered.contains(node));
-        let changes: Vec<_> = left
-            .map(|&node| (node, false))
-            .chain(entered.map(|&node| (node, true)))
-            .collect();
-        self.hovered = hovered;
-
-        for (node, value) in changes {
-            if let Some(handler) = event::hover_handler(node) {
-                handler(value);
-            }
-        }
-    }
-}
-
-fn ancestors(ui: &Ui, node: Option<NodeKey>) -> Vec<NodeKey> {
-    core::iter::successors(node, |&node| ui.parent(node)).collect()
-}
-
-/// Call the click handlers of `path`, a node and its ancestors, innermost
-/// first. Handlers run without borrows of the tree.
-fn run_click(path: &[NodeKey]) {
-    for handler in event::click_handlers(path) {
-        handler();
+        let window = &mut self.window;
+        self.renderer.render(|scene| window.paint(scene));
     }
 }

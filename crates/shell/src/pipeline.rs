@@ -1,0 +1,425 @@
+//! Layout and paint state of a window.
+//!
+//! The retained trees are grouped in [`UiTrees`], and the builders filling
+//! them in [`UiBuilders`]. Both are public, so consumers can read the trees
+//! and drive their own steps from them.
+
+use accesskit::{NodeId, TreeId, TreeInfo, TreeUpdate};
+use comet_accesskit::{AxKey, AxTree, ax_key, builder::AxTreeBuilder, node_id};
+use comet_layout::{
+    dirty_map::DirtyMap,
+    fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
+    input::{
+        LayoutInputKey,
+        builder::{BuildRequest, LayoutInputTreeBuilder},
+        tree::LayoutInputTree,
+    },
+    style::{
+        LayoutConstraint,
+        geometry::{Size, UnitResolveContext},
+    },
+};
+use comet_paint::{
+    hit::PaintHitTester,
+    layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
+    painter::CometPainter,
+    prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
+};
+use comet_reactivity::{PropHint, UiTree};
+use comet_tree::{node::NodeKey, ui::Ui};
+use kurbo::{Affine, Point, Vec2};
+
+/// Font size of the root element, used for `rem`.
+pub const ROOT_FONT_SIZE: f64 = 16.0;
+
+/// The trees retained between layouts.
+#[derive(Default)]
+pub struct UiTrees {
+    /// Layout items of the UI.
+    pub inputs: LayoutInputTree,
+    /// Changes taken from the UI and not consumed by the layout yet.
+    pub dirty: DirtyMap,
+    pub fragments: FragmentTree,
+    pub prepaint: PrepaintTree,
+    pub layers: PaintLayerTree,
+    /// Accessibility nodes, built while accessibility is active.
+    pub ax: AxTree,
+}
+
+impl UiTrees {
+    /// The node of a layout item.
+    pub fn node(&self, item: LayoutInputKey) -> Option<NodeKey> {
+        Some(self.inputs.items.get(item)?.node)
+    }
+
+    /// The box fragment of `node`, from the last layout.
+    pub fn box_fragment(&self, node: NodeKey) -> Option<FragmentKey> {
+        self.fragments
+            .box_fragment(self.inputs.item_for_node(node)?)
+    }
+
+    /// How far the box of `node` can scroll, in logical units, from the last
+    /// layout: see [`FragmentTree::scroll_range`]. `None` without a box
+    /// fragment.
+    pub fn scroll_range(&self, node: NodeKey) -> Option<Vec2> {
+        self.fragments.scroll_range(self.box_fragment(node)?)
+    }
+}
+
+/// The builders filling [`UiTrees`], kept to reuse their buffers.
+#[derive(Default)]
+pub struct UiBuilders {
+    pub inputs: LayoutInputTreeBuilder,
+    pub fragments: FragmentTreeBuilder,
+    pub prepaint: PrepaintTreeBuilder,
+    pub layers: PaintLayerBuilder,
+    pub hit_tester: PaintHitTester,
+    pub painter: CometPainter,
+    pub ax: AxTreeBuilder,
+}
+
+/// A node hit by [`Pipeline::hit`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Hit {
+    pub node: NodeKey,
+    /// The fragment hit, of `node`.
+    pub fragment: FragmentKey,
+    /// The point in the local coordinates of `fragment`.
+    pub position: Point,
+}
+
+/// Every step is incremental: a layout without changes or a new viewport
+/// does little work.
+#[derive(Default)]
+pub struct Pipeline {
+    pub trees: UiTrees,
+    pub builders: UiBuilders,
+    /// Root layer of the layers, from the last layout. `None` until a layout
+    /// succeeds, or after one fails.
+    layer_root: Option<PaintLayerKey>,
+    /// Logical viewport of the last successful layout.
+    viewport: Option<Size<f64>>,
+    /// Logical viewport the input tree was resolved with, kept when a later
+    /// step of the layout fails.
+    input_viewport: Option<Size<f64>>,
+    /// Logical viewport the pre-paint tree was last resolved with, kept when
+    /// a resolve fails, so the next one resolves viewport units again.
+    prepaint_viewport: Option<Size<f64>>,
+    a11y: Accessibility,
+}
+
+/// State of the accessibility tree, built with the layout while an
+/// assistive technology is active.
+#[derive(Default)]
+struct Accessibility {
+    active: bool,
+    /// Root node of the last successful build. `None` until one succeeds,
+    /// or after one fails.
+    root: Option<AxKey>,
+    /// Scale factor of the last update, applied to the root node.
+    scale_factor: Option<f64>,
+    /// Focus of the last update.
+    focus: Option<NodeId>,
+    /// Nodes with accessibility changes taken from the UI, marked in the
+    /// tree by the next build.
+    marks: Vec<NodeKey>,
+}
+
+impl Pipeline {
+    /// Root layer of the last successful layout.
+    pub fn layer_root(&self) -> Option<PaintLayerKey> {
+        self.layer_root
+    }
+
+    /// Logical viewport of the last successful layout.
+    pub fn viewport(&self) -> Option<Size<f64>> {
+        self.viewport
+    }
+
+    /// Take the changes recorded in `tree`, to be consumed by the next
+    /// layout: layout flags are marked on the layout items, and nodes with
+    /// accessibility changes are kept to be marked in the accessibility
+    /// tree. Nodes not laid out yet have nothing to mark: a new node is laid
+    /// out with the children of its parent.
+    pub fn take_changes(&mut self, tree: &mut UiTree) {
+        for (node, hint) in tree.take_changes() {
+            if hint.contains(PropHint::A11Y) && self.a11y.active {
+                self.a11y.marks.push(node);
+            }
+
+            let layout = hint.layout();
+            if !layout.is_empty() {
+                self.trees
+                    .dirty
+                    .mark_node(&self.trees.inputs, node, layout);
+            }
+        }
+    }
+
+    /// Take the changes of `tree`, then lay them out at `viewport` and place
+    /// the layers. On failure, nothing is painted until a later layout
+    /// succeeds.
+    pub fn layout(
+        &mut self,
+        tree: &mut UiTree,
+        root: NodeKey,
+        viewport: Size<f64>,
+    ) -> Option<()> {
+        self.take_changes(tree);
+        let ui = &tree.ui;
+        let UiTrees {
+            inputs,
+            dirty,
+            fragments,
+            prepaint,
+            layers,
+            ..
+        } = &mut self.trees;
+        let builders = &mut self.builders;
+        // Cleared until the layout succeeds.
+        let previous_viewport = self.viewport.take();
+        // Cleared until the layers are placed. The layer tree keeps the root
+        // layer, so the layers keep their keys.
+        self.layer_root = None;
+
+        // The first layout builds the whole tree. Later ones resolve the
+        // marked changes and, after resolving at another viewport, the items
+        // whose text styles depend on it.
+        if self
+            .input_viewport
+            .is_some_and(|previous| previous != viewport)
+            && let Some(key) = inputs.item_for_node(root)
+        {
+            inputs.invalidate_viewport(dirty, key);
+        }
+        let request = BuildRequest::new(root, ROOT_FONT_SIZE, viewport);
+        let input_root = builders.inputs.build(ui, inputs, dirty, request)?;
+        self.input_viewport = Some(viewport);
+
+        let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE)
+            .with_viewport_changed(previous_viewport.is_some_and(|previous| previous != viewport));
+        let Some(fragment_root) =
+            builders
+                .fragments
+                .build(ui, inputs, dirty, input_root, fragments, &constraint)
+        else {
+            dirty.clear(inputs, input_root);
+            return None;
+        };
+
+        // Positions and clips follow the layout, so resolve the fragments of
+        // the items it laid out, which it marked, and of the other marked
+        // items.
+        let resolved = resolve_prepaint(
+            &mut self.prepaint_viewport,
+            builders,
+            ui,
+            inputs,
+            dirty,
+            fragments,
+            prepaint,
+            &constraint.units,
+            fragment_root,
+        );
+
+        // Layers keep their keys, so building from the root again only places
+        // the layers whose fragments gained, lost or reordered a layer.
+        let layer_root = resolved.and_then(|()| {
+            builders
+                .layers
+                .build(ui, inputs, dirty, fragments, layers, input_root)
+        });
+        // Flags were consumed by the fragment build, the pre-paint resolve,
+        // the layer build and the accessibility build. On failure they are kept, so the
+        // next layout resolves the items laid out by this one again.
+        self.layer_root = Some(layer_root?);
+        self.build_accessibility(ui, input_root);
+        self.trees.dirty.clear(&self.trees.inputs, input_root);
+        self.viewport = Some(viewport);
+
+        Some(())
+    }
+
+    /// Paint the last layout of `tree` into `scene`, covering `physical`.
+    /// Does nothing until a layout succeeds.
+    pub fn paint(
+        &mut self,
+        ui: &Ui,
+        physical: kurbo::Rect,
+        scale_factor: f64,
+        scene: &mut impl anyrender::PaintScene,
+    ) {
+        let Some(layer_root) = self.layer_root else {
+            return;
+        };
+        let trees = &self.trees;
+
+        self.builders.painter.draw(
+            ui,
+            &trees.inputs,
+            &trees.fragments,
+            &trees.prepaint,
+            &trees.layers,
+            layer_root,
+            physical,
+            scale_factor,
+            scene,
+        );
+    }
+
+    /// The node under `point`, in logical units, from the last layout.
+    pub fn hit(&mut self, point: Point) -> Option<Hit> {
+        let trees = &self.trees;
+        let hit = self.builders.hit_tester.hit(
+            &trees.layers,
+            &trees.fragments,
+            &trees.prepaint,
+            self.layer_root?,
+            point,
+        )?;
+        let source = trees.fragments.items.get(hit.fragment)?.source;
+
+        Some(Hit {
+            node: trees.node(source)?,
+            fragment: hit.fragment,
+            position: hit.position,
+        })
+    }
+}
+
+/// Resolve the pre-paint tree for the fragments under `root`, with paint
+/// values using viewport units resolved again when `units` has another
+/// viewport than the last successful resolve.
+#[allow(clippy::too_many_arguments)]
+fn resolve_prepaint(
+    last_viewport: &mut Option<Size<f64>>,
+    builders: &mut UiBuilders,
+    ui: &Ui,
+    inputs: &LayoutInputTree,
+    dirty: &mut DirtyMap,
+    fragments: &FragmentTree,
+    prepaint: &mut PrepaintTree,
+    units: &UnitResolveContext,
+    root: FragmentKey,
+) -> Option<()> {
+    let viewport_changed = last_viewport.is_some_and(|previous| previous != units.viewport);
+
+    builders.prepaint.build(
+        ui,
+        inputs,
+        dirty,
+        fragments,
+        units,
+        prepaint,
+        root,
+        viewport_changed,
+    )?;
+    *last_viewport = Some(units.viewport);
+
+    Some(())
+}
+
+impl Pipeline {
+    /// Start or stop building the accessibility tree. Starting builds the
+    /// whole tree with the next layout, for the adapter's initial tree.
+    pub fn set_accessibility(&mut self, active: bool) {
+        self.trees.ax.clear();
+        self.a11y = Accessibility {
+            active,
+            ..Default::default()
+        };
+    }
+
+    pub fn accessibility_active(&self) -> bool {
+        self.a11y.active
+    }
+
+    /// Build the accessibility tree for the last layout. A failed build
+    /// starts over with the next one, which sends the whole tree again.
+    fn build_accessibility(&mut self, ui: &Ui, root: LayoutInputKey) {
+        let a11y = &mut self.a11y;
+        if !a11y.active {
+            return;
+        }
+
+        let trees = &mut self.trees;
+        // Marked after the layout, on the items the nodes have now.
+        for node in a11y.marks.drain(..) {
+            trees.ax.mark_node(&trees.inputs, node);
+        }
+
+        a11y.root = self.builders.ax.build(
+            ui,
+            &trees.inputs,
+            &trees.dirty,
+            &trees.fragments,
+            &trees.prepaint,
+            &mut trees.ax,
+            root,
+        );
+
+        if a11y.root.is_none() {
+            trees.ax.clear();
+        }
+    }
+
+    /// The accessibility changes since the last update, with the root node
+    /// scaled from logical units to the physical pixels of `scale_factor`,
+    /// focusing the accessibility node of `focus` or of its nearest
+    /// ancestor with one. `None` while inactive or without changes.
+    pub fn take_accessibility_update(
+        &mut self,
+        ui: &Ui,
+        scale_factor: f64,
+        focus: Option<NodeKey>,
+    ) -> Option<TreeUpdate> {
+        let a11y = &mut self.a11y;
+        let trees = &mut self.trees;
+        let root = a11y.root.filter(|_| a11y.active)?;
+        let root_id = node_id(root);
+        let focus = core::iter::successors(focus, |&node| ui.parent(node))
+            .find_map(|node| trees.ax.item_node(trees.inputs.item_for_node(node)?))
+            .map_or(root_id, node_id);
+        let mut nodes = trees.ax.take_update();
+
+        // The root node carries the scale factor, so a new one updates it.
+        if a11y.scale_factor != Some(scale_factor)
+            && !nodes.iter().any(|(id, _)| *id == root_id)
+            && let Some(node) = trees.ax.get(root)
+        {
+            nodes.push((root_id, node.node.clone()));
+        }
+        a11y.scale_factor = Some(scale_factor);
+
+        if nodes.is_empty() && a11y.focus == Some(focus) {
+            return None;
+        }
+        a11y.focus = Some(focus);
+
+        for (_, node) in nodes.iter_mut().filter(|(id, _)| *id == root_id) {
+            let transform = node
+                .transform()
+                .map_or(Affine::IDENTITY, |transform| {
+                    Affine::new(transform.as_coeffs())
+                });
+            let scaled = Affine::scale(scale_factor) * transform;
+            node.set_transform(accesskit::Affine::new(scaled.as_coeffs()));
+        }
+
+        Some(TreeUpdate {
+            nodes,
+            // Sending it again with every update is allowed.
+            tree: Some(TreeInfo::new(root_id)),
+            tree_id: TreeId::ROOT,
+            focus,
+        })
+    }
+
+    /// The source node of an accessibility node, such as the target of an
+    /// action request.
+    pub fn accessibility_target(&self, id: NodeId) -> Option<NodeKey> {
+        let item = self.trees.ax.get(ax_key(id))?.item;
+
+        self.trees.node(item)
+    }
+}

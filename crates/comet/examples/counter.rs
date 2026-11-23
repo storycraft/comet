@@ -2,9 +2,14 @@
 //! square spins on the right, driven by a frame handler.
 
 use core::f64::consts::TAU;
+use std::rc::Rc;
 
 use anyrender::Paint;
-use comet::{prelude::*, winit::window::WindowAttributes};
+use comet::{
+    prelude::*,
+    shell::event::{Key, KeyboardEvent, NamedKey},
+    winit::window::WindowAttributes,
+};
 use comet_layout::style::{parley, taffy::Position};
 use comet_layout_flex::styles::taffy::{AlignItems, FlexDirection, JustifyContent};
 use comet_tree::node::NodeKey;
@@ -53,6 +58,8 @@ fn counter(cx: &UiCx) -> NodeKey {
 
 fn button(cx: &UiCx, label: &str, on_click: impl Fn() + 'static) -> NodeKey {
     let (hovered, set_hovered) = signal(false);
+    let (focused, set_focused) = signal(false);
+    let on_click = Rc::new(on_click);
 
     cx.div()
         .role(Role::Button)
@@ -68,8 +75,35 @@ fn button(cx: &UiCx, label: &str, on_click: impl Fn() + 'static) -> NodeKey {
                 Color::from_rgb8(96, 125, 240)
             })
         }))
-        .on_click(on_click)
-        .on_hover(move |value| set_hovered.set(value))
+        .outline_width(px(2))
+        .outline_offset(px(2))
+        .outline_fill(Signal::derive(move || {
+            Paint::Solid(if focused.get() {
+                Color::from_rgb8(36, 46, 63)
+            } else {
+                Color::TRANSPARENT
+            })
+        }))
+        // Focusable: Tab moves the focus here, and Enter or Space clicks.
+        .style((
+            Focusable(true),
+            OnClick(Handler::new({
+                let on_click = on_click.clone();
+                move |_, _| on_click()
+            })),
+            OnKeyDown(Handler::new(move |cx, event: &KeyboardEvent| {
+                if matches!(&event.key, Key::Named(NamedKey::Enter))
+                    || matches!(&event.key, Key::Character(c) if c == " ")
+                {
+                    cx.prevent_default();
+                    on_click();
+                }
+            })),
+            OnFocus(Handler::new(move |_, _| set_focused.set(true))),
+            OnBlur(Handler::new(move |_, _| set_focused.set(false))),
+            OnPointerEnter(Handler::new(move |_, _| set_hovered.set(true))),
+            OnPointerLeave(Handler::new(move |_, _| set_hovered.set(false))),
+        ))
         .children(|cx| cx.text(label).build())
 }
 
