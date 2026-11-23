@@ -735,3 +735,113 @@ fn presses_outside_of_text_select_in_the_nearest_text() {
         [(first, 0), (second, SECOND.len())]
     );
 }
+
+/// The chunks of the text `anchor` to `extent` select in `window`.
+fn chunks(window: &Window, anchor: TextPosition, extent: TextPosition) -> Vec<String> {
+    window
+        .selected_text(Selection::new(anchor, extent))
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn selected_text_is_extracted_in_tree_order() {
+    let (mut window, nodes) = window();
+    open(&mut window);
+    let (first, second) = {
+        let nodes = nodes.borrow();
+        (nodes.first.unwrap(), nodes.second.unwrap())
+    };
+    let at = |node, index| TextPosition::new(node, index, Default::default());
+
+    assert!(
+        chunks(&window, at(first, 3), at(first, 3)).is_empty(),
+        "a caret"
+    );
+    assert_eq!(chunks(&window, at(first, 0), at(first, 5)), ["Hello"]);
+    assert_eq!(
+        chunks(&window, at(first, 6), at(second, 6)),
+        ["world", "\n", "Second"],
+        "a line break between paragraphs"
+    );
+    assert_eq!(
+        chunks(&window, at(second, 6), at(first, 6)),
+        ["world", "\n", "Second"],
+        "either way"
+    );
+
+    // The current selection, made with the pointer.
+    press(&mut window, 1.0, 40.0, 1, Modifiers::empty());
+    drag(&mut window, 390.0, 70.0);
+    let text: String = window.selected_text(window.selection().unwrap()).collect();
+    assert_eq!(text, format!("{FIRST}\n{SECOND}"));
+}
+
+#[test]
+fn selected_text_is_chunked_by_text_node_without_unselectable_text() {
+    use comet_layout::style::bx::{DisplayInner, DisplayOuter};
+
+    // "One [two ]three [inner] four", "two " unselectable, "inner" in an
+    // inline box.
+    let nodes = Rc::new(RefCell::new(None));
+    let mut window = Window::new({
+        let nodes = nodes.clone();
+        move |cx: &UiCx| {
+            let (one, three, four) = (
+                cx.text("One ").build(),
+                cx.text("three ").build(),
+                cx.text(" four").build(),
+            );
+            let span = cx
+                .div()
+                .display_outer(DisplayOuter::Inline)
+                .selectable(AutoValue::Value(false))
+                .children(|cx| cx.text("two ").build());
+            let inline_box = cx
+                .div()
+                .display_outer(DisplayOuter::Inline)
+                .display_inner(DisplayInner::FlowRoot)
+                .children(|cx| cx.text("inner").build());
+            *nodes.borrow_mut() = Some((one, four));
+            let paragraph = cx
+                .div()
+                .size(size(px(400), px(30)))
+                .children(|_| [one, span, three, inline_box, four]);
+            cx.div().children(|_| [paragraph])
+        }
+    });
+    open(&mut window);
+    let (one, four) = nodes.borrow().unwrap();
+    let at = |node, index| TextPosition::new(node, index, Default::default());
+
+    assert_eq!(
+        chunks(&window, at(one, 0), at(four, " four".len())),
+        ["One ", "three ", "inner", " four"],
+        "no break around the inline box"
+    );
+}
+
+#[test]
+fn selected_text_breaks_between_runs_of_block_boxes() {
+    let nodes = Rc::new(RefCell::new(None));
+    let mut window = Window::new({
+        let nodes = nodes.clone();
+        move |cx: &UiCx| {
+            let block = cx.div().size(size(px(400), px(40))).build();
+            let (first, second) = (cx.text(FIRST).build(), cx.text(SECOND).build());
+            *nodes.borrow_mut() = Some((first, second));
+            let paragraph = cx.div().children(|_| [first, block, second]);
+            cx.div().children(|_| [paragraph])
+        }
+    });
+    open(&mut window);
+    let (first, second) = nodes.borrow().unwrap();
+    let text: String = window
+        .selected_text(Selection::new(
+            TextPosition::new(first, 0, Default::default()),
+            TextPosition::new(second, SECOND.len(), Default::default()),
+        ))
+        .collect();
+
+    assert_eq!(text, format!("{FIRST}\n{SECOND}"));
+}

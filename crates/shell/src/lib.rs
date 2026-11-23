@@ -34,4 +34,4 @@ pub use listeners::{
 };
 pub use runtime::UiRoot;
 pub use selection::{Affinity, Selection, TextPosition};
-pub use window::{Window, WindowState, use_window};
+pub use window::{SelectedText, Window, WindowState, use_window};

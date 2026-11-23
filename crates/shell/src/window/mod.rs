@@ -10,6 +10,8 @@ mod keyboard;
 mod pointer;
 mod selection;
 mod state;
+mod text;
+mod text_order;
 mod viewport;
 
 use core::iter::successors;
@@ -26,13 +28,16 @@ use reactive_graph::{
     traits::{GetUntracked, Notify},
 };
 
-pub use self::state::{WindowState, use_window};
 use self::{
     focus::FocusState,
     pointer::PointerState,
     selection::SelectionState,
     state::{StateWriters, update},
     viewport::Viewport,
+};
+pub use self::{
+    state::{WindowState, use_window},
+    text::SelectedText,
 };
 use crate::{
     cursor::CursorIcon,
