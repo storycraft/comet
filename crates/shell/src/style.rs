@@ -14,6 +14,8 @@
 //! reactively with `style_with`: a handler created in a binding is dropped
 //! when it runs again.
 
+use core::cell::RefCell;
+
 use comet_reactivity::{PropHint, ReactiveProp, Styled};
 use comet_tree::style::define_style_props;
 use reactive_graph::wrappers::read::Signal;
@@ -167,12 +169,12 @@ pub trait InputStyled: Styled {
     /// Call `handler` with `true` when a pointer enters the node and its
     /// descendants, and `false` when it leaves.
     #[track_caller]
-    fn on_hover(self, handler: impl Fn(bool) + 'static) -> Self {
-        let handler = std::rc::Rc::new(handler);
+    fn on_hover(self, handler: impl FnMut(bool) + 'static) -> Self {
+        let handler = std::rc::Rc::new(RefCell::new(handler));
         let leave = handler.clone();
 
-        self.on_pointer_enter(move |_, _| handler(true))
-            .on_pointer_leave(move |_, _| leave(false))
+        self.on_pointer_enter(move |_, _| handler.borrow_mut()(true))
+            .on_pointer_leave(move |_, _| leave.borrow_mut()(false))
     }
 }
 
