@@ -52,7 +52,9 @@ impl Window {
     /// Start selecting text at `position`, pressed `count` times in a row:
     /// a caret once, a word twice, a line three times or more. With
     /// `extend`, move the extent of the selection there instead. A press
-    /// outside selectable text clears the selection, unless extending.
+    /// outside of text, on a selectable box, selects in the nearest text.
+    /// A press on nothing selectable clears the selection, unless
+    /// extending.
     pub(super) fn start_selection(&mut self, count: u8, extend: bool) {
         let Some((owner, point)) = self.text_at() else {
             if !extend {
@@ -99,7 +101,8 @@ impl Window {
     }
 
     /// Move the extent of the selection to `position`: into the selectable
-    /// text under it, or to the closest position of the text it is in.
+    /// text under it or nearest to it, or, over nothing selectable, to the
+    /// closest position of the text it is in.
     pub(super) fn extend_selection(&mut self, position: Point) {
         let Some(current) = self.selection.current else {
             return;
@@ -163,7 +166,9 @@ impl Window {
     /// hit path of the pointer holds the text. A box hit itself, with its
     /// inline content in anonymous blocks, holds the text of the anonymous
     /// block under the pointer: anonymous blocks are only on the path to
-    /// the text they hold. The first [`Selectable`] other than `Auto` from
+    /// the text they hold. Outside of any text, the
+    /// [nearest text](Self::nearest_text) holds it. The first
+    /// [`Selectable`] other than `Auto` from
     /// the node hit up the tree decides whether it can be selected there,
     /// so an unselectable span in selectable text is not selected. Text is
     /// selectable when no node decides.
@@ -193,7 +198,54 @@ impl Window {
             return Some(run);
         }
 
-        text
+        text.or_else(|| self.nearest_text())
+    }
+
+    /// The selectable text nearest to the pointer, with the pointer in the
+    /// coordinates of its inline layout: the inline layout under the
+    /// innermost box on the hit path that has any, whose owning box or
+    /// anonymous block is closest to the pointer.
+    fn nearest_text(&self) -> Option<(FragmentKey, Point)> {
+        let trees = &self.pipeline.trees;
+        let fragments = &trees.fragments;
+        let cursor = self.pointer.cursor?;
+
+        self.pointer.path.iter().rev().find_map(|hit| {
+            fragments
+                .items
+                .get(hit.fragment)?
+                .item
+                .is_box()
+                .then_some(())?;
+
+            fragments
+                .items
+                .descendants(hit.fragment)
+                .filter_map(|owner| {
+                    let inline = fragments.get_inline(owner)?;
+                    let node = trees.node(fragments.items.get(owner)?.source)?;
+                    if !self
+                        .inherited::<Selectable, _>(Some(node), |prop| prop.0)
+                        .unwrap_or(true)
+                    {
+                        return None;
+                    }
+
+                    // Measured to the box holding the lines, as wide as they
+                    // can be, rather than to the glyphs.
+                    let to_scene = trees.fragment_to_scene(owner)?;
+                    if to_scene.determinant() == 0.0 {
+                        return None;
+                    }
+                    let local = to_scene.inverse() * cursor;
+                    let bounds = fragments.items.get(owner)?.layout.border_box();
+                    let dx = (bounds.x0 - local.x).max(local.x - bounds.x1).max(0.0);
+                    let dy = (bounds.y0 - local.y).max(local.y - bounds.y1).max(0.0);
+                    Some((dx.hypot(dy), owner, local - inline.origin(fragments)?))
+                })
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .map(|(_, owner, point)| (owner, point))
+        })
     }
 
     /// The anonymous block of `owner` under the pointer, with the pointer in

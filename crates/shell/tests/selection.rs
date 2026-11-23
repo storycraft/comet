@@ -690,3 +690,48 @@ fn positions_are_offsets_into_their_own_text_node() {
         "\"world\" from the start of its own node"
     );
 }
+
+#[test]
+fn presses_outside_of_text_select_in_the_nearest_text() {
+    let (mut window, nodes) = window();
+    open(&mut window);
+    let (first, second) = {
+        let nodes = nodes.borrow();
+        (nodes.first.unwrap(), nodes.second.unwrap())
+    };
+
+    // On the box above the paragraphs: the first, nearest to the pointer.
+    press(&mut window, 1.0, 10.0, 1, Modifiers::empty());
+    assert_eq!(ends(window.selection().unwrap()), [(first, 0), (first, 0)]);
+    press(&mut window, 390.0, 10.0, 1, Modifiers::empty());
+    assert_eq!(
+        ends(window.selection().unwrap()),
+        [(first, FIRST.len()), (first, FIRST.len())],
+        "at the end, closest to the pointer"
+    );
+
+    // On the box below: the second paragraph, past the one that cannot be
+    // selected.
+    press(&mut window, 390.0, 135.0, 1, Modifiers::empty());
+    assert_eq!(
+        ends(window.selection().unwrap()),
+        [(second, SECOND.len()), (second, SECOND.len())]
+    );
+
+    // Dragging from there over the box above extends to the nearest text.
+    drag(&mut window, 1.0, 10.0);
+    assert_eq!(
+        ends(window.selection().unwrap()),
+        [(second, SECOND.len()), (first, 0)]
+    );
+    release(&mut window, 1.0, 10.0);
+    assert_eq!(window.selection_rects().len(), 2, "both paragraphs");
+
+    // Shift extends to the nearest text too.
+    press(&mut window, 1.0, 40.0, 1, Modifiers::empty());
+    press(&mut window, 390.0, 135.0, 1, Modifiers::SHIFT);
+    assert_eq!(
+        ends(window.selection().unwrap()),
+        [(first, 0), (second, SECOND.len())]
+    );
+}
