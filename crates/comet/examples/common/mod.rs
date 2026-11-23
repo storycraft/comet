@@ -18,6 +18,7 @@ use comet_layout::style::{
     taffy::Overflow,
 };
 use comet_layout_flex::style::taffy::FlexWrap;
+use comet_shell::CursorIcon;
 use comet_tree::node::NodeKey;
 use peniko::Color;
 
@@ -54,6 +55,7 @@ pub fn button(
     cx.div()
         .role(Role::Button)
         .focusable(true)
+        .cursor(AutoValue::Value(Some(CursorIcon::Pointer)))
         // Pressing the label clicks, without selecting it.
         .selectable(AutoValue::Value(false))
         .outline_width(px(2))
