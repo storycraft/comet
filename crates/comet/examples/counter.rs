@@ -114,7 +114,9 @@ const SPINNER_SPEED: f64 = 0.25;
 
 fn spinner(cx: &UiCx) -> NodeKey {
     let (turns, set_turns) = signal(0.0);
-    on_frame(move |delta| set_turns.update(|turns| *turns += delta.as_secs_f64() * SPINNER_SPEED));
+    on_frame(move |_, frame| {
+        set_turns.update(|turns| *turns += frame.delta.as_secs_f64() * SPINNER_SPEED)
+    });
 
     // Its own transform is pre-painted again every frame; nothing is laid
     // out again.

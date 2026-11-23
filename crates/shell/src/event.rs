@@ -11,7 +11,7 @@ use core::fmt;
 use comet_tree::node::NodeKey;
 use kurbo::Point;
 use reactive_graph::{
-    owner::{LocalStorage, StoredValue},
+    owner::{LocalStorage, Owner, StoredValue, WeakOwner},
     traits::{IsDisposed, UpdateValue},
 };
 use ui_events::pointer::PointerButton;
@@ -24,19 +24,30 @@ pub use ui_events::{
 
 type HandlerFn<E> = dyn FnMut(&mut EventCx, &E);
 
+struct HandlerInner<E: 'static> {
+    handler: Box<HandlerFn<E>>,
+    /// Owner it was created under, current while it runs. Weak, as the
+    /// owner holds the handler.
+    owner: Option<WeakOwner>,
+}
+
 /// A handler of events `E`, stored under the owner current when it was
-/// created and dropped with it.
+/// created and dropped with it. It runs under that owner, so it can read
+/// its context.
 ///
 /// It is `Copy`, `Send` and `Sync`, so it can be held by style props, but
 /// the closure itself stays on the thread that created it. Handles are
 /// equal only to themselves.
-pub struct Handler<E: 'static>(StoredValue<Box<HandlerFn<E>>, LocalStorage>);
+pub struct Handler<E: 'static>(StoredValue<HandlerInner<E>, LocalStorage>);
 
 impl<E: 'static> Handler<E> {
     /// Store `handler` under the current owner.
     #[track_caller]
     pub fn new(handler: impl FnMut(&mut EventCx, &E) + 'static) -> Self {
-        Self(StoredValue::new_local(Box::new(handler)))
+        Self(StoredValue::new_local(HandlerInner {
+            handler: Box::new(handler),
+            owner: Owner::current().map(|owner| owner.downgrade()),
+        }))
     }
 
     /// Whether its owner was cleaned up, so it never runs again.
@@ -48,7 +59,10 @@ impl<E: 'static> Handler<E> {
     /// running further up the stack.
     pub(crate) fn call(&self, cx: &mut EventCx, event: &E) -> bool {
         self.0
-            .try_update_value(|handler| handler(cx, event))
+            .try_update_value(|inner| match inner.owner.as_ref().and_then(WeakOwner::upgrade) {
+                Some(owner) => owner.with(|| (inner.handler)(cx, event)),
+                None => (inner.handler)(cx, event),
+            })
             .is_some()
     }
 }
@@ -103,8 +117,8 @@ pub(crate) enum Request {
 /// Context of an event being dispatched to its handlers.
 #[derive(Debug)]
 pub struct EventCx {
-    target: NodeKey,
-    current: NodeKey,
+    target: Option<NodeKey>,
+    current: Option<NodeKey>,
     position: Option<Point>,
     local_position: Option<Point>,
     stopped: bool,
@@ -113,10 +127,14 @@ pub struct EventCx {
 }
 
 impl EventCx {
-    pub(crate) fn new(target: NodeKey, position: Option<Point>, local: Option<Point>) -> Self {
+    pub(crate) fn new(
+        target: Option<NodeKey>,
+        position: Option<Point>,
+        local: Option<Point>,
+    ) -> Self {
         Self {
             target,
-            current: target,
+            current: None,
             position,
             local_position: local,
             stopped: false,
@@ -125,7 +143,7 @@ impl EventCx {
         }
     }
 
-    pub(crate) fn set_current(&mut self, node: NodeKey) {
+    pub(crate) fn set_current(&mut self, node: Option<NodeKey>) {
         self.current = node;
     }
 
@@ -133,14 +151,15 @@ impl EventCx {
         self.stopped
     }
 
-    /// The node the event was dispatched to.
-    pub fn target(&self) -> NodeKey {
+    /// The node the event was dispatched to. `None` for pointer events
+    /// over no node, which only window listeners receive.
+    pub fn target(&self) -> Option<NodeKey> {
         self.target
     }
 
     /// The node whose handler is running: the target or one of its
-    /// ancestors.
-    pub fn current_target(&self) -> NodeKey {
+    /// ancestors. `None` while a window listener runs.
+    pub fn current_target(&self) -> Option<NodeKey> {
         self.current
     }
 
@@ -158,7 +177,9 @@ impl EventCx {
         self.local_position
     }
 
-    /// Do not call the handlers of the remaining ancestors.
+    /// Do not call the remaining handlers: those of the ancestors, and the
+    /// bubbling window listeners. Stopped by a capturing window listener,
+    /// the nodes get no handler call.
     pub fn stop_propagation(&mut self) {
         self.stopped = true;
     }
@@ -179,9 +200,12 @@ impl EventCx {
     }
 
     /// Send the pointer's events to the current target until it is
-    /// released, wherever it moves.
+    /// released, wherever it moves. Ignored in window listeners, which get
+    /// every event anyway.
     pub fn capture_pointer(&mut self) {
-        self.requests.push(Request::CapturePointer(self.current));
+        if let Some(node) = self.current {
+            self.requests.push(Request::CapturePointer(node));
+        }
     }
 
     pub fn release_pointer(&mut self) {

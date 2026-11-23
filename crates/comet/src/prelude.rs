@@ -7,6 +7,7 @@ pub use reactive_graph::{prelude::*, signal::signal, wrappers::read::Signal};
 pub use accesskit::Role;
 
 pub use comet_shell::{
-    ClickEvent, EventCx, FocusEvent, Handler, WindowState, on_frame, on_frame_while, styles::*,
-    use_window,
+    ClickEvent, EventCx, FocusEvent, FrameCx, FrameEvent, FrameListener, Handler, Phase,
+    WindowListener, WindowState, on_frame, on_frame_while, on_next_frame, on_window_key,
+    on_window_pointer, styles::*, use_window,
 };

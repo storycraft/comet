@@ -33,7 +33,9 @@ pub use accesskit;
 pub use comet_reactivity as reactivity;
 pub use comet_reactivity::IntoView;
 pub use comet_shell as shell;
-pub use comet_shell::{UiRoot, on_frame, on_frame_while, use_window};
+pub use comet_shell::{
+    UiRoot, on_frame, on_frame_while, on_next_frame, on_window_key, on_window_pointer, use_window,
+};
 pub use reactive_graph;
 pub use winit;
 

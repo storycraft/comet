@@ -74,8 +74,8 @@ fn counter(cx: &UiCx) -> impl IntoView + use<> {
 fn spinner(cx: &UiCx) -> impl IntoView + use<> {
     let (playing, set_playing) = signal(true);
     let (turns, set_turns) = signal(0.0);
-    on_frame_while(playing, move |delta| {
-        set_turns.update(|turns| *turns += delta.as_secs_f64() * SPINNER_SPEED)
+    on_frame_while(playing, move |_, frame| {
+        set_turns.update(|turns| *turns += frame.delta.as_secs_f64() * SPINNER_SPEED)
     });
 
     let caption = caption(cx, "Frames / a transform animated by a signal");

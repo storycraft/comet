@@ -21,7 +21,7 @@ use crate::{
         ClickEvent, EventCx, FocusEvent, Key, KeyState, KeyboardEvent, Modifiers, NamedKey,
         PointerEvent, PointerInfo, Request, ScrollDelta,
     },
-    frame::Frames,
+    listeners::{Listeners, Phase, WindowListener},
     pipeline::Pipeline,
     runtime::UiRoot,
     styles::{
@@ -124,7 +124,7 @@ fn update<T: Clone + PartialEq + Send + Sync + 'static>(
 /// each batch of events, and draws a frame when it
 /// [needs one](Self::needs_redraw):
 ///
-/// 1. [`layout`](Self::layout), which runs the frame handlers first,
+/// 1. [`layout`](Self::layout), which runs the frame listeners first,
 /// 2. [`take_accessibility_update`](Self::take_accessibility_update) for the
 ///    platform's accessibility adapter,
 /// 3. [`paint`](Self::paint) into the platform's scene.
@@ -133,7 +133,7 @@ pub struct Window {
     pipeline: Pipeline,
     state: WindowState,
     writers: StateWriters,
-    frames: Frames,
+    listeners: Listeners,
     /// Origin of frame times.
     start: Instant,
     physical_size: PhysicalSize<u32>,
@@ -151,8 +151,7 @@ pub struct Window {
     focus: Option<NodeKey>,
     /// Whether something not recorded in the tree needs a frame.
     redraw: bool,
-    /// Owns the window's context, signals and frame handlers. Dropped after
-    /// the UI.
+    /// Owns the window's context and signals. Dropped after the UI.
     owner: Owner,
 }
 
@@ -161,13 +160,13 @@ impl Window {
     /// the window's [`WindowState`] as context.
     pub fn new<V: IntoView>(root: impl FnOnce(&UiCx) -> V) -> Self {
         let owner = Owner::new();
-        let (state, writers, frames) = owner.with(|| {
+        let (state, writers, listeners) = owner.with(|| {
             let (state, writers) = WindowState::new();
-            let frames = Frames::new();
+            let listeners = Listeners::new();
             provide_context(state);
-            provide_context(frames);
+            provide_context(listeners);
 
-            (state, writers, frames)
+            (state, writers, listeners)
         });
         let ui = owner.with(|| UiRoot::new(root));
 
@@ -176,7 +175,7 @@ impl Window {
             pipeline: Pipeline::default(),
             state,
             writers,
-            frames,
+            listeners,
             start: Instant::now(),
             physical_size: PhysicalSize::new(0, 0),
             scale_factor: 1.0,
@@ -299,7 +298,7 @@ impl Window {
     /// Whether a frame should be drawn: the tree changed, something
     /// animates, or the window changed.
     pub fn needs_redraw(&self) -> bool {
-        self.redraw || !self.ui.tree().borrow().changes().is_empty() || self.frames.animating()
+        self.redraw || !self.ui.tree().borrow().changes().is_empty() || self.listeners.animating()
     }
 
     /// Run the frame handlers, then lay out the UI at the current size.
@@ -315,9 +314,9 @@ impl Window {
             return false;
         }
 
-        // Frame handlers set signals: run the bindings they woke before
+        // Frame listeners set signals: run the bindings they woke before
         // laying out.
-        self.frames.run(self.start.elapsed());
+        self.listeners.run_frame(self.start.elapsed());
         self.ui.poll();
 
         let size = self.size();
@@ -386,7 +385,10 @@ impl Window {
     // Input.
 
     /// Dispatch a pointer event to the node under the pointer, or the node
-    /// capturing it, and its ancestors, then perform its default action.
+    /// capturing it, and its ancestors, between the capturing and bubbling
+    /// window listeners, then perform its default action. Window listeners
+    /// also get the events nodes do not: pointer enter, leave, cancel and
+    /// gestures.
     pub fn pointer_event(&mut self, event: &PointerEvent) {
         match event {
             PointerEvent::Move(update) => {
@@ -397,7 +399,13 @@ impl Window {
                 self.update_hover();
 
                 let (path, local) = self.target_path(position);
-                self.dispatch::<OnPointerMove>(&path, Some(position), local, update);
+                self.dispatch_pointer::<OnPointerMove>(
+                    &path,
+                    Some(position),
+                    local,
+                    event,
+                    Some(update),
+                );
             }
             PointerEvent::Down(button) => {
                 let position = button.state.logical_point();
@@ -405,8 +413,13 @@ impl Window {
                 self.cursor = Some(position);
 
                 let (path, local) = self.target_path(position);
-                let prevented =
-                    self.dispatch::<OnPointerDown>(&path, Some(position), local, button);
+                let prevented = self.dispatch_pointer::<OnPointerDown>(
+                    &path,
+                    Some(position),
+                    local,
+                    event,
+                    Some(button),
+                );
                 self.pressed = path.first().copied();
 
                 if !prevented {
@@ -428,7 +441,13 @@ impl Window {
                 self.cursor = Some(position);
 
                 let (path, local) = self.target_path(position);
-                self.dispatch::<OnPointerUp>(&path, Some(position), local, button);
+                self.dispatch_pointer::<OnPointerUp>(
+                    &path,
+                    Some(position),
+                    local,
+                    event,
+                    Some(button),
+                );
                 self.capture = None;
 
                 // Clicked when released over the node it was pressed on.
@@ -447,16 +466,19 @@ impl Window {
                 self.pointer = Some(*pointer);
                 self.pressed = None;
                 self.capture = None;
+                self.window_pointer(event, None);
             }
             PointerEvent::Enter(pointer) => {
                 self.pointer = Some(*pointer);
                 self.set_pointer_inside(true);
+                self.window_pointer(event, None);
             }
             PointerEvent::Leave(pointer) => {
                 self.pointer = Some(*pointer);
                 self.cursor = None;
                 self.set_pointer_inside(false);
                 self.update_hover();
+                self.window_pointer(event, None);
             }
             PointerEvent::Scroll(scroll) => {
                 let position = scroll.state.logical_point();
@@ -464,17 +486,26 @@ impl Window {
                 self.cursor = Some(position);
 
                 let (path, local) = self.target_path(position);
-                if !self.dispatch::<OnScroll>(&path, Some(position), local, scroll) {
+                if !self.dispatch_pointer::<OnScroll>(
+                    &path,
+                    Some(position),
+                    local,
+                    event,
+                    Some(scroll),
+                ) {
                     self.scroll(&path, scroll.delta);
                 }
             }
-            PointerEvent::Gesture(_) => {}
+            PointerEvent::Gesture(gesture) => {
+                self.pointer = Some(gesture.pointer);
+                self.window_pointer(event, Some(gesture.state.logical_point()));
+            }
         }
     }
 
     /// Dispatch a keyboard event to the focused node, or the root without
-    /// focus, and its ancestors, then perform its default action: Tab moves
-    /// the focus.
+    /// focus, and its ancestors, between the capturing and bubbling window
+    /// listeners, then perform its default action: Tab moves the focus.
     pub fn keyboard_event(&mut self, event: &KeyboardEvent) {
         let target = self
             .focus
@@ -483,8 +514,8 @@ impl Window {
         let path = self.ancestors(Some(target));
 
         let prevented = match event.state {
-            KeyState::Down => self.dispatch::<OnKeyDown>(&path, None, None, event),
-            KeyState::Up => self.dispatch::<OnKeyUp>(&path, None, None, event),
+            KeyState::Down => self.dispatch_key::<OnKeyDown>(&path, event),
+            KeyState::Up => self.dispatch_key::<OnKeyUp>(&path, event),
         };
 
         if !prevented
@@ -499,11 +530,67 @@ impl Window {
         update(self.state.pointer_inside, self.writers.pointer_inside, inside);
     }
 
-    /// Call the handlers `P` of `path`, a node and its ancestors, innermost
-    /// first, then apply what they requested. Returns whether a handler
-    /// prevented the default action.
-    ///
-    /// Handlers run without borrows of the tree.
+    /// Dispatch a pointer event: the capturing window listeners get `raw`,
+    /// the handlers `P` of `path` get `event`, then the bubbling window
+    /// listeners get `raw`, until one stops propagation. Then apply what
+    /// they requested. Returns whether one prevented the default action.
+    fn dispatch_pointer<P: HandlerProp>(
+        &mut self,
+        path: &[NodeKey],
+        position: Option<Point>,
+        local: Option<Point>,
+        raw: &PointerEvent,
+        event: Option<&P::Event>,
+    ) -> bool {
+        // Listeners added while dispatching only get later events.
+        let capture = self.listeners.pointer(Phase::Capture);
+        let bubble = self.listeners.pointer(Phase::Bubble);
+        let mut cx = EventCx::new(path.first().copied(), position, local);
+
+        run_listeners(&capture, &mut cx, raw);
+        if let Some(event) = event
+            && !cx.is_stopped()
+        {
+            self.run_nodes::<P>(path, &mut cx, event);
+        }
+        if !cx.is_stopped() {
+            run_listeners(&bubble, &mut cx, raw);
+        }
+
+        self.finish(cx)
+    }
+
+    /// Dispatch a pointer event only window listeners get.
+    fn window_pointer(&mut self, event: &PointerEvent, position: Option<Point>) {
+        self.dispatch_pointer::<OnPointerMove>(&[], position, None, event, None);
+    }
+
+    /// Dispatch a keyboard event to the capturing window listeners, the
+    /// handlers `P` of `path`, then the bubbling window listeners, like
+    /// [`dispatch_pointer`](Self::dispatch_pointer).
+    fn dispatch_key<P: HandlerProp<Event = KeyboardEvent>>(
+        &mut self,
+        path: &[NodeKey],
+        event: &KeyboardEvent,
+    ) -> bool {
+        let capture = self.listeners.keyboard(Phase::Capture);
+        let bubble = self.listeners.keyboard(Phase::Bubble);
+        let mut cx = EventCx::new(path.first().copied(), None, None);
+
+        run_listeners(&capture, &mut cx, event);
+        if !cx.is_stopped() {
+            self.run_nodes::<P>(path, &mut cx, event);
+        }
+        if !cx.is_stopped() {
+            run_listeners(&bubble, &mut cx, event);
+        }
+
+        self.finish(cx)
+    }
+
+    /// Dispatch an event only nodes get, such as a click or a focus change,
+    /// to the handlers `P` of `path`. Returns whether one prevented the
+    /// default action.
     fn dispatch<P: HandlerProp>(
         &mut self,
         path: &[NodeKey],
@@ -511,9 +598,16 @@ impl Window {
         local: Option<Point>,
         event: &P::Event,
     ) -> bool {
-        let Some(&target) = path.first() else {
-            return false;
-        };
+        let mut cx = EventCx::new(path.first().copied(), position, local);
+        self.run_nodes::<P>(path, &mut cx, event);
+
+        self.finish(cx)
+    }
+
+    /// Call the handlers `P` of `path`, a node and its ancestors, innermost
+    /// first, until one stops propagation. Handlers run without borrows of
+    /// the tree.
+    fn run_nodes<P: HandlerProp>(&self, path: &[NodeKey], cx: &mut EventCx, event: &P::Event) {
         let handlers: Vec<_> = {
             let tree = self.ui.tree().borrow();
             path.iter()
@@ -521,21 +615,20 @@ impl Window {
                 .collect()
         };
 
-        if handlers.is_empty() {
-            return false;
-        }
-
-        let mut cx = EventCx::new(target, position, local);
         for (node, handler) in handlers {
-            cx.set_current(node);
-            handler.call(&mut cx, event);
+            cx.set_current(Some(node));
+            handler.call(cx, event);
 
             if cx.is_stopped() {
                 break;
             }
         }
+        cx.set_current(None);
+    }
 
-        let prevented = cx.is_default_prevented();
+    /// Apply what the handlers of a dispatch requested. Returns whether one
+    /// prevented the default action.
+    fn finish(&mut self, mut cx: EventCx) -> bool {
         for request in core::mem::take(&mut cx.requests) {
             match request {
                 Request::Focus(node) => self.set_focus(node),
@@ -544,7 +637,7 @@ impl Window {
             }
         }
 
-        prevented
+        cx.is_default_prevented()
     }
 
     /// Move the focus to `node`, calling the blur handler of the node losing
@@ -731,5 +824,18 @@ impl Window {
         let tree = self.ui.tree().borrow();
 
         successors(Some(node), |&node| tree.ui.parent(node)).any(|node| node == root)
+    }
+}
+
+/// Call window listeners in order, until one stops propagation.
+fn run_listeners<E>(listeners: &[WindowListener<E>], cx: &mut EventCx, event: &E) {
+    cx.set_current(None);
+
+    for listener in listeners {
+        listener.call(cx, event);
+
+        if cx.is_stopped() {
+            break;
+        }
     }
 }

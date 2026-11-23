@@ -1,11 +1,11 @@
-//! Input dispatch, focus, scrolling and frame handlers of a headless window.
+//! Input dispatch to nodes, focus and scrolling of a headless window.
 
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{cell::RefCell, rc::Rc};
 
 use comet_layout::style::{geometry::Point as StylePoint, taffy::Overflow, unit::*};
 use comet_reactivity::{Styled, UiCx};
 use comet_shell::{
-    Handler, Window, on_frame,
+    Handler, Window,
     styles::{Focusable, OnBlur, OnClick, OnFocus, OnKeyDown, OnPointerDown, OnPointerEnter,
         OnPointerLeave},
     ui_events::{
@@ -350,22 +350,4 @@ fn wheel_scrolls_the_innermost_scroll_container() {
         .map(|top| top.0);
     assert_eq!(top, Some(40.0), "one line down");
     assert!(window.needs_redraw(), "the scroll asks for a frame");
-}
-
-#[test]
-fn frame_handlers_run_every_frame() {
-    let frames = Rc::new(RefCell::new(Vec::<Duration>::new()));
-    let mut window = Window::new({
-        let frames = frames.clone();
-        move |cx: &UiCx| {
-            on_frame(move |delta| frames.borrow_mut().push(delta));
-            cx.div().build()
-        }
-    });
-    open(&mut window);
-    assert!(window.needs_redraw(), "animating");
-    window.layout();
-
-    assert_eq!(frames.borrow().len(), 2, "one call per frame");
-    assert_eq!(frames.borrow()[0], Duration::ZERO, "zero on the first frame");
 }

@@ -8,13 +8,14 @@
 //! Input is dispatched to the node under the pointer, or the focused node
 //! for keyboard events, and its ancestors, calling the handlers registered
 //! with the [`styles`] props. Window state is exposed to components as
-//! signals through [`use_window`], and frame handlers are registered with
-//! [`on_frame`].
+//! signals through [`use_window`]. Window-wide input and frame listeners
+//! are registered with the [`listeners`] functions, such as
+//! [`on_window_key`] and [`on_frame`].
 //!
 //! Signals are only expected to be set on the thread running the window.
 
 pub mod event;
-pub mod frame;
+pub mod listeners;
 pub mod pipeline;
 pub mod runtime;
 pub mod styles;
@@ -24,6 +25,9 @@ pub use accesskit;
 pub use ui_events;
 
 pub use event::{ClickEvent, EventCx, FocusEvent, Handler};
-pub use frame::{on_frame, on_frame_while};
+pub use listeners::{
+    FrameCx, FrameEvent, FrameListener, Phase, WindowListener, on_frame, on_frame_while,
+    on_next_frame, on_window_key, on_window_pointer,
+};
 pub use runtime::UiRoot;
 pub use window::{Window, WindowState, use_window};
