@@ -1,5 +1,6 @@
 [package]
 name = "comet-accesskit"
+description = "Accesskit based incremental accessibility tree for comet"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

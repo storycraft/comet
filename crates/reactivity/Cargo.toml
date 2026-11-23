@@ -1,5 +1,6 @@
 [package]
 name = "comet-reactivity"
+description = "Fine grained reactive UI building for comet"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

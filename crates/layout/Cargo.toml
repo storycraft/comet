@@ -1,5 +1,6 @@
 [package]
 name = "comet-layout"
+description = "Incremental layout engine for comet"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }

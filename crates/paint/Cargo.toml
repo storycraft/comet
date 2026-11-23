@@ -1,5 +1,6 @@
 [package]
 name = "comet-paint"
+description = "Paint tree and draw command generation"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
