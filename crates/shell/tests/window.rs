@@ -122,9 +122,7 @@ fn window(log: &Log) -> (Window, Rc<RefCell<Option<Nodes>>>) {
                             let log = inner_log.clone();
                             move |_, _| log("click")
                         })
-                        .on_hover(move |entered| {
-                            inner_log(if entered { "enter" } else { "leave" })
-                        })
+                        .on_hover(move |entered| inner_log(if entered { "enter" } else { "leave" }))
                         .build();
                     inner = Some(key);
                     key
@@ -384,5 +382,118 @@ fn enter_and_space_click_the_focused_node() {
         clicks(&log),
         ["inner:click", "outer:click"],
         "Space clicks on release"
+    );
+}
+
+/// A focusable 100×50 row.
+fn row(cx: &UiCx, rows: &RefCell<Vec<NodeKey>>) -> NodeKey {
+    let key = cx.div().size(size(px(100), px(50))).focusable(true).build();
+    rows.borrow_mut().push(key);
+    key
+}
+
+/// A 100×100 container scrolling both ways.
+fn scroll_box(cx: &UiCx) -> comet_reactivity::NodeBuild<'_> {
+    cx.div()
+        .size(size(px(100), px(100)))
+        .overflow(StylePoint::new(Overflow::Scroll, Overflow::Scroll))
+}
+
+fn scroll_top(window: &Window, node: NodeKey) -> f64 {
+    window
+        .ui()
+        .tree()
+        .borrow()
+        .ui
+        .prop::<comet_paint::style::ScrollTop>(node)
+        .map_or(0.0, |top| top.0)
+}
+
+/// A scroll box holding `count` rows, as the root.
+fn list(count: usize) -> (Window, Rc<RefCell<Vec<NodeKey>>>) {
+    let rows = Rc::new(RefCell::new(Vec::new()));
+    let window = Window::new({
+        let rows = rows.clone();
+        move |cx: &UiCx| {
+            scroll_box(cx).children(|cx| (0..count).map(|_| row(cx, &rows)).collect::<Vec<_>>())
+        }
+    });
+
+    (window, rows)
+}
+
+#[test]
+fn focus_scrolls_the_node_into_view() {
+    let (mut window, _) = list(6);
+    open(&mut window);
+    let root = window.root();
+    let tab = key_down(Key::Named(NamedKey::Tab), Modifiers::empty());
+    let back = key_down(Key::Named(NamedKey::Tab), Modifiers::SHIFT);
+    let press = |window: &mut Window, key: &KeyboardEvent| {
+        window.keyboard_event(key);
+        window.poll();
+        window.layout();
+        scroll_top(window, root)
+    };
+
+    assert_eq!(press(&mut window, &tab), 0.0, "row 0 is visible");
+    assert_eq!(press(&mut window, &tab), 0.0, "row 1 is visible");
+    assert_eq!(press(&mut window, &tab), 50.0, "row 2 ends at the bottom");
+    assert_eq!(press(&mut window, &tab), 100.0, "row 3 ends at the bottom");
+    assert_eq!(press(&mut window, &back), 100.0, "row 2 is still visible");
+    assert_eq!(press(&mut window, &back), 50.0, "row 1 starts at the top");
+    assert_eq!(press(&mut window, &back), 0.0, "row 0 starts at the top");
+}
+
+#[test]
+fn focus_before_the_first_layout_is_revealed_by_it() {
+    let (mut window, rows) = list(5);
+    let last = *rows.borrow().last().unwrap();
+
+    window.state().focused_node.set(Some(last));
+    window.poll();
+    assert_eq!(window.focused(), Some(last));
+    open(&mut window);
+
+    assert_eq!(
+        scroll_top(&window, window.root()),
+        150.0,
+        "the last row ends at the bottom"
+    );
+    assert!(window.needs_redraw(), "the scroll asks for a frame");
+}
+
+#[test]
+fn focus_scrolls_nested_containers_from_the_innermost() {
+    let rows = Rc::new(RefCell::new(Vec::new()));
+    let inner = Rc::new(RefCell::new(None));
+    let mut window = Window::new({
+        let (rows, inner) = (rows.clone(), inner.clone());
+        move |cx: &UiCx| {
+            scroll_box(cx).children(|cx| {
+                let spacer = cx.div().size(size(px(100), px(150))).build();
+                let key = scroll_box(cx)
+                    .children(|cx| (0..4).map(|_| row(cx, &rows)).collect::<Vec<_>>());
+                *inner.borrow_mut() = Some(key);
+                [spacer, key]
+            })
+        }
+    });
+    open(&mut window);
+    let inner = inner.borrow().unwrap();
+    let last = *rows.borrow().last().unwrap();
+
+    window.state().focused_node.set(Some(last));
+    window.poll();
+
+    assert_eq!(
+        scroll_top(&window, inner),
+        100.0,
+        "the row ends at the inner bottom"
+    );
+    assert_eq!(
+        scroll_top(&window, window.root()),
+        150.0,
+        "the inner box scrolled to show the row"
     );
 }

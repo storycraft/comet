@@ -7,9 +7,9 @@ use accesskit::{Action, ActionRequest, TreeUpdate};
 use comet_layout::style::{bx::Overflow, taffy::Overflow as OverflowKind};
 use comet_paint::style::{ScrollLeft, ScrollTop};
 use comet_reactivity::UiCx;
-use comet_tree::node::NodeKey;
+use comet_tree::{node::NodeKey, ui::Ui};
 use dpi::PhysicalSize;
-use kurbo::{Point, Size, Vec2};
+use kurbo::{Point, Rect, Size, Vec2};
 use reactive_graph::{
     owner::{Owner, provide_context, use_context},
     signal::{ReadSignal, RwSignal, Trigger, WriteSignal, signal},
@@ -22,7 +22,7 @@ use crate::{
         PointerEvent, PointerInfo, Request, ScrollDelta,
     },
     listeners::{Listeners, Phase, WindowListener},
-    pipeline::Pipeline,
+    pipeline::{Pipeline, UiTrees},
     runtime::UiRoot,
     style::{
         Focusable, HandlerProp, OnBlur, OnClick, OnFocus, OnKeyDown, OnKeyUp, OnPointerDown,
@@ -148,6 +148,8 @@ pub struct Window {
     pressed: Option<NodeKey>,
     /// Node capturing the pointer.
     capture: Option<NodeKey>,
+    /// Focused node to scroll into view, waiting for its first layout.
+    reveal: Option<NodeKey>,
     focus: Option<NodeKey>,
     /// Whether something not recorded in the tree needs a frame.
     redraw: bool,
@@ -185,6 +187,7 @@ impl Window {
             hovered: Vec::new(),
             pressed: None,
             capture: None,
+            reveal: None,
             focus: None,
             redraw: true,
             owner,
@@ -321,11 +324,18 @@ impl Window {
 
         let size = self.size();
         let viewport = comet_layout::style::geometry::Size::new(size.width, size.height);
-        let mut tree = self.ui.tree().borrow_mut();
+        let laid_out = self
+            .pipeline
+            .layout(&mut self.ui.tree().borrow_mut(), self.ui.root(), viewport)
+            .is_some();
 
-        self.pipeline
-            .layout(&mut tree, self.ui.root(), viewport)
-            .is_some()
+        // A node focused before it was laid out is revealed now. The scroll
+        // is painted in the next frame, which the change requests.
+        if laid_out {
+            self.reveal_focus();
+        }
+
+        laid_out
     }
 
     /// Paint the last layout into `scene`, in physical pixels.
@@ -677,12 +687,42 @@ impl Window {
         let old = core::mem::replace(&mut self.focus, node);
         // The accessibility tree reports the focus.
         self.redraw |= self.pipeline.accessibility_active();
+        self.reveal = node;
+        self.reveal_focus();
 
         if let Some(old) = old {
             self.dispatch::<OnBlur>(&[old], None, None, &FocusEvent { related: node });
         }
         if let Some(node) = node {
             self.dispatch::<OnFocus>(&[node], None, None, &FocusEvent { related: old });
+        }
+    }
+
+    /// Scroll the scroll containers holding the node waiting to be revealed,
+    /// so that its border box is visible. Kept waiting until the node is
+    /// laid out.
+    fn reveal_focus(&mut self) {
+        let Some(node) = self.reveal else {
+            return;
+        };
+        if !self.attached(node) {
+            self.reveal = None;
+            return;
+        }
+
+        let scrolls = {
+            let tree = self.ui.tree().borrow();
+            reveal_scrolls(&tree.ui, &self.pipeline.trees, node)
+        };
+        let Some(scrolls) = scrolls else {
+            return;
+        };
+        self.reveal = None;
+
+        let mut tree = self.ui.tree().borrow_mut();
+        for (container, offset) in scrolls {
+            tree.set_prop(container, ScrollLeft(offset.x));
+            tree.set_prop(container, ScrollTop(offset.y));
         }
     }
 
@@ -861,5 +901,104 @@ fn run_listeners<E>(listeners: &[WindowListener<E>], cx: &mut EventCx, event: &E
         if cx.is_stopped() {
             break;
         }
+    }
+}
+
+/// The scroll offsets bringing the border box of `node` into view in the
+/// scroll containers holding it, from the last layout: each container,
+/// from the innermost out, scrolls as little as possible, showing the start
+/// of the box when it does not fit. Only containers that move are returned.
+///
+/// `None` when the node or one of its ancestors has no laid out fragment.
+fn reveal_scrolls(ui: &Ui, trees: &UiTrees, node: NodeKey) -> Option<Vec<(NodeKey, Vec2)>> {
+    let items = &trees.fragments.items;
+    let mut key = trees.box_fragment(node)?;
+    let size = items.get(key)?.layout.size;
+    let mut rect = Rect::new(0.0, 0.0, size.width, size.height);
+    let mut scrolls = Vec::new();
+
+    while let Some(parent) = items.parent(key) {
+        // Into the scrolled contents of the parent.
+        rect = trees
+            .prepaint
+            .fragment(key)?
+            .transform
+            .transform_rect_bbox(rect);
+        let fragment = items.get(parent)?;
+        let mut offset = trees.prepaint.scroll_offset(fragment);
+
+        let container = fragment
+            .item
+            .is_box()
+            .then(|| trees.node(fragment.source))
+            .flatten();
+        if let Some(container) = container
+            && let Some(props) = ui.props(container)
+        {
+            let overflow = props.get_or_default::<Overflow>().0;
+            let (x, y) = (
+                overflow.x == OverflowKind::Scroll,
+                overflow.y == OverflowKind::Scroll,
+            );
+
+            if x || y {
+                let range = trees.fragments.scroll_range(parent)?;
+                // The props may hold more than the range allows since it
+                // shrank.
+                let current = Vec2::new(
+                    props.get_or_default::<ScrollLeft>().0.clamp(0.0, range.x),
+                    props.get_or_default::<ScrollTop>().0.clamp(0.0, range.y),
+                );
+                // The padding box, in local coordinates.
+                let layout = &fragment.layout;
+                let view = Rect::new(
+                    layout.border.left_top.x,
+                    layout.border.left_top.y,
+                    layout.size.width - layout.border.right_bottom.x,
+                    layout.size.height - layout.border.right_bottom.y,
+                );
+                let target = Vec2::new(
+                    if x {
+                        reveal_axis(rect.x0, rect.x1, view.x0, view.x1, current.x)
+                            .clamp(0.0, range.x)
+                    } else {
+                        current.x
+                    },
+                    if y {
+                        reveal_axis(rect.y0, rect.y1, view.y0, view.y1, current.y)
+                            .clamp(0.0, range.y)
+                    } else {
+                        current.y
+                    },
+                );
+
+                if target != current {
+                    scrolls.push((container, target));
+                }
+                offset = target;
+            }
+        }
+
+        // Into the local coordinates of the parent.
+        rect = rect - offset;
+        key = parent;
+    }
+
+    Some(scrolls)
+}
+
+/// The scroll offset of one axis showing `start..end`, in the coordinates of
+/// a container's scrolled contents, inside its visible `view_start..view_end`,
+/// in its local coordinates, when scrolled by `offset` now. Moves as little
+/// as possible, and shows the start when the range does not fit.
+fn reveal_axis(start: f64, end: f64, view_start: f64, view_end: f64, offset: f64) -> f64 {
+    let (visible_start, visible_end) = (view_start + offset, view_end + offset);
+
+    if start < visible_start || end - start > view_end - view_start {
+        start - view_start
+    } else if end > visible_end {
+        end - view_end
+    } else {
+        offset
     }
 }
