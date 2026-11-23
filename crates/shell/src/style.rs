@@ -67,6 +67,12 @@ define_style_props!(
     /// order.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub Focusable: bool = false;
+
+    /// Whether pressing the text of the node and its descendants selects
+    /// it. Inherited: the nearest node with the prop decides. Text is
+    /// selectable without one.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub Selectable: bool = true;
 );
 
 /// A prop holding a [`Handler`].
@@ -110,6 +116,10 @@ impl ReactiveProp for Focusable {
     const HINT: PropHint = PropHint::empty();
 }
 
+impl ReactiveProp for Selectable {
+    const HINT: PropHint = PropHint::empty();
+}
+
 /// Generate helpers setting the handler prop `$prop` to a new [`Handler`].
 macro_rules! handler_helpers {
     ($($(#[$attr:meta])* $name:ident: $prop:ty => $event:ty;)*) => {$(
@@ -122,7 +132,7 @@ macro_rules! handler_helpers {
 }
 
 /// Input helpers of a node being built: handlers of the [`HandlerProp`]
-/// props, and [`Focusable`].
+/// props, [`Focusable`] and [`Selectable`].
 ///
 /// Each handler is created under the current owner, the owner of the
 /// component building the node, and runs under it. Setting a handler again
@@ -131,6 +141,12 @@ pub trait InputStyled: Styled {
     /// Let the node be focused, by a press or with Tab, in tree order.
     fn focusable(self, value: impl Into<Signal<bool>>) -> Self {
         self.bind::<Focusable, bool>(value)
+    }
+
+    /// Let a press select the text of the node and its descendants, which
+    /// it does without the prop.
+    fn selectable(self, value: impl Into<Signal<bool>>) -> Self {
+        self.bind::<Selectable, bool>(value)
     }
 
     handler_helpers! {

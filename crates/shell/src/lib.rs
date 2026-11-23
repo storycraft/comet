@@ -18,6 +18,7 @@ pub mod event;
 pub mod listeners;
 pub mod pipeline;
 pub mod runtime;
+pub mod selection;
 pub mod style;
 pub mod window;
 
@@ -30,4 +31,5 @@ pub use listeners::{
     on_next_frame, on_window_key, on_window_pointer,
 };
 pub use runtime::UiRoot;
+pub use selection::{Affinity, Selection, TextPosition};
 pub use window::{Window, WindowState, use_window};

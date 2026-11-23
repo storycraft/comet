@@ -64,6 +64,64 @@ impl UiTrees {
     pub fn scroll_range(&self, node: NodeKey) -> Option<Vec2> {
         self.fragments.scroll_range(self.box_fragment(node)?)
     }
+
+    /// The box fragment of `node` if it owns an inline layout: it is the
+    /// box of an inline formatting context, without block boxes inside.
+    pub fn inline_owner(&self, node: NodeKey) -> Option<FragmentKey> {
+        let fragment = self.box_fragment(node)?;
+        self.fragments.get_inline(fragment)?;
+
+        Some(fragment)
+    }
+
+    /// The node of the nearest box fragment owning an inline layout among
+    /// `fragment` and its ancestors, such as the paragraph of a glyph run.
+    /// `None` inside anonymous blocks, whose inline layouts have no node of
+    /// their own.
+    pub fn inline_owner_node(&self, fragment: FragmentKey) -> Option<NodeKey> {
+        let items = &self.fragments.items;
+        let mut next = Some(fragment);
+
+        while let Some(key) = next {
+            let fragment = items.get(key)?;
+            if fragment.item.is_anonymous_block() {
+                return None;
+            }
+
+            if fragment.item.is_box() && self.fragments.get_inline(key).is_some() {
+                return self.node(fragment.source);
+            }
+
+            next = items.parent(key);
+        }
+
+        None
+    }
+
+    /// Maps the local coordinates of `fragment` to scene coordinates, in
+    /// logical units: the transforms and scroll offsets of the fragment and
+    /// its ancestors, from the last layout.
+    pub fn fragment_to_scene(&self, fragment: FragmentKey) -> Option<Affine> {
+        let items = &self.fragments.items;
+        let mut affine = self.prepaint.fragment(fragment)?.transform;
+        let mut next = items.parent(fragment);
+
+        while let Some(key) = next {
+            let scroll = self.prepaint.scroll_offset(items.get(key)?);
+            affine = self.prepaint.fragment(key)?.transform * Affine::translate(-scroll) * affine;
+            next = items.parent(key);
+        }
+
+        Some(affine)
+    }
+
+    /// Maps the coordinates of the inline layout owned by `owner` to scene
+    /// coordinates, like [`fragment_to_scene`](Self::fragment_to_scene).
+    pub fn inline_to_scene(&self, owner: FragmentKey) -> Option<Affine> {
+        let origin = self.fragments.get_inline(owner)?.origin(&self.fragments)?;
+
+        Some(self.fragment_to_scene(owner)? * Affine::translate(origin))
+    }
 }
 
 /// The builders filling [`UiTrees`], kept to reuse their buffers.

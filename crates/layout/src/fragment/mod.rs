@@ -53,6 +53,26 @@ pub struct InlineLayout {
     pub(crate) runs: Vec<RunEntry>,
 }
 
+impl InlineLayout {
+    /// Line fragment of each line of [`Self::layout`], by line index.
+    pub fn lines(&self) -> &[FragmentKey] {
+        &self.lines
+    }
+
+    /// Offset of the [`Self::layout`] coordinates in the local coordinates
+    /// of the fragment owning it, `tree`: its content box offset. `None`
+    /// before the lines are emitted.
+    pub fn origin(&self, tree: &tree::FragmentTree) -> Option<kurbo::Vec2> {
+        let metrics = self.layout.get(0)?.metrics();
+        let line = tree.items.get(*self.lines.first()?)?;
+
+        Some(kurbo::Vec2::new(
+            line.layout.location.x - f64::from(metrics.inline_min_coord),
+            line.layout.location.y - f64::from(metrics.block_min_coord),
+        ))
+    }
+}
+
 /// A leaf fragment of an emitted line: a glyph run, an atomic inline box or
 /// an empty inline element, with its logical text range.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
