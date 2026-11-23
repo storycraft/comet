@@ -1,6 +1,6 @@
 //! Selecting text with a pointer.
 
-use comet_layout::{input::LayoutInputKey, style::geometry::AutoValue};
+use comet_layout::input::LayoutInputKey;
 use comet_tree::node::NodeKey;
 use kurbo::Point;
 use reactive_graph::traits::GetUntracked;
@@ -107,24 +107,24 @@ impl Window {
     /// The node owning the selectable text under the pointer, with the
     /// pointer in the coordinates of its inline layout.
     ///
-    /// Follows the hit path of the pointer from the root down: the innermost
-    /// box owning an inline layout on it holds the text, and the
-    /// [`Selectable`] prop nearest to the fragment hit decides whether it
-    /// can be selected there, so an unselectable span in selectable text is
-    /// not selected.
+    /// The innermost box owning an inline layout on the hit path of the
+    /// pointer holds the text. The first [`Selectable`] other than `Auto`
+    /// from the node hit up the tree decides whether it can be selected
+    /// there, so an unselectable span in selectable text is not selected.
+    /// Text is selectable when no node decides.
     fn text_at(&self) -> Option<(NodeKey, Point)> {
-        let tree = self.ui.tree().borrow();
+        let leaf = self.pointer.path.last().map(|hit| hit.node);
+        if !self
+            .inherited::<Selectable, _>(leaf, |prop| prop.0)
+            .unwrap_or(true)
+        {
+            return None;
+        }
+
         let fragments = &self.pipeline.trees.fragments;
-        let mut selectable = true;
         let mut text = None;
 
         for hit in &self.pointer.path {
-            if let Some(prop) = tree.ui.prop::<Selectable>(hit.node)
-                && let AutoValue::Value(value) = prop.0
-            {
-                selectable = value;
-            }
-
             let fragment = fragments.items.get(hit.fragment)?;
             if fragment.item.is_anonymous_block() {
                 // Its inline layout has no node to keep positions in.
@@ -136,7 +136,7 @@ impl Window {
             }
         }
 
-        text.filter(|_| selectable)
+        text
     }
 
     /// `position` in the coordinates of the inline layout of `node`.

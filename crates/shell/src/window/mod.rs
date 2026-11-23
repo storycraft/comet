@@ -15,8 +15,9 @@ use core::iter::successors;
 use std::time::Instant;
 
 use accesskit::{Action, ActionRequest, TreeUpdate};
+use comet_layout::style::geometry::AutoValue;
 use comet_reactivity::UiCx;
-use comet_tree::node::NodeKey;
+use comet_tree::{node::NodeKey, style::StyleProp};
 use dpi::PhysicalSize;
 use kurbo::Size;
 use reactive_graph::{
@@ -329,6 +330,24 @@ impl Window {
         let tree = self.ui.tree().borrow();
 
         successors(node, |&node| tree.ui.parent(node)).collect()
+    }
+
+    /// The value of an inherited prop `P` for `node`: from it up the tree,
+    /// the first node whose prop, read by `value`, is not
+    /// [`AutoValue::Auto`]. `None` when no node decides.
+    fn inherited<P: StyleProp, T>(
+        &self,
+        node: Option<NodeKey>,
+        value: impl Fn(&P) -> AutoValue<T>,
+    ) -> Option<T> {
+        let tree = self.ui.tree().borrow();
+
+        successors(node, |&node| tree.ui.parent(node)).find_map(|node| {
+            match tree.ui.prop::<P>(node).map(|prop| value(&prop)) {
+                Some(AutoValue::Value(value)) => Some(value),
+                _ => None,
+            }
+        })
     }
 
     /// Whether `node` is in the window's tree.

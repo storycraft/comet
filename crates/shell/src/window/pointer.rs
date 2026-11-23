@@ -1,7 +1,7 @@
 //! Pointer input: hit testing, hover, the cursor, clicks and wheel
 //! scrolling.
 
-use comet_layout::style::{bx::Overflow, geometry::AutoValue, taffy::Overflow as OverflowKind};
+use comet_layout::style::{bx::Overflow, taffy::Overflow as OverflowKind};
 use comet_paint::style::{ScrollLeft, ScrollTop};
 use comet_tree::node::{Node, NodeKey};
 use kurbo::Point;
@@ -219,32 +219,21 @@ impl Window {
     }
 
     /// Follow the [`Cursor`] under the pointer with
-    /// [`WindowState::cursor`](super::WindowState::cursor), down the hit
-    /// path: each node sets the cursor, or keeps the one above it with
-    /// `Auto`. Without the prop, text nodes show [`CursorIcon::Text`] and
-    /// boxes [`CursorIcon::Default`]. `None` hides it.
+    /// [`WindowState::cursor`](super::WindowState::cursor): the first cursor
+    /// other than `Auto` from the node hit up the tree, or
+    /// [`CursorIcon::Text`] over text and [`CursorIcon::Default`] elsewhere
+    /// when no node decides. `None` hides it.
     pub(super) fn update_cursor(&mut self) {
-        let mut cursor = Some(CursorIcon::Default);
-        {
-            let tree = self.ui.tree().borrow();
-            let ui = &tree.ui;
-
-            for hit in &self.pointer.path {
-                cursor = match ui
-                    .prop::<Cursor>(hit.node)
-                    .map(|prop| prop.0)
-                    .unwrap_or_default()
-                {
-                    AutoValue::Value(icon) => icon,
-                    AutoValue::Auto => match ui.kind(hit.node) {
-                        Some(Node::Text) => Some(CursorIcon::Text),
-                        Some(Node::Box) => Some(CursorIcon::Default),
-                        // Removed since the hit test.
-                        None => cursor,
-                    },
-                };
-            }
-        }
+        let leaf = self.pointer.path.last().map(|hit| hit.node);
+        let over_text =
+            leaf.is_some_and(|node| self.ui.tree().borrow().ui.kind(node) == Some(Node::Text));
+        let cursor = self
+            .inherited::<Cursor, _>(leaf, |prop| prop.0)
+            .unwrap_or(Some(if over_text {
+                CursorIcon::Text
+            } else {
+                CursorIcon::Default
+            }));
 
         update(self.state.cursor, self.writers.cursor, cursor);
     }

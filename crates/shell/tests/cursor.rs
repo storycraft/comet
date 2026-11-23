@@ -57,6 +57,7 @@ fn open(window: &mut Window) {
 /// - a box showing `Pointer`, holding a box showing `Auto` over its left
 ///   half, a box showing `Crosshair` over its right half, and below them, a
 ///   box without a cursor holding text showing `Grab` and text without one,
+///   which take `Pointer` from above,
 /// - a box whose cursor follows a signal, starting at `Auto`.
 fn window() -> (Window, Setter) {
     let setter = Rc::new(RefCell::new(None));
@@ -138,14 +139,14 @@ fn boxes_show_the_default_cursor_and_text_the_text_cursor() {
 }
 
 #[test]
-fn auto_keeps_the_cursor_above_and_boxes_show_the_default() {
+fn nodes_without_a_cursor_take_the_nearest_one_above() {
     let (mut window, _) = window();
     open(&mut window);
 
     assert_eq!(
         hover(&mut window, 10.0, 90.0),
         Some(CursorIcon::Pointer),
-        "inherited"
+        "auto, inherited"
     );
     assert_eq!(
         hover(&mut window, 300.0, 90.0),
@@ -159,13 +160,13 @@ fn auto_keeps_the_cursor_above_and_boxes_show_the_default() {
     );
     assert_eq!(
         hover(&mut window, 300.0, 125.0),
-        Some(CursorIcon::Default),
-        "a box without a cursor, not inheriting"
+        Some(CursorIcon::Pointer),
+        "a box without a cursor, inherited"
     );
 }
 
 #[test]
-fn text_shows_its_own_cursor_or_the_text_cursor() {
+fn text_shows_its_own_cursor_or_the_nearest_one_above() {
     let (mut window, _) = window();
     open(&mut window);
 
@@ -177,8 +178,8 @@ fn text_shows_its_own_cursor_or_the_text_cursor() {
     // Past "Grab", over " label".
     assert_eq!(
         hover(&mut window, 60.0, 130.0),
-        Some(CursorIcon::Text),
-        "the text cursor, not the box's"
+        Some(CursorIcon::Pointer),
+        "the box's, not the text cursor"
     );
 }
 
