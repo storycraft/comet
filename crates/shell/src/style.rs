@@ -72,7 +72,7 @@ define_style_props!(
     /// it. Inherited: the nearest node with the prop decides. Text is
     /// selectable without one.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub Selectable: bool = true;
+    pub Selectable: bool;
 );
 
 /// A prop holding a [`Handler`].
