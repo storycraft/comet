@@ -920,6 +920,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "comet-shell"
+version = "0.1.0"
+dependencies = [
+ "comet-reactivity",
+ "reactive_graph",
+]
+
+[[package]]
 name = "comet-slotmap-tree"
 version = "0.1.0"
 dependencies = [

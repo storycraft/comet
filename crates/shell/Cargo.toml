@@ -1,0 +1,12 @@
+[package]
+name = "comet-shell"
+description = "Reactive windowing and input abstraction for comet"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+comet-reactivity.workspace = true
+
+reactive_graph = "0.2.16"
