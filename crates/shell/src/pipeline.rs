@@ -149,9 +149,7 @@ impl Pipeline {
 
             let layout = hint.layout();
             if !layout.is_empty() {
-                self.trees
-                    .dirty
-                    .mark_node(&self.trees.inputs, node, layout);
+                self.trees.dirty.mark_node(&self.trees.inputs, node, layout);
             }
         }
     }
@@ -159,12 +157,7 @@ impl Pipeline {
     /// Take the changes of `tree`, then lay them out at `viewport` and place
     /// the layers. On failure, nothing is painted until a later layout
     /// succeeds.
-    pub fn layout(
-        &mut self,
-        tree: &mut UiTree,
-        root: NodeKey,
-        viewport: Size<f64>,
-    ) -> Option<()> {
+    pub fn layout(&mut self, tree: &mut UiTree, root: NodeKey, viewport: Size<f64>) -> Option<()> {
         self.take_changes(tree);
         let ui = &tree.ui;
         let UiTrees {
@@ -397,11 +390,9 @@ impl Pipeline {
         a11y.focus = Some(focus);
 
         for (_, node) in nodes.iter_mut().filter(|(id, _)| *id == root_id) {
-            let transform = node
-                .transform()
-                .map_or(Affine::IDENTITY, |transform| {
-                    Affine::new(transform.as_coeffs())
-                });
+            let transform = node.transform().map_or(Affine::IDENTITY, |transform| {
+                Affine::new(transform.as_coeffs())
+            });
             let scaled = Affine::scale(scale_factor) * transform;
             node.set_transform(accesskit::Affine::new(scaled.as_coeffs()));
         }

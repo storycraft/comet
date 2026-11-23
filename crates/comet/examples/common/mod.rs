@@ -34,6 +34,53 @@ pub fn scroll_root(cx: &UiCx, content: impl FnOnce(&UiCx) -> NodeKey) -> NodeKey
         .children(content)
 }
 
+/// A button whose fill follows the hover, with a ring while focused. Tab
+/// moves the focus to it, and Enter or Space clicks it. Fill and outline
+/// changes only repaint.
+pub fn button(
+    cx: &UiCx,
+    label: impl Into<Signal<String>>,
+    on_click: impl Fn() + 'static,
+) -> NodeKey {
+    let (hovered, set_hovered) = signal(false);
+    let (focused, set_focused) = signal(false);
+
+    cx.div()
+        .role(Role::Button)
+        .focusable(true)
+        .outline_width(px(2))
+        .outline_offset(px(2))
+        .outline_fill(Signal::derive(move || {
+            solid(if focused.get() {
+                Color::from_rgb8(36, 46, 63)
+            } else {
+                Color::TRANSPARENT
+            })
+        }))
+        .padding(axis(px(10), px(18)))
+        .border_radius(all(px(8)))
+        .text_color(solid(Color::WHITE))
+        .font_weight(parley::FontWeight::SEMI_BOLD)
+        .fill(Signal::derive(move || {
+            solid(if hovered.get() {
+                Color::from_rgb8(66, 98, 220)
+            } else {
+                Color::from_rgb8(96, 125, 240)
+            })
+        }))
+        .on_click(move |_, _| on_click())
+        .on_focus(move |_, _| set_focused.set(true))
+        .on_blur(move |_, _| set_focused.set(false))
+        .on_hover(move |value| set_hovered.set(value))
+        .children(|cx| {
+            cx.text_with({
+                let label = label.into();
+                move || label.get()
+            })
+            .build()
+        })
+}
+
 pub fn sample_ui(cx: &UiCx) -> NodeKey {
     cx.div()
         .role(Role::Main)

@@ -1,19 +1,23 @@
 //! A reactive counter in a window: click the button to count up. A rounded
 //! square spins on the right, driven by a frame handler.
 
+#[allow(unused)]
+mod common;
+
 use core::f64::consts::TAU;
 
 use anyrender::Paint;
 use comet::{prelude::*, winit::window::WindowAttributes};
 use comet_layout::style::{
     geometry::Point,
-    parley,
     taffy::{Overflow, Position},
 };
 use comet_layout_flex::style::taffy::{AlignItems, FlexDirection, JustifyContent};
 use comet_tree::node::NodeKey;
 use kurbo::Affine;
 use peniko::Color;
+
+use crate::common::button;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     comet::run(WindowAttributes::default().with_title("comet counter"), app)
@@ -62,42 +66,6 @@ fn counter(cx: &UiCx) -> NodeKey {
                 }),
             ]
         })
-}
-
-fn button(cx: &UiCx, label: &str, on_click: impl Fn() + 'static) -> NodeKey {
-    let (hovered, set_hovered) = signal(false);
-    let (focused, set_focused) = signal(false);
-
-    cx.div()
-        .role(Role::Button)
-        .padding(axis(px(10), px(18)))
-        .border_radius(all(px(8)))
-        .text_color(Paint::Solid(Color::WHITE))
-        .font_weight(parley::FontWeight::SEMI_BOLD)
-        // Fill changes only repaint.
-        .fill(Signal::derive(move || {
-            Paint::Solid(if hovered.get() {
-                Color::from_rgb8(66, 98, 220)
-            } else {
-                Color::from_rgb8(96, 125, 240)
-            })
-        }))
-        .outline_width(px(2))
-        .outline_offset(px(2))
-        .outline_fill(Signal::derive(move || {
-            Paint::Solid(if focused.get() {
-                Color::from_rgb8(36, 46, 63)
-            } else {
-                Color::TRANSPARENT
-            })
-        }))
-        // Focusable: Tab moves the focus here, and Enter or Space clicks.
-        .focusable(true)
-        .on_click(move |_, _| on_click())
-        .on_focus(move |_, _| set_focused.set(true))
-        .on_blur(move |_, _| set_focused.set(false))
-        .on_hover(move |value| set_hovered.set(value))
-        .children(|cx| cx.text(label).build())
 }
 
 /// Side of the spinning square.

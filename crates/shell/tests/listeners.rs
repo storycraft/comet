@@ -221,7 +221,10 @@ fn remove_stops_a_listener_even_from_its_own_call() {
 
     // Keys also reach the box, the root, without focus.
     assert_eq!(
-        log.borrow().iter().filter(|entry| *entry == "listener").count(),
+        log.borrow()
+            .iter()
+            .filter(|entry| *entry == "listener")
+            .count(),
         1,
         "called once"
     );
@@ -263,9 +266,9 @@ fn listeners_stop_with_their_owner() {
         move |log| {
             let child = Owner::new();
             let log = log.clone();
-            handle.set(child.with(|| {
-                on_window_key(Phase::Bubble, move |_, _| push(&log, "listener"))
-            }));
+            handle.set(
+                child.with(|| on_window_key(Phase::Bubble, move |_, _| push(&log, "listener"))),
+            );
             *owner.borrow_mut() = Some(child);
         }
     });
@@ -275,7 +278,10 @@ fn listeners_stop_with_their_owner() {
     window.keyboard_event(&key(Key::Character("b".into())));
 
     assert_eq!(
-        log.borrow().iter().filter(|entry| *entry == "listener").count(),
+        log.borrow()
+            .iter()
+            .filter(|entry| *entry == "listener")
+            .count(),
         1,
         "not called once its owner was cleaned up"
     );
@@ -332,7 +338,10 @@ fn frame_delta_is_zero_first_then_the_frame_interval() {
     let deltas = deltas.borrow();
     assert_eq!(deltas.len(), 2, "one call per frame");
     assert_eq!(deltas[0], Duration::ZERO, "zero on the first frame");
-    assert!(deltas[1] >= Duration::from_millis(5), "the time between frames");
+    assert!(
+        deltas[1] >= Duration::from_millis(5),
+        "the time between frames"
+    );
 }
 
 #[test]
@@ -403,5 +412,9 @@ fn frame_delta_restarts_after_idle() {
     assert!(window.needs_redraw(), "a new listener asks for a frame");
     window.layout();
 
-    assert_eq!(delta.get(), Some(Duration::ZERO), "no jump over the idle time");
+    assert_eq!(
+        delta.get(),
+        Some(Duration::ZERO),
+        "no jump over the idle time"
+    );
 }

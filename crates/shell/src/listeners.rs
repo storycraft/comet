@@ -245,12 +245,10 @@ impl Listeners {
     /// opened.
     pub fn run_frame(self, time: Duration) {
         let listeners = self.active(|set| &mut set.frame, None);
-        let Some((requested, last)) = self.0.try_update_value(|set| {
-            (
-                core::mem::take(&mut set.frame_requested),
-                set.last_frame,
-            )
-        }) else {
+        let Some((requested, last)) = self
+            .0
+            .try_update_value(|set| (core::mem::take(&mut set.frame_requested), set.last_frame))
+        else {
             return;
         };
 
@@ -275,7 +273,8 @@ impl Listeners {
             }
         }
 
-        self.0.update_value(|set| set.frame_requested |= request_frame);
+        self.0
+            .update_value(|set| set.frame_requested |= request_frame);
         // Frames continue from this one only if listeners still ask for
         // them; otherwise the next one starts after an idle time.
         let animating = self.animating();
@@ -318,7 +317,10 @@ pub fn on_window_key(
 pub fn on_frame(handler: impl FnMut(&mut FrameCx, &FrameEvent) + 'static) -> Option<FrameListener> {
     let listeners = use_context::<Listeners>()?;
 
-    Some(listeners.add(|set| &mut set.frame, WindowListener::new(Phase::Bubble, handler)))
+    Some(listeners.add(
+        |set| &mut set.frame,
+        WindowListener::new(Phase::Bubble, handler),
+    ))
 }
 
 /// Call `handler` once, before the next frame of the current window, which
