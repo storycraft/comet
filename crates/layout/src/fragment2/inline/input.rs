@@ -7,7 +7,7 @@ use crate::input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree};
 /// An item of the inline content of an inline formatting context, returned
 /// by [`InlinePrelayout`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum InlineItem {
+pub enum InputItem {
     /// Enter an inline element. Its content follows, up to the matching
     /// [`Self::Pop`]. An empty inline element is a push followed by its pop.
     Push(LayoutInputKey),
@@ -30,7 +30,7 @@ enum Step {
 }
 
 /// The inline content of an inline formatting context, as a flat list of
-/// [`InlineItem`]s in tree order.
+/// [`InputItem`]s in tree order.
 ///
 /// The root is the item establishing the inline formatting context. Its
 /// children, and those of the inline elements inside it, are its inline
@@ -80,9 +80,9 @@ impl<'a> InlinePrelayout<'a> {
 }
 
 impl Iterator for InlinePrelayout<'_> {
-    type Item = InlineItem;
+    type Item = InputItem;
 
-    fn next(&mut self) -> Option<InlineItem> {
+    fn next(&mut self) -> Option<InputItem> {
         match self.next? {
             Step::Enter(key) => match self.tree.items[key].kind {
                 LayoutInputKind::Inline => {
@@ -91,20 +91,20 @@ impl Iterator for InlinePrelayout<'_> {
                         None => Some(Step::Exit(key)),
                     };
 
-                    Some(InlineItem::Push(key))
+                    Some(InputItem::Push(key))
                 }
                 LayoutInputKind::Text => {
                     self.next = self.advance(key);
-                    Some(InlineItem::Text(key))
+                    Some(InputItem::Text(key))
                 }
                 LayoutInputKind::AtomicInline | LayoutInputKind::Block => {
                     self.next = self.advance(key);
-                    Some(InlineItem::Atomic(key))
+                    Some(InputItem::Atomic(key))
                 }
             },
             Step::Exit(key) => {
                 self.next = self.advance(key);
-                Some(InlineItem::Pop)
+                Some(InputItem::Pop)
             }
         }
     }

@@ -5,7 +5,7 @@ use comet_tree::{
 
 use crate::{
     dirty_map::DirtyMap,
-    fragment2::inline::input::{InlineItem, InlinePrelayout},
+    fragment2::inline::input::{InputItem, InlinePrelayout},
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
@@ -60,7 +60,7 @@ fn flattens_nested_inline_content() {
     let (tree, key) = build(&ui, root);
     let item = |node| tree.item_for_node(node).unwrap();
 
-    use InlineItem::*;
+    use InputItem::*;
     assert_eq!(
         InlinePrelayout::new(&tree, key).collect::<Vec<_>>(),
         [
@@ -92,7 +92,7 @@ fn closes_every_inline_element_at_the_end() {
     let (tree, key) = build(&ui, root);
     let item = |node| tree.item_for_node(node).unwrap();
 
-    use InlineItem::*;
+    use InputItem::*;
     assert_eq!(
         InlinePrelayout::new(&tree, key).collect::<Vec<_>>(),
         [
@@ -114,7 +114,7 @@ fn text_root_yields_itself() {
 
     assert_eq!(
         InlinePrelayout::new(&tree, key).collect::<Vec<_>>(),
-        [InlineItem::Text(key)]
+        [InputItem::Text(key)]
     );
 }
 

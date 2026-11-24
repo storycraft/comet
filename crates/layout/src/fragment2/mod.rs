@@ -33,9 +33,14 @@ new_key_type! {
 
 /// How a box takes part in the layout of its parent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BoxType {
+pub enum BoxFragmentType {
     /// In-flow block level box, a child of a container, or a build root.
     Normal,
+    /// In-flow block level box establishing a new block formatting context,
+    /// such as `display: flow-root`. Its descendants' margins and floats do
+    /// not interact with those outside it. Inline level flow roots are
+    /// [`Self::AtomicInline`].
+    FlowRoot,
     /// Block level box inside inline content, laid out on its own line of the
     /// inline layout of its parent box.
     InlinePart,
@@ -44,6 +49,10 @@ pub enum BoxType {
     AtomicInline,
     /// Out-of-flow box, placed by its containing block.
     OutOfFlow,
+    /// Floating box, taken out of flow and placed at the side of its block
+    /// formatting context, with inline content flowing around it. Not
+    /// generated yet.
+    Floating,
 }
 
 /// How a box lays out its content.
@@ -143,7 +152,7 @@ pub struct BoxFragment {
     /// of its source in its [`FragmentTree`], belongs to the item it was
     /// generated for, such as the box whose content it wraps.
     pub source: LayoutInputKey,
-    pub box_type: BoxType,
+    pub box_type: BoxFragmentType,
     pub child_layout: ChildLayoutType,
     pub layout: BoxFragmentLayout,
     pub(crate) style: Style,
@@ -161,7 +170,7 @@ pub struct BoxFragment {
 impl BoxFragment {
     pub fn new(
         source: LayoutInputKey,
-        box_type: BoxType,
+        box_type: BoxFragmentType,
         child_layout: ChildLayoutType,
         style: Style,
     ) -> Self {

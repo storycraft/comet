@@ -1,5 +1,5 @@
 use crate::{
-    fragment2::{BoxFragment, BoxType, ChildLayoutType, FragmentTree},
+    fragment2::{BoxFragment, ChildLayoutType, BoxFragmentType, FragmentTree},
     input::LayoutInputKey,
     style::{LayoutConstraint, geometry::Size},
     taffy::style,
@@ -15,7 +15,7 @@ fn delete_removes_source_lookups() {
     let new = |source| {
         BoxFragment::new(
             source,
-            BoxType::Normal,
+            BoxFragmentType::Normal,
             ChildLayoutType::Block,
             style::resolve(None, &cx),
         )
@@ -41,7 +41,7 @@ fn boxes_outside_source_lookup_are_anonymous() {
     let new = || {
         BoxFragment::new(
             a,
-            BoxType::Normal,
+            BoxFragmentType::Normal,
             ChildLayoutType::Block,
             style::resolve(None, &cx),
         )
@@ -59,4 +59,20 @@ fn boxes_outside_source_lookup_are_anonymous() {
     tree.delete(anonymous);
     assert_eq!(tree.box_fragment(a), Some(root));
     assert!(!tree.is_anonymous(anonymous), "not in the tree");
+}
+
+#[test]
+fn box_types_starting_formatting_contexts() {
+    use BoxFragmentType::*;
+
+    for (ty, starts) in [
+        (Normal, false),
+        (InlinePart, false),
+        (FlowRoot, true),
+        (AtomicInline, true),
+        (OutOfFlow, true),
+        (Floating, true),
+    ] {
+        assert_eq!(ty.starts_formatting_context(), starts, "{ty:?}");
+    }
 }
