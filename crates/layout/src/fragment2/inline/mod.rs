@@ -1,5 +1,6 @@
 //! Flattened inline layout of an inline formatting context.
 
+pub mod builder;
 pub mod input;
 
 use core::{iter::FusedIterator, ops::Range};
@@ -16,15 +17,16 @@ use crate::{
 /// the box establishing it.
 #[derive(Debug, Default)]
 pub struct InlineLayout {
-    /// Concatenated text of the inline content, after white space processing.
+    /// Concatenated text of the inline content. Inline boxes in flow are
+    /// U+FFFC characters, and line feeds put inline part boxes on lines of
+    /// their own.
     pub text: String,
     /// Layout whose span brushes are the items owning the spans, and whose
     /// inline box ids are the items of the boxes, see [`inline_box_id`].
     pub layout: parley::Layout<LayoutInputKey>,
     /// Where the text items and inline elements end up in [`Self::text`], in
     /// tree order, so sorted by start. Text ranges do not overlap; an inline
-    /// element covers the ranges of its content. A collapsed space between
-    /// two text items belongs to the first.
+    /// element covers the ranges of its content.
     pub offset_mapping: Vec<OffsetEntry>,
     /// Lines, inline element pieces, boxes and glyph runs, in preorder.
     pub items: Vec<InlineItem>,
