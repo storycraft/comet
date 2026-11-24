@@ -15,9 +15,12 @@ pub enum InputItem {
     Pop,
     /// A text item.
     Text(LayoutInputKey),
-    /// A box inside the inline content: an atomic inline, or a block level
-    /// box splitting the inline content. Its own content is not traversed.
+    /// An atomic inline box inside the inline content. Its own content is not
+    /// traversed.
     Atomic(LayoutInputKey),
+    /// A block level box splitting the inline content. Its own content is not
+    /// traversed.
+    Block(LayoutInputKey),
 }
 
 /// Where the traversal continues.
@@ -61,6 +64,10 @@ impl<'a> InlinePrelayout<'a> {
         self.root
     }
 
+    pub fn tree(&self) -> &'a LayoutInputTree {
+        self.tree
+    }
+
     /// The step after the item `key` and its content.
     fn advance(&self, key: LayoutInputKey) -> Option<Step> {
         if key == self.root {
@@ -97,9 +104,13 @@ impl Iterator for InlinePrelayout<'_> {
                     self.next = self.advance(key);
                     Some(InputItem::Text(key))
                 }
-                LayoutInputKind::AtomicInline | LayoutInputKind::Block => {
+                LayoutInputKind::AtomicInline => {
                     self.next = self.advance(key);
                     Some(InputItem::Atomic(key))
+                }
+                LayoutInputKind::Block => {
+                    self.next = self.advance(key);
+                    Some(InputItem::Block(key))
                 }
             },
             Step::Exit(key) => {
