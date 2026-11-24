@@ -7,6 +7,7 @@
 //! of that same layout, so an inline element split around them keeps all of
 //! its pieces in one item list.
 
+pub mod builder;
 pub mod inline;
 pub mod tree;
 
@@ -19,6 +20,7 @@ pub use inline::{
     InlineItem, InlineItemKind, InlineLayout, InlineLink, OffsetEntry, inline_box_id,
     inline_box_source,
 };
+pub use builder::FragmentTreeBuilder;
 pub use tree::FragmentTree;
 
 use crate::{

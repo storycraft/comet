@@ -98,6 +98,17 @@ fn tracked_auto(
     value
 }
 
+impl Style {
+    /// Whether a block level box with this style establishes a new block
+    /// formatting context: its inner display is not flow, or its overflow
+    /// is hidden or scrolls.
+    pub fn establishes_flow_root(&self) -> bool {
+        !self.block
+            || self.overflow.x.is_scroll_container()
+            || self.overflow.y.is_scroll_container()
+    }
+}
+
 impl CoreStyle for Style {
     type CustomIdent = String;
 
