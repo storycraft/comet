@@ -136,7 +136,9 @@ pub struct BoxFragmentLayout {
 /// across builds.
 #[derive(Debug)]
 pub struct BoxFragment {
-    /// Item generating the box.
+    /// Item generating the box. An anonymous box, one that is not the box
+    /// of its source in its [`FragmentTree`], belongs to the item it was
+    /// generated for, such as the box whose content it wraps.
     pub source: LayoutInputKey,
     pub box_type: BoxType,
     pub child_layout: ChildLayoutType,
