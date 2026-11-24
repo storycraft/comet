@@ -4,7 +4,7 @@ use comet_tree::{
 };
 
 use crate::{
-    dirty_map::DirtyMap,
+    dirty_map::{DirtyFlags, DirtyMap},
     fragment::state::NodeLayoutBits,
     fragment2::{
         BoxFragment, BoxFragmentKey, BoxFragmentType, ChildLayoutType, FragmentTree, InlineLayout,
@@ -56,10 +56,12 @@ fn build_tree(
                 fragments,
                 child.item,
                 child.box_type,
-                None,
+                child.old,
                 nested,
                 built,
             )
+        } else if let Some(old) = child.old {
+            old
         } else {
             let (style, _) = cx.resolve_style(child.item);
             fragments.insert(BoxFragment::new(
@@ -146,6 +148,20 @@ impl Fixture {
             &mut self.builder,
             &mut self.fragments,
         )
+    }
+
+    /// Build the input tree again after the children of `node` changed.
+    fn rebuild_input(&mut self, root: NodeKey, node: NodeKey) {
+        let mut dirty = DirtyMap::new();
+        dirty.mark_node(&self.tree, node, DirtyFlags::NEED_CHILDREN);
+        LayoutInputTreeBuilder::new()
+            .build(
+                &self.ui,
+                &mut self.tree,
+                &mut dirty,
+                BuildRequest::new(root, 16.0, VIEWPORT),
+            )
+            .unwrap();
     }
 
     fn item(&self, node: NodeKey) -> LayoutInputKey {
@@ -483,4 +499,111 @@ fn boxes_attach_after_the_previous_box_even_if_anonymous() {
 
 fn key_source(fragments: &FragmentTree, key: BoxFragmentKey) -> LayoutInputKey {
     fragments.get(key).unwrap().source
+}
+
+#[test]
+fn reuses_atomic_boxes_of_the_old_root() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let first = inline_block(&mut ui);
+    let middle = text(&mut ui, "middle");
+    let second = inline_block(&mut ui);
+    ui.append(root, first);
+    ui.append(root, middle);
+    ui.append(root, second);
+
+    let mut f = Fixture::new(ui);
+    let root = f.input(root);
+    let old = f.build(root, None, false).0;
+    let boxes = [
+        f.fragments.box_fragment(f.item(first)).unwrap(),
+        f.fragments.box_fragment(f.item(second)).unwrap(),
+    ];
+    assert_eq!(f.inline(old).atomics.len(), 2);
+
+    // The leaves attach the old boxes again.
+    let key = f.build(root, Some(old), false).0;
+
+    assert!(f.fragments.get(old).is_none(), "old root deleted");
+    assert_eq!(f.fragments.boxes.children(key).collect::<Vec<_>>(), boxes);
+    let atomics = &f.inline(key).atomics;
+    assert_eq!(atomics[&f.item(first)], boxes[0]);
+    assert_eq!(atomics[&f.item(second)], boxes[1]);
+    assert_eq!(f.fragments.boxes.len(), 3);
+}
+
+#[test]
+fn yields_old_boxes_and_deletes_those_not_reused() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let first = inline_block(&mut ui);
+    let second = inline_block(&mut ui);
+    ui.append(root, first);
+    ui.append(root, second);
+
+    let mut f = Fixture::new(ui);
+    let root = f.input(root);
+    let old = f.build(root, None, false).0;
+    let old_boxes = [
+        f.fragments.box_fragment(f.item(first)).unwrap(),
+        f.fragments.box_fragment(f.item(second)).unwrap(),
+    ];
+
+    let (mut cx, builder, fragments) = f.context();
+    let (key, mut children) =
+        builder.build(&mut cx, fragments, root, BoxFragmentType::Normal, Some(old));
+
+    // The first old box is reused, the second replaced by a new box.
+    let child = children.next(fragments).unwrap();
+    assert_eq!(child.old, Some(old_boxes[0]));
+    assert!(fragments.boxes.parent(old_boxes[0]).is_none(), "detached");
+    child.attach(fragments, old_boxes[0]);
+
+    let child = children.next(fragments).unwrap();
+    assert_eq!(child.old, Some(old_boxes[1]));
+    let (style, _) = cx.resolve_style(child.item);
+    let replaced = fragments.insert(BoxFragment::new(
+        child.item,
+        child.box_type,
+        ChildLayoutType::Content,
+        style,
+    ));
+    child.attach(fragments, replaced);
+
+    assert!(children.next(fragments).is_none());
+    assert!(
+        fragments.get(old_boxes[1]).is_none(),
+        "unused old box deleted"
+    );
+    assert_eq!(
+        fragments.boxes.children(key).collect::<Vec<_>>(),
+        [old_boxes[0], replaced]
+    );
+
+    let atomics = &fragments.inline_layout(key).unwrap().atomics;
+    assert_eq!(atomics.get(&child.item), Some(&replaced));
+    assert_eq!(atomics.len(), 2);
+}
+
+#[test]
+fn deletes_old_boxes_of_removed_items() {
+    let mut ui = Ui::new();
+    let root_node = ui.create(Node::Box, ());
+    let kept = inline_block(&mut ui);
+    let removed = inline_block(&mut ui);
+    ui.append(root_node, kept);
+    ui.append(root_node, removed);
+
+    let mut f = Fixture::new(ui);
+    let root = f.input(root_node);
+    let old = f.build(root, None, false).0;
+    let removed_box = f.fragments.box_fragment(f.item(removed)).unwrap();
+
+    f.ui.delete(removed);
+    f.rebuild_input(root_node, root_node);
+    let key = f.build(root, Some(old), false).0;
+
+    assert!(f.fragments.get(removed_box).is_none(), "deleted");
+    assert_eq!(f.inline(key).atomics.len(), 1);
+    assert_eq!(f.fragments.boxes.len(), 2);
 }

@@ -70,7 +70,7 @@ fn flattens_nested_inline_content() {
             Push(item(empty)),
             Pop,
             Atomic(item(badge)),
-            Atomic(item(block)),
+            Block(item(block)),
             Pop,
             Text(item(after)),
         ]

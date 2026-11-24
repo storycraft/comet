@@ -12,7 +12,7 @@ use super::{
 use crate::{
     fragment::state::NodeLayoutBits,
     fragment2::{BoxFragment, BoxFragmentKey, BoxFragmentType, ChildLayoutType, FragmentTree},
-    input::{LayoutInputKey, LayoutInputKind, SpanStyle, tree::LayoutInputTree},
+    input::{LayoutInputKey, SpanStyle, tree::LayoutInputTree},
     style::LayoutConstraint,
     taffy::style::{self, Style},
 };
@@ -61,6 +61,11 @@ pub struct ChildBlockData {
     /// be anonymous: the box attached for the previous child. `None` attaches
     /// it as the first child.
     pub after: Option<BoxFragmentKey>,
+    /// The detached box fragment built for [`Self::item`] by the build of the
+    /// old root, with its subtree. Attach it again to reuse it, or pass it as
+    /// the old box of a nested build. Left unattached, it is deleted by the
+    /// next call to [`InlineFragmentainer::next`].
+    pub old: Option<BoxFragmentKey>,
 }
 
 impl ChildBlockData {
@@ -81,12 +86,20 @@ impl ChildBlockData {
 #[derive(Debug)]
 pub struct InlineFragmentainer {
     parent: BoxFragmentKey,
-    children: std::vec::IntoIter<(LayoutInputKey, BoxFragmentType)>,
+    children: std::vec::IntoIter<Child>,
     /// Child of `parent` the previous box was asked to be attached after.
     after: Option<BoxFragmentKey>,
-    /// Whether a box was yielded, so the next call looks for it after
-    /// `after`.
-    yielded: bool,
+    /// The box yielded last, whose attached box the next call looks for
+    /// after `after`.
+    yielded: Option<Child>,
+}
+
+/// A box inside inline content, with the box built for it by the old root.
+#[derive(Debug, Clone, Copy)]
+struct Child {
+    item: LayoutInputKey,
+    box_type: BoxFragmentType,
+    old: Option<BoxFragmentKey>,
 }
 
 impl InlineFragmentainer {
@@ -97,8 +110,12 @@ impl InlineFragmentainer {
     /// [`ChildBlockData::attach`] before calling it again: the box following
     /// [`ChildBlockData::after`] is taken as that box, and the next one is
     /// attached after it. Nothing is skipped when it was not attached.
+    ///
+    /// The box of the previous item is then recorded in
+    /// [`InlineLayout::atomics`] of the parent, and its old box is deleted
+    /// unless it was attached again.
     pub fn next(&mut self, fragments: &mut FragmentTree) -> Option<ChildBlockData> {
-        if std::mem::take(&mut self.yielded) {
+        if let Some(child) = self.yielded.take() {
             let attached = match self.after {
                 Some(after) => fragments.boxes.next_sibling(after),
                 None => fragments.boxes.first_child(self.parent),
@@ -107,17 +124,46 @@ impl InlineFragmentainer {
             if attached.is_some() {
                 self.after = attached;
             }
+
+            self.finish(fragments, child);
         }
 
-        let (item, box_type) = self.children.next()?;
-        self.yielded = true;
+        let child = self.children.next()?;
+        self.yielded = Some(child);
 
         Some(ChildBlockData {
-            item,
-            box_type,
+            item: child.item,
+            box_type: child.box_type,
             parent: self.parent,
             after: self.after,
+            old: child.old,
         })
+    }
+
+    /// Record the box built for `child`, and delete its old box if it was
+    /// not reused.
+    fn finish(&self, fragments: &mut FragmentTree, child: Child) {
+        let built = fragments.box_fragment(child.item);
+
+        if let Some(old) = child.old
+            && built != Some(old)
+            && fragments.boxes.parent(old).is_none()
+        {
+            fragments.delete(old);
+        }
+
+        let Some(atomics) = fragments
+            .get_mut(self.parent)
+            .and_then(|parent| parent.inline_mut())
+            .map(|inline| &mut inline.atomics)
+        else {
+            return;
+        };
+
+        match built {
+            Some(built) => atomics.insert(child.item, built),
+            None => atomics.remove(&child.item),
+        };
     }
 
     /// Number of boxes left to yield.
@@ -151,6 +197,8 @@ pub struct InlineLayoutBuilder {
     pool: Vec<Box<InlineLayout>>,
     /// Box fragments of a subtree being deleted.
     stale: Vec<BoxFragmentKey>,
+    /// Detached boxes inside the inline content of the old root, by item.
+    reused: FxHashMap<LayoutInputKey, BoxFragmentKey>,
 }
 
 impl InlineLayoutBuilder {
@@ -168,10 +216,13 @@ impl InlineLayoutBuilder {
     /// root box.
     ///
     /// `old` is a box fragment built for `root` before, such as by a previous
-    /// build. It is deleted from `fragments` with its subtree, and the inline
-    /// layouts in that subtree are reused by this build and by later ones,
-    /// such as those of nested inline formatting contexts, keeping their text
-    /// and Parley layout allocations. Box fragment keys are not kept.
+    /// build. The boxes inside its inline content, found in its
+    /// [`InlineLayout::atomics`], are detached with their subtrees and
+    /// yielded again as [`ChildBlockData::old`] of their items, for the caller
+    /// to reuse. Those of items no longer in the inline content are deleted.
+    /// The rest of `old` is deleted, and the inline layouts in it are reused
+    /// by this build and by later ones, keeping their text and Parley layout
+    /// allocations.
     ///
     /// Text is taken as is, without white space processing. A block level box
     /// inside the inline content is an inline part box on its own line,
@@ -185,6 +236,7 @@ impl InlineLayoutBuilder {
         box_type: BoxFragmentType,
         old: Option<BoxFragmentKey>,
     ) -> (BoxFragmentKey, InlineFragmentainer) {
+        self.reused.clear();
         if let Some(old) = old {
             self.reclaim(fragments, root, old);
         }
@@ -196,6 +248,21 @@ impl InlineLayoutBuilder {
         self.collect(cx, root, &mut inline, &mut children);
         self.shape(cx, root, &mut inline);
 
+        // Old boxes are recorded until their items are built again.
+        for child in &mut children {
+            child.old = self.reused.remove(&child.item);
+
+            if let Some(old) = child.old {
+                inline.atomics.insert(child.item, old);
+            }
+        }
+
+        // Items no longer in the inline content.
+        let stale: Vec<_> = self.reused.drain().map(|(_, key)| key).collect();
+        for key in stale {
+            self.delete_subtree(fragments, key);
+        }
+
         let (style, bits) = cx.resolve_style(root);
         let mut fragment = BoxFragment::new(root, box_type, ChildLayoutType::Inline(inline), style);
         fragment.bits = bits;
@@ -205,7 +272,7 @@ impl InlineLayoutBuilder {
             parent: key,
             children: children.into_iter(),
             after: None,
-            yielded: false,
+            yielded: None,
         };
 
         (key, fragmentainer)
@@ -216,14 +283,42 @@ impl InlineLayoutBuilder {
         self.pool.clear();
     }
 
-    /// Delete the box fragment `old` built for `root` and its subtree,
-    /// keeping their inline layouts for reuse. Boxes of other items, or
-    /// missing from `fragments`, are left as they are.
+    /// Detach the boxes inside the inline content of the box fragment `old`
+    /// built for `root` into `reused`, then delete the rest of its subtree,
+    /// keeping its inline layouts for reuse. Boxes of other items, or missing
+    /// from `fragments`, are left as they are.
     fn reclaim(&mut self, fragments: &mut FragmentTree, root: LayoutInputKey, old: BoxFragmentKey) {
         if fragments
             .get(old)
             .is_none_or(|fragment| fragment.source != root)
         {
+            return;
+        }
+
+        if let Some(inline) = fragments.get_mut(old).and_then(|old| old.inline_mut()) {
+            self.reused.extend(inline.atomics.drain());
+        }
+
+        // Boxes of other items, or not in the old subtree, are not reused.
+        self.reused.retain(|&item, &mut key| {
+            fragments
+                .get(key)
+                .is_some_and(|fragment| fragment.source == item)
+                && std::iter::successors(Some(key), |&key| fragments.boxes.parent(key))
+                    .any(|ancestor| ancestor == old)
+        });
+
+        for &key in self.reused.values() {
+            fragments.boxes.remove_parent(key);
+        }
+
+        self.delete_subtree(fragments, old);
+    }
+
+    /// Delete a box fragment and its subtree, keeping their inline layouts
+    /// for reuse.
+    fn delete_subtree(&mut self, fragments: &mut FragmentTree, old: BoxFragmentKey) {
+        if fragments.get(old).is_none() {
             return;
         }
 
@@ -250,7 +345,7 @@ impl InlineLayoutBuilder {
         cx: &InlineBuildContext<'_>,
         root: LayoutInputKey,
         inline: &mut InlineLayout,
-        children: &mut Vec<(LayoutInputKey, BoxFragmentType)>,
+        children: &mut Vec<Child>,
     ) {
         let tree = cx.tree;
         self.runs.clear();
@@ -310,12 +405,12 @@ impl InlineLayoutBuilder {
                         text: true,
                     });
                 }
-                InputItem::Atomic(key) => {
+                InputItem::Atomic(key) | InputItem::Block(key) => {
                     let parent = parents.last().copied().unwrap_or(root);
                     let box_type =
                         if cx.resolve_style(key).0.position() == taffy::Position::Absolute {
                             BoxFragmentType::OutOfFlow
-                        } else if tree.items[key].kind == LayoutInputKind::Block {
+                        } else if matches!(item, InputItem::Block(_)) {
                             BoxFragmentType::InlinePart
                         } else {
                             BoxFragmentType::AtomicInline
@@ -344,7 +439,11 @@ impl InlineLayoutBuilder {
                         }
                     }
 
-                    children.push((key, box_type));
+                    children.push(Child {
+                        item: key,
+                        box_type,
+                        old: None,
+                    });
                 }
             }
         }
@@ -394,6 +493,7 @@ impl InlineLayout {
         self.text.clear();
         self.offset_mapping.clear();
         self.items.clear();
+        self.atomics.clear();
         self.first_baseline = None;
         self.last_baseline = None;
         self.origin = kurbo::Vec2::ZERO;

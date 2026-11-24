@@ -5,6 +5,7 @@ pub mod input;
 
 use core::{iter::FusedIterator, ops::Range};
 
+use rustc_hash::FxHashMap;
 use slotmap::{Key, KeyData};
 
 use super::{BoxFragmentKey, FragmentGeometry};
@@ -30,6 +31,11 @@ pub struct InlineLayout {
     pub offset_mapping: Vec<OffsetEntry>,
     /// Lines, inline element pieces, boxes and glyph runs, in preorder.
     pub items: Vec<InlineItem>,
+    /// Box fragment of each box inside the inline content: atomic inline,
+    /// inline part and out-of-flow boxes. Kept by
+    /// [`InlineFragmentainer`](builder::InlineFragmentainer) as their boxes
+    /// are attached, and read when laying out the lines.
+    pub atomics: FxHashMap<LayoutInputKey, BoxFragmentKey>,
     /// First and last line baselines relative to the content box top.
     pub(crate) first_baseline: Option<f32>,
     pub(crate) last_baseline: Option<f32>,
