@@ -46,23 +46,88 @@ impl InlineBuildContext<'_> {
     }
 }
 
-/// Builds the boxes inside inline content: atomic inline, inline part and
-/// out-of-flow boxes.
-pub trait ChildBoxes {
-    /// Build the detached box fragment of `item` and its subtree, with its
-    /// resolved style. `builder` builds the inline formatting contexts inside
-    /// it.
-    #[allow(clippy::too_many_arguments)]
-    fn build_box(
-        &mut self,
-        builder: &mut InlineLayoutBuilder,
-        cx: &mut InlineBuildContext<'_>,
-        fragments: &mut FragmentTree,
-        item: LayoutInputKey,
-        box_type: BoxFragmentType,
-        style: Style,
-        bits: NodeLayoutBits,
-    ) -> BoxFragmentKey;
+/// A box inside inline content to build: an atomic inline, inline part or
+/// out-of-flow box. Returned by [`InlineFragmentainer::next`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChildBlockData {
+    /// Item whose box needs to be built.
+    pub item: LayoutInputKey,
+    /// How the box takes part in the inline layout.
+    pub box_type: BoxFragmentType,
+    /// Box fragment establishing the inline formatting context, which the
+    /// built box is a child of.
+    pub parent: BoxFragmentKey,
+    /// The child of [`Self::parent`] to attach the built box after, which may
+    /// be anonymous: the box attached for the previous child. `None` attaches
+    /// it as the first child.
+    pub after: Option<BoxFragmentKey>,
+}
+
+impl ChildBlockData {
+    /// Attach the built box `child` where it belongs.
+    pub fn attach(&self, fragments: &mut FragmentTree, child: BoxFragmentKey) {
+        match self.after {
+            Some(after) => fragments.boxes.after(after, child),
+            None => fragments.boxes.prepend(self.parent, child),
+        };
+    }
+}
+
+/// Yields the boxes inside the inline content of a box built by
+/// [`InlineLayoutBuilder::build`], in flow order, for the caller to build and
+/// attach. Building them may build nested inline formatting contexts with
+/// the same builder.
+#[must_use = "boxes inside the inline content are only built by draining it"]
+#[derive(Debug)]
+pub struct InlineFragmentainer {
+    parent: BoxFragmentKey,
+    children: std::vec::IntoIter<(LayoutInputKey, BoxFragmentType)>,
+    /// Child of `parent` the previous box was asked to be attached after.
+    after: Option<BoxFragmentKey>,
+    /// Whether a box was yielded, so the next call looks for it after
+    /// `after`.
+    yielded: bool,
+}
+
+impl InlineFragmentainer {
+    /// The next box to build, or `None` once every box inside the inline
+    /// content was yielded.
+    ///
+    /// Attach the box built for the previous [`ChildBlockData`] with
+    /// [`ChildBlockData::attach`] before calling it again: the box following
+    /// [`ChildBlockData::after`] is taken as that box, and the next one is
+    /// attached after it. Nothing is skipped when it was not attached.
+    pub fn next(&mut self, fragments: &mut FragmentTree) -> Option<ChildBlockData> {
+        if std::mem::take(&mut self.yielded) {
+            let attached = match self.after {
+                Some(after) => fragments.boxes.next_sibling(after),
+                None => fragments.boxes.first_child(self.parent),
+            };
+
+            if attached.is_some() {
+                self.after = attached;
+            }
+        }
+
+        let (item, box_type) = self.children.next()?;
+        self.yielded = true;
+
+        Some(ChildBlockData {
+            item,
+            box_type,
+            parent: self.parent,
+            after: self.after,
+        })
+    }
+
+    /// Number of boxes left to yield.
+    pub fn len(&self) -> usize {
+        self.children.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.children.len() == 0
+    }
 }
 
 /// Builds the box fragment of an inline formatting context with its
@@ -77,19 +142,15 @@ pub struct InlineLayoutBuilder {
     open: Vec<(usize, usize)>,
     /// Inline boxes of the text being built.
     boxes: Vec<parley::InlineBox>,
-    /// Boxes inside the inline content, in flow order.
-    children: Vec<(LayoutInputKey, BoxFragmentType)>,
     /// Style table index of each item's style.
     styles: FxHashMap<LayoutInputKey, u16>,
-    /// Inline layouts taken from deleted box fragments, reused by the builds
-    /// of the current outermost build. Boxed as owned by
+    /// Inline layouts taken from deleted box fragments, reused by later
+    /// builds until [`InlineLayoutBuilder::release`]. Boxed as owned by
     /// [`ChildLayoutType::Inline`], so moving them keeps their allocations.
     #[allow(clippy::vec_box)]
     pool: Vec<Box<InlineLayout>>,
     /// Box fragments of a subtree being deleted.
     stale: Vec<BoxFragmentKey>,
-    /// Number of builds in progress, nested through [`ChildBoxes`].
-    depth: usize,
 }
 
 impl InlineLayoutBuilder {
@@ -98,22 +159,24 @@ impl InlineLayoutBuilder {
     }
 
     /// Build the detached box fragment of `root`, which establishes an
-    /// inline formatting context, and its subtree.
+    /// inline formatting context.
     ///
     /// The root box is a `box_type` box owning the [`InlineLayout`] of its
-    /// inline content, shaped but not laid out: its items are empty. Boxes
-    /// inside the inline content are built by `children` and appended to the
-    /// root box in flow order.
+    /// inline content, shaped but not laid out: its items are empty. The
+    /// returned [`InlineFragmentainer`] yields the boxes inside the inline
+    /// content, in flow order, for the caller to build and attach to the
+    /// root box.
     ///
     /// `old` is a box fragment built for `root` before, such as by a previous
     /// build. It is deleted from `fragments` with its subtree, and the inline
-    /// layouts in that subtree are reused by this build and by the builds
-    /// nested in it, keeping their text and Parley layout allocations. Box
-    /// fragment keys are not kept.
+    /// layouts in that subtree are reused by this build and by later ones,
+    /// such as those of nested inline formatting contexts, keeping their text
+    /// and Parley layout allocations. Box fragment keys are not kept.
     ///
     /// Text is taken as is, without white space processing. A block level box
     /// inside the inline content is an inline part box on its own line,
     /// broken from the content around it by line feeds.
+    #[must_use = "boxes inside the inline content are only built by draining the fragmentainer"]
     pub fn build(
         &mut self,
         cx: &mut InlineBuildContext<'_>,
@@ -121,19 +184,16 @@ impl InlineLayoutBuilder {
         root: LayoutInputKey,
         box_type: BoxFragmentType,
         old: Option<BoxFragmentKey>,
-        children: &mut impl ChildBoxes,
-    ) -> BoxFragmentKey {
+    ) -> (BoxFragmentKey, InlineFragmentainer) {
         if let Some(old) = old {
             self.reclaim(fragments, root, old);
         }
 
         let mut inline = self.pool.pop().unwrap_or_default();
         inline.clear();
-        self.depth += 1;
 
-        let mut kids = std::mem::take(&mut self.children);
-        kids.clear();
-        self.collect(cx, root, &mut inline, &mut kids);
+        let mut children = Vec::new();
+        self.collect(cx, root, &mut inline, &mut children);
         self.shape(cx, root, &mut inline);
 
         let (style, bits) = cx.resolve_style(root);
@@ -141,25 +201,19 @@ impl InlineLayoutBuilder {
         fragment.bits = bits;
         let key = fragments.insert(fragment);
 
-        // Building the children may build nested inline formatting contexts
-        // with this builder, so the list is taken out meanwhile.
-        for &(item, box_type) in &kids {
-            let (style, bits) = cx.resolve_style(item);
-            let child = children.build_box(self, cx, fragments, item, box_type, style, bits);
-            fragments.boxes.append(key, child);
-        }
+        let fragmentainer = InlineFragmentainer {
+            parent: key,
+            children: children.into_iter(),
+            after: None,
+            yielded: false,
+        };
 
-        if kids.capacity() > self.children.capacity() {
-            self.children = kids;
-        }
+        (key, fragmentainer)
+    }
 
-        // Layouts left over are not kept beyond the outermost build.
-        self.depth -= 1;
-        if self.depth == 0 {
-            self.pool.clear();
-        }
-
-        key
+    /// Drop the inline layouts kept for reuse.
+    pub fn release(&mut self) {
+        self.pool.clear();
     }
 
     /// Delete the box fragment `old` built for `root` and its subtree,

@@ -9,7 +9,7 @@ use crate::{
     fragment2::{
         BoxFragment, BoxFragmentKey, BoxFragmentType, ChildLayoutType, FragmentTree, InlineLayout,
         OffsetEntry,
-        inline::builder::{ChildBoxes, InlineBuildContext, InlineLayoutBuilder},
+        inline::builder::{InlineBuildContext, InlineLayoutBuilder},
         inline_box_source,
     },
     input::{
@@ -21,52 +21,59 @@ use crate::{
         LayoutConstraint, bx,
         geometry::{AutoValue, Size, StyleUnit},
     },
-    taffy::style::Style,
 };
 
 const VIEWPORT: Size<f64> = Size::new(400.0, 600.0);
+const CONSTRAINT: LayoutConstraint = LayoutConstraint::new_root(VIEWPORT, 16.0);
 
-/// Builds leaf boxes, recording what it was asked for.
-#[derive(Default)]
-struct Leaves(Vec<(LayoutInputKey, BoxFragmentType)>);
+/// Built boxes inside inline content, in the order they were yielded.
+type Built = Vec<(LayoutInputKey, BoxFragmentType)>;
 
-impl ChildBoxes for Leaves {
-    fn build_box(
-        &mut self,
-        _: &mut InlineLayoutBuilder,
-        _: &mut InlineBuildContext<'_>,
-        fragments: &mut FragmentTree,
-        item: LayoutInputKey,
-        box_type: BoxFragmentType,
-        style: Style,
-        _: NodeLayoutBits,
-    ) -> BoxFragmentKey {
-        self.0.push((item, box_type));
-        fragments.insert(BoxFragment::new(
-            item,
-            box_type,
-            ChildLayoutType::Content,
-            style,
-        ))
+/// Build `root` and drain its fragmentainer. Boxes inside the inline content
+/// are leaves, or with `nested`, inline formatting contexts built with the
+/// same builder.
+#[allow(clippy::too_many_arguments)]
+fn build_tree(
+    builder: &mut InlineLayoutBuilder,
+    cx: &mut InlineBuildContext<'_>,
+    fragments: &mut FragmentTree,
+    root: LayoutInputKey,
+    box_type: BoxFragmentType,
+    old: Option<BoxFragmentKey>,
+    nested: bool,
+    built: &mut Built,
+) -> BoxFragmentKey {
+    let (key, mut children) = builder.build(cx, fragments, root, box_type, old);
+
+    while let Some(child) = children.next(fragments) {
+        assert_eq!(child.parent, key);
+        built.push((child.item, child.box_type));
+
+        let child_key = if nested {
+            build_tree(
+                builder,
+                cx,
+                fragments,
+                child.item,
+                child.box_type,
+                None,
+                nested,
+                built,
+            )
+        } else {
+            let (style, _) = cx.resolve_style(child.item);
+            fragments.insert(BoxFragment::new(
+                child.item,
+                child.box_type,
+                ChildLayoutType::Content,
+                style,
+            ))
+        };
+
+        child.attach(fragments, child_key);
     }
-}
 
-/// Builds nested inline formatting contexts with the same builder.
-struct Nested;
-
-impl ChildBoxes for Nested {
-    fn build_box(
-        &mut self,
-        builder: &mut InlineLayoutBuilder,
-        cx: &mut InlineBuildContext<'_>,
-        fragments: &mut FragmentTree,
-        item: LayoutInputKey,
-        box_type: BoxFragmentType,
-        _: Style,
-        _: NodeLayoutBits,
-    ) -> BoxFragmentKey {
-        builder.build(cx, fragments, item, box_type, None, self)
-    }
+    key
 }
 
 struct Fixture {
@@ -103,23 +110,41 @@ impl Fixture {
         &mut self,
         root: LayoutInputKey,
         old: Option<BoxFragmentKey>,
-        children: &mut impl ChildBoxes,
-    ) -> BoxFragmentKey {
-        let constraint = LayoutConstraint::new_root(VIEWPORT, 16.0);
-        let mut cx = InlineBuildContext {
-            ui: &self.ui,
-            tree: &self.tree,
-            fonts: &mut self.fonts,
-            constraint: &constraint,
-        };
+        nested: bool,
+    ) -> (BoxFragmentKey, Built) {
+        let (mut cx, builder, fragments) = self.context();
 
-        self.builder.build(
+        let mut built = Built::new();
+        let key = build_tree(
+            builder,
             &mut cx,
-            &mut self.fragments,
+            fragments,
             root,
             BoxFragmentType::Normal,
             old,
-            children,
+            nested,
+            &mut built,
+        );
+
+        (key, built)
+    }
+
+    fn context(
+        &mut self,
+    ) -> (
+        InlineBuildContext<'_>,
+        &mut InlineLayoutBuilder,
+        &mut FragmentTree,
+    ) {
+        (
+            InlineBuildContext {
+                ui: &self.ui,
+                tree: &self.tree,
+                fonts: &mut self.fonts,
+                constraint: &CONSTRAINT,
+            },
+            &mut self.builder,
+            &mut self.fragments,
         )
     }
 
@@ -162,8 +187,7 @@ fn concatenates_text_with_boxes_and_offsets() {
 
     let mut f = Fixture::new(ui);
     let root = f.input(root);
-    let mut leaves = Leaves::default();
-    let key = f.build(root, None, &mut leaves);
+    let (key, leaves) = f.build(root, None, false);
     let inline = f.inline(key);
 
     // White space is kept as is.
@@ -207,7 +231,7 @@ fn concatenates_text_with_boxes_and_offsets() {
         .collect();
     assert_eq!(boxes, [(f.item(empty), 6), (f.item(badge), 9)]);
 
-    assert_eq!(leaves.0, [(f.item(badge), BoxFragmentType::AtomicInline)]);
+    assert_eq!(leaves, [(f.item(badge), BoxFragmentType::AtomicInline)]);
     let children: Vec<_> = f.fragments.boxes.children(key).collect();
     assert_eq!(children, [f.fragments.box_fragment(f.item(badge)).unwrap()]);
     assert_eq!(f.fragments.box_fragment(root), Some(key));
@@ -231,19 +255,17 @@ fn block_boxes_take_lines_of_their_own() {
 
     let mut f = Fixture::new(ui);
     let root = f.input(root);
-    let mut leaves = Leaves::default();
-    let key = f.build(root, None, &mut leaves);
+    let (key, leaves) = f.build(root, None, false);
 
     // Adjacent blocks share no empty line, and the last leaves no
     // trailing one.
     assert_eq!(f.inline(key).text, "a\n\u{FFFC}\n\u{FFFC}\nb\n\u{FFFC}");
     assert!(
         leaves
-            .0
             .iter()
             .all(|&(_, box_type)| box_type == BoxFragmentType::InlinePart)
     );
-    assert_eq!(leaves.0.len(), 3);
+    assert_eq!(leaves.len(), 3);
 }
 
 #[test]
@@ -259,15 +281,14 @@ fn absolute_boxes_are_out_of_flow_without_text() {
 
     let mut f = Fixture::new(ui);
     let root = f.input(root);
-    let mut leaves = Leaves::default();
-    let key = f.build(root, None, &mut leaves);
+    let (key, leaves) = f.build(root, None, false);
     let inline = f.inline(key);
 
     assert_eq!(inline.text, "abc");
     let inline_box = inline.layout.inline_boxes().next().unwrap();
     assert_eq!(inline_box.kind, parley::InlineBoxKind::OutOfFlow);
     assert_eq!(inline_box.index, 2);
-    assert_eq!(leaves.0, [(f.item(absolute), BoxFragmentType::OutOfFlow)]);
+    assert_eq!(leaves, [(f.item(absolute), BoxFragmentType::OutOfFlow)]);
 }
 
 #[test]
@@ -281,7 +302,7 @@ fn glyph_runs_are_branded_with_their_items() {
 
     let mut f = Fixture::new(ui);
     let root = f.input(root);
-    let key = f.build(root, None, &mut Leaves::default());
+    let key = f.build(root, None, false).0;
     let inline = f.fragments.get_mut(key).unwrap().inline_mut().unwrap();
 
     inline.layout.break_all_lines(None);
@@ -305,7 +326,7 @@ fn text_root_contains_itself() {
 
     let mut f = Fixture::new(ui);
     let root = f.input(root);
-    let key = f.build(root, None, &mut Leaves::default());
+    let key = f.build(root, None, false).0;
 
     assert_eq!(f.inline(key).text, "alone");
 }
@@ -323,7 +344,7 @@ fn reuses_inline_layouts_of_the_old_subtree() {
 
     let mut f = Fixture::new(ui);
     let root = f.input(root);
-    let old = f.build(root, None, &mut Nested);
+    let old = f.build(root, None, true).0;
     let old_child = f.fragments.box_fragment(f.item(badge)).unwrap();
     let mut before = [
         f.inline(old).text.as_ptr(),
@@ -331,7 +352,7 @@ fn reuses_inline_layouts_of_the_old_subtree() {
     ];
     before.sort();
 
-    let key = f.build(root, Some(old), &mut Nested);
+    let key = f.build(root, Some(old), true).0;
     let child = f.fragments.box_fragment(f.item(badge)).unwrap();
 
     assert!(f.fragments.get(old).is_none(), "old root deleted");
@@ -359,9 +380,9 @@ fn ignores_old_boxes_of_other_items() {
     let mut f = Fixture::new(ui);
     let other = f.input(other);
     let root = f.input(root);
-    let unrelated = f.build(other, None, &mut Leaves::default());
+    let unrelated = f.build(other, None, false).0;
 
-    let key = f.build(root, Some(unrelated), &mut Leaves::default());
+    let key = f.build(root, Some(unrelated), false).0;
 
     assert!(f.fragments.get(unrelated).is_some(), "kept");
     assert_eq!(f.inline(key).text, "content");
@@ -390,7 +411,7 @@ fn builds_nested_inline_formatting_contexts() {
 
     let mut f = Fixture::new(ui);
     let root = f.input(root);
-    let key = f.build(root, None, &mut Nested);
+    let key = f.build(root, None, true).0;
 
     let child = f.fragments.box_fragment(f.item(badge)).unwrap();
     assert_eq!(f.fragments.boxes.parent(child), Some(key));
@@ -408,4 +429,58 @@ fn builds_nested_inline_formatting_contexts() {
             .contains(NodeLayoutBits::DEPENDS_VIEWPORT),
         "style bits resolved"
     );
+}
+
+#[test]
+fn boxes_attach_after_the_previous_box_even_if_anonymous() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let first = inline_block(&mut ui);
+    let middle = text(&mut ui, "middle");
+    let second = inline_block(&mut ui);
+    ui.append(root, first);
+    ui.append(root, middle);
+    ui.append(root, second);
+
+    let mut f = Fixture::new(ui);
+    let root = f.input(root);
+    let (mut cx, builder, fragments) = f.context();
+    let (key, mut children) =
+        builder.build(&mut cx, fragments, root, BoxFragmentType::Normal, None);
+    assert_eq!(children.len(), 2);
+
+    // Each box is wrapped in an anonymous box, attached in its place.
+    let mut wrappers = Vec::new();
+    while let Some(child) = children.next(fragments) {
+        assert_eq!(child.after, wrappers.last().copied());
+
+        let (style, _) = cx.resolve_style(child.item);
+        let built = fragments.insert(BoxFragment::new(
+            child.item,
+            child.box_type,
+            ChildLayoutType::Content,
+            style.clone(),
+        ));
+        let wrapper = fragments.insert_anonymous(BoxFragment::new(
+            key_source(fragments, key),
+            BoxFragmentType::Normal,
+            ChildLayoutType::Block,
+            style,
+        ));
+        fragments.boxes.append(wrapper, built);
+        child.attach(fragments, wrapper);
+        wrappers.push(wrapper);
+    }
+
+    assert!(children.is_empty());
+    assert_eq!(fragments.boxes.children(key).collect::<Vec<_>>(), wrappers);
+    assert!(
+        wrappers
+            .iter()
+            .all(|&wrapper| fragments.is_anonymous(wrapper))
+    );
+}
+
+fn key_source(fragments: &FragmentTree, key: BoxFragmentKey) -> LayoutInputKey {
+    fragments.get(key).unwrap().source
 }
