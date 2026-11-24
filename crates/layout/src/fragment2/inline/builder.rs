@@ -81,6 +81,15 @@ pub struct InlineLayoutBuilder {
     children: Vec<(LayoutInputKey, BoxFragmentType)>,
     /// Style table index of each item's style.
     styles: FxHashMap<LayoutInputKey, u16>,
+    /// Inline layouts taken from deleted box fragments, reused by the builds
+    /// of the current outermost build. Boxed as owned by
+    /// [`ChildLayoutType::Inline`], so moving them keeps their allocations.
+    #[allow(clippy::vec_box)]
+    pool: Vec<Box<InlineLayout>>,
+    /// Box fragments of a subtree being deleted.
+    stale: Vec<BoxFragmentKey>,
+    /// Number of builds in progress, nested through [`ChildBoxes`].
+    depth: usize,
 }
 
 impl InlineLayoutBuilder {
@@ -94,8 +103,13 @@ impl InlineLayoutBuilder {
     /// The root box is a `box_type` box owning the [`InlineLayout`] of its
     /// inline content, shaped but not laid out: its items are empty. Boxes
     /// inside the inline content are built by `children` and appended to the
-    /// root box in flow order. `reuse` hands over a previous inline layout,
-    /// whose text and Parley layout allocations are kept.
+    /// root box in flow order.
+    ///
+    /// `old` is a box fragment built for `root` before, such as by a previous
+    /// build. It is deleted from `fragments` with its subtree, and the inline
+    /// layouts in that subtree are reused by this build and by the builds
+    /// nested in it, keeping their text and Parley layout allocations. Box
+    /// fragment keys are not kept.
     ///
     /// Text is taken as is, without white space processing. A block level box
     /// inside the inline content is an inline part box on its own line,
@@ -106,11 +120,16 @@ impl InlineLayoutBuilder {
         fragments: &mut FragmentTree,
         root: LayoutInputKey,
         box_type: BoxFragmentType,
-        reuse: Option<Box<InlineLayout>>,
+        old: Option<BoxFragmentKey>,
         children: &mut impl ChildBoxes,
     ) -> BoxFragmentKey {
-        let mut inline = reuse.unwrap_or_default();
+        if let Some(old) = old {
+            self.reclaim(fragments, root, old);
+        }
+
+        let mut inline = self.pool.pop().unwrap_or_default();
         inline.clear();
+        self.depth += 1;
 
         let mut kids = std::mem::take(&mut self.children);
         kids.clear();
@@ -134,7 +153,40 @@ impl InlineLayoutBuilder {
             self.children = kids;
         }
 
+        // Layouts left over are not kept beyond the outermost build.
+        self.depth -= 1;
+        if self.depth == 0 {
+            self.pool.clear();
+        }
+
         key
+    }
+
+    /// Delete the box fragment `old` built for `root` and its subtree,
+    /// keeping their inline layouts for reuse. Boxes of other items, or
+    /// missing from `fragments`, are left as they are.
+    fn reclaim(&mut self, fragments: &mut FragmentTree, root: LayoutInputKey, old: BoxFragmentKey) {
+        if fragments
+            .get(old)
+            .is_none_or(|fragment| fragment.source != root)
+        {
+            return;
+        }
+
+        self.stale.clear();
+        self.stale.extend(fragments.boxes.descendants(old));
+
+        for &key in &self.stale {
+            let fragment = &mut fragments.boxes[key];
+
+            if let ChildLayoutType::Inline(inline) =
+                std::mem::replace(&mut fragment.child_layout, ChildLayoutType::Content)
+            {
+                self.pool.push(inline);
+            }
+        }
+
+        fragments.delete(old);
     }
 
     /// Concatenate the inline content into the text, recording style runs,
@@ -279,7 +331,6 @@ impl InlineLayoutBuilder {
         }
 
         builder.build_into(layout, &*text);
-        inline.shaped = true;
     }
 }
 
@@ -289,7 +340,6 @@ impl InlineLayout {
         self.text.clear();
         self.offset_mapping.clear();
         self.items.clear();
-        self.shaped = false;
         self.first_baseline = None;
         self.last_baseline = None;
         self.origin = kurbo::Vec2::ZERO;

@@ -102,7 +102,7 @@ impl Fixture {
     fn build(
         &mut self,
         root: LayoutInputKey,
-        reuse: Option<Box<InlineLayout>>,
+        old: Option<BoxFragmentKey>,
         children: &mut impl ChildBoxes,
     ) -> BoxFragmentKey {
         let constraint = LayoutConstraint::new_root(VIEWPORT, 16.0);
@@ -118,7 +118,7 @@ impl Fixture {
             &mut self.fragments,
             root,
             BoxFragmentType::Normal,
-            reuse,
+            old,
             children,
         )
     }
@@ -311,25 +311,60 @@ fn text_root_contains_itself() {
 }
 
 #[test]
-fn reuses_the_given_inline_layout() {
+fn reuses_inline_layouts_of_the_old_subtree() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
-    let content = text(&mut ui, "content");
-    ui.append(root, content);
+    let badge = inline_block(&mut ui);
+    let inner = text(&mut ui, "inner");
+    let outer = text(&mut ui, "outer");
+    ui.append(root, badge);
+    ui.append(badge, inner);
+    ui.append(root, outer);
 
     let mut f = Fixture::new(ui);
     let root = f.input(root);
+    let old = f.build(root, None, &mut Nested);
+    let old_child = f.fragments.box_fragment(f.item(badge)).unwrap();
+    let mut before = [
+        f.inline(old).text.as_ptr(),
+        f.inline(old_child).text.as_ptr(),
+    ];
+    before.sort();
 
-    let mut previous = InlineLayout::new();
-    previous.text = String::with_capacity(64);
-    previous.text.push_str("stale");
-    let pointer = previous.text.as_ptr();
+    let key = f.build(root, Some(old), &mut Nested);
+    let child = f.fragments.box_fragment(f.item(badge)).unwrap();
 
-    let key = f.build(root, Some(Box::new(previous)), &mut Leaves::default());
-    let inline = f.inline(key);
+    assert!(f.fragments.get(old).is_none(), "old root deleted");
+    assert!(f.fragments.get(old_child).is_none(), "old subtree deleted");
+    assert_eq!(f.fragments.boxes.len(), 2);
+    assert_eq!(f.inline(key).text, "\u{FFFC}outer");
+    assert_eq!(f.inline(child).text, "inner");
 
-    assert_eq!(inline.text, "content");
-    assert_eq!(inline.text.as_ptr(), pointer, "text allocation kept");
+    // Equal lengths fit the old allocations, wherever each layout went.
+    let mut after = [f.inline(key).text.as_ptr(), f.inline(child).text.as_ptr()];
+    after.sort();
+    assert_eq!(after, before, "text allocations kept");
+}
+
+#[test]
+fn ignores_old_boxes_of_other_items() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let other = ui.create(Node::Box, ());
+    let content = text(&mut ui, "content");
+    let other_content = text(&mut ui, "other");
+    ui.append(root, content);
+    ui.append(other, other_content);
+
+    let mut f = Fixture::new(ui);
+    let other = f.input(other);
+    let root = f.input(root);
+    let unrelated = f.build(other, None, &mut Leaves::default());
+
+    let key = f.build(root, Some(unrelated), &mut Leaves::default());
+
+    assert!(f.fragments.get(unrelated).is_some(), "kept");
+    assert_eq!(f.inline(key).text, "content");
 }
 
 #[test]

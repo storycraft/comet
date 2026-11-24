@@ -30,9 +30,6 @@ pub struct InlineLayout {
     pub offset_mapping: Vec<OffsetEntry>,
     /// Lines, inline element pieces, boxes and glyph runs, in preorder.
     pub items: Vec<InlineItem>,
-    /// Whether [`Self::layout`] matches the current inline content. Line
-    /// breaking alone does not require reshaping.
-    pub(crate) shaped: bool,
     /// First and last line baselines relative to the content box top.
     pub(crate) first_baseline: Option<f32>,
     pub(crate) last_baseline: Option<f32>,
