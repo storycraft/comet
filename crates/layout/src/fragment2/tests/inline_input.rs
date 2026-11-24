@@ -5,7 +5,7 @@ use comet_tree::{
 
 use crate::{
     dirty_map::DirtyMap,
-    fragment2::inline::input::{InputItem, InlinePrelayout},
+    fragment2::inline::input::{InlinePrelayout, InputItem},
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},

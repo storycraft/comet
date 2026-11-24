@@ -4,6 +4,8 @@ pub mod input;
 
 use core::{iter::FusedIterator, ops::Range};
 
+use slotmap::{Key, KeyData};
+
 use super::{BoxFragmentKey, FragmentGeometry};
 use crate::{
     fragment::offset::{to_shaped, to_source},
@@ -16,10 +18,9 @@ use crate::{
 pub struct InlineLayout {
     /// Concatenated text of the inline content, after white space processing.
     pub text: String,
-    /// Layout whose span brushes index [`Self::sources`].
-    pub layout: parley::Layout<u32>,
-    /// Item of each brush of [`Self::layout`].
-    pub sources: Vec<LayoutInputKey>,
+    /// Layout whose span brushes are the items owning the spans, and whose
+    /// inline box ids are the items of the boxes, see [`inline_box_id`].
+    pub layout: parley::Layout<LayoutInputKey>,
     /// Where the text items and inline elements end up in [`Self::text`], in
     /// tree order, so sorted by start. Text ranges do not overlap; an inline
     /// element covers the ranges of its content. A collapsed space between
@@ -27,8 +28,6 @@ pub struct InlineLayout {
     pub offset_mapping: Vec<OffsetEntry>,
     /// Lines, inline element pieces, boxes and glyph runs, in preorder.
     pub items: Vec<InlineItem>,
-    /// Inline boxes of [`Self::layout`], by inline box id.
-    pub(crate) boxes: Vec<InlineBoxSlot>,
     /// Whether [`Self::layout`] matches the current inline content. Line
     /// breaking alone does not require reshaping.
     pub(crate) shaped: bool,
@@ -48,13 +47,15 @@ pub struct OffsetEntry {
     pub text: bool,
 }
 
-/// An inline box of a Parley layout.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InlineBoxSlot {
-    pub source: LayoutInputKey,
-    /// Box fragment of an atomic inline, inline part or out-of-flow box.
-    /// `None` for an empty inline element.
-    pub child: Option<BoxFragmentKey>,
+/// The id of the Parley inline box of an item: an atomic inline, inline
+/// part or out-of-flow box, or an empty inline element.
+pub fn inline_box_id(source: LayoutInputKey) -> u64 {
+    source.data().as_ffi()
+}
+
+/// The item of a Parley inline box, from its [id](inline_box_id).
+pub fn inline_box_source(id: u64) -> LayoutInputKey {
+    KeyData::from_ffi(id).into()
 }
 
 /// An item of an inline layout.
@@ -115,11 +116,6 @@ impl InlineLayout {
         Self::default()
     }
 
-    /// Inline boxes of [`Self::layout`], by inline box id.
-    pub fn boxes(&self) -> &[InlineBoxSlot] {
-        &self.boxes
-    }
-
     /// Offset of the [`Self::layout`] coordinates in the local coordinates
     /// of the owner's border box: its content box offset.
     pub fn origin(&self) -> kurbo::Vec2 {
@@ -134,11 +130,6 @@ impl InlineLayout {
     /// Last line baseline relative to the content box top.
     pub fn last_baseline(&self) -> Option<f32> {
         self.last_baseline
-    }
-
-    /// The item generating a brush of [`Self::layout`].
-    pub fn source(&self, brush: u32) -> Option<LayoutInputKey> {
-        self.sources.get(brush as usize).copied()
     }
 
     /// Indices of the subtree of an item, excluding itself.

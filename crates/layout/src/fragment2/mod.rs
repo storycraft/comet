@@ -16,7 +16,8 @@ mod tests;
 use slotmap::new_key_type;
 
 pub use inline::{
-    InlineBoxSlot, InlineItem, InlineItemKind, InlineLayout, InlineLink, OffsetEntry,
+    InlineItem, InlineItemKind, InlineLayout, InlineLink, OffsetEntry, inline_box_id,
+    inline_box_source,
 };
 pub use tree::FragmentTree;
 

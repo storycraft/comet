@@ -3,6 +3,7 @@ use slotmap::SlotMap;
 use crate::{
     fragment2::{
         FragmentGeometry, InlineItem, InlineItemKind, InlineLayout, InlineLink, OffsetEntry,
+        inline_box_id, inline_box_source,
     },
     input::LayoutInputKey,
 };
@@ -94,4 +95,17 @@ fn finds_text_items_around_inline_elements() {
     assert_eq!(layout.item_at(7, up), Some(c), "nothing ends at 7");
     assert_eq!(layout.item_at(99, down), Some(c));
     assert_eq!(layout.range(span), Some(2..6));
+}
+
+#[test]
+fn inline_box_ids_round_trip_to_items() {
+    let mut keys = SlotMap::<LayoutInputKey, ()>::with_key();
+    let (a, b) = (keys.insert(()), keys.insert(()));
+    keys.remove(a);
+    let c = keys.insert(());
+
+    for key in [b, c] {
+        assert_eq!(inline_box_source(inline_box_id(key)), key);
+    }
+    assert_ne!(inline_box_id(a), inline_box_id(c), "versions differ");
 }
