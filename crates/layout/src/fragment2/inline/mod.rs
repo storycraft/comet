@@ -1,5 +1,7 @@
 //! Flattened inline layout of an inline formatting context.
 
+pub mod input;
+
 use core::{iter::FusedIterator, ops::Range};
 
 use super::{BoxFragmentKey, FragmentGeometry};
