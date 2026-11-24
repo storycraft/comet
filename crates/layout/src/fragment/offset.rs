@@ -116,7 +116,7 @@ fn align(source: &str, shaped: &str, mut f: impl FnMut(usize, usize) -> bool) {
 }
 
 /// The index of `shaped` lining up with `index` of `source`.
-fn to_shaped(source: &str, shaped: &str, index: usize) -> usize {
+pub(crate) fn to_shaped(source: &str, shaped: &str, index: usize) -> usize {
     let mut found = shaped.len();
     align(source, shaped, |i, j| {
         found = j;
@@ -128,7 +128,7 @@ fn to_shaped(source: &str, shaped: &str, index: usize) -> usize {
 
 /// The first index of `source` lining up with `index` of `shaped`, or its
 /// end.
-fn to_source(source: &str, shaped: &str, index: usize) -> usize {
+pub(crate) fn to_source(source: &str, shaped: &str, index: usize) -> usize {
     let mut found = source.len();
     align(source, shaped, |i, j| {
         found = i;
