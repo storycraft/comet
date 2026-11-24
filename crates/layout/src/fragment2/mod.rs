@@ -10,6 +10,9 @@
 pub mod inline;
 pub mod tree;
 
+#[cfg(test)]
+mod tests;
+
 use slotmap::new_key_type;
 
 pub use inline::{
