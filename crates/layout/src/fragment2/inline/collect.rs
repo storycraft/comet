@@ -1,16 +1,19 @@
 //! Collecting and shaping the inline content of an inline formatting
 //! context into its [`InlineLayout`].
 //!
-//! Only the text side is built here. The boxes inside the inline content are
-//! returned in flow order for the fragment tree builder, which reconciles
-//! them with the child boxes of the owner in place.
+//! Only the text side is built here, with Parley's tree builder, which also
+//! processes white space. The boxes inside the inline content are returned
+//! in flow order for the fragment tree builder, which reconciles them with
+//! the child boxes of the owner in place.
 //!
 //! Block level boxes in flow split the inline content into runs, see
 //! [`split_runs`]. Each run is built on its own, and the inline elements
 //! split by a block are open in the runs on both sides of it.
 
+use std::sync::Arc;
+
 use comet_tree::{node::Text, ui::Ui};
-use rustc_hash::FxHashMap;
+use parley::{StyleProperty, WhiteSpaceCollapse};
 use taffy::style::CoreStyle;
 
 use super::{
@@ -24,9 +27,6 @@ use crate::{
     style::LayoutConstraint,
     taffy::style::{self, Style},
 };
-
-/// Object replacement character standing for an in-flow inline box.
-const OBJECT_REPLACEMENT: char = '\u{FFFC}';
 
 /// What box styles and inline content are resolved from.
 #[derive(Clone, Copy)]
@@ -54,22 +54,17 @@ impl InlineBuildContext<'_> {
     }
 }
 
-/// Collects and shapes inline content. Keep it to reuse its buffers.
+/// Collects and shapes inline content with Parley's tree builder. Keep it to
+/// reuse its buffers.
 #[derive(Default)]
 pub struct InlineContentBuilder {
-    lcx: parley::LayoutContext<LayoutInputKey>,
-    /// Style runs of the text being built, by the item whose style they use.
-    runs: Vec<(LayoutInputKey, usize)>,
+    lcx: parley::LayoutContext<Option<LayoutInputKey>>,
     /// Inline elements open at the current position: their offset entry, the
-    /// number of inline boxes when they were pushed, and whether they were
+    /// number of inline boxes pushed before them, and whether they were
     /// opened again at the start of the run.
     open: Vec<(usize, usize, bool)>,
-    /// Inline boxes of the text being built.
-    boxes: Vec<parley::InlineBox>,
     /// Inline elements open again at the start of the run being built.
     reopened: Vec<LayoutInputKey>,
-    /// Style table index of each item's style.
-    styles: FxHashMap<LayoutInputKey, u16>,
     /// Boxes inside the inline content of the latest build, in flow order,
     /// with how they take part in it: atomic inline and out-of-flow boxes.
     pub children: Vec<(LayoutInputKey, BoxFragmentType)>,
@@ -83,13 +78,15 @@ impl InlineContentBuilder {
     /// Replace the content of `inline` with a run of the inline content of
     /// `root`, which establishes an inline formatting context, shaped but not
     /// laid out: the run after the block level box `start`, or from the
-    /// start, up to the next block level box in flow. Its allocations are
-    /// kept. The boxes inside are left in [`Self::children`], and
-    /// [`InlineLayout::atomics`] is left empty.
+    /// start, up to the next block level box in flow. The Parley layout and
+    /// the other buffers of `inline` are reused. The boxes inside are left in
+    /// [`Self::children`], and [`InlineLayout::atomics`] is left empty.
     ///
-    /// Text is taken as is, without white space processing. An out-of-flow
-    /// box takes no character: its Parley inline box only gives its static
-    /// position.
+    /// White space is processed by Parley, following the white space style
+    /// of each item: collapsible white space at the start and end of the run
+    /// is removed. A space collapsed from the white space ending a text item
+    /// belongs to that item. An out-of-flow box takes no character: its
+    /// Parley inline box only gives its static position.
     pub fn build(
         &mut self,
         cx: &InlineBuildContext<'_>,
@@ -101,57 +98,36 @@ impl InlineContentBuilder {
         inline.clear();
         inline.run_start = start;
 
-        let mut children = std::mem::take(&mut self.children);
-        children.clear();
-        self.collect(cx, root, start, inline, &mut children);
-        self.children = children;
-
-        self.shape(cx, fonts, root, inline);
-    }
-
-    /// Concatenate a run of the inline content into the text, recording
-    /// style runs, inline boxes, offsets and the boxes inside it.
-    fn collect(
-        &mut self,
-        cx: &InlineBuildContext<'_>,
-        root: LayoutInputKey,
-        start: Option<LayoutInputKey>,
-        inline: &mut InlineLayout,
-        children: &mut Vec<(LayoutInputKey, BoxFragmentType)>,
-    ) {
         let tree = cx.tree;
-        self.runs.clear();
-        self.open.clear();
-        self.boxes.clear();
+        let Self {
+            lcx,
+            open,
+            reopened,
+            children,
+        } = self;
+        open.clear();
+        children.clear();
 
-        let mut text = Collector {
-            text: &mut inline.text,
-            runs: &mut self.runs,
+        let mut builder = Builder {
+            tb: lcx.tree_builder(fonts, 1.0, false, &span_of(tree, root)),
+            tree,
+            offsets: &mut inline.offset_mapping,
+            open,
+            parents: vec![root],
+            boxes: 0,
+            last_text: None,
         };
-        // Item whose style unstyled text uses: the innermost open inline
-        // element, or the root.
-        let mut parents = vec![root];
 
         let prelayout = match start {
             Some(block) => {
                 // The inline elements split by the block are open again.
-                let mut reopened = std::mem::take(&mut self.reopened);
-                InlinePrelayout::open_around(tree, root, block, &mut reopened);
+                InlinePrelayout::open_around(tree, root, block, reopened);
 
-                for &key in &reopened {
-                    let (_, bits) = cx.resolve_style(key);
-                    inline.content_bits |= bits & NodeLayoutBits::PROPAGATED;
-                    self.open
-                        .push((inline.offset_mapping.len(), self.boxes.len(), true));
-                    inline.offset_mapping.push(OffsetEntry {
-                        source: key,
-                        range: 0..0,
-                        text: false,
-                    });
-                    parents.push(key);
+                for &key in reopened.iter() {
+                    inline.content_bits |= content_bits(cx, key);
+                    builder.push_element(key, true);
                 }
 
-                self.reopened = reopened;
                 InlinePrelayout::after(tree, root, block)
             }
             None => InlinePrelayout::new(tree, root),
@@ -160,50 +136,13 @@ impl InlineContentBuilder {
         for item in prelayout {
             match item {
                 InputItem::Push(key) => {
-                    let (_, bits) = cx.resolve_style(key);
-                    inline.content_bits |= bits & NodeLayoutBits::PROPAGATED;
-
-                    self.open
-                        .push((inline.offset_mapping.len(), self.boxes.len(), false));
-                    inline.offset_mapping.push(OffsetEntry {
-                        source: key,
-                        range: text.len()..text.len(),
-                        text: false,
-                    });
-                    parents.push(key);
+                    inline.content_bits |= content_bits(cx, key);
+                    builder.push_element(key, false);
                 }
-                InputItem::Pop => {
-                    let Some((entry, boxes, reopened)) = self.open.pop() else {
-                        continue;
-                    };
-                    let key = parents.pop().unwrap_or(root);
-                    let start = inline.offset_mapping[entry].range.start;
-
-                    // An empty inline element still takes a position on a
-                    // line, as a zero sized box. The rest of one split by a
-                    // block does not.
-                    if !reopened && text.len() == start && self.boxes.len() == boxes {
-                        let index = text.push_char(key, OBJECT_REPLACEMENT);
-                        self.boxes
-                            .push(inline_box(key, index, parley::InlineBoxKind::InFlow));
-                    }
-
-                    inline.offset_mapping[entry].range.end = text.len();
-                }
+                InputItem::Pop => builder.pop_element(),
                 InputItem::Text(key) => {
-                    let start = text.len();
-
-                    if let Some(value) = cx.ui.prop::<Text>(tree.items[key].node)
-                        && !value.0.is_empty()
-                    {
-                        text.push_str(key, &value.0);
-                    }
-
-                    inline.offset_mapping.push(OffsetEntry {
-                        source: key,
-                        range: start..text.len(),
-                        text: true,
-                    });
+                    let value = cx.ui.prop::<Text>(tree.items[key].node);
+                    builder.push_text(key, value.as_deref().map_or("", |text| &text.0));
                 }
                 InputItem::Atomic(key) | InputItem::Block(key) => {
                     let out_of_flow = is_out_of_flow(cx, key);
@@ -214,66 +153,175 @@ impl InlineContentBuilder {
                         break;
                     }
 
-                    let parent = parents.last().copied().unwrap_or(root);
                     if out_of_flow {
-                        self.boxes.push(inline_box(
-                            key,
-                            text.len(),
-                            parley::InlineBoxKind::OutOfFlow,
-                        ));
+                        builder.push_box(key, parley::InlineBoxKind::OutOfFlow);
                         children.push((key, BoxFragmentType::OutOfFlow));
                     } else {
-                        let index = text.push_char(parent, OBJECT_REPLACEMENT);
-                        self.boxes
-                            .push(inline_box(key, index, parley::InlineBoxKind::InFlow));
+                        builder.push_box(key, parley::InlineBoxKind::InFlow);
                         children.push((key, BoxFragmentType::AtomicInline));
                     }
                 }
             }
         }
 
-        // Inline elements split by the block ending the run end with it.
-        for (entry, _, _) in self.open.drain(..) {
-            inline.offset_mapping[entry].range.end = text.len();
+        builder.finish(&mut inline.text, &mut inline.layout);
+    }
+}
+
+/// Builds the text of a run with its offsets, through Parley's tree builder.
+struct Builder<'a, 'b> {
+    tb: parley::TreeBuilder<'b, Option<LayoutInputKey>>,
+    tree: &'a LayoutInputTree,
+    offsets: &'a mut Vec<OffsetEntry>,
+    open: &'a mut Vec<(usize, usize, bool)>,
+    /// The item whose text style the content uses: the innermost open
+    /// inline element, or the root.
+    parents: Vec<LayoutInputKey>,
+    /// Number of inline boxes pushed.
+    boxes: usize,
+    /// Offset entry of the latest text item, which owns the space its
+    /// trailing white space may collapse into.
+    last_text: Option<usize>,
+}
+
+impl Builder<'_, '_> {
+    fn len(&self) -> usize {
+        self.tb.text().len()
+    }
+
+    /// Push the style span of `key`. Items sharing the style of their parent
+    /// only brand their content with their key.
+    fn push_span(&mut self, key: LayoutInputKey) {
+        let parent = self.parents.last().copied().unwrap_or(key);
+        let items = &self.tree.items;
+
+        if parent != key && Arc::ptr_eq(&items[key].text_style, &items[parent].text_style) {
+            self.tb
+                .push_style_modification_span(&[StyleProperty::Brush(Some(key))]);
+        } else {
+            self.tb.push_style_span(span_of(self.tree, key));
         }
     }
 
-    /// Build the Parley layout of the collected text, reusing the layout of
-    /// `inline`.
-    fn shape(
-        &mut self,
-        cx: &InlineBuildContext<'_>,
-        fonts: &mut parley::FontContext,
-        root: LayoutInputKey,
-        inline: &mut InlineLayout,
-    ) {
-        let tree = cx.tree;
-        let InlineLayout { text, layout, .. } = inline;
-        let mut builder = self.lcx.style_run_builder(fonts, text, 1.0, false);
-        self.styles.clear();
+    /// Run `push`, which commits content, giving a space flushed for pending
+    /// white space to the text item it was collapsed from. Returns where the
+    /// content starts.
+    fn commit(&mut self, push: impl FnOnce(&mut Self)) -> usize {
+        let pending = self.tb.has_pending_whitespace();
+        let start = self.len();
+        push(self);
 
-        // The root style comes first, so empty text uses it.
-        let mut style_of = |builder: &mut parley::StyleRunBuilder<'_, LayoutInputKey>,
-                            key: LayoutInputKey| {
-            *self
-                .styles
-                .entry(key)
-                .or_insert_with(|| builder.push_style(span_style(tree, key)))
+        let flushed = match self.tb.text().get(start..) {
+            Some(rest) if pending => rest.chars().next().filter(|c| c.is_whitespace()),
+            _ => None,
         };
-        style_of(&mut builder, root);
 
-        let mut start = 0;
-        for &(key, end) in &self.runs {
-            let index = style_of(&mut builder, key);
-            builder.push_style_run(index, start..end);
-            start = end;
+        match (flushed, self.last_text) {
+            (Some(space), Some(entry)) => {
+                let len = space.len_utf8();
+                self.offsets[entry].range.end += len;
+
+                // Inline elements opened since then start after it too.
+                for &(open, _, _) in self.open.iter() {
+                    let range = &mut self.offsets[open].range;
+                    if range.start == start {
+                        range.start += len;
+                        range.end = range.start;
+                    }
+                }
+
+                start + len
+            }
+            _ => start,
+        }
+    }
+
+    /// Open the inline element `key`, opened again for a run when
+    /// `reopened`.
+    fn push_element(&mut self, key: LayoutInputKey, reopened: bool) {
+        let start = self.len();
+        self.open.push((self.offsets.len(), self.boxes, reopened));
+        self.offsets.push(OffsetEntry {
+            source: key,
+            range: start..start,
+            text: false,
+        });
+        self.push_span(key);
+        self.parents.push(key);
+    }
+
+    /// Close the innermost inline element. An empty one still takes a
+    /// position on a line, as a zero sized box. The rest of one split by a
+    /// block does not.
+    fn pop_element(&mut self) {
+        let Some((entry, boxes, reopened)) = self.open.pop() else {
+            return;
+        };
+        let key = self.parents.pop().unwrap_or(self.offsets[entry].source);
+
+        if !reopened && self.len() == self.offsets[entry].range.start && self.boxes == boxes {
+            self.push_box(key, parley::InlineBoxKind::InFlow);
         }
 
-        for inline_box in &self.boxes {
-            builder.push_inline_box(inline_box.clone());
+        self.tb.pop_style_span();
+        self.offsets[entry].range.end = self.len();
+    }
+
+    /// Push the text item `key` with its text.
+    fn push_text(&mut self, key: LayoutInputKey, value: &str) {
+        let start = self.commit(|builder| {
+            builder.push_span(key);
+            builder.tb.push_text(value);
+            builder.tb.pop_style_span();
+        });
+
+        self.last_text = Some(self.offsets.len());
+        self.offsets.push(OffsetEntry {
+            source: key,
+            range: start..self.len().max(start),
+            text: true,
+        });
+    }
+
+    /// Push the inline box of `key`.
+    fn push_box(&mut self, key: LayoutInputKey, kind: parley::InlineBoxKind) {
+        self.commit(|builder| {
+            builder.tb.push_inline_box(parley::InlineBox {
+                id: inline_box_id(key),
+                index: 0,
+                width: 0.0,
+                height: 0.0,
+                kind,
+                baseline: None,
+                vertical_align: Default::default(),
+            });
+        });
+        self.boxes += 1;
+    }
+
+    /// Close the inline elements split by the block ending the run, and
+    /// build the Parley layout into `layout` and its text into `text`.
+    fn finish(self, text: &mut String, layout: &mut parley::Layout<Option<LayoutInputKey>>) {
+        let end = self.len();
+        for (entry, _, _) in self.open.drain(..) {
+            self.offsets[entry].range.end = end;
         }
 
-        builder.build_into(layout, &*text);
+        *text = self.tb.build_into(layout);
+    }
+}
+
+/// The propagated bits of the box style of the inline element `key`.
+fn content_bits(cx: &InlineBuildContext<'_>, key: LayoutInputKey) -> NodeLayoutBits {
+    cx.resolve_style(key).1 & NodeLayoutBits::PROPAGATED
+}
+
+/// The text style of an item, branded with the item so glyph runs can be
+/// traced back to their source.
+fn span_of(tree: &LayoutInputTree, key: LayoutInputKey) -> SpanStyle {
+    SpanStyle {
+        brush: Some(key),
+        ..tree.items[key].text_style.span.clone()
     }
 }
 
@@ -288,35 +336,6 @@ impl InlineLayout {
         self.first_baseline = None;
         self.last_baseline = None;
         self.origin = kurbo::Vec2::ZERO;
-    }
-}
-
-/// Appends text with its style runs.
-struct Collector<'a> {
-    text: &'a mut String,
-    /// Style runs, each ending at its offset.
-    runs: &'a mut Vec<(LayoutInputKey, usize)>,
-}
-
-impl Collector<'_> {
-    fn len(&self) -> usize {
-        self.text.len()
-    }
-
-    /// Append `value` in the style of `key`.
-    fn push_str(&mut self, key: LayoutInputKey, value: &str) {
-        self.text.push_str(value);
-
-        match self.runs.last_mut() {
-            Some((last, end)) if *last == key => *end = self.text.len(),
-            _ => self.runs.push((key, self.text.len())),
-        }
-    }
-
-    /// Append `c` in the style of `key`, returning its offset.
-    fn push_char(&mut self, key: LayoutInputKey, c: char) -> usize {
-        self.push_str(key, c.encode_utf8(&mut [0; 4]));
-        self.text.len() - c.len_utf8()
     }
 }
 
@@ -342,8 +361,9 @@ pub fn has_block_in_flow(cx: &InlineBuildContext<'_>, root: LayoutInputKey) -> b
 /// the runs of inline content between them, in flow order, into `out`.
 ///
 /// Runs without content are left out, so adjacent block level boxes meet.
-/// Content is text, an atomic inline or out-of-flow box, or an empty inline
-/// element; the rest of an inline element split by a block is not.
+/// Content is text left after white space processing, an atomic inline or
+/// out-of-flow box, or an empty inline element; the rest of an inline element
+/// split by a block is not.
 pub fn split_runs(cx: &InlineBuildContext<'_>, root: LayoutInputKey, out: &mut Vec<FlowItem>) {
     out.clear();
 
@@ -363,10 +383,7 @@ pub fn split_runs(cx: &InlineBuildContext<'_>, root: LayoutInputKey, out: &mut V
                 Some((reopened, has_content)) => !reopened && !has_content,
                 None => false,
             },
-            InputItem::Text(key) => cx
-                .ui
-                .prop::<Text>(cx.tree.items[key].node)
-                .is_some_and(|value| !value.0.is_empty()),
+            InputItem::Text(key) => has_text(cx, key),
             InputItem::Atomic(_) => true,
             InputItem::Block(key) if is_out_of_flow(cx, key) => true,
             InputItem::Block(key) => {
@@ -400,83 +417,16 @@ fn is_out_of_flow(cx: &InlineBuildContext<'_>, key: LayoutInputKey) -> bool {
     cx.resolve_style(key).0.position() == taffy::Position::Absolute
 }
 
-fn inline_box(key: LayoutInputKey, index: usize, kind: parley::InlineBoxKind) -> parley::InlineBox {
-    parley::InlineBox {
-        id: inline_box_id(key),
-        index,
-        width: 0.0,
-        height: 0.0,
-        kind,
-        baseline: None,
-        vertical_align: Default::default(),
-    }
-}
+/// Whether the text item `key` has text left after white space processing.
+fn has_text(cx: &InlineBuildContext<'_>, key: LayoutInputKey) -> bool {
+    let item = &cx.tree.items[key];
+    let Some(value) = cx.ui.prop::<Text>(item.node) else {
+        return false;
+    };
 
-/// The item's inherited text style, branded with the item so glyph runs can
-/// be traced back to their source.
-/// TODO:: REMOVE
-fn span_style(
-    tree: &LayoutInputTree,
-    key: LayoutInputKey,
-) -> parley::TextStyle<'static, 'static, LayoutInputKey> {
-    // Destructured exhaustively, so new style fields are not missed.
-    let SpanStyle {
-        font_family,
-        font_size,
-        font_width,
-        font_style,
-        font_weight,
-        font_variations,
-        font_features,
-        locale,
-        brush: _,
-        has_underline,
-        underline_offset,
-        underline_size,
-        underline_brush: _,
-        has_strikethrough,
-        strikethrough_offset,
-        strikethrough_size,
-        strikethrough_brush: _,
-        line_height,
-        vertical_align,
-        word_spacing,
-        letter_spacing,
-        word_break,
-        line_break,
-        overflow_wrap,
-        text_wrap_mode,
-        white_space_collapse,
-        collapsed_space,
-    } = tree.items[key].text_style.span.clone();
-
-    parley::TextStyle {
-        font_family,
-        font_size,
-        font_width,
-        font_style,
-        font_weight,
-        font_variations,
-        font_features,
-        locale,
-        brush: key,
-        has_underline,
-        underline_offset,
-        underline_size,
-        underline_brush: None,
-        has_strikethrough,
-        strikethrough_offset,
-        strikethrough_size,
-        strikethrough_brush: None,
-        line_height,
-        vertical_align,
-        word_spacing,
-        letter_spacing,
-        word_break,
-        line_break,
-        overflow_wrap,
-        text_wrap_mode,
-        white_space_collapse,
-        collapsed_space,
+    match item.text_style.span.white_space_collapse {
+        WhiteSpaceCollapse::Collapse => value.0.chars().any(|c| !c.is_ascii_whitespace()),
+        WhiteSpaceCollapse::PreserveBreaks => value.0.chars().any(|c| !matches!(c, ' ' | '\t')),
+        WhiteSpaceCollapse::Preserve | WhiteSpaceCollapse::BreakSpaces => !value.0.is_empty(),
     }
 }

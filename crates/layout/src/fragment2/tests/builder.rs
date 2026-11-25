@@ -295,7 +295,6 @@ fn text_change_builds_its_inline_formatting_context_again() {
         BoxFragmentType::AtomicInline
     );
     assert_eq!(fx.children(para_box), [badge_box]);
-    let text_ptr = fx.inline_text(para).as_ptr();
 
     fx.next_round();
     fx.ui.set_props(before, (Text("goodbye ".into()),));
@@ -310,7 +309,6 @@ fn text_change_builds_its_inline_formatting_context_again() {
 
     fx.layout();
     assert_eq!(fx.inline_text(para), "goodbye \u{FFFC}");
-    assert_eq!(fx.inline_text(para).as_ptr(), text_ptr, "in place");
     assert_eq!(fx.children(root_box), [para_box, other_box]);
     assert_eq!(fx.box_of(badge), badge_box, "boxes inside are kept");
     assert_eq!(fx.children(para_box), [badge_box]);

@@ -19,12 +19,13 @@ use crate::{
 /// the box establishing it.
 #[derive(Debug, Default)]
 pub struct InlineLayout {
-    /// Concatenated text of the inline content. Inline boxes in flow are
-    /// U+FFFC characters.
+    /// Concatenated text of the inline content, after white space
+    /// processing. Inline boxes in flow are U+FFFC characters.
     pub text: String,
     /// Layout whose span brushes are the items owning the spans, and whose
-    /// inline box ids are the items of the boxes, see [`inline_box_id`].
-    pub layout: parley::Layout<LayoutInputKey>,
+    /// inline box ids are the items of the boxes, see [`inline_box_id`]. A
+    /// span without a brush belongs to the owner.
+    pub layout: parley::Layout<Option<LayoutInputKey>>,
     /// Where the text items and inline elements end up in [`Self::text`], in
     /// tree order, so sorted by start. Text ranges do not overlap; an inline
     /// element covers the ranges of its content.

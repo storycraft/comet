@@ -109,7 +109,8 @@ impl Engine<'_> {
             for (item_index, item) in line.items().enumerate() {
                 match item {
                     parley::PositionedLayoutItem::GlyphRun(run) => {
-                        let source = run.style().brush;
+                        // Runs without a brand belong to the owner.
+                        let source = run.style().brush.unwrap_or(owner);
                         emitter.open_chain(source, false);
 
                         let x = origin.x + f64::from(run.offset());

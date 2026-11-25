@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,
@@ -75,6 +77,19 @@ impl Fixture {
         );
         self.inline = inline;
         self.children = builder.children.clone();
+    }
+
+    /// Process the white space of every item with `mode`, and build the
+    /// first run again.
+    fn white_space(&mut self, mode: parley::WhiteSpaceCollapse) {
+        let keys: Vec<_> = self.tree.items.descendants(self.root).collect();
+        for key in keys {
+            let mut style = (*self.tree.items[key].text_style).clone();
+            style.span.white_space_collapse = mode;
+            self.tree.set_text_style(key, Arc::new(style));
+        }
+
+        self.build_run(None);
     }
 
     fn item(&self, node: NodeKey) -> LayoutInputKey {
@@ -306,7 +321,7 @@ fn glyph_runs_are_branded_with_their_items() {
         })
         .collect();
 
-    assert_eq!(brushes, [f.item(first), f.item(second)]);
+    assert_eq!(brushes, [Some(f.item(first)), Some(f.item(second))]);
 }
 
 #[test]
@@ -328,7 +343,7 @@ fn building_again_reuses_the_layout() {
     ui.append(root, leaf);
 
     let mut f = Fixture::new(ui, root);
-    let text_ptr = f.inline.text.as_ptr();
+    let offsets = f.inline.offset_mapping.clone();
 
     let mut builder = InlineContentBuilder::new();
     builder.build(
@@ -344,9 +359,89 @@ fn building_again_reuses_the_layout() {
     );
 
     assert_eq!(f.inline.text, "some text");
+    assert_eq!(f.inline.offset_mapping, offsets);
+}
+
+#[test]
+fn collapsed_spaces_belong_to_the_text_they_end() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let before = text(&mut ui, "  a  b ");
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    let inner = text(&mut ui, " c\n\nd  ");
+    ui.append(root, before);
+    ui.append(root, span);
+    ui.append(span, inner);
+
+    let mut f = Fixture::new(ui, root);
+    assert_eq!(f.inline.text, "  a  b  c\n\nd  ", "preserved by default");
+
+    f.white_space(parley::WhiteSpaceCollapse::Collapse);
+    // Leading and trailing white space is removed, and the space collapsed
+    // from the end of the first text belongs to it.
+    assert_eq!(f.inline.text, "a b c d");
     assert_eq!(
-        f.inline.text.as_ptr(),
-        text_ptr,
-        "the text allocation is kept"
+        f.inline.offset_mapping,
+        [
+            OffsetEntry {
+                source: f.item(before),
+                range: 0..4,
+                text: true
+            },
+            OffsetEntry {
+                source: f.item(span),
+                range: 4..7,
+                text: false
+            },
+            OffsetEntry {
+                source: f.item(inner),
+                range: 4..7,
+                text: true
+            },
+        ]
+    );
+
+    f.white_space(parley::WhiteSpaceCollapse::PreserveBreaks);
+    assert_eq!(f.inline.text, "a b c\n\nd");
+}
+
+#[test]
+fn white_space_alone_is_no_run() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let before = text(&mut ui, "a");
+    let first = ui.create(Node::Box, ());
+    let gap = text(&mut ui, " \n  ");
+    let second = ui.create(Node::Box, ());
+    ui.append(root, before);
+    ui.append(root, first);
+    ui.append(root, gap);
+    ui.append(root, second);
+
+    let mut f = Fixture::new(ui, root);
+    let (first, second) = (f.item(first), f.item(second));
+    let mut flow = Vec::new();
+
+    split_runs(&f.cx(), f.root, &mut flow);
+    assert_eq!(
+        flow,
+        [
+            FlowItem::Run(None),
+            FlowItem::Block(first),
+            FlowItem::Run(Some(first)),
+            FlowItem::Block(second),
+        ],
+        "preserved white space is content"
+    );
+
+    f.white_space(parley::WhiteSpaceCollapse::Collapse);
+    split_runs(&f.cx(), f.root, &mut flow);
+    assert_eq!(
+        flow,
+        [
+            FlowItem::Run(None),
+            FlowItem::Block(first),
+            FlowItem::Block(second),
+        ]
     );
 }
