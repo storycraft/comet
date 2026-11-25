@@ -9,6 +9,7 @@ use crate::{
         inline::collect::{InlineBuildContext, has_block_in_flow},
     },
     input::{ChildLayout, LayoutInputKey, LayoutInputKind},
+    style::bx::Position,
     taffy::style::Style,
 };
 
@@ -76,7 +77,7 @@ pub fn block_box_type(style: &Style) -> BoxFragmentType {
 
 /// Whether a box with this style is taken out of flow.
 pub fn is_out_of_flow(style: &Style) -> bool {
-    style.position() == taffy::Position::Absolute
+    Position(style.position()).is_out_of_flow()
 }
 
 impl ChildKind {

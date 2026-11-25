@@ -129,7 +129,7 @@ impl<'a> NodeBuild<'a> {
 
     /// Bind a prop to `f`. It runs now for the initial value, then again
     /// whenever a signal it read changes, writing the prop into the tree and
-    /// recording its [`ReactiveProp::DIRTY`] flags.
+    /// recording the flags [`ReactiveProp::hint`] gives for the change.
     pub fn style_with<P: ReactiveProp>(mut self, f: impl Fn() -> P + 'static) -> Self {
         let node = self.key();
         let tree = Rc::downgrade(&self.cx.tree);

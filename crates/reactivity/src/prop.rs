@@ -63,9 +63,22 @@ impl PropHint {
 /// each kind that reads the prop. Later layout steps follow from it: a laid
 /// out item is pre-painted again, and the pre-paint step marks the layers of
 /// the fragments it changes.
+///
+/// Most props invalidate the same steps whatever their values. Others tell
+/// changes apart from the two values, like [`bx::Position`], which lays out
+/// the whole flow again only when the box moves in or out of flow.
 pub trait ReactiveProp: StyleProp + PartialEq {
-    /// Flags recorded for the node when the prop changes.
-    const HINT: PropHint;
+    /// Flags recorded for the node when the prop changes between `self` and
+    /// `other`, where `None` is a node without the prop. Only called when
+    /// the values differ.
+    ///
+    /// Symmetric: a change and its reverse invalidate the same steps, so
+    /// the call does not say which value is the new one.
+    /// - Changing from `a` to `b` and from `b` to `a` are both
+    ///   `b.hint(Some(&a))` or `a.hint(Some(&b))`, which return the same.
+    /// - Setting `a` on a node without the prop and removing `a` from a
+    ///   node are both `a.hint(None)`.
+    fn hint(&self, other: Option<&Self>) -> PropHint;
 }
 
 const FULL: PropHint = PropHint::FULL_LAYOUT;
@@ -78,7 +91,9 @@ const LAYER: PropHint = PropHint::LAYER;
 macro_rules! reactive_props {
     ($flags:expr => $($ty:ty),* $(,)?) => {
         $(impl ReactiveProp for $ty {
-            const HINT: PropHint = $flags;
+            fn hint(&self, _: Option<&Self>) -> PropHint {
+                $flags
+            }
         })*
     };
 }
@@ -109,7 +124,6 @@ reactive_props!(FULL =>
 
 // Read by the fragment builder.
 reactive_props!(BOX =>
-    bx::Position,
     bx::Inset,
     bx::Size,
     bx::MinSize,
@@ -151,8 +165,33 @@ reactive_props!(PRE_PAINT =>
     paint::ScrollTop,
 );
 
-// Resolved into the transform by the pre-paint step, and starts a layer.
-reactive_props!(PRE_PAINT.union(LAYER) => paint::Transform);
+// Read by the fragment builder. Moving a box in or out of flow changes the
+// flow it is laid out in: the child sync builds the inline layout holding it
+// again, which can only be done by a full layout of the box.
+impl ReactiveProp for bx::Position {
+    fn hint(&self, other: Option<&Self>) -> PropHint {
+        // A node without the prop has the default position.
+        let other = other.copied().unwrap_or_default();
+
+        if self.is_out_of_flow() == other.is_out_of_flow() {
+            BOX
+        } else {
+            FULL
+        }
+    }
+}
+
+// Resolved into the transform by the pre-paint step. A box with the prop
+// starts a layer whatever its value, so only setting it on a box without
+// one, or removing it, changes layers.
+impl ReactiveProp for paint::Transform {
+    fn hint(&self, other: Option<&Self>) -> PropHint {
+        match other {
+            Some(_) => PRE_PAINT,
+            None => PRE_PAINT.union(LAYER),
+        }
+    }
+}
 
 // Resolved by the layer build, which also decides stacking.
 reactive_props!(LAYER =>

@@ -135,3 +135,10 @@ define_style_props!(
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub TextAlign: parley::Alignment;
 );
+
+impl Position {
+    /// Whether a box with this position is taken out of flow.
+    pub const fn is_out_of_flow(self) -> bool {
+        matches!(self.0, taffy::Position::Absolute)
+    }
+}

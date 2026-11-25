@@ -41,20 +41,21 @@ impl UiTree {
         }
     }
 
-    /// Set a prop of an existing node, recording its [`ReactiveProp::DIRTY`]
-    /// flags. Returns whether the prop changed: values equal to the current
-    /// one and missing or reserved nodes are ignored.
+    /// Set a prop of an existing node, recording the flags
+    /// [`ReactiveProp::hint`] gives for `prop` and its current value, if any.
+    /// Returns whether the prop changed: values equal to the current one and
+    /// missing or reserved nodes are ignored.
     pub fn set_prop<P: ReactiveProp>(&mut self, node: NodeKey, prop: P) -> bool {
-        match self.ui.props(node) {
+        let hint = match self.ui.props(node) {
             None => return false,
-            Some(props) if props.get::<P>().is_some_and(|current| *current == prop) => {
-                return false;
-            }
-            Some(_) => {}
-        }
+            Some(props) => match props.get::<P>() {
+                Some(current) if *current == prop => return false,
+                old => prop.hint(old.as_deref()),
+            },
+        };
 
         self.ui.set_props(node, (prop,));
-        self.mark(node, P::HINT);
+        self.mark(node, hint);
 
         true
     }

@@ -28,6 +28,7 @@ use reactive_graph::{
     owner::Owner,
     signal::{ReadSignal, signal},
     traits::{Get, Set},
+    wrappers::read::Signal,
 };
 use tokio::task::LocalSet;
 
@@ -456,4 +457,124 @@ async fn accessibility_changes_are_not_layout_changes() {
 
 fn paint(red: u8) -> Paint {
     Paint::Solid(Color::from_rgb8(red, 0, 0))
+}
+
+#[tokio::test]
+async fn moving_in_or_out_of_flow_lays_out_the_flow_again() {
+    use comet_layout::style::{bx::Position, taffy};
+
+    run(async || {
+        let tree = shared();
+        let cx = UiCx::new(tree.clone());
+        let (position, set_position) = signal(taffy::Position::Relative);
+        let (top, set_top) = signal(0.0);
+
+        let node = cx.build(|cx| {
+            cx.div()
+                .position(position)
+                .inset(Signal::derive(move || {
+                    Rect::new_invidiual(
+                        AutoValue::Value(StyleUnit::Px(top.get())),
+                        AutoValue::Auto,
+                        AutoValue::Auto,
+                        AutoValue::Auto,
+                    )
+                }))
+                .build()
+        });
+        tree.borrow_mut().take_changes().for_each(drop);
+
+        // Out of flow.
+        set_position.set(taffy::Position::Absolute);
+        settle().await;
+        assert_eq!(
+            *tree.borrow().ui.prop::<Position>(node).unwrap(),
+            Position(taffy::Position::Absolute)
+        );
+        assert_eq!(
+            tree.borrow_mut().take_changes().collect::<Vec<_>>(),
+            [(node, PropHint::FULL_LAYOUT)]
+        );
+
+        // Moving it inside its containing block keeps it out of flow.
+        set_top.set(8.0);
+        settle().await;
+        assert_eq!(
+            tree.borrow_mut().take_changes().collect::<Vec<_>>(),
+            [(node, PropHint::BOX_LAYOUT)]
+        );
+
+        // Back in flow.
+        set_position.set(taffy::Position::Relative);
+        settle().await;
+        assert_eq!(
+            tree.borrow_mut().take_changes().collect::<Vec<_>>(),
+            [(node, PropHint::FULL_LAYOUT)]
+        );
+    })
+    .await;
+}
+
+#[test]
+fn position_hints_compare_flow_with_the_default_when_missing() {
+    use comet_layout::style::{bx::Position, taffy};
+
+    let mut tree = UiTree::new();
+    let relative = tree.ui.create(Node::Box, ());
+    let absolute = tree.ui.create(Node::Box, ());
+
+    // Missing is relative: in flow either way.
+    assert!(tree.set_prop(relative, Position(taffy::Position::Relative)));
+    assert_eq!(flags(&tree, relative), PropHint::BOX_LAYOUT);
+    assert!(tree.set_prop(absolute, Position(taffy::Position::Absolute)));
+    assert_eq!(flags(&tree, absolute), PropHint::FULL_LAYOUT);
+}
+
+#[test]
+fn transform_changes_layers_only_when_set_on_a_box_without_one() {
+    use comet_paint::style::Transform;
+
+    let mut tree = UiTree::new();
+    let node = tree.ui.create(Node::Box, ());
+
+    assert!(tree.set_prop(node, Transform(kurbo::Affine::translate((4.0, 0.0)))));
+    assert_eq!(flags(&tree, node), PropHint::PRE_PAINT | PropHint::LAYER);
+    tree.take_changes().for_each(drop);
+
+    // The box starts a layer already: only its transform is resolved again.
+    assert!(tree.set_prop(node, Transform(kurbo::Affine::IDENTITY)));
+    assert_eq!(flags(&tree, node), PropHint::PRE_PAINT);
+    assert!(
+        !flags(&tree, node)
+            .layout()
+            .contains(comet_layout::dirty_map::DirtyFlags::NEED_LAYER)
+    );
+}
+
+#[test]
+fn hints_are_symmetric() {
+    use comet_layout::style::{bx::Position, taffy};
+    use comet_paint::style::Transform;
+    use comet_reactivity::ReactiveProp;
+
+    let positions = [
+        Position(taffy::Position::Relative),
+        Position(taffy::Position::Absolute),
+    ];
+    for a in &positions {
+        for b in &positions {
+            assert_eq!(a.hint(Some(b)), b.hint(Some(a)));
+        }
+    }
+    assert_eq!(
+        positions[0].hint(Some(&positions[1])),
+        PropHint::FULL_LAYOUT
+    );
+
+    let a = Transform(kurbo::Affine::IDENTITY);
+    let b = Transform(kurbo::Affine::translate((4.0, 0.0)));
+    assert_eq!(a.hint(Some(&b)), b.hint(Some(&a)));
+    assert_eq!(a.hint(Some(&b)), PropHint::PRE_PAINT);
+    // Setting and removing a transform both change layers.
+    assert_eq!(b.hint(None), PropHint::PRE_PAINT | PropHint::LAYER);
 }

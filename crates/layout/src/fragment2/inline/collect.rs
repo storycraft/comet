@@ -14,7 +14,6 @@ use std::sync::Arc;
 
 use comet_tree::{node::Text, ui::Ui};
 use parley::{StyleProperty, WhiteSpaceCollapse};
-use taffy::style::CoreStyle;
 
 use super::{
     InlineLayout, OffsetEntry, inline_box_id,
@@ -22,7 +21,7 @@ use super::{
 };
 use crate::{
     fragment::state::NodeLayoutBits,
-    fragment2::BoxFragmentType,
+    fragment2::{BoxFragmentType, builder::classify},
     input::{LayoutInputKey, SpanStyle, tree::LayoutInputTree},
     style::LayoutConstraint,
     taffy::style::{self, Style},
@@ -414,7 +413,7 @@ pub fn split_runs(cx: &InlineBuildContext<'_>, root: LayoutInputKey, out: &mut V
 
 /// Whether the box of `key` is out of flow.
 fn is_out_of_flow(cx: &InlineBuildContext<'_>, key: LayoutInputKey) -> bool {
-    cx.resolve_style(key).0.position() == taffy::Position::Absolute
+    classify::is_out_of_flow(&cx.resolve_style(key).0)
 }
 
 /// Whether the text item `key` has text left after white space processing.

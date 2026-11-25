@@ -98,7 +98,9 @@ pub trait HandlerProp: ReactiveProp + Copy {
 macro_rules! handler_props {
     ($($prop:ty => $event:ty),* $(,)?) => {$(
         impl ReactiveProp for $prop {
-            const HINT: PropHint = PropHint::empty();
+            fn hint(&self, _: Option<&Self>) -> PropHint {
+                PropHint::empty()
+            }
         }
 
         impl HandlerProp for $prop {
@@ -126,15 +128,21 @@ handler_props!(
 );
 
 impl ReactiveProp for Focusable {
-    const HINT: PropHint = PropHint::empty();
+    fn hint(&self, _: Option<&Self>) -> PropHint {
+        PropHint::empty()
+    }
 }
 
 impl ReactiveProp for Selectable {
-    const HINT: PropHint = PropHint::empty();
+    fn hint(&self, _: Option<&Self>) -> PropHint {
+        PropHint::empty()
+    }
 }
 
 impl ReactiveProp for Cursor {
-    const HINT: PropHint = PropHint::empty();
+    fn hint(&self, _: Option<&Self>) -> PropHint {
+        PropHint::empty()
+    }
 }
 
 /// Generate helpers setting the handler prop `$prop` to a new [`Handler`].
