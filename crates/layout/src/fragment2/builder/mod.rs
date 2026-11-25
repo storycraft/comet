@@ -9,13 +9,20 @@
 //! 2. [`invalidate`]: boxes marked [`DirtyFlags::NEED_BOX_LAYOUT`], or
 //!    depending on a changed viewport, resolve their styles again and drop
 //!    their cached layouts and those of their ancestors.
-//! 3. Boxes and inline layouts are laid out. Not implemented yet.
+//! 3. [`block`]: boxes are laid out with Taffy, and inline formatting
+//!    contexts by breaking their [`lines`] and [emitting](emit) their items.
+//!    Laying out an inline layout never shapes it again.
 
+mod adapter;
+mod block;
 mod children;
 pub mod classify;
+mod emit;
 mod invalidate;
+mod lines;
 
 use comet_tree::ui::Ui;
+use rustc_hash::FxHashMap;
 use slotmap::SecondaryMap;
 
 use super::{
@@ -56,6 +63,21 @@ struct Scratch {
     /// Items to visit by the invalidation, with the box of their nearest
     /// ancestor generating one, or their own box.
     walk: Vec<(LayoutInputKey, BoxFragmentKey)>,
+    /// Stack of the child boxes of the boxes being laid out.
+    children: Vec<BoxFragmentKey>,
+    /// Out-of-flow boxes being placed.
+    hoisted: Vec<BoxFragmentKey>,
+    /// Boxes inside the inline content being laid out.
+    inline_children: Vec<BoxFragmentKey>,
+    /// How far the top margin of each inline part box collapsed with the
+    /// box before it.
+    collapse: FxHashMap<LayoutInputKey, f32>,
+    /// Index of the latest emitted inline item of each source.
+    links: FxHashMap<LayoutInputKey, usize>,
+    /// Inline element pieces open on the line being emitted.
+    open: Vec<emit::Piece>,
+    /// Inline ancestors of the inline item being emitted.
+    chain: Vec<LayoutInputKey>,
 }
 
 /// Pending work of the child sync.
@@ -84,8 +106,7 @@ impl FragmentTreeBuilder {
     /// Items whose fragments changed are marked [`PAINT_CHANGED`]. Flags are
     /// not cleared.
     ///
-    /// Boxes are not laid out yet: only their structure, styles and cache
-    /// invalidation are updated.
+    /// Boxes whose layout is still valid are not laid out again.
     pub fn build(
         &mut self,
         ui: &Ui,
@@ -94,6 +115,35 @@ impl FragmentTreeBuilder {
         root: LayoutInputKey,
         fragments: &mut FragmentTree,
         constraint: &LayoutConstraint,
+    ) -> Option<BoxFragmentKey> {
+        self.run(ui, tree, dirty, root, fragments, constraint, true)
+    }
+
+    /// Run the steps of [`Self::build`] before laying out: sync the box
+    /// structure and invalidate the affected caches.
+    #[cfg(test)]
+    pub(crate) fn update(
+        &mut self,
+        ui: &Ui,
+        tree: &LayoutInputTree,
+        dirty: &mut DirtyMap,
+        root: LayoutInputKey,
+        fragments: &mut FragmentTree,
+        constraint: &LayoutConstraint,
+    ) -> Option<BoxFragmentKey> {
+        self.run(ui, tree, dirty, root, fragments, constraint, false)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run(
+        &mut self,
+        ui: &Ui,
+        tree: &LayoutInputTree,
+        dirty: &mut DirtyMap,
+        root: LayoutInputKey,
+        fragments: &mut FragmentTree,
+        constraint: &LayoutConstraint,
+        layout: bool,
     ) -> Option<BoxFragmentKey> {
         tree.items.get(root)?;
         self.scratch.created.clear();
@@ -115,6 +165,11 @@ impl FragmentTreeBuilder {
 
         let key = engine.sync_children();
         engine.invalidate();
+
+        if layout {
+            engine.layout(key);
+        }
+
         self.inline.release();
 
         Some(key)

@@ -18,24 +18,24 @@ use crate::{
     },
 };
 
-const VIEWPORT: Size<f64> = Size::new(400.0, 600.0);
+pub(super) const VIEWPORT: Size<f64> = Size::new(400.0, 600.0);
 const CONSTRAINT: LayoutConstraint = LayoutConstraint::new_root(VIEWPORT, 16.0);
 
-struct Fixture {
-    ui: Ui,
-    root: NodeKey,
-    tree: LayoutInputTree,
-    dirty: DirtyMap,
-    input: LayoutInputTreeBuilder,
-    builder: FragmentTreeBuilder,
-    fragments: FragmentTree,
-    layout_root: Option<LayoutInputKey>,
-    root_box: Option<BoxFragmentKey>,
-    constraint: LayoutConstraint,
+pub(super) struct Fixture {
+    pub(super) ui: Ui,
+    pub(super) root: NodeKey,
+    pub(super) tree: LayoutInputTree,
+    pub(super) dirty: DirtyMap,
+    pub(super) input: LayoutInputTreeBuilder,
+    pub(super) builder: FragmentTreeBuilder,
+    pub(super) fragments: FragmentTree,
+    pub(super) layout_root: Option<LayoutInputKey>,
+    pub(super) root_box: Option<BoxFragmentKey>,
+    pub(super) constraint: LayoutConstraint,
 }
 
 impl Fixture {
-    fn new(ui: Ui, root: NodeKey) -> Self {
+    pub(super) fn new(ui: Ui, root: NodeKey) -> Self {
         let mut fixture = Self {
             ui,
             root,
@@ -53,9 +53,18 @@ impl Fixture {
         fixture
     }
 
-    /// Build the input tree and the fragment tree with the marked changes,
-    /// then pretend every box is laid out.
-    fn build(&mut self) -> BoxFragmentKey {
+    /// Build the input tree, and update the fragment tree with the marked
+    /// changes without laying it out.
+    pub(super) fn build(&mut self) -> BoxFragmentKey {
+        self.run(false)
+    }
+
+    /// Build the input tree and the fragment tree, laying it out.
+    pub(super) fn layout(&mut self) -> BoxFragmentKey {
+        self.run(true)
+    }
+
+    fn run(&mut self, layout: bool) -> BoxFragmentKey {
         let layout_root = self
             .input
             .build(
@@ -65,9 +74,8 @@ impl Fixture {
                 BuildRequest::new(self.root, 16.0, VIEWPORT),
             )
             .unwrap();
-        let key = self
-            .builder
-            .build(
+        let key = if layout {
+            self.builder.build(
                 &self.ui,
                 &self.tree,
                 &mut self.dirty,
@@ -75,7 +83,17 @@ impl Fixture {
                 &mut self.fragments,
                 &self.constraint,
             )
-            .unwrap();
+        } else {
+            self.builder.update(
+                &self.ui,
+                &self.tree,
+                &mut self.dirty,
+                layout_root,
+                &mut self.fragments,
+                &self.constraint,
+            )
+        }
+        .unwrap();
 
         self.layout_root = Some(layout_root);
         self.root_box = Some(key);
@@ -86,7 +104,7 @@ impl Fixture {
 
     /// Start a new round of changes: clear the flags, and mark every box as
     /// laid out.
-    fn next_round(&mut self) {
+    pub(super) fn next_round(&mut self) {
         self.dirty.clear(&self.tree, self.layout_root.unwrap());
 
         let keys: Vec<_> = self
@@ -100,30 +118,30 @@ impl Fixture {
         }
     }
 
-    fn mark(&mut self, node: NodeKey, flags: DirtyFlags) {
+    pub(super) fn mark(&mut self, node: NodeKey, flags: DirtyFlags) {
         self.dirty.mark_node(&self.tree, node, flags);
     }
 
-    fn item(&self, node: NodeKey) -> LayoutInputKey {
+    pub(super) fn item(&self, node: NodeKey) -> LayoutInputKey {
         self.tree.item_for_node(node).unwrap()
     }
 
-    fn box_of(&self, node: NodeKey) -> BoxFragmentKey {
+    pub(super) fn box_of(&self, node: NodeKey) -> BoxFragmentKey {
         self.fragments.box_fragment(self.item(node)).unwrap()
     }
 
-    fn has_box(&self, node: NodeKey) -> bool {
+    pub(super) fn has_box(&self, node: NodeKey) -> bool {
         self.tree
             .item_for_node(node)
             .and_then(|item| self.fragments.box_fragment(item))
             .is_some()
     }
 
-    fn children(&self, key: BoxFragmentKey) -> Vec<BoxFragmentKey> {
+    pub(super) fn children(&self, key: BoxFragmentKey) -> Vec<BoxFragmentKey> {
         self.fragments.boxes.children(key).collect()
     }
 
-    fn valid(&self, key: BoxFragmentKey) -> bool {
+    pub(super) fn valid(&self, key: BoxFragmentKey) -> bool {
         self.fragments.boxes[key].final_layout_valid
     }
 
@@ -150,12 +168,12 @@ impl Fixture {
     }
 }
 
-fn text(ui: &mut Ui, value: &str) -> NodeKey {
+pub(super) fn text(ui: &mut Ui, value: &str) -> NodeKey {
     ui.create(Node::Text, (Text(value.into()),))
 }
 
 /// A block containing a text.
-fn paragraph(ui: &mut Ui, value: &str) -> NodeKey {
+pub(super) fn paragraph(ui: &mut Ui, value: &str) -> NodeKey {
     let block = ui.create(Node::Box, ());
     let text = text(ui, value);
     ui.append(block, text);
