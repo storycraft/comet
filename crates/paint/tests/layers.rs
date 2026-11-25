@@ -1,10 +1,9 @@
-// TODO(fragment2): ported with the painter and layers in phases 2–4.
-#![cfg(any())]
-
-use anyrender::{Paint, Scene, recording::RenderCommand};
+use anyrender::Paint;
+#[cfg(any())]
+use anyrender::{Scene, recording::RenderCommand};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment::{FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
+    fragment2::{BoxFragmentKey, FragmentRef, FragmentTree, FragmentTreeBuilder},
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
@@ -12,32 +11,45 @@ use comet_layout::{
     },
     style::{
         LayoutConstraint, bx,
-        geometry::{AutoValue, Rect as LayoutRect, Size, StyleUnit, UnitResolveContext},
-        taffy::{Overflow, Position},
+        geometry::{AutoValue, Size, StyleUnit, UnitResolveContext},
     },
 };
+// TODO(fragment2): ported with the painter and hit testing in phases 3–4.
+#[cfg(any())]
+use comet_layout::style::{
+    geometry::Rect as LayoutRect,
+    taffy::{Overflow, Position},
+};
+#[cfg(any())]
 use comet_paint::{
     hit::{HitTestResult, PaintHitTester},
-    layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
+    style::{BorderRadius, ScrollTop},
+};
+use comet_paint::{
+    layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
-    style::{
-        BackdropFilter, BorderRadius, Fill, Filter, MixBlend, Opacity, ScrollTop, Transform, ZIndex,
-    },
+    style::{BackdropFilter, Fill, Filter, MixBlend, Opacity, Transform, ZIndex},
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,
 };
-use kurbo::{Affine, Point, Rect, Shape};
+use kurbo::Affine;
+#[cfg(any())]
+use kurbo::{Point, Rect, Shape};
 use peniko::{BlendMode, Color, Mix};
 
 const VIEWPORT: Size<f64> = Size::new(120.0, 400.0);
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 const SCENE_VIEWPORT: Rect = Rect::new(0.0, 0.0, 120.0, 400.0);
 const UNITS: UnitResolveContext = LayoutConstraint::new_root(VIEWPORT, 16.0).units;
 
 const RED: Color = Color::from_rgb8(200, 20, 20);
+#[cfg(any())]
 const GREEN: Color = Color::from_rgb8(20, 160, 20);
+#[cfg(any())]
 const BLUE: Color = Color::from_rgb8(20, 40, 180);
 
 /// Layout, pre-paint and layer trees of one UI root.
@@ -111,7 +123,7 @@ impl Fixture {
     /// Resolve the pre-paint data and layers of a node again, after its own
     /// paint styles changed, and update the layers under it.
     fn update(&mut self, ui: &Ui, node: NodeKey) {
-        let fragment_root = self.layers.layers[self.root].owner;
+        let fragment_root = self.root_box();
 
         self.dirty.mark_node(
             &self.inputs,
@@ -130,7 +142,7 @@ impl Fixture {
                 false,
             )
             .unwrap();
-        let input_root = self.fragments.items[fragment_root].source;
+        let input_root = self.input_root();
         self.root = self
             .builder
             .build(
@@ -147,10 +159,20 @@ impl Fixture {
 
     /// The layout input item of the root layer's owner.
     fn input_root(&self) -> LayoutInputKey {
-        self.fragments.items[self.layers.layers[self.root].owner].source
+        self.fragments.boxes[self.root_box()].source
     }
 
-    fn box_of(&self, node: NodeKey) -> FragmentKey {
+    /// The box owning the root layer.
+    fn root_box(&self) -> BoxFragmentKey {
+        self.layers.layers[self.root].owner
+    }
+
+    /// A node's box fragment, as a fragment.
+    fn box_ref(&self, node: NodeKey) -> FragmentRef {
+        FragmentRef::Box(self.box_of(node))
+    }
+
+    fn box_of(&self, node: NodeKey) -> BoxFragmentKey {
         let item = self.inputs.item_for_node(node).unwrap();
 
         self.fragments.box_fragment(item).unwrap()
@@ -166,11 +188,15 @@ impl Fixture {
         self.layers.layers.children(layer).collect()
     }
 
+    // TODO(fragment2): paints or hits, ported in phases 3–4.
+    #[cfg(any())]
     /// The fragment hit at a scene point.
-    fn hit(&self, x: f64, y: f64) -> Option<FragmentKey> {
+    fn hit(&self, x: f64, y: f64) -> Option<BoxFragmentKey> {
         self.hit_result(x, y).map(|hit| hit.fragment)
     }
 
+    // TODO(fragment2): paints or hits, ported in phases 3–4.
+    #[cfg(any())]
     /// The hit at a scene point, with the point local to the fragment hit.
     fn hit_result(&self, x: f64, y: f64) -> Option<HitTestResult> {
         PaintHitTester::new().hit(
@@ -182,6 +208,8 @@ impl Fixture {
         )
     }
 
+    // TODO(fragment2): paints or hits, ported in phases 3–4.
+    #[cfg(any())]
     /// The hits on the path to the fragment hit at a scene point, from the
     /// root down.
     fn hit_path(&self, x: f64, y: f64) -> Vec<HitTestResult> {
@@ -192,6 +220,8 @@ impl Fixture {
             .collect()
     }
 
+    // TODO(fragment2): paints or hits, ported in phases 3–4.
+    #[cfg(any())]
     fn draw(&self, ui: &Ui) -> Scene {
         let mut scene = Scene::new();
         CometPainter::new().draw(
@@ -217,6 +247,8 @@ fn fixed(width: f64, height: f64) -> bx::Size {
     ))
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 fn solid(paint: &Paint) -> Color {
     match paint {
         Paint::Solid(color) => *color,
@@ -228,6 +260,8 @@ fn z(value: i32) -> ZIndex {
     ZIndex(AutoValue::Value(value))
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 /// Fill colors, layer alphas, clips and pops of a scene, in order.
 fn commands(scene: &Scene) -> Vec<String> {
     scene
@@ -246,6 +280,8 @@ fn commands(scene: &Scene) -> Vec<String> {
         .collect()
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 fn fill(color: Color) -> String {
     format!("fill {:?}", color.to_rgba8())
 }
@@ -269,7 +305,7 @@ fn fragments_without_layer_styles_share_the_root_layer() {
     for node in [outer, inner] {
         assert_eq!(f.layers.layer_of(f.box_of(node)), None);
         assert_eq!(
-            f.layers.enclosing(&f.fragments, f.box_of(node)),
+            f.layers.enclosing(&f.fragments, f.box_ref(node)),
             Some(f.root)
         );
     }
@@ -306,7 +342,7 @@ fn transforms_opacity_and_z_indices_start_layers() {
 
     assert_eq!(f.layers.layer_of(f.box_of(nested)), None);
     assert_eq!(
-        f.layers.enclosing(&f.fragments, f.box_of(nested)),
+        f.layers.enclosing(&f.fragments, f.box_ref(nested)),
         Some(f.layer_of(transformed))
     );
     assert_eq!(
@@ -320,19 +356,62 @@ fn transforms_opacity_and_z_indices_start_layers() {
 }
 
 #[test]
-fn only_boxes_start_layers() {
+fn pieces_of_inline_elements_start_layers() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let span = ui.create(Node::Box, (bx::DisplayOuter::Inline, Opacity(0.5), z(3)));
     ui.append(root, span);
-    let text = ui.create(Node::Text, (Text("inline".into()),));
+    let text = ui.create(
+        Node::Text,
+        (Text(
+            "one two three four five six seven eight nine ten".into(),
+        ),),
+    );
     ui.append(span, text);
+    // Inline elements are not transformed, so a transform starts no layer.
+    let moved = ui.create(
+        Node::Box,
+        (
+            bx::DisplayOuter::Inline,
+            Transform(Affine::translate((1.0, 0.0))),
+        ),
+    );
+    ui.append(root, moved);
+    let moved_text = ui.create(Node::Text, (Text("moved".into()),));
+    ui.append(moved, moved_text);
 
     let f = Fixture::build(&ui, root);
+    let span_item = f.inputs.item_for_node(span).unwrap();
+    let pieces: Vec<_> = f.fragments.fragments(&f.inputs, span_item).collect();
+    let parts: Vec<_> = f.fragments.inline_boxes(&f.inputs, span_item).collect();
+    assert!(pieces.len() > 1);
+    assert_eq!(parts.len(), pieces.len());
 
-    assert_eq!(f.layers.layers.len(), 1);
+    // One layer for the whole element, owned by its first inline part box.
+    assert_eq!(f.layers.layers.len(), 2);
+    let layer = f.layers.layer_of(parts[0]).unwrap();
+    assert_eq!(f.children(f.root), [layer]);
+    for &part in &parts[1..] {
+        assert_eq!(f.layers.layer_of(part), None);
+    }
+
+    let item = &f.layers.layers[layer];
+    assert_eq!(item.owner, parts[0]);
+    assert_eq!(item.z_index, 3);
+    assert_eq!(item.opacity, 0.5);
+
+    // It holds every piece, with its glyph runs.
+    for piece in pieces {
+        assert_eq!(f.layers.enclosing(&f.fragments, piece), Some(layer));
+    }
+    let text_item = f.inputs.item_for_node(text).unwrap();
+    for run in f.fragments.fragments(&f.inputs, text_item) {
+        assert_eq!(f.layers.enclosing(&f.fragments, run), Some(layer));
+    }
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn layers_paint_in_z_index_order_around_their_owner() {
     let mut ui = Ui::new();
@@ -378,6 +457,8 @@ fn layers_paint_in_z_index_order_around_their_owner() {
     );
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn translucent_layers_paint_into_a_group() {
     let mut ui = Ui::new();
@@ -404,6 +485,8 @@ fn translucent_layers_paint_into_a_group() {
     );
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn clips_apply_to_descendants_in_other_layers() {
     let mut ui = Ui::new();
@@ -457,6 +540,8 @@ fn blur() -> Vec<anyrender::filters::FilterEffect> {
     vec![anyrender::filters::FilterEffect::blur(2.0)]
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 /// Layers pushed to a scene, with their alpha, transform, clip bounds rounded
 /// to whole units, and whether they filter their contents and their backdrop.
 fn pushed_layers(scene: &Scene) -> Vec<(f32, Affine, Rect, bool, bool)> {
@@ -492,6 +577,8 @@ fn filters_start_layers() {
     assert_eq!(f.layers.layers[f.layer_of(backdrop)].z_index, 0);
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn filters_apply_to_a_group_in_the_owner_coordinates() {
     let mut ui = Ui::new();
@@ -528,6 +615,8 @@ fn filters_apply_to_a_group_in_the_owner_coordinates() {
     );
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn backdrop_filters_apply_behind_the_owner_border_box() {
     let mut ui = Ui::new();
@@ -573,6 +662,8 @@ fn backdrop_filters_apply_behind_the_owner_border_box() {
     );
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn filters_of_collapsed_owners_paint_nothing() {
     let mut ui = Ui::new();
@@ -618,6 +709,8 @@ fn mix_blend_modes_start_layers_and_blend_their_group() {
         Some(BlendMode::from(Mix::Multiply))
     );
 
+    // TODO(fragment2): paints, ported in phase 3.
+    #[cfg(any())]
     let blends = |scene: &Scene| -> Vec<BlendMode> {
         scene
             .commands
@@ -629,6 +722,7 @@ fn mix_blend_modes_start_layers_and_blend_their_group() {
             .collect()
     };
     // Opaque and unfiltered, but grouped for the blend mode.
+    #[cfg(any())]
     assert_eq!(blends(&f.draw(&ui)), [BlendMode::from(Mix::Multiply)]);
 
     // Changing the blend mode updates the layer in place.
@@ -636,9 +730,15 @@ fn mix_blend_modes_start_layers_and_blend_their_group() {
     f.update(&ui, blended);
 
     assert_eq!(f.layer_of(blended), layer);
+    assert_eq!(
+        f.layers.layers[layer].blend_mode,
+        Some(BlendMode::from(Mix::Screen))
+    );
+    #[cfg(any())]
     assert_eq!(blends(&f.draw(&ui)), [BlendMode::from(Mix::Screen)]);
 }
 
+#[cfg(any())]
 /// A margin pulling a box up over the previous one.
 fn overlap(value: f64) -> bx::Margin {
     let zero = AutoValue::Value(StyleUnit::ZERO);
@@ -651,6 +751,8 @@ fn overlap(value: f64) -> bx::Margin {
     ))
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn hits_the_topmost_fragment_in_paint_order() {
     let mut ui = Ui::new();
@@ -670,6 +772,8 @@ fn hits_the_topmost_fragment_in_paint_order() {
     assert_eq!(f.hit(500.0, 5.0), None);
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn hits_children_before_parents_and_skips_line_boxes() {
     let mut ui = Ui::new();
@@ -694,6 +798,8 @@ fn hits_children_before_parents_and_skips_line_boxes() {
     ));
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn hits_through_transforms() {
     let mut ui = Ui::new();
@@ -719,6 +825,8 @@ fn hits_through_transforms() {
     assert_eq!(f.hit(10.0, 10.0), Some(f.box_of(root)));
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn hit_cursor_walks_from_the_root_down_to_the_fragment_hit() {
     let mut ui = Ui::new();
@@ -759,6 +867,8 @@ fn hit_cursor_walks_from_the_root_down_to_the_fragment_hit() {
     assert!(f.hit_path(500.0, 5.0).is_empty(), "nothing under the point");
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn hits_hold_the_point_local_to_the_fragment_hit() {
     let mut ui = Ui::new();
@@ -790,6 +900,8 @@ fn hits_hold_the_point_local_to_the_fragment_hit() {
     assert_eq!(f.hit_result(10.0, 10.0), result(root, 10.0, 10.0));
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn clips_and_rounded_corners_limit_hits() {
     let mut ui = Ui::new();
@@ -827,6 +939,8 @@ fn clips_and_rounded_corners_limit_hits() {
     assert_eq!(f.hit(1.0, 21.0), Some(f.box_of(root)));
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn collapsed_fragments_are_not_hit() {
     let mut ui = Ui::new();
@@ -961,7 +1075,7 @@ fn updates_match_full_builds() {
     // changes z index.
     ui.set_props(deep, (z(-2),));
     ui.set_props(inner, (z(4),));
-    let fragment_root = f.layers.layers[f.root].owner;
+    let fragment_root = f.root_box();
     let right_item = f.inputs.item_for_node(right).unwrap();
     let items: Vec<_> = f.inputs.items.descendants(right_item).collect();
     for item in items {
@@ -979,7 +1093,7 @@ fn updates_match_full_builds() {
             false,
         )
         .unwrap();
-    let input_root = f.fragments.items[fragment_root].source;
+    let input_root = f.input_root();
     f.root = f
         .builder
         .build(
@@ -1016,6 +1130,8 @@ fn updates_match_full_builds() {
     );
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn stale_root_layers_hit_nothing() {
     let mut ui = Ui::new();
@@ -1037,6 +1153,8 @@ fn stale_root_layers_hit_nothing() {
     );
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn hit_testers_can_be_reused() {
     let mut ui = Ui::new();
@@ -1100,6 +1218,8 @@ fn layer_styles_start_layers_whatever_their_value() {
     assert_eq!(f.layers.layer_of(f.box_of(auto)), None);
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn hits_negative_layers_below_contents_from_the_last() {
     let mut ui = Ui::new();
@@ -1191,7 +1311,7 @@ impl Pipeline {
         layer
     }
 
-    fn box_of(&self, node: NodeKey) -> Option<FragmentKey> {
+    fn box_of(&self, node: NodeKey) -> Option<BoxFragmentKey> {
         self.fragments
             .box_fragment(self.inputs.item_for_node(node)?)
     }
@@ -1206,7 +1326,7 @@ impl Pipeline {
 
     /// The layers built from scratch for the current trees.
     fn full_shape(&self, ui: &Ui, root: PaintLayerKey) -> String {
-        let input_root = self.fragments.items[self.layers.layers[root].owner].source;
+        let input_root = self.fragments.boxes[self.layers.layers[root].owner].source;
         let mut full = PaintLayerTree::new();
         let full_root = PaintLayerBuilder::new()
             .build(
@@ -1438,6 +1558,7 @@ fn reordered_atomic_inlines_reorder_their_layers() {
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(&ui, root_layer));
 }
 
+#[cfg(any())]
 fn top_left(top: f64, left: f64) -> bx::Inset {
     bx::Inset(LayoutRect::new_invidiual(
         AutoValue::Value(StyleUnit::Px(top)),
@@ -1447,6 +1568,8 @@ fn top_left(top: f64, left: f64) -> bx::Inset {
     ))
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn hits_descendants_overflowing_their_parents() {
     let mut ui = Ui::new();
@@ -1468,6 +1591,8 @@ fn hits_descendants_overflowing_their_parents() {
     assert_eq!(f.hit(40.0, 35.0), None);
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn hits_hoisted_boxes_placed_outside_their_parents() {
     let mut ui = Ui::new();
@@ -1508,6 +1633,8 @@ fn hits_hoisted_boxes_placed_outside_their_parents() {
     assert_eq!(f.hit(10.0, 110.0), Some(f.box_of(inner)));
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn hits_content_of_atomic_inlines_below_their_line() {
     let mut ui = Ui::new();
@@ -1542,6 +1669,8 @@ fn hits_content_of_atomic_inlines_below_their_line() {
     assert_eq!(f.hit(origin.x + 5.0, origin.y + 80.0), Some(tall_box));
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 /// A root holding a 50x30 scroll container at the origin, scrolled down by
 /// 10, with `extra` props, and three 40x20 rows inside, with `row_extra`
 /// props on the second. Returns the UI, the root, the container and the
@@ -1577,6 +1706,8 @@ fn scrolled_rows(
     (ui, root, scroller, rows)
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 /// Rows scrolled up by 10 sit at -10..10, 10..30 and 30..50 in the scene,
 /// the last one hidden past the container's clip at 30.
 fn assert_scrolled_hits(f: &Fixture, root: NodeKey, scroller: NodeKey, rows: [NodeKey; 3]) {
@@ -1595,6 +1726,8 @@ fn assert_scrolled_hits(f: &Fixture, root: NodeKey, scroller: NodeKey, rows: [No
     assert_eq!(f.hit_result(5.0, 35.0), result(root, 5.0, 35.0));
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn hits_follow_the_scroll_of_their_container() {
     let (ui, root, scroller, rows) = scrolled_rows((), ());
@@ -1603,6 +1736,8 @@ fn hits_follow_the_scroll_of_their_container() {
     assert_scrolled_hits(&f, root, scroller, rows);
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn hits_scroll_with_containers_owning_layers() {
     let (ui, root, scroller, rows) = scrolled_rows((Opacity(0.5),), ());
@@ -1611,6 +1746,8 @@ fn hits_scroll_with_containers_owning_layers() {
     assert_scrolled_hits(&f, root, scroller, rows);
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn hits_in_child_layers_scroll_with_their_container() {
     let (ui, root, scroller, rows) = scrolled_rows((), (Transform(Affine::IDENTITY),));
@@ -1619,6 +1756,8 @@ fn hits_in_child_layers_scroll_with_their_container() {
     assert_scrolled_hits(&f, root, scroller, rows);
 }
 
+// TODO(fragment2): paints or hits, ported in phases 3–4.
+#[cfg(any())]
 #[test]
 fn hits_in_layers_tested_alone_scroll_with_their_ancestors() {
     let (ui, root, _, rows) = scrolled_rows((), (Transform(Affine::IDENTITY),));
@@ -1637,4 +1776,142 @@ fn hits_in_layers_tested_alone_scroll_with_their_ancestors() {
             position: Point::new(5.0, 5.0),
         })
     );
+}
+
+impl Pipeline {
+    /// The inline part boxes of an inline element, in layout order.
+    fn parts(&self, node: NodeKey) -> Vec<BoxFragmentKey> {
+        let item = self.inputs.item_for_node(node).unwrap();
+
+        self.fragments.inline_boxes(&self.inputs, item).collect()
+    }
+
+    /// The layer of an inline element, owned by its first inline part box.
+    fn element_layer(&self, node: NodeKey) -> Option<PaintLayerKey> {
+        self.layers.layer_of(*self.parts(node).first()?)
+    }
+}
+
+#[test]
+fn layers_of_inline_elements_follow_their_pieces() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, (fixed(120.0, 200.0),));
+    let lead = ui.create(Node::Text, (Text("lead ".into()),));
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline, Opacity(0.5)));
+    let text = ui.create(
+        Node::Text,
+        (Text(
+            "one two three four five six seven eight nine ten".into(),
+        ),),
+    );
+    ui.append(root, lead);
+    ui.append(root, span);
+    ui.append(span, text);
+
+    let mut p = Pipeline::default();
+    let root_layer = p.run(&ui, root);
+    let parts = p.parts(span);
+    assert!(parts.len() > 1);
+    assert_eq!(p.layers.layers.len(), 2);
+
+    let check = |p: &Pipeline, ui: &Ui| {
+        assert_eq!(shape(&p.layers, root_layer), p.full_shape(ui, root_layer));
+        assert_eq!(p.layers.layers.len(), 2);
+        let layer = p.element_layer(span).unwrap();
+        assert_eq!(p.layers.layers[layer].owner, p.parts(span)[0]);
+        assert_eq!(p.children(root_layer), [layer]);
+    };
+    check(&p, &ui);
+
+    // Laid out again on the same lines, with new inline part boxes.
+    ui.set_props(root, (fixed(120.0, 300.0),));
+    p.dirty
+        .mark_node(&p.inputs, root, DirtyFlags::NEED_BOX_LAYOUT);
+    assert_eq!(p.run(&ui, root), root_layer);
+    assert_eq!(p.parts(span).len(), parts.len());
+    check(&p, &ui);
+
+    // Narrower, the span splits into more pieces, still in one layer.
+    ui.set_props(root, (fixed(60.0, 300.0),));
+    p.dirty
+        .mark_node(&p.inputs, root, DirtyFlags::NEED_BOX_LAYOUT);
+    assert_eq!(p.run(&ui, root), root_layer);
+    assert!(p.parts(span).len() > parts.len());
+    check(&p, &ui);
+
+    // And wider again.
+    ui.set_props(root, (fixed(120.0, 300.0),));
+    p.dirty
+        .mark_node(&p.inputs, root, DirtyFlags::NEED_BOX_LAYOUT);
+    assert_eq!(p.run(&ui, root), root_layer);
+    check(&p, &ui);
+}
+
+#[test]
+fn layers_of_inline_elements_follow_their_order() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline, z(1)));
+    let text = ui.create(Node::Text, (Text("span".into()),));
+    ui.append(root, span);
+    ui.append(span, text);
+
+    let mut p = Pipeline::default();
+    let root_layer = p.run(&ui, root);
+    assert!(p.element_layer(span).is_some());
+
+    // Another span before it, with a higher z index.
+    let before = ui.create(Node::Box, (bx::DisplayOuter::Inline, z(2)));
+    let before_text = ui.create(Node::Text, (Text("before ".into()),));
+    ui.prepend(root, before);
+    ui.append(before, before_text);
+    p.dirty
+        .mark_node(&p.inputs, root, DirtyFlags::NEED_CHILDREN);
+    assert_eq!(p.run(&ui, root), root_layer);
+
+    assert_eq!(shape(&p.layers, root_layer), p.full_shape(&ui, root_layer));
+    assert_eq!(p.layers.layers.len(), 3);
+    assert_eq!(
+        p.children(root_layer),
+        [
+            p.element_layer(span).unwrap(),
+            p.element_layer(before).unwrap()
+        ]
+    );
+}
+
+#[test]
+fn layers_of_inline_elements_cover_pieces_split_by_blocks() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline, Opacity(0.5)));
+    let lead = ui.create(Node::Text, (Text("lead".into()),));
+    let block = ui.create(Node::Box, (fixed(20.0, 10.0),));
+    let tail = ui.create(Node::Text, (Text("tail".into()),));
+    ui.append(root, span);
+    ui.append(span, lead);
+    ui.append(span, block);
+    ui.append(span, tail);
+
+    let mut p = Pipeline::default();
+    let root_layer = p.run(&ui, root);
+
+    // The block splits the span into pieces in two runs, linked.
+    let parts = p.parts(span);
+    assert_eq!(parts.len(), 2);
+    assert_ne!(
+        p.fragments.boxes.parent(parts[0]),
+        p.fragments.boxes.parent(parts[1])
+    );
+
+    // One layer covers both.
+    assert_eq!(p.layers.layers.len(), 2);
+    let layer = p.element_layer(span).unwrap();
+    for node in [lead, tail] {
+        let item = p.inputs.item_for_node(node).unwrap();
+        for run in p.fragments.fragments(&p.inputs, item) {
+            assert_eq!(p.layers.enclosing(&p.fragments, run), Some(layer));
+        }
+    }
+    assert_eq!(shape(&p.layers, root_layer), p.full_shape(&ui, root_layer));
 }

@@ -27,7 +27,9 @@ use comet_paint::{
 };
 use comet_paint::{
     prepaint::{
-        FragmentData, LayoutInputData, builder::PrepaintTreeBuilder, fragment::paint_parent,
+        FragmentData, LayoutInputData,
+        builder::PrepaintTreeBuilder,
+        fragment::{for_each_paint_child, paint_parent},
         tree::PrepaintTree,
     },
     style::{
@@ -1990,29 +1992,35 @@ fn paint_parents_follow_the_inline_elements_holding_content() {
         assert_eq!(f.fragments.boxes.parent(key), Some(root_fragment));
     }
 
-    // In paint order, they are held by the pieces of their elements.
+    // In paint order, they are held by the items of the pieces of their
+    // elements, which the inline part boxes decorate.
+    let piece = |node| {
+        f.fragments
+            .fragments(&f.inputs, f.item(node))
+            .next()
+            .unwrap()
+    };
+    let (outer_piece, inner_piece) = (piece(outer), piece(inner));
+    assert!(matches!(outer_piece, FragmentRef::Inline { .. }));
+
     let parent = |fragment| paint_parent(&f.fragments, fragment);
-    assert_eq!(
-        parent(FragmentRef::Box(atomic_box)),
-        Some(FragmentRef::Box(inner_part))
-    );
-    assert_eq!(
-        parent(FragmentRef::Box(inner_part)),
-        Some(FragmentRef::Box(outer_part))
-    );
-    assert_eq!(
-        parent(FragmentRef::Box(outer_part)),
-        Some(FragmentRef::Box(root_fragment))
-    );
+    assert_eq!(parent(FragmentRef::Box(atomic_box)), Some(inner_piece));
+    assert_eq!(parent(inner_piece), Some(outer_piece));
+    assert_eq!(parent(outer_piece), Some(FragmentRef::Box(root_fragment)));
     assert_eq!(parent(FragmentRef::Box(root_fragment)), None);
 
+    // An inline part box has the parent of its piece.
+    assert_eq!(parent(FragmentRef::Box(inner_part)), Some(outer_piece));
+
     // Glyph runs too, though they have no box.
-    let run = f
-        .fragments
-        .fragments(&f.inputs, f.item(content))
-        .next()
-        .unwrap();
-    assert_eq!(parent(run), Some(FragmentRef::Box(inner_part)));
+    assert_eq!(parent(piece(content)), Some(inner_piece));
+
+    // The paint children of a piece are its items.
+    let mut children = Vec::new();
+    for_each_paint_child(&f.fragments, inner_piece, |child| children.push(child));
+    assert!(children.contains(&FragmentRef::Box(atomic_box)));
+    assert!(children.contains(&piece(content)));
+    assert!(!children.contains(&FragmentRef::Box(inner_part)));
 
     // Only boxes have data.
     for key in [outer_part, inner_part, atomic_box] {

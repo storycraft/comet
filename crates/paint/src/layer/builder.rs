@@ -3,14 +3,21 @@ use std::sync::Arc;
 use anyrender::filters::FilterEffect;
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment::{FragmentKey, tree::FragmentTree},
+    fragment2::{BoxFragmentKey, FragmentGeometry, FragmentRef, FragmentTree},
     input::{LayoutInputKey, tree::LayoutInputTree},
     style::geometry::AutoValue,
 };
 use comet_tree::ui::{Props, Ui};
+use kurbo::Vec2;
 
 use crate::{
-    layer::{PaintLayerItem, PaintLayerKey, tree::PaintLayerTree},
+    layer::{
+        PaintLayerItem, PaintLayerKey,
+        tree::{PaintLayerTree, layer_owner},
+    },
+    prepaint::fragment::{
+        BoxRole, for_each_paint_child, paint_parent, part_of_piece, piece_of_part,
+    },
     style::{BackdropFilter, Filter, MixBlend, Opacity, Transform, ZIndex},
 };
 
@@ -44,7 +51,7 @@ struct Sources<'a> {
 
 #[derive(Clone, Copy)]
 struct Visit {
-    fragment: FragmentKey,
+    fragment: FragmentRef,
     layer: PaintLayerKey,
 }
 
@@ -55,24 +62,27 @@ impl PaintLayerBuilder {
 
     /// Build the layers of the fragments generated under the layout input
     /// item `root` into `tree`, and return the root layer, owned by the box
-    /// fragment of `root`. The root fragment always starts the root layer,
-    /// with z index 0, whatever its styles.
+    /// fragment of `root`. The root box always starts the root layer, with
+    /// z index 0, whatever its styles.
     ///
-    /// A box fragment starts a layer when its item sets a [`Transform`], an
+    /// A principal box starts a layer when its item sets a [`Transform`], an
     /// [`Opacity`], a [`Filter`], a [`BackdropFilter`] or a [`MixBlend`],
-    /// whatever its value,
-    /// or a [`ZIndex`] other than auto. An auto z index counts as 0. Each
-    /// layer resolves its opacity, filters and blend mode from its owner's
-    /// item.
+    /// whatever its value, or a [`ZIndex`] other than auto. So does an inline
+    /// element setting one of them other than a [`Transform`], which inline
+    /// elements ignore: its first inline part box owns the layer, covering
+    /// every piece of the element. An auto z index counts as 0. Each layer
+    /// resolves its opacity, filters and blend mode from its owner's item.
     ///
     /// When `tree` already holds the root layer, only the layers affected by
     /// changes marked in `dirty` are updated. Layers whose owner still starts
     /// one keep their keys. Items with [`DirtyFlags::NEED_LAYER`], which
-    /// [`DirtyFlags::NEED_CHILDREN`] includes, are checked for fragments
-    /// gaining, losing or reordering a layer, and the layers they own resolve
-    /// their data again. It is marked when a layer style changes, and by the
+    /// [`DirtyFlags::NEED_CHILDREN`] includes, are checked for boxes gaining,
+    /// losing or reordering a layer, and the layers they own resolve their
+    /// data again. It is marked when a layer style changes, by the fragment
+    /// builder for the items whose fragments it changed, including every item
+    /// of an inline layout it emitted again, and by the
     /// [pre-paint build](crate::prepaint::builder::PrepaintTreeBuilder::build)
-    /// for fragments whose data changed.
+    /// for boxes whose data changed.
     ///
     /// `inputs` is the input tree `fragments` were built from. Build before
     /// clearing `dirty`. Returns `None` if `root` has no box fragment in
@@ -108,13 +118,13 @@ impl PaintLayerBuilder {
         Some(root_layer)
     }
 
-    /// Build every layer under `root`, deleting the layers of other
-    /// fragments, and return the root layer.
+    /// Build every layer under `root`, deleting the layers of other boxes,
+    /// and return the root layer.
     fn build_root(
         &mut self,
         sources: Sources<'_>,
         tree: &mut PaintLayerTree,
-        root: FragmentKey,
+        root: BoxFragmentKey,
     ) -> PaintLayerKey {
         let root_layer = match tree.layer_of(root) {
             Some(layer) => {
@@ -129,8 +139,8 @@ impl PaintLayerBuilder {
 
         self.rebuild(sources, tree, root_layer, true);
 
-        // Layers of fragments outside `root`, such as previous roots, were
-        // not reached.
+        // Layers of boxes outside `root`, such as previous roots, were not
+        // reached.
         self.deleting.clear();
         self.deleting
             .extend(tree.by_owner.values().copied().filter(|&layer| {
@@ -159,10 +169,11 @@ impl PaintLayerBuilder {
         let root_fragment = tree.layers[root_layer].owner;
         self.dirty.clear();
 
-        // Layers whose owners were deleted are not reached from the
+        // Layers whose owners were deleted, such as the inline part boxes of
+        // an inline layout emitted again, are not reached from the
         // fragments, so the layers they paint in are placed again.
         for (owner, &layer) in &tree.by_owner {
-            if fragments.items.get(owner).is_none()
+            if fragments.get(owner).is_none()
                 && let Some(parent) = tree.layers.parent(layer)
             {
                 self.dirty.push((0, parent));
@@ -180,36 +191,30 @@ impl PaintLayerBuilder {
             }
             let entry = dirty.entry(key);
 
-            if entry.flags.contains(DirtyFlags::NEED_LAYER) {
-                for fragment in fragments.fragments(key) {
-                    let current = tree.layer_of(fragment);
+            if entry.flags.contains(DirtyFlags::NEED_LAYER)
+                && let Some(owner) = sources.owner_of_item(key)
+            {
+                let current = tree.layer_of(owner);
 
-                    // Layer data follows the owner's styles and its layout.
-                    if let Some(item) = current.and_then(|layer| tree.layers.get_mut(layer)) {
-                        sources.resolve(item);
-                    }
+                // Layer data follows the owner's styles and its layout.
+                if let Some(item) = current.and_then(|layer| tree.layers.get_mut(layer)) {
+                    sources.resolve(item);
+                }
 
-                    // `NEED_CHILDREN` includes `NEED_LAYER`, so the stacking
-                    // of each fragment is compared with the layer it starts.
-                    // The root layer has z index 0, whatever the root's
-                    // styles.
-                    if fragment == root_fragment {
-                        continue;
-                    }
+                // `NEED_CHILDREN` includes `NEED_LAYER`, so the stacking of
+                // the owner is compared with the layer it starts. The root
+                // layer has z index 0, whatever the root's styles.
+                let stacking = sources.stacking(owner);
+                let current = current.map(|layer| tree.layers[layer].z_index);
 
-                    let stacking = sources.stacking(fragment);
-                    let current = current.map(|layer| tree.layers[layer].z_index);
-
-                    // A fragment gaining, losing or reordering its layer
-                    // changes the child layers of the layer it paints in.
-                    if stacking != current
-                        && let Some(layer) = fragments
-                            .items
-                            .parent(fragment)
-                            .and_then(|parent| tree.enclosing(fragments, parent))
-                    {
-                        self.dirty.push((0, layer));
-                    }
+                // An owner gaining, losing or reordering its layer changes the
+                // child layers of the layer it paints in.
+                if owner != root_fragment
+                    && stacking != current
+                    && let Some(layer) = paint_parent(fragments, FragmentRef::Box(owner))
+                        .and_then(|parent| tree.enclosing(fragments, parent))
+                {
+                    self.dirty.push((0, layer));
                 }
             }
 
@@ -218,7 +223,7 @@ impl PaintLayerBuilder {
             // item's fragments: its own layer if it starts one.
             if entry.flags.contains(DirtyFlags::NEED_CHILDREN)
                 && let Some(layer) = fragments
-                    .fragments(key)
+                    .fragments(inputs, key)
                     .next()
                     .and_then(|fragment| tree.enclosing(fragments, fragment))
             {
@@ -255,7 +260,7 @@ impl PaintLayerBuilder {
             let owner = item.owner;
             let starts = layer == root_layer || sources.stacking(owner).is_some();
 
-            if fragments.items.get(owner).is_none() || !starts {
+            if fragments.get(owner).is_none() || !starts {
                 continue;
             }
 
@@ -263,11 +268,12 @@ impl PaintLayerBuilder {
         }
     }
 
-    /// Place the child layers of `layer` again from its owner's subtree.
-    /// Layers new in this build are built the same way, and so is every
-    /// other child layer when `deep`; other child layers keep their
-    /// children. Layers built resolve their data. Detached child layers are
-    /// deleted at the end of the build unless they are reached again.
+    /// Place the child layers of `layer` again from the descendants of its
+    /// owner in paint order. Layers new in this build are built the same
+    /// way, and so is every other child layer when `deep`; other child layers
+    /// keep their children. Layers built resolve their data. Detached child
+    /// layers are deleted at the end of the build unless they are reached
+    /// again.
     fn rebuild(
         &mut self,
         sources: Sources<'_>,
@@ -281,17 +287,29 @@ impl PaintLayerBuilder {
         tree.layers[layer].pass = self.pass;
         self.pending.clear();
         self.detach_children(tree, layer);
-        self.push_children(fragments, owner, layer);
+        self.push_layer_children(fragments, owner, layer);
 
         while let Some(Visit { fragment, layer }) = self.pending.pop() {
-            let Some(z_index) = sources.stacking(fragment) else {
+            let starting = layer_owner(fragments, fragment)
+                .and_then(|owner| Some((owner, sources.stacking(owner)?)));
+            let Some((owner, z_index)) = starting else {
                 self.push_children(fragments, fragment, layer);
                 continue;
             };
 
-            let (child, created) = match tree.layer_of(fragment) {
+            // The pieces of an inline element paint in the layer its first
+            // piece starts, which covers them all.
+            let own = match fragment {
+                FragmentRef::Box(key) => Some(key),
+                FragmentRef::Inline { .. } => part_of_piece(fragments, fragment),
+            };
+            if own != Some(owner) {
+                continue;
+            }
+
+            let (child, created) = match tree.layer_of(owner) {
                 Some(child) => (child, false),
-                None => (self.insert(tree, fragment, z_index), true),
+                None => (self.insert(tree, owner, z_index), true),
             };
             let build = deep || created;
             let item = &mut tree.layers[child];
@@ -306,13 +324,18 @@ impl PaintLayerBuilder {
 
             if build {
                 self.detach_children(tree, child);
-                self.push_children(fragments, fragment, child);
+                self.push_layer_children(fragments, owner, child);
             }
         }
     }
 
     /// Insert a parentless layer owned by `owner`, with its data unresolved.
-    fn insert(&self, tree: &mut PaintLayerTree, owner: FragmentKey, z_index: i32) -> PaintLayerKey {
+    fn insert(
+        &self,
+        tree: &mut PaintLayerTree,
+        owner: BoxFragmentKey,
+        z_index: i32,
+    ) -> PaintLayerKey {
         let layer = tree.layers.insert(PaintLayerItem {
             owner,
             z_index,
@@ -335,18 +358,57 @@ impl PaintLayerBuilder {
         }
     }
 
-    /// Queue the children of `fragment` in tree order, painting in `layer`.
+    /// Queue the children of `fragment` in paint order, painting in `layer`.
     fn push_children(
         &mut self,
         fragments: &FragmentTree,
-        fragment: FragmentKey,
+        fragment: FragmentRef,
         layer: PaintLayerKey,
     ) {
-        self.pending
-            .extend(fragments.items.children(fragment).rev().map(|child| Visit {
+        let start = self.pending.len();
+
+        for_each_paint_child(fragments, fragment, |child| {
+            self.pending.push(Visit {
                 fragment: child,
                 layer,
-            }));
+            });
+        });
+
+        // Popped from the last.
+        self.pending[start..].reverse();
+    }
+
+    /// Queue the fragments painting in the layer `owner` starts, in paint
+    /// order: the children of a principal box, or those of every piece of an
+    /// inline element, following its linked inline part boxes.
+    fn push_layer_children(
+        &mut self,
+        fragments: &FragmentTree,
+        owner: BoxFragmentKey,
+        layer: PaintLayerKey,
+    ) {
+        let start = self.pending.len();
+        let mut push = |fragment| {
+            for_each_paint_child(fragments, fragment, |child| {
+                self.pending.push(Visit {
+                    fragment: child,
+                    layer,
+                });
+            });
+        };
+
+        if piece_of_part(fragments, owner).is_some() {
+            for part in fragments.split_boxes(owner) {
+                if let Some(piece) = piece_of_part(fragments, part) {
+                    push(piece);
+                }
+            }
+        } else {
+            push(FragmentRef::Box(owner));
+        }
+
+        // Popped from the last.
+        self.pending[start..].reverse();
     }
 
     /// Delete the detached layers this build did not reach again.
@@ -395,51 +457,111 @@ impl Sources<'_> {
         self.ui.props(self.inputs.items.get(key)?.node)
     }
 
-    /// The z index of the layer a fragment starts, or `None` if it paints in
-    /// the layer of its parent. Only boxes start layers.
-    fn stacking(&self, key: FragmentKey) -> Option<i32> {
-        let fragment = self.fragments.items.get(key)?;
+    /// The box that would own the layer an item starts: its box, or the
+    /// first inline part box of an inline element.
+    fn owner_of_item(&self, key: LayoutInputKey) -> Option<BoxFragmentKey> {
+        self.fragments.box_fragment(key).or_else(|| {
+            let part = self.fragments.inline_boxes(self.inputs, key).next()?;
+            layer_owner(self.fragments, FragmentRef::Box(part))
+        })
+    }
 
-        if !fragment.item.is_box() {
-            return None;
-        }
+    /// The z index of the layer a box starts, or `None` if it paints in the
+    /// layer of its paint parent. Only principal boxes and the inline part
+    /// boxes of inline elements start layers.
+    fn stacking(&self, key: BoxFragmentKey) -> Option<i32> {
+        let fragment = self.fragments.get(key)?;
+        let transformed = match BoxRole::of(fragment) {
+            BoxRole::Principal => true,
+            BoxRole::InlinePart => false,
+            BoxRole::Anonymous => return None,
+        };
 
-        stacking(self.props(fragment.source)?)
+        stacking(self.props(fragment.source)?, transformed)
     }
 
     /// Resolve the opacity, filters and blend mode of a layer from its
     /// owner's item.
     fn resolve(&self, item: &mut PaintLayerItem) {
-        let fragment = self.fragments.items.get(item.owner);
+        let fragment = self.fragments.get(item.owner);
         let props = fragment.and_then(|fragment| self.props(fragment.source));
 
         item.opacity = props.map_or(1.0, |props| {
             let Opacity(opacity) = props.get_or_default();
             opacity.clamp(0.0, 1.0) as f32
         });
-        item.filter = fragment.zip(props).and_then(|(fragment, props)| {
+        item.filter = props.and_then(|props| {
             let effects = props.get::<Filter>()?;
-            Some(filter(&effects.0, fragment.layout.overflow))
+            let bounds = self.bounds(item.owner, |geometry| geometry.overflow)?;
+            Some(filter(&effects.0, bounds))
         });
-        item.backdrop_filter = fragment.zip(props).and_then(|(fragment, props)| {
+        item.backdrop_filter = props.and_then(|props| {
             let effects = props.get::<BackdropFilter>()?;
-            Some(filter(&effects.0, fragment.layout.border_box()))
+            let bounds = self.bounds(item.owner, FragmentGeometry::border_box)?;
+            Some(filter(&effects.0, bounds))
         });
         item.blend_mode = props
             .and_then(|props| props.get_cloned())
             .map(|MixBlend(mode)| mode);
     }
+
+    /// The `area` of the box `owner`, in its local coordinates, joined with
+    /// those of the other pieces of its inline element when it is an inline
+    /// part box.
+    fn bounds(
+        &self,
+        owner: BoxFragmentKey,
+        area: impl Fn(&FragmentGeometry) -> kurbo::Rect,
+    ) -> Option<kurbo::Rect> {
+        let fragment = self.fragments.get(owner)?;
+        let mut bounds = area(&fragment.layout.geometry);
+
+        if BoxRole::of(fragment) != BoxRole::InlinePart {
+            return Some(bounds);
+        }
+
+        let origin = self.content_offset(owner)?;
+
+        for part in self.fragments.split_boxes(owner).skip(1) {
+            if let Some(offset) = self.content_offset(part) {
+                let geometry = &self.fragments.boxes[part].layout.geometry;
+                bounds = bounds.union(area(geometry) + (offset - origin));
+            }
+        }
+
+        Some(bounds)
+    }
+
+    /// The location of an inline part box in the box holding the inline
+    /// content of its element: the owner of its inline layout, or the box
+    /// whose run that is. Run boxes are only placed, so the pieces of an
+    /// element share these coordinates.
+    fn content_offset(&self, part: BoxFragmentKey) -> Option<Vec2> {
+        let location = |key| {
+            let location = self.fragments.get(key)?.layout.geometry.location;
+            Some(Vec2::new(location.x, location.y))
+        };
+        let parent = self.fragments.boxes.parent(part)?;
+        let mut offset = location(part)?;
+
+        if BoxRole::of(self.fragments.get(parent)?) == BoxRole::Anonymous {
+            offset += location(parent)?;
+        }
+
+        Some(offset)
+    }
 }
 
-/// The z index of the layer a box with `props` starts, or `None` if it paints
-/// in the layer of its parent. Setting a layer style starts a layer, whatever
-/// its value. An auto z index counts as 0.
-fn stacking(props: Props<'_>) -> Option<i32> {
+/// The z index of the layer a fragment with `props` starts, or `None` if it
+/// paints in the layer of its paint parent. Setting a layer style starts a
+/// layer, whatever its value, though a [`Transform`] only for fragments that
+/// are `transformed`. An auto z index counts as 0.
+fn stacking(props: Props<'_>, transformed: bool) -> Option<i32> {
     if let AutoValue::Value(z_index) = props.get_or_default::<ZIndex>().0 {
         return Some(z_index);
     }
 
-    let starts = props.get::<Transform>().is_some()
+    let starts = transformed && props.get::<Transform>().is_some()
         || props.get::<Opacity>().is_some()
         || props.get::<Filter>().is_some()
         || props.get::<BackdropFilter>().is_some()
@@ -458,7 +580,7 @@ fn filter(effects: &[FilterEffect], bounds: kurbo::Rect) -> Arc<anyrender::Filte
 }
 
 /// Attach `child` to `parent` after the last child layer with a z index at
-/// most its own. Children attached in tree order then stay in tree order
+/// most its own. Children attached in paint order then stay in paint order
 /// among equal z indices.
 fn insert_sorted(tree: &mut PaintLayerTree, parent: PaintLayerKey, child: PaintLayerKey) {
     let z_index = tree.layers[child].z_index;

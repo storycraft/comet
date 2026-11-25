@@ -4,6 +4,14 @@
 //! box, such as lines and glyph runs, get no paint data. Their boxes are flat
 //! children of the box owning the inline layout, so the inline elements
 //! enclosing them are found through the items.
+//!
+//! In paint order, fragments form a tree of [`FragmentRef`]s: a box holds
+//! its child boxes, or, when it owns an inline layout, the items on its lines
+//! and its out-of-flow boxes. A piece of an inline element is the
+//! [`FragmentRef::Inline`] of its item, holding the items of its subtree; its
+//! [inline part](BoxFragmentType::InlinePart) box only decorates it. An item
+//! placing an atomic inline box is that box. Lines are skipped, as they paint
+//! nothing.
 
 use comet_layout::{
     fragment2::{
@@ -66,11 +74,12 @@ pub fn boxes_of<'a>(
 }
 
 /// Index of the parent of the item `index` of `inline`: the line or piece
-/// of an inline element holding it. `None` for lines.
+/// of an inline element holding it. `None` for lines, and for indices out of
+/// range.
 pub fn inline_parent(inline: &InlineLayout, index: usize) -> Option<usize> {
     // Subtrees follow their roots, so the nearest item before `index`
     // covering it is its parent.
-    (0..index)
+    (0..index.min(inline.items.len()))
         .rev()
         .find(|&i| i + inline.items[i].descendants as usize >= index)
 }
@@ -84,38 +93,140 @@ pub fn item_of_box(inline: &InlineLayout, key: BoxFragmentKey) -> Option<usize> 
         .position(|item| item.child_box() == Some(key))
 }
 
-/// The inline part box of the nearest piece of an inline element holding
-/// the item `index` of `inline`, excluding the item itself.
-pub fn enclosing_part(inline: &InlineLayout, index: usize) -> Option<BoxFragmentKey> {
-    std::iter::successors(inline_parent(inline, index), |&index| {
-        inline_parent(inline, index)
-    })
-    .find_map(|index| inline.items[index].child_box())
+/// Index of the nearest piece of an inline element holding the item `index`
+/// of `inline`, excluding the item itself.
+pub fn enclosing_piece(inline: &InlineLayout, index: usize) -> Option<usize> {
+    // Lines are the roots, so every other ancestor is a piece.
+    inline_parent(inline, index).filter(|&parent| !inline.items[parent].is_line())
 }
 
-/// The parent of a fragment in paint order: the inline part box of the
-/// inline element piece holding it, else its parent box. An inline item's
-/// parent is the owner of its layout when no piece holds it. Lines are
-/// skipped, as they paint nothing. `None` for the root box.
+/// The piece an inline part box decorates: the item placing it in the inline
+/// layout of its parent box. `None` for other boxes.
+pub fn piece_of_part(fragments: &FragmentTree, part: BoxFragmentKey) -> Option<FragmentRef> {
+    if fragments.get(part)?.box_type != BoxFragmentType::InlinePart {
+        return None;
+    }
+
+    let owner = fragments.boxes.parent(part)?;
+    let index = item_of_box(fragments.inline_layout(owner)?, part)?;
+
+    Some(FragmentRef::Inline {
+        owner,
+        index: index as u32,
+    })
+}
+
+/// The inline part box decorating a piece of an inline element. `None` for
+/// other items.
+pub fn part_of_piece(fragments: &FragmentTree, fragment: FragmentRef) -> Option<BoxFragmentKey> {
+    let FragmentRef::Inline { owner, index } = fragment else {
+        return None;
+    };
+    let part = fragments
+        .inline_layout(owner)?
+        .items
+        .get(index as usize)?
+        .child_box()?;
+
+    (fragments.get(part)?.box_type == BoxFragmentType::InlinePart).then_some(part)
+}
+
+/// The fragment painting the item `index` of the inline layout of `owner`:
+/// the box an item places, unless it is the inline part box decorating a
+/// piece, else the item itself.
+pub fn item_ref(fragments: &FragmentTree, owner: BoxFragmentKey, index: usize) -> FragmentRef {
+    let placed = fragments
+        .inline_layout(owner)
+        .and_then(|inline| inline.items.get(index)?.child_box())
+        .filter(|&child| {
+            fragments
+                .get(child)
+                .is_some_and(|fragment| fragment.box_type != BoxFragmentType::InlinePart)
+        });
+
+    placed.map_or(
+        FragmentRef::Inline {
+            owner,
+            index: index as u32,
+        },
+        FragmentRef::Box,
+    )
+}
+
+/// Call `f` with each child of `fragment` in paint order: the child boxes of
+/// a box, or the items on the lines of the inline layout it owns, then its
+/// out-of-flow boxes, which no item places; the items in the subtree of an
+/// inline item. Inline part boxes have no children: their content belongs
+/// to their pieces.
+pub fn for_each_paint_child(
+    fragments: &FragmentTree,
+    fragment: FragmentRef,
+    mut f: impl FnMut(FragmentRef),
+) {
+    match fragment {
+        FragmentRef::Box(key) => {
+            let Some(parent) = fragments.get(key) else {
+                return;
+            };
+
+            if let Some(inline) = parent.inline() {
+                for line in inline.roots() {
+                    for child in inline.children(line) {
+                        f(item_ref(fragments, key, child));
+                    }
+                }
+
+                for child in fragments.boxes.children(key) {
+                    if fragments.boxes[child].box_type == BoxFragmentType::OutOfFlow {
+                        f(FragmentRef::Box(child));
+                    }
+                }
+            } else if parent.box_type != BoxFragmentType::InlinePart {
+                for child in fragments.boxes.children(key) {
+                    f(FragmentRef::Box(child));
+                }
+            }
+        }
+        FragmentRef::Inline { owner, index } => {
+            let index = index as usize;
+
+            if let Some(inline) = fragments.inline_layout(owner)
+                && index < inline.items.len()
+            {
+                for child in inline.children(index) {
+                    f(item_ref(fragments, owner, child));
+                }
+            }
+        }
+    }
+}
+
+/// The parent of a fragment in paint order: the piece of the inline element
+/// holding it, else its parent box. An inline part box is a parent of
+/// nothing, and has the parent of its piece. `None` for the root box.
 ///
 /// Not the parent coordinates are relative to: inline part boxes, the boxes
 /// they hold and inline items are all placed relative to the border box of
 /// the owner of their inline layout, so their transforms do not compose
 /// along paint parents.
 pub fn paint_parent(fragments: &FragmentTree, fragment: FragmentRef) -> Option<FragmentRef> {
-    let (owner, part) = match fragment {
-        FragmentRef::Inline { owner, index } => {
-            let inline = fragments.inline_layout(owner)?;
-            (owner, enclosing_part(inline, index as usize))
-        }
+    let (owner, index) = match fragment {
+        FragmentRef::Inline { owner, index } => (owner, Some(index as usize)),
         FragmentRef::Box(key) => {
             let owner = fragments.boxes.parent(key)?;
-            let part = fragments
+            let index = fragments
                 .inline_layout(owner)
-                .and_then(|inline| enclosing_part(inline, item_of_box(inline, key)?));
-            (owner, part)
+                .and_then(|inline| item_of_box(inline, key));
+
+            (owner, index)
         }
     };
+    let piece = index.and_then(|index| enclosing_piece(fragments.inline_layout(owner)?, index));
 
-    Some(FragmentRef::Box(part.unwrap_or(owner)))
+    Some(
+        piece.map_or(FragmentRef::Box(owner), |index| FragmentRef::Inline {
+            owner,
+            index: index as u32,
+        }),
+    )
 }
