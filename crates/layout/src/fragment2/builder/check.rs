@@ -33,6 +33,11 @@ pub(super) fn check(cx: &InlineBuildContext<'_>, fragments: &FragmentTree, root:
             );
             assert!(fragment.child_layout.is_content());
         } else if fragments.is_anonymous(key) {
+            assert_eq!(
+                fragment.box_type,
+                BoxFragmentType::Anonymous,
+                "anonymous boxes other than inline parts are marked anonymous"
+            );
             let owner = parent.map(|parent| &fragments.boxes[parent]);
             assert!(
                 owner.is_some_and(|owner| owner.child_layout.is_mixed_inline()),

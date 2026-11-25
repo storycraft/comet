@@ -41,6 +41,11 @@ new_key_type! {
 pub enum BoxFragmentType {
     /// In-flow block level box, a child of a container, or a build root.
     Normal,
+    /// Anonymous in-flow block level box generated for its source, wrapping
+    /// part of its content: a run of the inline content of a
+    /// [mixed inline](ChildLayoutType::MixedInline) box. It is not the box of
+    /// its source, and paints nothing of its own.
+    Anonymous,
     /// In-flow block level box establishing a new block formatting context,
     /// such as `display: flow-root`. Its descendants' margins and floats do
     /// not interact with those outside it. Inline level flow roots are

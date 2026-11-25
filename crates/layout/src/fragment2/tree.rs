@@ -1,8 +1,14 @@
 use comet_slotmap_tree::SlotTree;
 use slotmap::SecondaryMap;
 
-use super::{BoxFragment, BoxFragmentKey, FragmentGeometry, FragmentRef, InlineLayout};
-use crate::input::{LayoutInputKey, tree::LayoutInputTree};
+use super::{
+    BoxFragment, BoxFragmentKey, BoxFragmentType, ChildLayoutType, FragmentGeometry, FragmentRef,
+    InlineLayout,
+};
+use crate::{
+    input::{LayoutInputKey, tree::LayoutInputTree},
+    taffy::style::Style,
+};
 
 /// Box fragments of a layout input tree, each owning the inline layout of the
 /// inline formatting context it establishes.
@@ -268,10 +274,21 @@ impl FragmentTree {
         key
     }
 
-    /// Insert a detached anonymous box fragment, leaving the box of its
-    /// source as it is.
-    pub(crate) fn insert_anonymous(&mut self, fragment: BoxFragment) -> BoxFragmentKey {
-        self.boxes.insert(fragment)
+    /// Insert a detached [anonymous](super::BoxFragmentType::Anonymous) box
+    /// fragment generated for `source`, leaving the box of its source as it
+    /// is.
+    pub(crate) fn insert_anonymous(
+        &mut self,
+        source: LayoutInputKey,
+        child_layout: ChildLayoutType,
+        style: Style,
+    ) -> BoxFragmentKey {
+        self.boxes.insert(BoxFragment::new(
+            source,
+            BoxFragmentType::Anonymous,
+            child_layout,
+            style,
+        ))
     }
 
     /// Delete a box fragment and its descendants, and their source lookups.

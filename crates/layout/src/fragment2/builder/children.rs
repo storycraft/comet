@@ -411,13 +411,11 @@ impl Engine<'_> {
             run_start: start,
             ..Default::default()
         };
-        let fragment = BoxFragment::new(
+        let key = self.fragments.insert_anonymous(
             owner,
-            BoxFragmentType::Normal,
             ChildLayoutType::Inline(Box::new(layout)),
             style,
         );
-        let key = self.fragments.insert_anonymous(fragment);
 
         self.scratch.created.insert(key, ());
         self.scratch.created_order.push(key);

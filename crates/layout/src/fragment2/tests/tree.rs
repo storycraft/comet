@@ -48,11 +48,12 @@ fn boxes_outside_source_lookup_are_anonymous() {
     };
 
     let root = tree.insert(new());
-    let anonymous = tree.insert_anonymous(new());
+    let anonymous = tree.insert_anonymous(a, ChildLayoutType::Block, style::resolve(None, &cx));
     tree.boxes.append(root, anonymous);
 
     assert!(!tree.is_anonymous(root));
     assert!(tree.is_anonymous(anonymous));
+    assert_eq!(tree.boxes[anonymous].box_type, BoxFragmentType::Anonymous);
     assert_eq!(tree.box_fragment(a), Some(root));
 
     // Deleting the anonymous box keeps the box of its source.
