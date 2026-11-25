@@ -3,15 +3,22 @@
 //!
 //! The inline layout is shaped when it is built, so laying it out never
 //! shapes again:
-//! 1. Lay out the boxes inside the inline content, and write their margin
-//!    boxes into their Parley inline boxes.
+//! 1. Lay out the in-flow boxes inside the inline content as Taffy children
+//!    of the owner, and write their margin boxes into their Parley inline
+//!    boxes.
 //! 2. Break the lines at the available width, and align them.
 //! 3. [Emit](super::emit) the inline items, placing the boxes inside.
+//! 4. Hand the out-of-flow boxes inside to Taffy: the owner lays out those
+//!    it is the containing block of, and returns the others in its
+//!    [`taffy::LayoutOutput`] for an ancestor to lay out.
 
 use parley::Alignment;
-use taffy::{ResolveOrZero, style::CoreStyle};
+use taffy::{LayoutPartialTree, ResolveOrZero, style::CoreStyle};
 
-use super::{Engine, adapter::scrollable_overflow};
+use super::{
+    Engine,
+    adapter::{BoxTree, node_id, scrollable_overflow},
+};
 use crate::fragment2::{BoxFragmentKey, BoxFragmentType, ChildLayoutType, inline_box_source};
 
 /// Byte length of the character standing for an in-flow inline box.
@@ -49,7 +56,6 @@ impl Engine<'_> {
 
         if input.run_mode == taffy::RunMode::PerformLayout {
             let width = (output.size.width - inset.left - inset.right).max(0.0);
-            let height = (output.size.height - inset.top - inset.bottom).max(0.0);
             let available = taffy::Size {
                 width: taffy::AvailableSpace::Definite(width),
                 height: input.available_space.height,
@@ -58,13 +64,6 @@ impl Engine<'_> {
             self.prepare(key, available);
             let align = self.alignment(key);
             self.break_lines(key, width, align);
-            self.layout_out_of_flow(
-                key,
-                taffy::Size {
-                    width: taffy::AvailableSpace::Definite(width),
-                    height: taffy::AvailableSpace::Definite(height),
-                },
-            );
 
             let origin = kurbo::Vec2::new(f64::from(inset.left), f64::from(inset.top));
 
@@ -74,6 +73,26 @@ impl Engine<'_> {
                 let content = scrollable_overflow(content, border);
                 output.scrollable_overflow_rect = union(output.scrollable_overflow_rect, content);
             }
+
+            // Out-of-flow boxes inside, and those left by the boxes inside,
+            // in document order.
+            output.oof_candidates = std::mem::take(&mut self.scratch.candidates);
+            output.oof_positioning_area = Some(taffy::OofPositioningArea {
+                size: taffy::Size {
+                    width: (output.size.width - border.left - border.right).max(0.0),
+                    height: (output.size.height - border.top - border.bottom).max(0.0),
+                },
+                offset: taffy::Point {
+                    x: border.left,
+                    y: border.top,
+                },
+            });
+            taffy::compute_oof_layout(
+                &mut BoxTree::root_pass(self, key),
+                node_id(key),
+                &mut output,
+            );
+            self.place_hoisted(key);
         }
 
         if let Some(inline) = self.fragments.inline_layout(key) {
@@ -115,7 +134,7 @@ impl Engine<'_> {
     }
 
     /// The in-flow boxes inside the inline content of `key`, in flow order.
-    fn collect_inline_boxes(&mut self, key: BoxFragmentKey, out_of_flow: bool) {
+    fn collect_in_flow_boxes(&mut self, key: BoxFragmentKey) {
         let mut children = std::mem::take(&mut self.scratch.inline_children);
         children.clear();
 
@@ -131,9 +150,9 @@ impl Engine<'_> {
                             .copied()
                     })
                     .filter(|&child| {
-                        self.fragments.get(child).is_some_and(|fragment| {
-                            (fragment.box_type == BoxFragmentType::OutOfFlow) == out_of_flow
-                        })
+                        self.fragments
+                            .get(child)
+                            .is_some_and(|fragment| fragment.box_type != BoxFragmentType::OutOfFlow)
                     }),
             );
         }
@@ -147,34 +166,83 @@ impl Engine<'_> {
     /// Inline part boxes take the available width, atomic inlines their
     /// size within it.
     fn prepare(&mut self, key: BoxFragmentKey, available: taffy::Size<taffy::AvailableSpace>) {
-        self.collect_inline_boxes(key, false);
+        self.collect_in_flow_boxes(key);
         let children = std::mem::take(&mut self.scratch.inline_children);
 
         for &child in &children {
-            self.compute(child, available);
+            self.layout_inline_child(key, child, available);
         }
 
         self.scratch.inline_children = children;
         self.update_inline_boxes(key);
     }
 
-    /// Lay out the out-of-flow boxes inside the inline content of `key` in
-    /// its content box. They are placed at their static positions.
+    /// Lay out the in-flow box `child` inside the inline content of `owner`
+    /// as a Taffy child of the owner, in the available space of its content
+    /// box. Its size, margins and baseline are recorded for its inline box,
+    /// and the out-of-flow candidates it leaves for placing it.
     ///
-    /// TODO: resolve their insets against their containing block.
-    fn layout_out_of_flow(
+    /// An inline part box with an auto width stretches to the available
+    /// width. Atomic inlines size themselves.
+    fn layout_inline_child(
         &mut self,
-        key: BoxFragmentKey,
+        owner: BoxFragmentKey,
+        child: BoxFragmentKey,
         available: taffy::Size<taffy::AvailableSpace>,
     ) {
-        self.collect_inline_boxes(key, true);
-        let children = std::mem::take(&mut self.scratch.inline_children);
+        let parent_width = available.width.into_option();
+        let fragment = &self.fragments.boxes[child];
+        let style = &fragment.style;
+        let margin = style.margin().resolve_or_zero(parent_width, |_, _| 0.0);
+        let padding = style.padding().resolve_or_zero(parent_width, |_, _| 0.0);
+        let border = style.border().resolve_or_zero(parent_width, |_, _| 0.0);
+        let known_width = (fragment.box_type == BoxFragmentType::InlinePart
+            && style.size().width.is_auto())
+        .then(|| parent_width.map(|width| (width - margin.left - margin.right).max(0.0)))
+        .flatten();
+        let previous = fragment.layout.unrounded;
 
-        for &child in &children {
-            self.compute(child, available);
-        }
+        let output = BoxTree::root_pass(self, owner).compute_child_layout(
+            node_id(child),
+            taffy::LayoutInput {
+                known_dimensions: taffy::Size {
+                    width: known_width,
+                    height: None,
+                },
+                known_dimensions_are_definite: taffy::Size {
+                    width: true,
+                    height: true,
+                },
+                parent_size: taffy::Size {
+                    width: parent_width,
+                    height: None,
+                },
+                available_space: available,
+                sizing_mode: taffy::SizingMode::InherentSize,
+                axis: taffy::RequestedAxis::Both,
+                run_mode: taffy::RunMode::PerformLayout,
+                vertical_margins_are_collapsible: taffy::Line::FALSE,
+            },
+        );
 
-        self.scratch.inline_children = children;
+        // Placed by the lines when emitted.
+        let layout = taffy::Layout {
+            order: previous.order,
+            location: previous.location,
+            size: output.size,
+            scrollable_overflow_rect: output.scrollable_overflow_rect,
+            scrollbar_size: taffy::Size::ZERO,
+            border,
+            padding,
+            margin,
+        };
+        self.set_unrounded_layout(child, &layout);
+
+        let baseline = self.inline_baseline(child);
+        self.fragments.boxes[child].layout.baseline = baseline;
+        self.scratch
+            .child_candidates
+            .insert(child, output.oof_candidates);
     }
 
     /// Copy the margin boxes of the in-flow boxes inside the inline content

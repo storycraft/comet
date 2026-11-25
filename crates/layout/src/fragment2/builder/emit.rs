@@ -6,13 +6,14 @@
 
 use comet_slotmap_tree::SlotTree;
 use rustc_hash::FxHashMap;
+use taffy::style::CoreStyle;
 
-use super::{Engine, PAINT_CHANGED, Scratch};
+use super::{Engine, PAINT_CHANGED, Scratch, adapter::node_id};
 use crate::{
     dirty_map::DirtyMap,
     fragment2::{
-        BoxFragment, BoxFragmentKey, ChildLayoutType, FragmentGeometry, InlineItem, InlineItemKind,
-        InlineLink, inline_box_source,
+        BoxFragment, BoxFragmentKey, BoxFragmentType, ChildLayoutType, FragmentGeometry,
+        InlineItem, InlineItemKind, InlineLink, inline_box_source,
     },
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     style::geometry::{Point, Size},
@@ -61,9 +62,21 @@ impl Engine<'_> {
             open,
             chain,
             collapse,
+            child_candidates,
+            candidates,
+            order,
             ..
         } = &mut *self.scratch;
         links.clear();
+        *candidates = taffy::OofCandidates::new();
+        order.clear();
+        order.extend(
+            self.fragments
+                .boxes
+                .children(key)
+                .enumerate()
+                .map(|(index, child)| (child, index as u32)),
+        );
 
         let mut emitter = Emitter {
             tree,
@@ -74,6 +87,9 @@ impl Engine<'_> {
             links,
             boxes: &mut self.fragments.boxes,
             dirty: &mut *self.dirty,
+            child_candidates,
+            candidates,
+            order,
             line_extent: kurbo::Rect::ZERO,
             line_baseline: 0.0,
         };
@@ -119,6 +135,14 @@ impl Engine<'_> {
                         );
 
                         match inline.atomics.get(&source).copied() {
+                            Some(child)
+                                if emitter.boxes.get(child).is_some_and(|fragment| {
+                                    fragment.box_type == BoxFragmentType::OutOfFlow
+                                }) =>
+                            {
+                                // Out-of-flow boxes start at the top of the line.
+                                emitter.out_of_flow(child, kurbo::Point::new(position.x, rect.y0));
+                            }
                             Some(child) => {
                                 let collapse = collapse.get(&source).copied().unwrap_or(0.0);
                                 emitter.place_box(source, child, position, collapse);
@@ -157,6 +181,14 @@ struct Emitter<'a> {
     links: &'a mut FxHashMap<LayoutInputKey, usize>,
     boxes: &'a mut SlotTree<BoxFragmentKey, BoxFragment>,
     dirty: &'a mut DirtyMap,
+    /// Out-of-flow candidates left by each in-flow box inside, relative to
+    /// its border box.
+    child_candidates: &'a mut FxHashMap<BoxFragmentKey, taffy::OofCandidates>,
+    /// Out-of-flow candidates of the inline content, relative to the
+    /// owner's border box, in document order.
+    candidates: &'a mut taffy::OofCandidates,
+    /// Index of each child among the children of the owner.
+    order: &'a FxHashMap<BoxFragmentKey, u32>,
     /// Union of the extents of the current line's content.
     line_extent: kurbo::Rect,
     /// Baseline of the current line, in the owner's coordinates.
@@ -333,6 +365,17 @@ impl Emitter<'_> {
             self.dirty.mark(self.tree, source, PAINT_CHANGED);
         }
 
+        if let Some(mut candidates) = self.child_candidates.remove(&child) {
+            candidates.translate(taffy::Point {
+                x: location.x as f32,
+                y: location.y as f32,
+            });
+            self.candidates.append(&mut candidates);
+        }
+
+        let Some(fragment) = self.boxes.get(child) else {
+            return;
+        };
         let geometry = fragment.layout.geometry;
         let baseline = fragment
             .layout
@@ -354,6 +397,32 @@ impl Emitter<'_> {
             baseline,
         });
         self.add_to_parent(rect, geometry.extent());
+    }
+
+    /// Record the out-of-flow box `child` as a Taffy candidate whose static
+    /// position is `position`, for its containing block to lay out. It has
+    /// no item: it is placed after the lines, and only found among the
+    /// children of the owner.
+    fn out_of_flow(&mut self, child: BoxFragmentKey, position: kurbo::Point) {
+        let Some(fragment) = self.boxes.get(child) else {
+            return;
+        };
+
+        self.candidates.push(taffy::OofCandidate {
+            node: node_id(child),
+            order: self.order.get(&child).copied().unwrap_or(0),
+            position: fragment.style.position(),
+            static_position: taffy::Point {
+                x: taffy::AxisStaticPosition::from_edge(
+                    position.x as f32,
+                    taffy::AxisStaticEdge::Start,
+                ),
+                y: taffy::AxisStaticPosition::from_edge(
+                    position.y as f32,
+                    taffy::AxisStaticEdge::Start,
+                ),
+            },
+        });
     }
 
     /// Open the piece of an empty inline element, as wide as nothing at

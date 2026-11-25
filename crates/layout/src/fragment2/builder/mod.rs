@@ -2,21 +2,25 @@
 //! changes marked in a [`DirtyMap`].
 //!
 //! A build runs in steps:
-//! 1. [`children`]: boxes are added, removed, moved and rebuilt where
+//! 1. [`children`]: boxes are added, removed, moved and changed where
 //!    [`DirtyFlags::NEED_CHILDREN`] is marked, without laying anything out.
-//!    Inline formatting contexts whose content changed are built again with
-//!    their text shaped.
+//!    Inline formatting contexts whose content changed are marked to be
+//!    built again. Box keys are kept.
 //! 2. [`invalidate`]: boxes marked [`DirtyFlags::NEED_BOX_LAYOUT`], or
 //!    depending on a changed viewport, resolve their styles again and drop
 //!    their cached layouts and those of their ancestors.
-//! 3. [`block`]: boxes are laid out with Taffy, and inline formatting
-//!    contexts by breaking their [`lines`] and [emitting](emit) their items.
-//!    Laying out an inline layout never shapes it again.
+//! 3. [`block`]: boxes are laid out with Taffy. An inline formatting
+//!    context is [built](content) in place when it is laid out, with the boxes
+//!    inside it, then laid out by breaking its [`lines`] and
+//!    [emitting](emit) its items.
 
 mod adapter;
 mod block;
+#[cfg(debug_assertions)]
+mod check;
 mod children;
 pub mod classify;
+mod content;
 mod emit;
 mod invalidate;
 mod lines;
@@ -27,7 +31,7 @@ use slotmap::SecondaryMap;
 
 use super::{
     BoxFragmentKey, FragmentTree,
-    inline::builder::{InlineBuildContext, InlineFragmentainer, InlineLayoutBuilder},
+    inline::collect::{InlineBuildContext, InlineContentBuilder},
 };
 use crate::{
     dirty_map::{DirtyFlags, DirtyMap},
@@ -45,26 +49,26 @@ pub(crate) const PAINT_CHANGED: DirtyFlags =
 #[derive(Default)]
 pub struct FragmentTreeBuilder {
     pub fonts: parley::FontContext,
-    inline: InlineLayoutBuilder,
+    content: InlineContentBuilder,
     scratch: Scratch,
 }
 
 /// Buffers retained between builds.
 #[derive(Default)]
-struct Scratch {
+pub(in crate::fragment2) struct Scratch {
     /// Pending work of the child sync.
     tasks: Vec<Task>,
     /// Boxes created by the current build.
     created: SecondaryMap<BoxFragmentKey, ()>,
+    /// Boxes created by the current build, in creation order.
+    created_order: Vec<BoxFragmentKey>,
     /// Keys collected while borrowing the fragment tree.
     keys: Vec<(LayoutInputKey, BoxFragmentKey)>,
-    /// Boxes collected while borrowing the scratch buffers.
-    boxes: Vec<BoxFragmentKey>,
     /// Items to visit by the invalidation, with the box of their nearest
     /// ancestor generating one, or their own box.
     walk: Vec<(LayoutInputKey, BoxFragmentKey)>,
     /// Stack of the child boxes of the boxes being laid out.
-    children: Vec<BoxFragmentKey>,
+    pub(in crate::fragment2) children: Vec<BoxFragmentKey>,
     /// Out-of-flow boxes being placed.
     hoisted: Vec<BoxFragmentKey>,
     /// Boxes inside the inline content being laid out.
@@ -78,6 +82,13 @@ struct Scratch {
     open: Vec<emit::Piece>,
     /// Inline ancestors of the inline item being emitted.
     chain: Vec<LayoutInputKey>,
+    /// Out-of-flow candidates left by the latest final layout of each box
+    /// inside the inline content being laid out.
+    child_candidates: FxHashMap<BoxFragmentKey, taffy::OofCandidates>,
+    /// Out-of-flow candidates of the inline content being emitted.
+    candidates: taffy::OofCandidates,
+    /// Index of each child among the children of the box being emitted.
+    order: FxHashMap<BoxFragmentKey, u32>,
 }
 
 /// Pending work of the child sync.
@@ -87,9 +98,6 @@ enum Task {
     Sync(LayoutInputKey, BoxFragmentKey),
     /// Append fresh boxes for the children of a new block or container box.
     Children(LayoutInputKey, BoxFragmentKey),
-    /// Build and attach the boxes inside the inline content of a box built
-    /// by the inline layout builder.
-    Inline(InlineFragmentainer),
 }
 
 impl FragmentTreeBuilder {
@@ -98,10 +106,11 @@ impl FragmentTreeBuilder {
     }
 
     /// Update the box fragments of `root` in `fragments` with the changes
-    /// marked in `dirty`, returning the box of `root`. Box keys are kept,
-    /// except for those of rebuilt boxes, which includes the root box when
-    /// it is rebuilt. Returns `None` for a stale root; the caller deletes the
-    /// box it built for it before.
+    /// marked in `dirty` and lay them out, returning the box of `root`. Box
+    /// keys are kept for as long as their items are. Returns `None` for a
+    /// stale root; the caller deletes the box it built for it before.
+    ///
+    /// In debug builds, the boxes of `root` are checked once laid out.
     ///
     /// Items whose fragments changed are marked [`PAINT_CHANGED`]. Flags are
     /// not cleared.
@@ -147,17 +156,18 @@ impl FragmentTreeBuilder {
     ) -> Option<BoxFragmentKey> {
         tree.items.get(root)?;
         self.scratch.created.clear();
+        self.scratch.created_order.clear();
 
         let mut engine = Engine {
             cx: InlineBuildContext {
                 ui,
                 tree,
-                fonts: &mut self.fonts,
                 constraint,
             },
+            fonts: &mut self.fonts,
+            content: &mut self.content,
             dirty,
             fragments,
-            inline: &mut self.inline,
             scratch: &mut self.scratch,
             root,
             root_box: None,
@@ -168,21 +178,25 @@ impl FragmentTreeBuilder {
 
         if layout {
             engine.layout(key);
-        }
+            // Left by boxes that were laid out but not placed.
+            engine.scratch.child_candidates.clear();
 
-        self.inline.release();
+            #[cfg(debug_assertions)]
+            check::check(engine.fragments, tree, key);
+        }
 
         Some(key)
     }
 }
 
 /// Borrowed state of one build.
-struct Engine<'a> {
+pub(in crate::fragment2) struct Engine<'a> {
     cx: InlineBuildContext<'a>,
+    fonts: &'a mut parley::FontContext,
+    content: &'a mut InlineContentBuilder,
     dirty: &'a mut DirtyMap,
-    fragments: &'a mut FragmentTree,
-    inline: &'a mut InlineLayoutBuilder,
-    scratch: &'a mut Scratch,
+    pub(in crate::fragment2) fragments: &'a mut FragmentTree,
+    pub(in crate::fragment2) scratch: &'a mut Scratch,
     root: LayoutInputKey,
     /// The box of the root, once known.
     root_box: Option<BoxFragmentKey>,

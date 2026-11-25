@@ -48,7 +48,7 @@ impl Fixture {
             root_box: None,
             constraint: CONSTRAINT,
         };
-        fixture.build();
+        fixture.layout();
 
         fixture
     }
@@ -145,26 +145,26 @@ impl Fixture {
         self.fragments.boxes[key].final_layout_valid
     }
 
-    /// Every box in the tree is the box of its source, the boxes inside each
-    /// inline layout are its children, and the box count matches.
+    /// The boxes of the root are all the boxes of the tree: nothing is left
+    /// detached. The builder checks the rest itself once laid out.
     fn check(&self, root: BoxFragmentKey) {
-        let mut count = 0;
+        assert_eq!(
+            self.fragments.boxes.descendants(root).count(),
+            self.fragments.boxes.len()
+        );
+    }
 
-        for key in self.fragments.boxes.descendants(root) {
-            count += 1;
-            let fragment = &self.fragments.boxes[key];
-            assert_eq!(self.fragments.box_fragment(fragment.source), Some(key));
+    pub(super) fn inline_text(&self, node: NodeKey) -> &str {
+        &self.fragments.boxes[self.box_of(node)]
+            .inline()
+            .unwrap()
+            .text
+    }
 
-            if let Some(inline) = fragment.inline() {
-                let mut atomics: Vec<_> = inline.atomics.values().copied().collect();
-                let mut children = self.children(key);
-                atomics.sort();
-                children.sort();
-                assert_eq!(atomics, children);
-            }
-        }
-
-        assert_eq!(count, self.fragments.boxes.len());
+    pub(super) fn built(&self, node: NodeKey) -> bool {
+        self.fragments.boxes[self.box_of(node)]
+            .inline()
+            .is_some_and(|inline| inline.is_built())
     }
 }
 
@@ -257,7 +257,7 @@ fn block_children_keep_their_keys() {
 }
 
 #[test]
-fn text_change_rebuilds_its_inline_formatting_context() {
+fn text_change_builds_its_inline_formatting_context_again() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let para = ui.create(Node::Box, ());
@@ -287,27 +287,25 @@ fn text_change_rebuilds_its_inline_formatting_context() {
         BoxFragmentType::AtomicInline
     );
     assert_eq!(fx.children(para_box), [badge_box]);
+    let text_ptr = fx.inline_text(para).as_ptr();
 
     fx.next_round();
     fx.ui.set_props(before, (Text("goodbye ".into()),));
     fx.mark(before, DirtyFlags::NEED_FULL_LAYOUT);
     fx.build();
 
-    let new_para = fx.box_of(para);
-    assert_ne!(
-        new_para, para_box,
-        "the inline formatting context is rebuilt"
-    );
-    assert_eq!(
-        fx.fragments.boxes[new_para].inline().unwrap().text,
-        "goodbye \u{FFFC}"
-    );
-    assert_eq!(fx.children(root_box), [new_para, other_box]);
-    assert_eq!(fx.box_of(badge), badge_box, "boxes inside are reused");
-    assert_eq!(fx.children(new_para), [badge_box]);
-    assert!(fx.valid(badge_box), "reused boxes keep their layout");
+    assert_eq!(fx.box_of(para), para_box, "the box is kept");
+    assert!(!fx.built(para), "built again when laid out");
+    assert!(!fx.valid(para_box) && !fx.valid(root_box));
+    assert!(fx.valid(badge_box), "boxes inside keep their layout");
     assert!(fx.valid(other_box));
-    assert!(!fx.valid(root_box));
+
+    fx.layout();
+    assert_eq!(fx.inline_text(para), "goodbye \u{FFFC}");
+    assert_eq!(fx.inline_text(para).as_ptr(), text_ptr, "in place");
+    assert_eq!(fx.children(root_box), [para_box, other_box]);
+    assert_eq!(fx.box_of(badge), badge_box, "boxes inside are kept");
+    assert_eq!(fx.children(para_box), [badge_box]);
 }
 
 #[test]
@@ -332,23 +330,23 @@ fn atomic_content_change_keeps_its_owner() {
     fx.ui.set_props(badge_text, (Text("changed".into()),));
     fx.mark(badge_text, DirtyFlags::NEED_FULL_LAYOUT);
 
-    assert_eq!(fx.build(), root_box, "the owner is not rebuilt");
-    let new_badge = fx.box_of(badge);
-    assert_ne!(new_badge, badge_box);
+    assert_eq!(fx.build(), root_box);
+    assert!(fx.built(root), "the owner is not built again");
+    assert!(!fx.built(badge));
+    assert!(!fx.valid(root_box));
+
+    fx.layout();
+    assert_eq!(fx.box_of(badge), badge_box);
+    assert_eq!(fx.inline_text(badge), "changed");
     assert_eq!(
-        fx.fragments.boxes[new_badge].inline().unwrap().text,
-        "changed"
-    );
-    assert_eq!(
-        fx.fragments.boxes[new_badge].box_type,
+        fx.fragments.boxes[badge_box].box_type,
         BoxFragmentType::AtomicInline
     );
-    assert_eq!(fx.children(root_box), [new_badge]);
-    assert!(!fx.valid(root_box));
+    assert_eq!(fx.children(root_box), [badge_box]);
 }
 
 #[test]
-fn root_inline_rebuild_returns_the_new_root_box() {
+fn root_inline_build_keeps_the_root_box() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let leaf = text(&mut ui, "one");
@@ -361,14 +359,12 @@ fn root_inline_rebuild_returns_the_new_root_box() {
     fx.ui.set_props(leaf, (Text("two".into()),));
     fx.mark(leaf, DirtyFlags::NEED_FULL_LAYOUT);
 
-    let new_root = fx.build();
-    assert_ne!(new_root, root_box);
-    assert_eq!(fx.box_of(root), new_root);
-    assert_eq!(fx.fragments.boxes[new_root].inline().unwrap().text, "two");
+    assert_eq!(fx.layout(), root_box);
+    assert_eq!(fx.inline_text(root), "two");
 }
 
 #[test]
-fn child_layout_kind_change_rebuilds_the_box() {
+fn child_layout_kind_change_keeps_the_box() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let section = ui.create(Node::Box, ());
@@ -377,27 +373,41 @@ fn child_layout_kind_change_rebuilds_the_box() {
     ui.append(section, inner);
 
     let mut fx = Fixture::new(ui, root);
-    let section_box = fx.box_of(section);
+    let (section_box, inner_box) = (fx.box_of(section), fx.box_of(inner));
     assert!(fx.fragments.boxes[section_box].child_layout.is_block());
 
     fx.next_round();
     let leading = text(&mut fx.ui, "leading");
     fx.ui.prepend(section, leading);
     fx.mark(section, DirtyFlags::NEED_CHILDREN);
-    fx.build();
+    fx.layout();
 
-    let new_section = fx.box_of(section);
-    assert_ne!(new_section, section_box);
-    assert!(fx.fragments.boxes[new_section].child_layout.is_inline());
-    assert_eq!(fx.children(fx.box_of(root)), [new_section]);
+    assert_eq!(fx.box_of(section), section_box);
+    assert!(fx.fragments.boxes[section_box].child_layout.is_inline());
+    assert_eq!(fx.inline_text(section), "leading\n\u{FFFC}");
+    assert_eq!(fx.box_of(inner), inner_box, "child boxes are kept");
     assert_eq!(
-        fx.fragments.boxes[fx.box_of(inner)].box_type,
+        fx.fragments.boxes[inner_box].box_type,
         BoxFragmentType::InlinePart
+    );
+
+    // And back to block layout.
+    fx.next_round();
+    fx.ui.delete(leading);
+    fx.mark(section, DirtyFlags::NEED_CHILDREN);
+    fx.layout();
+
+    assert_eq!(fx.box_of(section), section_box);
+    assert!(fx.fragments.boxes[section_box].child_layout.is_block());
+    assert_eq!(fx.box_of(inner), inner_box);
+    assert_eq!(
+        fx.fragments.boxes[inner_box].box_type,
+        BoxFragmentType::Normal
     );
 }
 
 #[test]
-fn flow_change_inside_inline_content_rebuilds_the_owner() {
+fn flow_change_inside_inline_content_builds_the_owner_again() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let para = ui.create(Node::Box, ());
@@ -413,13 +423,13 @@ fn flow_change_inside_inline_content_rebuilds_the_owner() {
     let mut fx = Fixture::new(ui, root);
     let (para_box, badge_box) = (fx.box_of(para), fx.box_of(badge));
 
-    // Staying in flow leaves the owner alone.
+    // Staying in flow leaves the owner built.
     fx.next_round();
     fx.ui
         .set_props(badge, (bx::Position(taffy::Position::Relative),));
     fx.mark(badge, DirtyFlags::NEED_BOX_LAYOUT);
     fx.build();
-    assert_eq!(fx.box_of(para), para_box);
+    assert!(fx.built(para));
 
     // Leaving the flow changes the inline box kind, which the caller marks
     // as a full change.
@@ -428,19 +438,78 @@ fn flow_change_inside_inline_content_rebuilds_the_owner() {
         .set_props(badge, (bx::Position(taffy::Position::Absolute),));
     fx.mark(badge, DirtyFlags::NEED_FULL_LAYOUT);
     fx.build();
+    assert!(!fx.built(para));
 
-    let new_para = fx.box_of(para);
-    assert_ne!(new_para, para_box);
+    fx.layout();
+    assert_eq!(fx.box_of(para), para_box);
     assert_eq!(fx.box_of(badge), badge_box);
     assert_eq!(
         fx.fragments.boxes[badge_box].box_type,
         BoxFragmentType::OutOfFlow
     );
     assert_eq!(
-        fx.fragments.boxes[new_para].inline().unwrap().text,
+        fx.inline_text(para),
         "hello ",
         "out-of-flow boxes take no character"
     );
+}
+
+#[test]
+fn removed_atomics_lose_their_boxes() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let before = text(&mut ui, "a");
+    let first = ui.create(
+        Node::Box,
+        (bx::DisplayOuter::Inline, bx::DisplayInner::FlowRoot),
+    );
+    let second = ui.create(
+        Node::Box,
+        (bx::DisplayOuter::Inline, bx::DisplayInner::FlowRoot),
+    );
+    ui.append(root, before);
+    ui.append(root, first);
+    ui.append(root, second);
+
+    let mut fx = Fixture::new(ui, root);
+    let second_box = fx.box_of(second);
+    let first_item = fx.item(first);
+
+    fx.next_round();
+    fx.ui.delete(first);
+    fx.mark(root, DirtyFlags::NEED_CHILDREN);
+    fx.layout();
+
+    assert!(fx.fragments.box_fragment(first_item).is_none());
+    assert_eq!(fx.children(fx.box_of(root)), [second_box]);
+    assert_eq!(fx.inline_text(root), "a\u{FFFC}");
+}
+
+#[test]
+fn nested_inline_formatting_contexts_are_built() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let outer = ui.create(
+        Node::Box,
+        (bx::DisplayOuter::Inline, bx::DisplayInner::FlowRoot),
+    );
+    let section = ui.create(Node::Box, ());
+    let inner = paragraph(&mut ui, "deep");
+    ui.append(root, outer);
+    ui.append(outer, section);
+    ui.append(section, inner);
+
+    let fx = Fixture::new(ui, root);
+
+    assert!(fx.built(root));
+    assert!(fx.fragments.boxes[fx.box_of(outer)].child_layout.is_block());
+    assert!(
+        fx.fragments.boxes[fx.box_of(section)]
+            .child_layout
+            .is_block()
+    );
+    assert_eq!(fx.inline_text(inner), "deep");
+    assert!(fx.valid(fx.box_of(inner)));
 }
 
 #[test]

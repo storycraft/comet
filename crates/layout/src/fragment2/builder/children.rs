@@ -2,12 +2,11 @@
 //!
 //! Only subtrees whose items are marked [`DirtyFlags::NEED_CHILDREN`], which
 //! [`DirtyFlags::NEED_FULL_LAYOUT`] includes, are visited. Nothing is laid
-//! out:
-//! - A box whose content layout kind changed is built again.
-//! - A block or container box marked itself reconciles its child boxes,
-//!   keeping the keys of the boxes of remaining children.
-//! - An inline formatting context whose inline content changed is built
-//!   again, reusing the boxes inside it.
+//! out, and box keys are kept:
+//! - A box whose content layout kind changed takes the new kind in place.
+//! - A block or container box marked itself reconciles its child boxes.
+//! - An inline formatting context whose inline content changed is marked
+//!   to be built again when it is laid out.
 //!
 //! Boxes are only ever moved within their parent, since items never move
 //! across parents.
@@ -20,10 +19,7 @@ use crate::{
     dirty_map::DirtyFlags,
     fragment2::{
         BoxFragment, BoxFragmentKey, BoxFragmentType, ChildLayoutType,
-        inline::{
-            builder::InlineFragmentainer,
-            input::{InlinePrelayout, InputItem},
-        },
+        inline::input::{InlinePrelayout, InputItem},
     },
     input::LayoutInputKey,
 };
@@ -38,21 +34,25 @@ impl Engine<'_> {
                 self.scratch.tasks.push(Task::Sync(root, key));
                 key
             }
-            None => self.create(root, Some(BoxFragmentType::Normal), None),
+            None => self.create(root, Some(BoxFragmentType::Normal)),
         };
         self.root_box = Some(key);
 
-        while let Some(task) = self.scratch.tasks.pop() {
-            match task {
-                Task::Sync(item, key) => self.sync(item, key),
-                Task::Children(item, key) => self.append_children(item, key),
-                Task::Inline(fragmentainer) => self.drain(fragmentainer),
+        self.run_tasks(0);
+        self.propagate_created_bits(0);
+
+        key
+    }
+
+    /// Run the pending tasks above the first `depth` ones.
+    pub(super) fn run_tasks(&mut self, depth: usize) {
+        while self.scratch.tasks.len() > depth {
+            match self.scratch.tasks.pop() {
+                Some(Task::Sync(item, key)) => self.sync(item, key),
+                Some(Task::Children(item, key)) => self.append_children(item, key),
+                None => return,
             }
         }
-
-        self.propagate_created_bits();
-
-        self.root_box.unwrap_or(key)
     }
 
     /// Whether the item or its subtree has child changes.
@@ -77,7 +77,7 @@ impl Engine<'_> {
 
         let kind = ChildKind::of_item(self.tree(), item);
         if ChildKind::of(&self.fragments.boxes[key].child_layout) != kind {
-            self.replace(item, key);
+            self.change_kind(item, key, kind);
             return;
         }
 
@@ -85,8 +85,10 @@ impl Engine<'_> {
         match kind {
             ChildKind::Inline => {
                 if self.needs_inline_build(item) {
-                    self.replace(item, key);
-                } else if entry.child_bits.contains(DirtyFlags::NEED_CHILDREN) {
+                    self.mark_inline_unbuilt(key);
+                }
+
+                if entry.child_bits.contains(DirtyFlags::NEED_CHILDREN) {
                     self.sync_atomics(key);
                 }
             }
@@ -137,6 +139,48 @@ impl Engine<'_> {
         })
     }
 
+    /// Mark the inline content of the box `key` to be built again when it is
+    /// laid out, and drop the cached layouts of it and its ancestors.
+    fn mark_inline_unbuilt(&mut self, key: BoxFragmentKey) {
+        if let Some(inline) = self
+            .fragments
+            .get_mut(key)
+            .and_then(|fragment| fragment.inline_mut())
+        {
+            inline.built = false;
+        }
+
+        self.invalidate_up(key);
+    }
+
+    /// Give the box `key` of `item` the content layout `kind` in place. Its
+    /// child boxes are reconciled with its new content: right away for block
+    /// and container layouts, when the inline content is built for inline
+    /// layouts, and deleted for content.
+    fn change_kind(&mut self, item: LayoutInputKey, key: BoxFragmentKey, kind: ChildKind) {
+        self.fragments.boxes[key].child_layout = match kind {
+            ChildKind::Block => ChildLayoutType::Block,
+            ChildKind::Inline => ChildLayoutType::Inline(Box::default()),
+            ChildKind::Container => ChildLayoutType::Container,
+            ChildKind::Content => ChildLayoutType::Content,
+        };
+
+        match kind {
+            ChildKind::Block | ChildKind::Container => self.reconcile(item, key),
+            // Their own changes are synced now, as for the boxes of a built
+            // inline layout.
+            ChildKind::Inline => self.sync_child_boxes(key),
+            ChildKind::Content => {
+                while let Some(child) = self.fragments.boxes.first_child(key) {
+                    self.fragments.delete(child);
+                }
+            }
+        }
+
+        self.invalidate_up(key);
+        self.mark_paint(item);
+    }
+
     /// Visit the boxes inside the inline content of `owner` with child
     /// changes.
     fn sync_atomics(&mut self, owner: BoxFragmentKey) {
@@ -178,15 +222,42 @@ impl Engine<'_> {
     }
 
     /// Match the child boxes of the block or container box `parent` with
-    /// the children of `item`. Boxes of remaining children are moved into
-    /// place, boxes are created for new children, and the rest are deleted.
+    /// the children of `item`.
     fn reconcile(&mut self, item: LayoutInputKey, parent: BoxFragmentKey) {
         let tree = self.cx.tree;
+        let changed = self.place_children(
+            parent,
+            tree.items.children(item).map(|child| (child, None)),
+            true,
+        );
+
+        if changed {
+            self.invalidate_up(parent);
+        }
+    }
+
+    /// Make the child boxes of `parent` the boxes of `children`, in order.
+    /// Returns whether any box was added, moved, retyped or deleted.
+    ///
+    /// Each child comes with its box type, or `None` for the type of a child
+    /// of a block or container box. Boxes of remaining children are moved
+    /// into place, keeping their keys, and with `sync`, visited for their own
+    /// changes. Boxes are created for new children, with their children
+    /// built by the tasks they push, and the rest are deleted. The placed
+    /// children are left in the key buffer of the scratch.
+    pub(super) fn place_children(
+        &mut self,
+        parent: BoxFragmentKey,
+        children: impl Iterator<Item = (LayoutInputKey, Option<BoxFragmentType>)>,
+        sync: bool,
+    ) -> bool {
+        let mut placed = std::mem::take(&mut self.scratch.keys);
+        placed.clear();
         let mut changed = false;
         // The child box placed last.
         let mut cursor: Option<BoxFragmentKey> = None;
 
-        for child in tree.items.children(item) {
+        for (child, box_type) in children {
             let existing = self
                 .fragments
                 .box_fragment(child)
@@ -194,7 +265,17 @@ impl Engine<'_> {
 
             let key = match existing {
                 Some(key) => {
-                    if self.needs_visit(child) {
+                    let fragment = &mut self.fragments.boxes[key];
+                    let box_type =
+                        box_type.unwrap_or_else(|| classify::block_box_type(&fragment.style));
+
+                    if fragment.box_type != box_type {
+                        fragment.box_type = box_type;
+                        fragment.invalidate();
+                        changed = true;
+                    }
+
+                    if sync && self.needs_visit(child) {
                         self.scratch.tasks.push(Task::Sync(child, key));
                     }
 
@@ -202,7 +283,7 @@ impl Engine<'_> {
                 }
                 None => {
                     changed = true;
-                    self.create(child, None, None)
+                    self.create(child, box_type)
                 }
             };
 
@@ -223,6 +304,7 @@ impl Engine<'_> {
                 }
             }
 
+            placed.push((child, key));
             cursor = Some(key);
         }
 
@@ -237,112 +319,41 @@ impl Engine<'_> {
             changed = true;
         }
 
-        if changed {
-            self.invalidate_up(parent);
-        }
+        self.scratch.keys = placed;
+        changed
     }
 
-    /// Build the box of `item` again in place of its box `old`.
-    fn replace(&mut self, item: LayoutInputKey, old: BoxFragmentKey) {
-        let parent = self.fragments.boxes.parent(old);
-        let prev = self.fragments.boxes.prev_sibling(old);
-        let inline_parent =
-            parent.is_some_and(|parent| self.fragments.boxes[parent].child_layout.is_inline());
-
-        // Inside inline content, the box type is decided by the inline
-        // build of the parent, which is not built again.
-        let box_type = if inline_parent || item == self.root {
-            Some(self.fragments.boxes[old].box_type)
-        } else {
-            None
-        };
-
-        self.fragments.boxes.remove_parent(old);
-        let key = self.create(item, box_type, Some(old));
-
-        match (prev, parent) {
-            (Some(prev), _) => {
-                self.fragments.boxes.after(prev, key);
-            }
-            (None, Some(parent)) => {
-                self.fragments.boxes.prepend(parent, key);
-            }
-            (None, None) => {}
-        }
-
-        if inline_parent
-            && let Some(inline) = parent
-                .and_then(|parent| self.fragments.get_mut(parent))
-                .and_then(|parent| parent.inline_mut())
-        {
-            inline.atomics.insert(item, key);
-        }
-
-        if item == self.root {
-            self.root_box = Some(key);
-        }
-
-        self.invalidate_up(key);
-    }
-
-    /// Create the detached box of `item`, deleting `old`, a box built for it
-    /// before. Its content is built by the tasks it pushes.
+    /// Create the detached box of `item`. Its children are built by the
+    /// tasks it pushes, and an inline formatting context when it is laid
+    /// out.
     ///
     /// The box is a `box_type` box, or with `None`, the type of a child of a
-    /// block or container box. An inline formatting context reuses the
-    /// boxes inside the inline content of `old`.
+    /// block or container box.
     fn create(
         &mut self,
         item: LayoutInputKey,
         box_type: Option<BoxFragmentType>,
-        old: Option<BoxFragmentKey>,
     ) -> BoxFragmentKey {
         let kind = ChildKind::of_item(self.tree(), item);
-
-        let key = match kind {
-            ChildKind::Inline => {
-                let (key, fragmentainer) = self.inline.build(
-                    &mut self.cx,
-                    self.fragments,
-                    item,
-                    box_type.unwrap_or(BoxFragmentType::Normal),
-                    old,
-                );
-
-                if box_type.is_none() {
-                    let fragment = &mut self.fragments.boxes[key];
-                    fragment.box_type = classify::block_box_type(&fragment.style);
-                }
-
-                self.scratch.tasks.push(Task::Inline(fragmentainer));
-                key
-            }
-            ChildKind::Block | ChildKind::Container | ChildKind::Content => {
-                if let Some(old) = old {
-                    self.fragments.delete(old);
-                }
-
-                let (style, bits) = self.cx.resolve_style(item);
-                let box_type = box_type.unwrap_or_else(|| classify::block_box_type(&style));
-                let layout = match kind {
-                    ChildKind::Block => ChildLayoutType::Block,
-                    ChildKind::Container => ChildLayoutType::Container,
-                    _ => ChildLayoutType::Content,
-                };
-
-                let mut fragment = BoxFragment::new(item, box_type, layout, style);
-                fragment.bits = bits;
-                let key = self.fragments.insert(fragment);
-
-                if kind != ChildKind::Content {
-                    self.scratch.tasks.push(Task::Children(item, key));
-                }
-
-                key
-            }
+        let (style, bits) = self.cx.resolve_style(item);
+        let box_type = box_type.unwrap_or_else(|| classify::block_box_type(&style));
+        let layout = match kind {
+            ChildKind::Block => ChildLayoutType::Block,
+            ChildKind::Inline => ChildLayoutType::Inline(Box::default()),
+            ChildKind::Container => ChildLayoutType::Container,
+            ChildKind::Content => ChildLayoutType::Content,
         };
 
+        let mut fragment = BoxFragment::new(item, box_type, layout, style);
+        fragment.bits = bits;
+        let key = self.fragments.insert(fragment);
+
+        if matches!(kind, ChildKind::Block | ChildKind::Container) {
+            self.scratch.tasks.push(Task::Children(item, key));
+        }
+
         self.scratch.created.insert(key, ());
+        self.scratch.created_order.push(key);
         self.mark_paint(item);
 
         key
@@ -354,59 +365,21 @@ impl Engine<'_> {
         let tree = self.cx.tree;
 
         for child in tree.items.children(item) {
-            let key = self.create(child, None, None);
+            let key = self.create(child, None);
             self.fragments.boxes.append(parent, key);
         }
     }
 
-    /// Build and attach the boxes inside the inline content of a box built
-    /// by the inline layout builder. Old boxes of the same content layout
-    /// kind are attached again, and visited for their own changes.
-    fn drain(&mut self, mut fragmentainer: InlineFragmentainer) {
-        let tree = self.cx.tree;
+    /// Add the [propagated](crate::fragment::state::NodeLayoutBits::PROPAGATED)
+    /// bits of the boxes created by this build, from the `start`th one, to
+    /// their ancestors.
+    pub(super) fn propagate_created_bits(&mut self, start: usize) {
+        for index in start..self.scratch.created_order.len() {
+            let key = self.scratch.created_order[index];
 
-        while let Some(child) = fragmentainer.next(self.fragments) {
-            let kind = ChildKind::of_item(tree, child.item);
-            let reusable = child.old.filter(|&old| {
-                self.fragments
-                    .get(old)
-                    .is_some_and(|fragment| ChildKind::of(&fragment.child_layout) == kind)
-            });
-
-            let key = match reusable {
-                Some(old) => {
-                    let fragment = &mut self.fragments.boxes[old];
-                    if fragment.box_type != child.box_type {
-                        fragment.box_type = child.box_type;
-                        fragment.invalidate();
-                    }
-
-                    if self.needs_visit(child.item) {
-                        self.scratch.tasks.push(Task::Sync(child.item, old));
-                    }
-
-                    old
-                }
-                None => self.create(child.item, Some(child.box_type), child.old),
-            };
-
-            child.attach(self.fragments, key);
-        }
-    }
-
-    /// Add the [propagated](NodeLayoutBits::PROPAGATED) bits of the created
-    /// boxes to their ancestors.
-    fn propagate_created_bits(&mut self) {
-        let mut keys = std::mem::take(&mut self.scratch.boxes);
-        keys.clear();
-        keys.extend(self.scratch.created.keys());
-
-        for &key in &keys {
             if let Some(bits) = self.fragments.get(key).map(|fragment| fragment.bits) {
                 self.propagate_bits(key, bits);
             }
         }
-
-        self.scratch.boxes = keys;
     }
 }

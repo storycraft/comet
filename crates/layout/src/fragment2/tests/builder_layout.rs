@@ -290,3 +290,182 @@ fn unchanged_layout_is_reused() {
         "nothing moved, so nothing is painted again"
     );
 }
+
+/// An absolutely positioned box of 20 by 20 pixels, with its top-left inset
+/// at `(left, top)` if given.
+fn absolute(ui: &mut Ui, inset: Option<(f64, f64)>) -> NodeKey {
+    let node = fixed(ui, 20.0, 20.0);
+    ui.set_props(node, (bx::Position(taffy::Position::Absolute),));
+
+    if let Some((left, top)) = inset {
+        let px = |value| AutoValue::Value(StyleUnit::Px(value));
+        ui.set_props(
+            node,
+            (bx::Inset(Rect::new(
+                Point::new(px(left), px(top)),
+                Point::new(AutoValue::Auto, AutoValue::Auto),
+            )),),
+        );
+    }
+
+    node
+}
+
+fn relative(ui: &mut Ui, node: NodeKey) {
+    ui.set_props(node, (bx::Position(taffy::Position::Relative),));
+}
+
+/// Boxes are relatively positioned by default, and so the containing blocks
+/// of their absolutely positioned descendants. Not this one.
+fn unpositioned(ui: &mut Ui, node: NodeKey) {
+    ui.set_props(node, (bx::Position(taffy::Position::Static),));
+}
+
+impl Fixture {
+    /// The location of `node` relative to the border box of `ancestor`.
+    fn location_in(&self, node: NodeKey, ancestor: NodeKey) -> (f64, f64) {
+        let ancestor = self.box_of(ancestor);
+        let mut key = self.box_of(node);
+        let (mut x, mut y) = (0.0, 0.0);
+
+        while key != ancestor {
+            let location = self.fragments.boxes[key].layout.geometry.location;
+            x += location.x;
+            y += location.y;
+            key = self.fragments.boxes.parent(key).unwrap();
+        }
+
+        (x, y)
+    }
+}
+
+#[test]
+fn positioned_owners_place_their_absolute_boxes() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let para = ui.create(Node::Box, ());
+    relative(&mut ui, para);
+    let before = text(&mut ui, "hello ");
+    let abs = absolute(&mut ui, Some((5.0, 7.0)));
+    ui.append(root, para);
+    ui.append(para, before);
+    ui.append(para, abs);
+
+    let mut fx = Fixture::new(ui, root);
+    fx.layout();
+
+    let geometry = fx.geometry(abs);
+    assert_eq!((geometry.size.width, geometry.size.height), (20.0, 20.0));
+    assert_eq!(fx.location_in(abs, para), (5.0, 7.0));
+    assert_eq!(
+        fx.fragments.boxes[fx.box_of(para)].hoisted,
+        [fx.box_of(abs)]
+    );
+    assert!(
+        fx.inline(para)
+            .items
+            .iter()
+            .all(|item| item.source != fx.item(abs)),
+        "out-of-flow boxes have no inline items"
+    );
+}
+
+#[test]
+fn absolute_boxes_bubble_to_their_containing_block() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let container = ui.create(Node::Box, ());
+    relative(&mut ui, container);
+    let first = paragraph(&mut ui, "first");
+    let para = ui.create(Node::Box, ());
+    unpositioned(&mut ui, para);
+    let before = text(&mut ui, "hello ");
+    let abs = absolute(&mut ui, Some((5.0, 7.0)));
+    ui.append(root, container);
+    ui.append(container, first);
+    ui.append(container, para);
+    ui.append(para, before);
+    ui.append(para, abs);
+
+    let mut fx = Fixture::new(ui, root);
+    fx.layout();
+
+    assert!(fx.geometry(para).location.y > 0.0);
+    assert_eq!(fx.location_in(abs, container), (5.0, 7.0));
+    assert_eq!(
+        fx.fragments.boxes[fx.box_of(container)].hoisted,
+        [fx.box_of(abs)]
+    );
+    assert!(fx.fragments.boxes[fx.box_of(para)].hoisted.is_empty());
+}
+
+#[test]
+fn unclaimed_absolute_boxes_are_placed_by_the_root() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    unpositioned(&mut ui, root);
+    let first = paragraph(&mut ui, "first");
+    let para = ui.create(Node::Box, ());
+    unpositioned(&mut ui, para);
+    let before = text(&mut ui, "hello ");
+    let abs = absolute(&mut ui, Some((5.0, 7.0)));
+    ui.append(root, first);
+    ui.append(root, para);
+    ui.append(para, before);
+    ui.append(para, abs);
+
+    let mut fx = Fixture::new(ui, root);
+    fx.layout();
+
+    assert_eq!(fx.location_in(abs, root), (5.0, 7.0));
+}
+
+#[test]
+fn absolute_boxes_inside_atomic_inlines_bubble_out() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    relative(&mut ui, root);
+    let para = ui.create(Node::Box, ());
+    unpositioned(&mut ui, para);
+    let before = text(&mut ui, "hello ");
+    let atomic = badge(&mut ui, 30.0, 10.0);
+    unpositioned(&mut ui, atomic);
+    let abs = absolute(&mut ui, Some((5.0, 7.0)));
+    ui.append(root, para);
+    ui.append(para, before);
+    ui.append(para, atomic);
+    ui.append(atomic, abs);
+
+    let mut fx = Fixture::new(ui, root);
+    fx.layout();
+
+    assert!(fx.geometry(atomic).location.x > 0.0);
+    assert_eq!(fx.location_in(abs, root), (5.0, 7.0));
+    assert_eq!(
+        fx.fragments.boxes[fx.box_of(root)].hoisted,
+        [fx.box_of(abs)]
+    );
+}
+
+#[test]
+fn absolute_boxes_without_insets_stay_at_their_static_position() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    relative(&mut ui, root);
+    let before = text(&mut ui, "hello ");
+    let abs = absolute(&mut ui, None);
+    ui.append(root, before);
+    ui.append(root, abs);
+
+    let mut fx = Fixture::new(ui, root);
+    fx.layout();
+
+    let inline = fx.inline(root);
+    let run = &inline.items[inline.items_of(fx.item(before)).next().unwrap()];
+    let (x, y) = fx.location_in(abs, root);
+    assert!(
+        (x - (run.geometry.location.x + run.geometry.size.width)).abs() < 1e-3,
+        "after the text, got {x}"
+    );
+    assert_eq!(y, run.geometry.location.y);
+}

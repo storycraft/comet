@@ -1,14 +1,15 @@
 //! Step 3 of a build: lay out the boxes.
 //!
 //! Block boxes use Taffy's block algorithm through the [adapter](super::adapter),
-//! inline formatting contexts are laid out by their [lines](super::lines),
-//! and other boxes are leaves sized by their style.
+//! inline formatting contexts are [built](super::content) and laid out by
+//! their [lines](super::lines), and other boxes are leaves sized by their
+//! style.
 
 use taffy::style::CoreStyle;
 
 use super::{
     Engine, PAINT_CHANGED,
-    adapter::{BoxEngine, node_id},
+    adapter::{BoxTree, node_id},
     classify::ChildKind,
 };
 use crate::{
@@ -39,11 +40,7 @@ impl Engine<'_> {
             return;
         }
 
-        taffy::compute_root_layout(
-            &mut BoxEngine::root_pass(self, key),
-            node_id(key),
-            available,
-        );
+        taffy::compute_root_layout(&mut BoxTree::root_pass(self, key), node_id(key), available);
         // The root positioning pass places the remaining out-of-flow boxes
         // again, even when the root layout is cached.
         self.place_hoisted(key);
@@ -53,7 +50,7 @@ impl Engine<'_> {
     }
 
     /// Lay out a box with the algorithm of its content.
-    pub(super) fn layout_box(
+    pub(in crate::fragment2) fn layout_box(
         &mut self,
         key: BoxFragmentKey,
         input: taffy::LayoutInput,
@@ -65,7 +62,7 @@ impl Engine<'_> {
 
         match ChildKind::of(&fragment.child_layout) {
             ChildKind::Block => self.layout_block(key, input, block_ctx),
-            ChildKind::Inline => self.layout_inline(key, input),
+            ChildKind::Inline => self.compute_inline_layout(node_id(key), input),
             // TODO(container): custom container algorithms need their trait
             // integrated with box fragments. Until then containers are
             // leaves, and their children are not laid out.
@@ -82,7 +79,7 @@ impl Engine<'_> {
         block_ctx: Option<&mut taffy::BlockContext<'_>>,
     ) -> taffy::LayoutOutput {
         let id = node_id(key);
-        let mut engine = BoxEngine::new(self, key);
+        let mut engine = BoxTree::new(self, key);
         let mut output = taffy::compute_block_layout(&mut engine, id, input, block_ctx);
 
         if input.run_mode == taffy::RunMode::PerformLayout {
@@ -111,7 +108,7 @@ impl Engine<'_> {
     /// Taffy places them relative to their containing block, which can be an
     /// ancestor of their parent. Their retained Taffy layouts keep containing
     /// block coordinates, so this can run again after every positioning pass.
-    fn place_hoisted(&mut self, containing: BoxFragmentKey) {
+    pub(super) fn place_hoisted(&mut self, containing: BoxFragmentKey) {
         let mut hoisted = std::mem::take(&mut self.scratch.hoisted);
         hoisted.clear();
         hoisted.extend_from_slice(&self.fragments.boxes[containing].hoisted);

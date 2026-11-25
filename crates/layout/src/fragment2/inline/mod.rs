@@ -1,6 +1,6 @@
 //! Flattened inline layout of an inline formatting context.
 
-pub mod builder;
+pub mod collect;
 pub mod input;
 
 use core::{iter::FusedIterator, ops::Range};
@@ -33,10 +33,13 @@ pub struct InlineLayout {
     /// Lines, inline element pieces, boxes and glyph runs, in preorder.
     pub items: Vec<InlineItem>,
     /// Box fragment of each box inside the inline content: atomic inline,
-    /// inline part and out-of-flow boxes. Kept by
-    /// [`InlineFragmentainer`](builder::InlineFragmentainer) as their boxes
-    /// are attached, and read when laying out the lines.
+    /// inline part and out-of-flow boxes, the children of the owner. Set
+    /// when the inline content is built, and read when laying out the lines.
     pub atomics: FxHashMap<LayoutInputKey, BoxFragmentKey>,
+    /// Whether the inline content is built: its text shaped, and the boxes
+    /// inside matching the children of the owner. Until then, the other
+    /// fields hold the previous content, if any.
+    pub(crate) built: bool,
     /// [Propagated](NodeLayoutBits::PROPAGATED) bits of the box styles of
     /// the inline elements in the inline content, which have no boxes of
     /// their own. Part of the bits of the owner. Set by a full build, and
@@ -131,6 +134,12 @@ impl InlineLayout {
     /// of the owner's border box: its content box offset.
     pub fn origin(&self) -> kurbo::Vec2 {
         self.origin
+    }
+
+    /// Whether the inline content is built. An inline formatting context is
+    /// built when it is laid out.
+    pub fn is_built(&self) -> bool {
+        self.built
     }
 
     /// First line baseline relative to the content box top.

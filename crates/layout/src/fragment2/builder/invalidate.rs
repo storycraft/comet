@@ -100,18 +100,23 @@ impl Engine<'_> {
         }
 
         let (style, bits) = self.cx.resolve_style(item);
-        let in_inline = self
+        // Inside inline content, the box type is decided when the inline
+        // content is built.
+        let inline_owner = self
             .fragments
             .boxes
             .parent(key)
-            .is_some_and(|parent| self.fragments.boxes[parent].child_layout.is_inline());
+            .and_then(|parent| self.fragments.boxes[parent].inline());
+        let in_inline = inline_owner.is_some();
+        let owner_built = inline_owner.is_some_and(|inline| inline.is_built());
         let is_root = item == self.root;
         let fragment = &mut self.fragments.boxes[key];
 
         if in_inline {
-            debug_assert_eq!(
-                fragment.box_type == BoxFragmentType::OutOfFlow,
-                classify::is_out_of_flow(&style),
+            debug_assert!(
+                !owner_built
+                    || (fragment.box_type == BoxFragmentType::OutOfFlow)
+                        == classify::is_out_of_flow(&style),
                 "moving a box inside inline content in or out of flow needs a full layout"
             );
         } else if !is_root {

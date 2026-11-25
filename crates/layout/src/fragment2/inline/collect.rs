@@ -1,5 +1,9 @@
-//! Building the box fragment of an inline formatting context and shaping its
-//! inline content.
+//! Collecting and shaping the inline content of an inline formatting
+//! context into its [`InlineLayout`].
+//!
+//! Only the text side is built here. The boxes inside the inline content are
+//! returned in flow order for the fragment tree builder, which reconciles
+//! them with the child boxes of the owner in place.
 
 use comet_tree::{node::Text, ui::Ui};
 use rustc_hash::FxHashMap;
@@ -11,7 +15,7 @@ use super::{
 };
 use crate::{
     fragment::state::NodeLayoutBits,
-    fragment2::{BoxFragment, BoxFragmentKey, BoxFragmentType, ChildLayoutType, FragmentTree},
+    fragment2::BoxFragmentType,
     input::{LayoutInputKey, SpanStyle, tree::LayoutInputTree},
     style::LayoutConstraint,
     taffy::style::{self, Style},
@@ -20,11 +24,11 @@ use crate::{
 /// Object replacement character standing for an in-flow inline box.
 const OBJECT_REPLACEMENT: char = '\u{FFFC}';
 
-/// What [`InlineLayoutBuilder::build`] reads from.
+/// What box styles and inline content are resolved from.
+#[derive(Clone, Copy)]
 pub struct InlineBuildContext<'a> {
     pub ui: &'a Ui,
     pub tree: &'a LayoutInputTree,
-    pub fonts: &'a mut parley::FontContext,
     /// Viewport and root font size resolving box styles. Its font size is
     /// replaced by the font size of each item.
     pub constraint: &'a LayoutConstraint,
@@ -46,140 +50,9 @@ impl InlineBuildContext<'_> {
     }
 }
 
-/// A box inside inline content to build: an atomic inline, inline part or
-/// out-of-flow box. Returned by [`InlineFragmentainer::next`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ChildBlockData {
-    /// Item whose box needs to be built.
-    pub item: LayoutInputKey,
-    /// How the box takes part in the inline layout.
-    pub box_type: BoxFragmentType,
-    /// Box fragment establishing the inline formatting context, which the
-    /// built box is a child of.
-    pub parent: BoxFragmentKey,
-    /// The child of [`Self::parent`] to attach the built box after, which may
-    /// be anonymous: the box attached for the previous child. `None` attaches
-    /// it as the first child.
-    pub after: Option<BoxFragmentKey>,
-    /// The detached box fragment built for [`Self::item`] by the build of the
-    /// old root, with its subtree. Attach it again to reuse it, or pass it as
-    /// the old box of a nested build. Left unattached, it is deleted by the
-    /// next call to [`InlineFragmentainer::next`].
-    pub old: Option<BoxFragmentKey>,
-}
-
-impl ChildBlockData {
-    /// Attach the built box `child` where it belongs.
-    pub fn attach(&self, fragments: &mut FragmentTree, child: BoxFragmentKey) {
-        match self.after {
-            Some(after) => fragments.boxes.after(after, child),
-            None => fragments.boxes.prepend(self.parent, child),
-        };
-    }
-}
-
-/// Yields the boxes inside the inline content of a box built by
-/// [`InlineLayoutBuilder::build`], in flow order, for the caller to build and
-/// attach. Building them may build nested inline formatting contexts with
-/// the same builder.
-#[must_use = "boxes inside the inline content are only built by draining it"]
-#[derive(Debug)]
-pub struct InlineFragmentainer {
-    parent: BoxFragmentKey,
-    children: std::vec::IntoIter<Child>,
-    /// Child of `parent` the previous box was asked to be attached after.
-    after: Option<BoxFragmentKey>,
-    /// The box yielded last, whose attached box the next call looks for
-    /// after `after`.
-    yielded: Option<Child>,
-}
-
-/// A box inside inline content, with the box built for it by the old root.
-#[derive(Debug, Clone, Copy)]
-struct Child {
-    item: LayoutInputKey,
-    box_type: BoxFragmentType,
-    old: Option<BoxFragmentKey>,
-}
-
-impl InlineFragmentainer {
-    /// The next box to build, or `None` once every box inside the inline
-    /// content was yielded.
-    ///
-    /// Attach the box built for the previous [`ChildBlockData`] with
-    /// [`ChildBlockData::attach`] before calling it again: the box following
-    /// [`ChildBlockData::after`] is taken as that box, and the next one is
-    /// attached after it. Nothing is skipped when it was not attached.
-    ///
-    /// The box of the previous item is then recorded in
-    /// [`InlineLayout::atomics`] of the parent, and its old box is deleted
-    /// unless it was attached again.
-    pub fn next(&mut self, fragments: &mut FragmentTree) -> Option<ChildBlockData> {
-        if let Some(child) = self.yielded.take() {
-            let attached = match self.after {
-                Some(after) => fragments.boxes.next_sibling(after),
-                None => fragments.boxes.first_child(self.parent),
-            };
-
-            if attached.is_some() {
-                self.after = attached;
-            }
-
-            self.finish(fragments, child);
-        }
-
-        let child = self.children.next()?;
-        self.yielded = Some(child);
-
-        Some(ChildBlockData {
-            item: child.item,
-            box_type: child.box_type,
-            parent: self.parent,
-            after: self.after,
-            old: child.old,
-        })
-    }
-
-    /// Record the box built for `child`, and delete its old box if it was
-    /// not reused.
-    fn finish(&self, fragments: &mut FragmentTree, child: Child) {
-        let built = fragments.box_fragment(child.item);
-
-        if let Some(old) = child.old
-            && built != Some(old)
-            && fragments.boxes.parent(old).is_none()
-        {
-            fragments.delete(old);
-        }
-
-        let Some(atomics) = fragments
-            .get_mut(self.parent)
-            .and_then(|parent| parent.inline_mut())
-            .map(|inline| &mut inline.atomics)
-        else {
-            return;
-        };
-
-        match built {
-            Some(built) => atomics.insert(child.item, built),
-            None => atomics.remove(&child.item),
-        };
-    }
-
-    /// Number of boxes left to yield.
-    pub fn len(&self) -> usize {
-        self.children.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.children.len() == 0
-    }
-}
-
-/// Builds the box fragment of an inline formatting context with its
-/// [`InlineLayout`], shaped but not laid out. Keep it to reuse its buffers.
+/// Collects and shapes inline content. Keep it to reuse its buffers.
 #[derive(Default)]
-pub struct InlineLayoutBuilder {
+pub struct InlineContentBuilder {
     lcx: parley::LayoutContext<LayoutInputKey>,
     /// Style runs of the text being built, by the item whose style they use.
     runs: Vec<(LayoutInputKey, usize)>,
@@ -190,153 +63,42 @@ pub struct InlineLayoutBuilder {
     boxes: Vec<parley::InlineBox>,
     /// Style table index of each item's style.
     styles: FxHashMap<LayoutInputKey, u16>,
-    /// Inline layouts taken from deleted box fragments, reused by later
-    /// builds until [`InlineLayoutBuilder::release`]. Boxed as owned by
-    /// [`ChildLayoutType::Inline`], so moving them keeps their allocations.
-    #[allow(clippy::vec_box)]
-    pool: Vec<Box<InlineLayout>>,
-    /// Box fragments of a subtree being deleted.
-    stale: Vec<BoxFragmentKey>,
-    /// Detached boxes inside the inline content of the old root, by item.
-    reused: FxHashMap<LayoutInputKey, BoxFragmentKey>,
+    /// Boxes inside the inline content of the latest build, in flow order,
+    /// with how they take part in it: atomic inline, inline part and
+    /// out-of-flow boxes.
+    pub children: Vec<(LayoutInputKey, BoxFragmentType)>,
 }
 
-impl InlineLayoutBuilder {
+impl InlineContentBuilder {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Build the detached box fragment of `root`, which establishes an
-    /// inline formatting context.
-    ///
-    /// The root box is a `box_type` box owning the [`InlineLayout`] of its
-    /// inline content, shaped but not laid out: its items are empty. The
-    /// returned [`InlineFragmentainer`] yields the boxes inside the inline
-    /// content, in flow order, for the caller to build and attach to the
-    /// root box.
-    ///
-    /// `old` is a box fragment built for `root` before, such as by a previous
-    /// build. The boxes inside its inline content, found in its
-    /// [`InlineLayout::atomics`], are detached with their subtrees and
-    /// yielded again as [`ChildBlockData::old`] of their items, for the caller
-    /// to reuse. Those of items no longer in the inline content are deleted.
-    /// The rest of `old` is deleted, and the inline layouts in it are reused
-    /// by this build and by later ones, keeping their text and Parley layout
-    /// allocations.
+    /// Replace the content of `inline` with the inline content of `root`,
+    /// which establishes an inline formatting context, shaped but not laid
+    /// out. Its allocations are kept. The boxes inside are left in
+    /// [`Self::children`], and [`InlineLayout::atomics`] is left empty.
     ///
     /// Text is taken as is, without white space processing. A block level box
     /// inside the inline content is an inline part box on its own line,
-    /// broken from the content around it by line feeds.
-    #[must_use = "boxes inside the inline content are only built by draining the fragmentainer"]
+    /// broken from the content around it by line feeds. An out-of-flow box
+    /// takes no character: its Parley inline box only gives its static
+    /// position.
     pub fn build(
         &mut self,
-        cx: &mut InlineBuildContext<'_>,
-        fragments: &mut FragmentTree,
+        cx: &InlineBuildContext<'_>,
+        fonts: &mut parley::FontContext,
         root: LayoutInputKey,
-        box_type: BoxFragmentType,
-        old: Option<BoxFragmentKey>,
-    ) -> (BoxFragmentKey, InlineFragmentainer) {
-        self.reused.clear();
-        if let Some(old) = old {
-            self.reclaim(fragments, root, old);
-        }
-
-        let mut inline = self.pool.pop().unwrap_or_default();
+        inline: &mut InlineLayout,
+    ) {
         inline.clear();
 
-        let mut children = Vec::new();
-        self.collect(cx, root, &mut inline, &mut children);
-        self.shape(cx, root, &mut inline);
+        let mut children = std::mem::take(&mut self.children);
+        children.clear();
+        self.collect(cx, root, inline, &mut children);
+        self.children = children;
 
-        // Old boxes are recorded until their items are built again.
-        for child in &mut children {
-            child.old = self.reused.remove(&child.item);
-
-            if let Some(old) = child.old {
-                inline.atomics.insert(child.item, old);
-            }
-        }
-
-        // Items no longer in the inline content.
-        let stale: Vec<_> = self.reused.drain().map(|(_, key)| key).collect();
-        for key in stale {
-            self.delete_subtree(fragments, key);
-        }
-
-        let (style, bits) = cx.resolve_style(root);
-        let content_bits = inline.content_bits;
-        let mut fragment = BoxFragment::new(root, box_type, ChildLayoutType::Inline(inline), style);
-        fragment.bits = bits | content_bits;
-        let key = fragments.insert(fragment);
-
-        let fragmentainer = InlineFragmentainer {
-            parent: key,
-            children: children.into_iter(),
-            after: None,
-            yielded: None,
-        };
-
-        (key, fragmentainer)
-    }
-
-    /// Drop the inline layouts kept for reuse.
-    pub fn release(&mut self) {
-        self.pool.clear();
-    }
-
-    /// Detach the boxes inside the inline content of the box fragment `old`
-    /// built for `root` into `reused`, then delete the rest of its subtree,
-    /// keeping its inline layouts for reuse. Boxes of other items, or missing
-    /// from `fragments`, are left as they are.
-    fn reclaim(&mut self, fragments: &mut FragmentTree, root: LayoutInputKey, old: BoxFragmentKey) {
-        if fragments
-            .get(old)
-            .is_none_or(|fragment| fragment.source != root)
-        {
-            return;
-        }
-
-        if let Some(inline) = fragments.get_mut(old).and_then(|old| old.inline_mut()) {
-            self.reused.extend(inline.atomics.drain());
-        }
-
-        // Boxes of other items, or not in the old subtree, are not reused.
-        self.reused.retain(|&item, &mut key| {
-            fragments
-                .get(key)
-                .is_some_and(|fragment| fragment.source == item)
-                && std::iter::successors(Some(key), |&key| fragments.boxes.parent(key))
-                    .any(|ancestor| ancestor == old)
-        });
-
-        for &key in self.reused.values() {
-            fragments.boxes.remove_parent(key);
-        }
-
-        self.delete_subtree(fragments, old);
-    }
-
-    /// Delete a box fragment and its subtree, keeping their inline layouts
-    /// for reuse.
-    fn delete_subtree(&mut self, fragments: &mut FragmentTree, old: BoxFragmentKey) {
-        if fragments.get(old).is_none() {
-            return;
-        }
-
-        self.stale.clear();
-        self.stale.extend(fragments.boxes.descendants(old));
-
-        for &key in &self.stale {
-            let fragment = &mut fragments.boxes[key];
-
-            if let ChildLayoutType::Inline(inline) =
-                std::mem::replace(&mut fragment.child_layout, ChildLayoutType::Content)
-            {
-                self.pool.push(inline);
-            }
-        }
-
-        fragments.delete(old);
+        self.shape(cx, fonts, root, inline);
     }
 
     /// Concatenate the inline content into the text, recording style runs,
@@ -346,7 +108,7 @@ impl InlineLayoutBuilder {
         cx: &InlineBuildContext<'_>,
         root: LayoutInputKey,
         inline: &mut InlineLayout,
-        children: &mut Vec<Child>,
+        children: &mut Vec<(LayoutInputKey, BoxFragmentType)>,
     ) {
         let tree = cx.tree;
         self.runs.clear();
@@ -443,11 +205,7 @@ impl InlineLayoutBuilder {
                         }
                     }
 
-                    children.push(Child {
-                        item: key,
-                        box_type,
-                        old: None,
-                    });
+                    children.push((key, box_type));
                 }
             }
         }
@@ -457,13 +215,14 @@ impl InlineLayoutBuilder {
     /// `inline`.
     fn shape(
         &mut self,
-        cx: &mut InlineBuildContext<'_>,
+        cx: &InlineBuildContext<'_>,
+        fonts: &mut parley::FontContext,
         root: LayoutInputKey,
         inline: &mut InlineLayout,
     ) {
         let tree = cx.tree;
         let InlineLayout { text, layout, .. } = inline;
-        let mut builder = self.lcx.style_run_builder(cx.fonts, text, 1.0, false);
+        let mut builder = self.lcx.style_run_builder(fonts, text, 1.0, false);
         self.styles.clear();
 
         // The root style comes first, so empty text uses it.
@@ -493,7 +252,7 @@ impl InlineLayoutBuilder {
 
 impl InlineLayout {
     /// Drop the content, keeping the allocations.
-    fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.text.clear();
         self.offset_mapping.clear();
         self.items.clear();
