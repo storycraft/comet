@@ -109,3 +109,27 @@ fn inline_box_ids_round_trip_to_items() {
     }
     assert_ne!(inline_box_id(a), inline_box_id(c), "versions differ");
 }
+
+#[test]
+fn hits_items_inside_their_border_boxes() {
+    let mut keys = SlotMap::<LayoutInputKey, ()>::with_key();
+    let (owner, text) = (keys.insert(()), keys.insert(()));
+    let mut layout = InlineLayout::new();
+    let mut run = item(text, InlineItemKind::Run { line: 0, run: 0 }, 0);
+    run.geometry.location = crate::style::geometry::Point::new(10.0, 4.0);
+    run.geometry.size = crate::style::geometry::Size::new(20.0, 8.0);
+    layout.items = vec![item(owner, InlineItemKind::Line { line: 0 }, 1), run];
+
+    let hit = |x, y| layout.hit_local(1, kurbo::Point::new(x, y));
+
+    // Placed at its location in the owner's border box.
+    assert!(hit(10.0, 4.0));
+    assert!(hit(29.9, 11.9));
+    assert!(!hit(30.0, 8.0));
+    assert!(!hit(9.9, 8.0));
+    assert!(!hit(20.0, 12.0));
+
+    // An empty line box covers nothing, and missing items are never hit.
+    assert!(!layout.hit_local(0, kurbo::Point::new(0.0, 0.0)));
+    assert!(!layout.hit_local(2, kurbo::Point::new(15.0, 8.0)));
+}

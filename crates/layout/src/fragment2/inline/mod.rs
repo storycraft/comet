@@ -245,6 +245,22 @@ impl InlineLayout {
         Some(to_source(source, shaped, index))
     }
 
+    /// Whether `point`, in the local coordinates of the inline layout, hits
+    /// the item `index`: it falls in the item's border box. The local
+    /// coordinates are those the items are placed in, with the owner's
+    /// border box's top-left corner at the origin, not those of
+    /// [`Self::layout`], which start at [`Self::origin`]. The left and top
+    /// edges are inside, the right and bottom ones outside. `false` for
+    /// indices out of range.
+    pub fn hit_local(&self, index: usize, point: kurbo::Point) -> bool {
+        self.items.get(index).is_some_and(|item| {
+            let geometry = &item.geometry;
+            let offset = kurbo::Vec2::new(geometry.location.x, geometry.location.y);
+
+            (geometry.border_box() + offset).contains(point)
+        })
+    }
+
     /// The text item holding `index` in [`Self::text`]. At the boundary of
     /// two items, `affinity` picks the one before or after it. Outside of
     /// every item, such as at an inline box, the closest item before it,
