@@ -18,8 +18,24 @@ use comet_layout::{
         BoxFragment, BoxFragmentKey, BoxFragmentType, FragmentRef, FragmentTree, InlineItem,
         InlineLayout,
     },
-    input::{LayoutInputKey, tree::LayoutInputTree},
+    input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
 };
+use comet_tree::ui::{Props, Ui};
+
+/// The props an item paints with. Text items have no paint data of their
+/// own, as in CSS: their glyph runs take the text color of the nearest
+/// ancestor setting one. `None` if the item or its node is missing, and
+/// `Some(None)` for text items.
+pub fn paint_props<'a>(
+    ui: &'a Ui,
+    inputs: &LayoutInputTree,
+    item: LayoutInputKey,
+) -> Option<Option<Props<'a>>> {
+    let item = inputs.items.get(item)?;
+    let props = ui.props(item.node)?;
+
+    Some((item.kind != LayoutInputKind::Text).then_some(props))
+}
 
 /// What a box fragment paints, from its [`BoxFragmentType`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

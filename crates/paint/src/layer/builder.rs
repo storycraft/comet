@@ -16,7 +16,7 @@ use crate::{
         tree::{PaintLayerTree, layer_owner},
     },
     prepaint::fragment::{
-        BoxRole, for_each_paint_child, paint_parent, part_of_piece, piece_of_part,
+        BoxRole, for_each_paint_child, paint_parent, paint_props, part_of_piece, piece_of_part,
     },
     style::{BackdropFilter, Filter, MixBlend, Opacity, Transform, ZIndex},
 };
@@ -452,9 +452,9 @@ impl PaintLayerBuilder {
 }
 
 impl Sources<'_> {
-    /// The props of the node of a layout input item.
+    /// The props a layout input item paints with: none for text items.
     fn props(&self, key: LayoutInputKey) -> Option<Props<'_>> {
-        self.ui.props(self.inputs.items.get(key)?.node)
+        paint_props(self.ui, self.inputs, key).flatten()
     }
 
     /// The box that would own the layer an item starts: its box, or the

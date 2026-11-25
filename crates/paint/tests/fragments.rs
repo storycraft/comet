@@ -357,7 +357,7 @@ fn paints_atomic_inline_subtree_border_and_text_override_without_double_offsets(
 }
 
 #[test]
-fn standalone_text_paints_its_background_once_with_its_box() {
+fn text_nodes_paint_no_background_of_their_own() {
     let mut ui = Ui::new();
     let node = ui.create(
         Node::Text,
@@ -378,7 +378,8 @@ fn standalone_text_paints_its_background_once_with_its_box() {
         &mut scene,
     );
 
-    assert_eq!(fills(&scene).len(), 1);
+    // Text nodes have no paint data, even as a root with a box.
+    assert!(fills(&scene).is_empty());
     assert!(!glyphs(&scene).is_empty());
 }
 

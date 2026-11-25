@@ -13,7 +13,7 @@ use comet_layout::{
     },
     input::{LayoutInputKey, tree::LayoutInputTree},
 };
-use comet_tree::{node::NodeKey, ui::Ui};
+use comet_tree::ui::Ui;
 use kurbo::{Affine, Insets, Point, Rect, RoundedRect, RoundedRectRadii, Stroke, Vec2};
 use parley::PositionedLayoutItem;
 use peniko::BlendMode;
@@ -26,7 +26,7 @@ use crate::{
     },
     prepaint::{
         FragmentData, LayoutInputData,
-        fragment::{BoxRole, for_each_paint_child_on_lines, piece_of_part},
+        fragment::{BoxRole, for_each_paint_child_on_lines, paint_props, piece_of_part},
         tree::PrepaintTree,
     },
     style::{BorderFill, Fill, OutlineFill, TextColor},
@@ -248,7 +248,7 @@ impl CometPainter {
     /// border radius. Box transforms multiply down the box tree, starting
     /// with the transforms of the root's ancestors. Inline items paint in the
     /// coordinates of the box owning their inline layout: glyph runs with
-    /// the text color of their source item, and pieces of inline elements
+    /// the text color inherited by their text item, and pieces of inline elements
     /// with their inline part boxes. Items placing no box paint no
     /// background, border or outline.
     ///
@@ -740,9 +740,11 @@ impl CometPainter {
     }
 
     /// The text color of an item: the [`TextColor`] of the nearest item
-    /// among it and its ancestors setting one, or the default. Inherited
-    /// along the input item tree, not the fragment tree, so a block inside an
-    /// inline span inherits from the span.
+    /// among it and its ancestors setting one, or the default. Text items
+    /// have no paint data, so the glyph runs of a text item take the color
+    /// of its nearest ancestor setting one. Inherited along the input item
+    /// tree, not the fragment tree, so a block inside an inline span inherits
+    /// from the span.
     ///
     /// Looked up from the UI and kept until the next paint, along with the
     /// items on the way, so each item is looked up at most once per paint.
@@ -764,9 +766,8 @@ impl CometPainter {
 
                 self.items.push(key);
 
-                let own = items
-                    .get(key)
-                    .and_then(|item| sources.ui.props(item.node))
+                let own = paint_props(sources.ui, sources.inputs, key)
+                    .flatten()
                     .and_then(|props| props.get_cloned());
 
                 if let Some(TextColor(color)) = own {
@@ -787,8 +788,8 @@ impl CometPainter {
 
 /// Paint the background, border and outline of a box, without its
 /// descendants, inside the clips bounded by `clip`. Anonymous boxes paint
-/// nothing. Glyph runs place no box, so the box of a standalone text root
-/// paints its background once.
+/// nothing, and neither do the boxes of text items, which have no paint
+/// data.
 fn draw_box_fragment(
     sources: Sources<'_>,
     key: BoxFragmentKey,
@@ -960,11 +961,6 @@ fn border_width(geometry: &FragmentGeometry) -> f64 {
         .max(border.right_bottom.y)
 }
 
-/// The source node of a box.
-fn node(inputs: &LayoutInputTree, fragment: &BoxFragment) -> Option<NodeKey> {
-    inputs.items.get(fragment.source).map(|item| item.node)
-}
-
 /// Paint the background, border and outline of a box's border box `rect`.
 /// The background and border are rounded with the box's
 /// [border radii](FragmentData::border_radii) from `paint_data`, square at
@@ -979,7 +975,8 @@ fn draw_box(
     transform: Affine,
     scene: &mut impl PaintScene,
 ) {
-    let Some(props) = node(sources.inputs, fragment).and_then(|node| sources.ui.props(node)) else {
+    // Text items have no paint data, so the box of a text root paints none.
+    let Some(props) = paint_props(sources.ui, sources.inputs, fragment.source).flatten() else {
         return;
     };
     let radii = paint_data.map_or(RoundedRectRadii::from(0.0), |data| {

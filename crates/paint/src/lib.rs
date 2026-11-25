@@ -1,5 +1,3 @@
-// TODO(fragment2): ported to `comet_layout::fragment2` in phase 4.
-#[cfg(any())]
 pub mod hit;
 pub mod layer;
 pub mod painter;

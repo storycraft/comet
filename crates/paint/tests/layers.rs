@@ -1,4 +1,6 @@
 use anyrender::{Paint, Scene, recording::RenderCommand};
+use comet_layout::style::taffy::Position;
+use comet_layout::style::{geometry::Rect as LayoutRect, taffy::Overflow};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment2::{BoxFragmentKey, FragmentRef, FragmentTree, FragmentTreeBuilder},
@@ -12,15 +14,9 @@ use comet_layout::{
         geometry::{AutoValue, Size, StyleUnit, UnitResolveContext},
     },
 };
-// TODO(fragment2): ported with hit testing in phase 4.
-#[cfg(any())]
-use comet_layout::style::taffy::Position;
-use comet_layout::style::{geometry::Rect as LayoutRect, taffy::Overflow};
-#[cfg(any())]
 use comet_paint::hit::{HitTestResult, PaintHitTester};
-use comet_paint::style::{BorderRadius, TextColor};
-#[cfg(any())]
 use comet_paint::style::ScrollTop;
+use comet_paint::style::{BorderRadius, TextColor};
 use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
@@ -31,7 +27,6 @@ use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,
 };
-#[cfg(any())]
 use kurbo::Point;
 use kurbo::{Affine, Rect, Shape};
 use peniko::{BlendMode, Color, Mix};
@@ -180,15 +175,11 @@ impl Fixture {
         self.layers.layers.children(layer).collect()
     }
 
-    // TODO(fragment2): hits, ported in phase 4.
-    #[cfg(any())]
     /// The fragment hit at a scene point.
-    fn hit(&self, x: f64, y: f64) -> Option<BoxFragmentKey> {
+    fn hit(&self, x: f64, y: f64) -> Option<FragmentRef> {
         self.hit_result(x, y).map(|hit| hit.fragment)
     }
 
-    // TODO(fragment2): hits, ported in phase 4.
-    #[cfg(any())]
     /// The hit at a scene point, with the point local to the fragment hit.
     fn hit_result(&self, x: f64, y: f64) -> Option<HitTestResult> {
         PaintHitTester::new().hit(
@@ -200,8 +191,6 @@ impl Fixture {
         )
     }
 
-    // TODO(fragment2): hits, ported in phase 4.
-    #[cfg(any())]
     /// The hits on the path to the fragment hit at a scene point, from the
     /// root down.
     fn hit_path(&self, x: f64, y: f64) -> Vec<HitTestResult> {
@@ -704,7 +693,6 @@ fn mix_blend_modes_start_layers_and_blend_their_group() {
     assert_eq!(blends(&f.draw(&ui)), [BlendMode::from(Mix::Screen)]);
 }
 
-#[cfg(any())]
 /// A margin pulling a box up over the previous one.
 fn overlap(value: f64) -> bx::Margin {
     let zero = AutoValue::Value(StyleUnit::ZERO);
@@ -717,8 +705,6 @@ fn overlap(value: f64) -> bx::Margin {
     ))
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn hits_the_topmost_fragment_in_paint_order() {
     let mut ui = Ui::new();
@@ -731,15 +717,13 @@ fn hits_the_topmost_fragment_in_paint_order() {
 
     let f = Fixture::build(&ui, root);
 
-    assert_eq!(f.hit(5.0, 5.0), Some(f.box_of(raised)));
-    assert_eq!(f.hit(5.0, 15.0), Some(f.box_of(raised)));
-    assert_eq!(f.hit(5.0, 25.0), Some(f.box_of(flow)));
-    assert_eq!(f.hit(100.0, 5.0), Some(f.box_of(root)));
+    assert_eq!(f.hit(5.0, 5.0), Some(f.box_ref(raised)));
+    assert_eq!(f.hit(5.0, 15.0), Some(f.box_ref(raised)));
+    assert_eq!(f.hit(5.0, 25.0), Some(f.box_ref(flow)));
+    assert_eq!(f.hit(100.0, 5.0), Some(f.box_ref(root)));
     assert_eq!(f.hit(500.0, 5.0), None);
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn hits_children_before_parents_and_skips_line_boxes() {
     let mut ui = Ui::new();
@@ -753,19 +737,18 @@ fn hits_children_before_parents_and_skips_line_boxes() {
 
     let f = Fixture::build(&ui, root);
 
-    assert_eq!(f.hit(5.0, 5.0), Some(f.box_of(child)));
-    assert_eq!(f.hit(70.0, 35.0), Some(f.box_of(parent)));
+    assert_eq!(f.hit(5.0, 5.0), Some(f.box_ref(child)));
+    assert_eq!(f.hit(70.0, 35.0), Some(f.box_ref(parent)));
 
     // Text below the child hits its glyph run, not the line holding it.
-    let text = f.hit(2.0, 15.0).unwrap();
-    assert!(matches!(
-        f.fragments.items[text].item,
-        FragmentItem::GlyphRun { .. }
-    ));
+    let FragmentRef::Inline { owner, index } = f.hit(2.0, 15.0).unwrap() else {
+        panic!("expected an inline item");
+    };
+    // The block splits the parent's inline content, so a run box holds it.
+    assert_eq!(f.fragments.boxes.parent(owner), Some(f.box_of(parent)));
+    assert!(f.fragments.inline_layout(owner).unwrap().items[index as usize].is_run());
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn hits_through_transforms() {
     let mut ui = Ui::new();
@@ -785,14 +768,12 @@ fn hits_through_transforms() {
 
     // The inner box scales around its centre (5, 5), to (-5, -5)..(15, 15)
     // inside the moved box.
-    assert_eq!(f.hit(46.0, 1.0), Some(f.box_of(inner)));
-    assert_eq!(f.hit(64.0, 14.0), Some(f.box_of(inner)));
-    assert_eq!(f.hit(80.0, 15.0), Some(f.box_of(moved)));
-    assert_eq!(f.hit(10.0, 10.0), Some(f.box_of(root)));
+    assert_eq!(f.hit(46.0, 1.0), Some(f.box_ref(inner)));
+    assert_eq!(f.hit(64.0, 14.0), Some(f.box_ref(inner)));
+    assert_eq!(f.hit(80.0, 15.0), Some(f.box_ref(moved)));
+    assert_eq!(f.hit(10.0, 10.0), Some(f.box_ref(root)));
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn hit_cursor_walks_from_the_root_down_to_the_fragment_hit() {
     let mut ui = Ui::new();
@@ -810,7 +791,7 @@ fn hit_cursor_walks_from_the_root_down_to_the_fragment_hit() {
 
     let f = Fixture::build(&ui, root);
     let result = |key, x, y| HitTestResult {
-        fragment: f.box_of(key),
+        fragment: f.box_ref(key),
         position: Point::new(x, y),
     };
 
@@ -833,8 +814,6 @@ fn hit_cursor_walks_from_the_root_down_to_the_fragment_hit() {
     assert!(f.hit_path(500.0, 5.0).is_empty(), "nothing under the point");
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn hits_hold_the_point_local_to_the_fragment_hit() {
     let mut ui = Ui::new();
@@ -853,7 +832,7 @@ fn hits_hold_the_point_local_to_the_fragment_hit() {
     let f = Fixture::build(&ui, root);
     let result = |key, x, y| {
         Some(HitTestResult {
-            fragment: f.box_of(key),
+            fragment: f.box_ref(key),
             position: Point::new(x, y),
         })
     };
@@ -866,8 +845,6 @@ fn hits_hold_the_point_local_to_the_fragment_hit() {
     assert_eq!(f.hit_result(10.0, 10.0), result(root, 10.0, 10.0));
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn clips_and_rounded_corners_limit_hits() {
     let mut ui = Ui::new();
@@ -897,16 +874,14 @@ fn clips_and_rounded_corners_limit_hits() {
 
     let f = Fixture::build(&ui, root);
 
-    assert_eq!(f.hit(10.0, 5.0), Some(f.box_of(wide)));
-    assert_eq!(f.hit(60.0, 5.0), Some(f.box_of(root)));
+    assert_eq!(f.hit(10.0, 5.0), Some(f.box_ref(wide)));
+    assert_eq!(f.hit(60.0, 5.0), Some(f.box_ref(root)));
 
     // The rounded box sits below the clipper, from y 20.
-    assert_eq!(f.hit(20.0, 40.0), Some(f.box_of(rounded)));
-    assert_eq!(f.hit(1.0, 21.0), Some(f.box_of(root)));
+    assert_eq!(f.hit(20.0, 40.0), Some(f.box_ref(rounded)));
+    assert_eq!(f.hit(1.0, 21.0), Some(f.box_ref(root)));
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn collapsed_fragments_are_not_hit() {
     let mut ui = Ui::new();
@@ -924,7 +899,7 @@ fn collapsed_fragments_are_not_hit() {
 
     let f = Fixture::build(&ui, root);
 
-    assert_eq!(f.hit(20.0, 10.0), Some(f.box_of(root)));
+    assert_eq!(f.hit(20.0, 10.0), Some(f.box_ref(root)));
 }
 
 #[test]
@@ -1096,8 +1071,6 @@ fn updates_match_full_builds() {
     );
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn stale_root_layers_hit_nothing() {
     let mut ui = Ui::new();
@@ -1119,8 +1092,6 @@ fn stale_root_layers_hit_nothing() {
     );
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn hit_testers_can_be_reused() {
     let mut ui = Ui::new();
@@ -1146,9 +1117,9 @@ fn hit_testers_can_be_reused() {
     };
 
     // Points mapped by earlier hits do not leak into later ones.
-    assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_of(moved)));
-    assert_eq!(hit(&f, 10.0, 10.0), Some(f.box_of(root)));
-    assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_of(moved)));
+    assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_ref(moved)));
+    assert_eq!(hit(&f, 10.0, 10.0), Some(f.box_ref(root)));
+    assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_ref(moved)));
 
     // Nor into hits on rebuilt layers.
     let input_root = f.input_root();
@@ -1162,7 +1133,7 @@ fn hit_testers_can_be_reused() {
             input_root,
         )
         .unwrap();
-    assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_of(moved)));
+    assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_ref(moved)));
 }
 
 #[test]
@@ -1184,8 +1155,6 @@ fn layer_styles_start_layers_whatever_their_value() {
     assert_eq!(f.layers.layer_of(f.box_of(auto)), None);
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn hits_negative_layers_below_contents_from_the_last() {
     let mut ui = Ui::new();
@@ -1202,13 +1171,13 @@ fn hits_negative_layers_below_contents_from_the_last() {
     let f = Fixture::build(&ui, root);
 
     // Boxes from y 0, 10 and 20, and the narrow raised box from y 10.
-    assert_eq!(f.hit(20.0, 5.0), Some(f.box_of(lowest)));
+    assert_eq!(f.hit(20.0, 5.0), Some(f.box_ref(lowest)));
     // The later negative layer is above the earlier one.
-    assert_eq!(f.hit(20.0, 15.0), Some(f.box_of(low)));
+    assert_eq!(f.hit(20.0, 15.0), Some(f.box_ref(low)));
     // Contents are above negative layers, and positive layers above both.
-    assert_eq!(f.hit(20.0, 25.0), Some(f.box_of(flow)));
-    assert_eq!(f.hit(5.0, 15.0), Some(f.box_of(raised)));
-    assert_eq!(f.hit(50.0, 5.0), Some(f.box_of(root)));
+    assert_eq!(f.hit(20.0, 25.0), Some(f.box_ref(flow)));
+    assert_eq!(f.hit(5.0, 15.0), Some(f.box_ref(raised)));
+    assert_eq!(f.hit(50.0, 5.0), Some(f.box_ref(root)));
 }
 
 /// Every stage of one UI root, kept to update after UI changes.
@@ -1524,7 +1493,6 @@ fn reordered_atomic_inlines_reorder_their_layers() {
     assert_eq!(shape(&p.layers, root_layer), p.full_shape(&ui, root_layer));
 }
 
-#[cfg(any())]
 fn top_left(top: f64, left: f64) -> bx::Inset {
     bx::Inset(LayoutRect::new_invidiual(
         AutoValue::Value(StyleUnit::Px(top)),
@@ -1534,8 +1502,6 @@ fn top_left(top: f64, left: f64) -> bx::Inset {
     ))
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn hits_descendants_overflowing_their_parents() {
     let mut ui = Ui::new();
@@ -1548,17 +1514,15 @@ fn hits_descendants_overflowing_their_parents() {
 
     let f = Fixture::build(&ui, root);
 
-    assert_eq!(f.hit(65.0, 35.0), Some(f.box_of(moved)));
+    assert_eq!(f.hit(65.0, 35.0), Some(f.box_ref(moved)));
     // Its far corner, on the edge of the parent's overflow.
-    assert_eq!(f.hit(79.9, 39.9), Some(f.box_of(moved)));
-    assert_eq!(f.hit(10.0, 10.0), Some(f.box_of(parent)));
-    assert_eq!(f.hit(40.0, 10.0), Some(f.box_of(root)));
+    assert_eq!(f.hit(79.9, 39.9), Some(f.box_ref(moved)));
+    assert_eq!(f.hit(10.0, 10.0), Some(f.box_ref(parent)));
+    assert_eq!(f.hit(40.0, 10.0), Some(f.box_ref(root)));
     // Below the 20px tall root, beside the moved box.
     assert_eq!(f.hit(40.0, 35.0), None);
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn hits_hoisted_boxes_placed_outside_their_parents() {
     let mut ui = Ui::new();
@@ -1595,12 +1559,10 @@ fn hits_hoisted_boxes_placed_outside_their_parents() {
 
     let f = Fixture::build(&ui, root);
 
-    assert_eq!(f.hit(10.0, 10.0), Some(f.box_of(abs)));
-    assert_eq!(f.hit(10.0, 110.0), Some(f.box_of(inner)));
+    assert_eq!(f.hit(10.0, 10.0), Some(f.box_ref(abs)));
+    assert_eq!(f.hit(10.0, 110.0), Some(f.box_ref(inner)));
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn hits_content_of_atomic_inlines_below_their_line() {
     let mut ui = Ui::new();
@@ -1627,16 +1589,17 @@ fn hits_content_of_atomic_inlines_below_their_line() {
     let mut origin = Point::ZERO;
     let mut key = Some(tall_box);
     while let Some(k) = key {
-        let location = f.fragments.items[k].layout.location;
+        let location = f.fragments.boxes[k].layout.geometry.location;
         origin += kurbo::Vec2::new(location.x, location.y);
-        key = f.fragments.items.parent(k);
+        key = f.fragments.boxes.parent(k);
     }
 
-    assert_eq!(f.hit(origin.x + 5.0, origin.y + 80.0), Some(tall_box));
+    assert_eq!(
+        f.hit(origin.x + 5.0, origin.y + 80.0),
+        Some(FragmentRef::Box(tall_box))
+    );
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 /// A root holding a 50x30 scroll container at the origin, scrolled down by
 /// 10, with `extra` props, and three 40x20 rows inside, with `row_extra`
 /// props on the second. Returns the UI, the root, the container and the
@@ -1672,14 +1635,12 @@ fn scrolled_rows(
     (ui, root, scroller, rows)
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 /// Rows scrolled up by 10 sit at -10..10, 10..30 and 30..50 in the scene,
 /// the last one hidden past the container's clip at 30.
 fn assert_scrolled_hits(f: &Fixture, root: NodeKey, scroller: NodeKey, rows: [NodeKey; 3]) {
     let result = |key, x, y| {
         Some(HitTestResult {
-            fragment: f.box_of(key),
+            fragment: f.box_ref(key),
             position: Point::new(x, y),
         })
     };
@@ -1692,8 +1653,6 @@ fn assert_scrolled_hits(f: &Fixture, root: NodeKey, scroller: NodeKey, rows: [No
     assert_eq!(f.hit_result(5.0, 35.0), result(root, 5.0, 35.0));
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn hits_follow_the_scroll_of_their_container() {
     let (ui, root, scroller, rows) = scrolled_rows((), ());
@@ -1702,8 +1661,6 @@ fn hits_follow_the_scroll_of_their_container() {
     assert_scrolled_hits(&f, root, scroller, rows);
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn hits_scroll_with_containers_owning_layers() {
     let (ui, root, scroller, rows) = scrolled_rows((Opacity(0.5),), ());
@@ -1712,8 +1669,6 @@ fn hits_scroll_with_containers_owning_layers() {
     assert_scrolled_hits(&f, root, scroller, rows);
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn hits_in_child_layers_scroll_with_their_container() {
     let (ui, root, scroller, rows) = scrolled_rows((), (Transform(Affine::IDENTITY),));
@@ -1722,8 +1677,6 @@ fn hits_in_child_layers_scroll_with_their_container() {
     assert_scrolled_hits(&f, root, scroller, rows);
 }
 
-// TODO(fragment2): hits, ported in phase 4.
-#[cfg(any())]
 #[test]
 fn hits_in_layers_tested_alone_scroll_with_their_ancestors() {
     let (ui, root, _, rows) = scrolled_rows((), (Transform(Affine::IDENTITY),));
@@ -1738,7 +1691,7 @@ fn hits_in_layers_tested_alone_scroll_with_their_ancestors() {
             Point::new(5.0, 15.0),
         ),
         Some(HitTestResult {
-            fragment: f.box_of(rows[1]),
+            fragment: f.box_ref(rows[1]),
             position: Point::new(5.0, 5.0),
         })
     );
@@ -1988,4 +1941,70 @@ fn inline_element_layers_paint_above_the_content_around_them() {
         .map(|(name, _)| name)
         .collect();
     assert_eq!(names, [text(Color::BLACK), fill(GREEN), text(RED)]);
+}
+
+#[test]
+fn hit_paths_pass_through_the_pieces_of_inline_elements() {
+    for layered in [false, true] {
+        let mut ui = Ui::new();
+        let root = ui.create(Node::Box, ());
+        let lead = ui.create(Node::Text, (Text("lead ".into()),));
+        let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+        if layered {
+            ui.set_props(span, (Opacity(0.5),));
+        }
+        let content = ui.create(Node::Text, (Text("in".into()),));
+        let atomic = ui.create(
+            Node::Box,
+            (
+                bx::DisplayOuter::Inline,
+                bx::DisplayInner::FlowRoot,
+                fixed(20.0, 20.0),
+            ),
+        );
+        ui.append(root, lead);
+        ui.append(root, span);
+        ui.append(span, content);
+        ui.append(span, atomic);
+
+        let f = Fixture::build(&ui, root);
+        let item = |node| f.inputs.item_for_node(node).unwrap();
+        let piece = f.fragments.fragments(&f.inputs, item(span)).next().unwrap();
+        let run = f
+            .fragments
+            .fragments(&f.inputs, item(content))
+            .next()
+            .unwrap();
+        let center = |fragment| {
+            let geometry = f.fragments.geometry(fragment).unwrap();
+            Point::new(
+                geometry.location.x + geometry.size.width / 2.0,
+                geometry.location.y + geometry.size.height / 2.0,
+            )
+        };
+        let path = |point: Point| -> Vec<_> {
+            f.hit_path(point.x, point.y)
+                .into_iter()
+                .map(|hit| hit.fragment)
+                .collect()
+        };
+        let root_box = f.box_ref(root);
+
+        // A glyph run inside the span, with the point local to it.
+        let point = center(run);
+        assert_eq!(path(point), [root_box, piece, run], "layered: {layered}");
+        let location = f.fragments.geometry(run).unwrap().location;
+        assert_eq!(
+            f.hit_result(point.x, point.y).unwrap().position,
+            point - kurbo::Vec2::new(location.x, location.y)
+        );
+
+        // An atomic inline inside the span is a box held by its piece.
+        let atomic_box = f.box_ref(atomic);
+        assert_eq!(
+            path(center(atomic_box)),
+            [root_box, piece, atomic_box],
+            "layered: {layered}"
+        );
+    }
 }

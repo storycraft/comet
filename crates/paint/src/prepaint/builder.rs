@@ -14,7 +14,7 @@ use kurbo::{Affine, Point, RoundedRectRadii, Size, Vec2};
 use crate::{
     prepaint::{
         FragmentData, LayoutInputData,
-        fragment::{BoxRole, boxes_of},
+        fragment::{BoxRole, boxes_of, paint_props},
         tree::PrepaintTree,
     },
     style::{
@@ -170,8 +170,8 @@ impl PrepaintTreeBuilder {
             tree.layout_mapping.insert(key, data);
 
             // Props alone decide it, and resolving an item reads them again.
-            let props = ui.props(inputs.items[key].node)?;
-            if depends_viewport(props) {
+            let props = paint_props(ui, inputs, key)?;
+            if props.is_some_and(depends_viewport) {
                 tree.viewport_dependents.insert(key, ());
             } else {
                 tree.viewport_dependents.remove(key);
@@ -226,9 +226,9 @@ impl Sources<'_> {
     /// Resolve the data of one box from the UI and the data of its item.
     fn resolve_fragment(&self, key: BoxFragmentKey) -> Option<FragmentData> {
         let fragment = self.fragments.get(key)?;
-        let props = self.ui.props(self.inputs.items[fragment.source].node)?;
+        let props = paint_props(self.ui, self.inputs, fragment.source)?;
         // Transforms only apply to principal boxes.
-        let box_props = BoxRole::of(fragment).is_principal().then_some(props);
+        let box_props = props.filter(|_| BoxRole::of(fragment).is_principal());
 
         let TransformOrigin(origin) = box_props.map(Props::get_or_default).unwrap_or_default();
         let Transform(own_transform) = box_props.map(Props::get_or_default).unwrap_or_default();
@@ -269,13 +269,17 @@ impl Sources<'_> {
 
     /// Corner radii of a box's border box, from its item's `props`, resolved
     /// against the box's size, all four corners rounded. `None` for boxes
-    /// painting nothing and items setting no radius.
-    fn border_radius(&self, fragment: &BoxFragment, props: Props<'_>) -> Option<RoundedRectRadii> {
+    /// painting nothing, text items and items setting no radius.
+    fn border_radius(
+        &self,
+        fragment: &BoxFragment,
+        props: Option<Props<'_>>,
+    ) -> Option<RoundedRectRadii> {
         if !BoxRole::of(fragment).decorates() {
             return None;
         }
 
-        let BorderRadius(radius) = props.get_cloned()?;
+        let BorderRadius(radius) = props?.get_cloned()?;
         let mut units = self.units.clone();
         units.font_size = self.inputs.items[fragment.source].text_style.span.font_size as f64;
 
@@ -288,10 +292,18 @@ impl Sources<'_> {
         ))
     }
 
-    /// Resolve the data of one item from the UI.
+    /// Resolve the data of one item from the UI. Text items have no paint
+    /// data: they clip nothing, draw no outline and do not scroll.
     fn resolve_item(&self, key: LayoutInputKey) -> Option<LayoutInputData> {
         let item = &self.inputs.items[key];
-        let props = self.ui.props(item.node)?;
+        let Some(props) = paint_props(self.ui, self.inputs, key)? else {
+            return Some(LayoutInputData {
+                clip: (false, false),
+                outline_width: 0.0,
+                outline_offset: 0.0,
+                scroll: Vec2::ZERO,
+            });
+        };
         let Overflow(overflow) = props.get_or_default();
 
         let mut units = self.units.clone();

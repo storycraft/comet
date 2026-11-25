@@ -505,8 +505,15 @@ fn text_color_is_inherited_through_the_ui() {
     let block = ui.create(Node::Box, (fixed(10.0, 10.0),));
     ui.append(span, block);
     text(&mut ui, block, "still red");
-    let green = text(&mut ui, span, "green");
-    ui.set_props(green, (TextColor(Paint::Solid(GREEN)),));
+    // Text nodes have no paint data: a color of their own is ignored.
+    let ignored = text(&mut ui, span, "still red");
+    ui.set_props(ignored, (TextColor(Paint::Solid(GREEN)),));
+    let green = ui.create(
+        Node::Box,
+        (bx::DisplayOuter::Inline, TextColor(Paint::Solid(GREEN))),
+    );
+    ui.append(span, green);
+    text(&mut ui, green, "green");
 
     let mut f = Fixture::default();
     let root_fragment = f.build(&ui, root);
@@ -515,7 +522,7 @@ fn text_color_is_inherited_through_the_ui() {
         f.fragments.boxes.parent(f.box_of(block)),
         Some(root_fragment)
     );
-    // Blue, then red before and inside the block, then green.
+    // Blue, then red before, inside and after the block, then green.
     assert_eq!(f.text_colors(&ui), [BLUE, RED, GREEN]);
 }
 
