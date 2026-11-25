@@ -6,12 +6,14 @@
 //!    [`DirtyFlags::NEED_CHILDREN`] is marked, without laying anything out.
 //!    Inline formatting contexts whose content changed are built again with
 //!    their text shaped.
-//! 2. Caches of boxes marked [`DirtyFlags::NEED_BOX_LAYOUT`] are dropped.
-//!    Not implemented yet.
+//! 2. [`invalidate`]: boxes marked [`DirtyFlags::NEED_BOX_LAYOUT`], or
+//!    depending on a changed viewport, resolve their styles again and drop
+//!    their cached layouts and those of their ancestors.
 //! 3. Boxes and inline layouts are laid out. Not implemented yet.
 
 mod children;
 pub mod classify;
+mod invalidate;
 
 use comet_tree::ui::Ui;
 use slotmap::SecondaryMap;
@@ -22,6 +24,7 @@ use super::{
 };
 use crate::{
     dirty_map::{DirtyFlags, DirtyMap},
+    fragment::state::NodeLayoutBits,
     input::{LayoutInputKey, tree::LayoutInputTree},
     style::LayoutConstraint,
 };
@@ -48,6 +51,11 @@ struct Scratch {
     created: SecondaryMap<BoxFragmentKey, ()>,
     /// Keys collected while borrowing the fragment tree.
     keys: Vec<(LayoutInputKey, BoxFragmentKey)>,
+    /// Boxes collected while borrowing the scratch buffers.
+    boxes: Vec<BoxFragmentKey>,
+    /// Items to visit by the invalidation, with the box of their nearest
+    /// ancestor generating one, or their own box.
+    walk: Vec<(LayoutInputKey, BoxFragmentKey)>,
 }
 
 /// Pending work of the child sync.
@@ -76,7 +84,8 @@ impl FragmentTreeBuilder {
     /// Items whose fragments changed are marked [`PAINT_CHANGED`]. Flags are
     /// not cleared.
     ///
-    /// Only the box structure is updated for now: boxes are not laid out.
+    /// Boxes are not laid out yet: only their structure, styles and cache
+    /// invalidation are updated.
     pub fn build(
         &mut self,
         ui: &Ui,
@@ -105,6 +114,7 @@ impl FragmentTreeBuilder {
         };
 
         let key = engine.sync_children();
+        engine.invalidate();
         self.inline.release();
 
         Some(key)
@@ -147,6 +157,28 @@ impl Engine<'_> {
 
             fragment.invalidate();
             current = self.fragments.boxes.parent(key);
+        }
+    }
+
+    /// Add the [propagated](NodeLayoutBits::PROPAGATED) part of `bits` of
+    /// the box `key` to its ancestors.
+    fn propagate_bits(&mut self, key: BoxFragmentKey, bits: NodeLayoutBits) {
+        let bits = bits & NodeLayoutBits::PROPAGATED;
+        if bits.is_empty() {
+            return;
+        }
+
+        let mut current = self.fragments.boxes.parent(key);
+        while let Some(ancestor) = current {
+            let fragment = &mut self.fragments.boxes[ancestor];
+
+            // Bits always reach the root, so ancestors above have them.
+            if fragment.bits.contains(bits) {
+                break;
+            }
+
+            fragment.bits |= bits;
+            current = self.fragments.boxes.parent(ancestor);
         }
     }
 

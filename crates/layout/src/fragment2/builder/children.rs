@@ -18,7 +18,6 @@ use super::{
 };
 use crate::{
     dirty_map::DirtyFlags,
-    fragment::state::NodeLayoutBits,
     fragment2::{
         BoxFragment, BoxFragmentKey, BoxFragmentType, ChildLayoutType,
         inline::{
@@ -398,27 +397,16 @@ impl Engine<'_> {
     /// Add the [propagated](NodeLayoutBits::PROPAGATED) bits of the created
     /// boxes to their ancestors.
     fn propagate_created_bits(&mut self) {
-        for key in self.scratch.created.keys() {
-            let Some(fragment) = self.fragments.get(key) else {
-                continue;
-            };
-            let bits = fragment.bits & NodeLayoutBits::PROPAGATED;
+        let mut keys = std::mem::take(&mut self.scratch.boxes);
+        keys.clear();
+        keys.extend(self.scratch.created.keys());
 
-            if bits.is_empty() {
-                continue;
-            }
-
-            let mut current = self.fragments.boxes.parent(key);
-            while let Some(ancestor) = current {
-                let fragment = &mut self.fragments.boxes[ancestor];
-
-                if fragment.bits.contains(bits) {
-                    break;
-                }
-
-                fragment.bits |= bits;
-                current = self.fragments.boxes.parent(ancestor);
+        for &key in &keys {
+            if let Some(bits) = self.fragments.get(key).map(|fragment| fragment.bits) {
+                self.propagate_bits(key, bits);
             }
         }
+
+        self.scratch.boxes = keys;
     }
 }

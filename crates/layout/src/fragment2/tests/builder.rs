@@ -5,13 +5,17 @@ use comet_tree::{
 
 use crate::{
     dirty_map::{DirtyFlags, DirtyMap},
+    fragment::state::NodeLayoutBits,
     fragment2::{BoxFragmentKey, BoxFragmentType, FragmentTree, FragmentTreeBuilder},
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
-    style::{LayoutConstraint, bx, geometry::Size},
+    style::{
+        LayoutConstraint, bx,
+        geometry::{AutoValue, Point, Rect, Size, StyleUnit},
+    },
 };
 
 const VIEWPORT: Size<f64> = Size::new(400.0, 600.0);
@@ -27,6 +31,7 @@ struct Fixture {
     fragments: FragmentTree,
     layout_root: Option<LayoutInputKey>,
     root_box: Option<BoxFragmentKey>,
+    constraint: LayoutConstraint,
 }
 
 impl Fixture {
@@ -41,6 +46,7 @@ impl Fixture {
             fragments: FragmentTree::new(),
             layout_root: None,
             root_box: None,
+            constraint: CONSTRAINT,
         };
         fixture.build();
 
@@ -67,7 +73,7 @@ impl Fixture {
                 &mut self.dirty,
                 layout_root,
                 &mut self.fragments,
-                &CONSTRAINT,
+                &self.constraint,
             )
             .unwrap();
 
@@ -434,4 +440,205 @@ fn unmarked_build_changes_nothing() {
     assert_eq!(fx.box_of(para), para_box);
     assert!(fx.valid(root_box) && fx.valid(para_box));
     assert!(fx.has_box(para));
+}
+
+/// A box whose width is `width`.
+fn sized(ui: &mut Ui, width: StyleUnit) -> NodeKey {
+    ui.create(
+        Node::Box,
+        (bx::Size(Size::new(
+            AutoValue::Value(width),
+            AutoValue::Auto,
+        )),),
+    )
+}
+
+#[test]
+fn box_style_change_restyles_in_place() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let a = paragraph(&mut ui, "a");
+    let b = paragraph(&mut ui, "b");
+    ui.append(root, a);
+    ui.append(root, b);
+
+    let mut fx = Fixture::new(ui, root);
+    let (root_box, a_box, b_box) = (fx.box_of(root), fx.box_of(a), fx.box_of(b));
+    let style = fx.fragments.boxes[a_box].style().clone();
+
+    fx.next_round();
+    fx.ui.set_props(
+        a,
+        (bx::Size(Size::new(
+            AutoValue::Value(StyleUnit::Px(100.0)),
+            AutoValue::Auto,
+        )),),
+    );
+    fx.mark(a, DirtyFlags::NEED_BOX_LAYOUT);
+
+    assert_eq!(fx.build(), root_box);
+    assert_eq!(fx.box_of(a), a_box, "box changes keep the box");
+    assert_ne!(fx.fragments.boxes[a_box].style(), &style);
+    assert!(!fx.valid(a_box) && !fx.valid(root_box));
+    assert!(fx.valid(b_box));
+}
+
+#[test]
+fn box_type_follows_style_under_block_parents() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let a = paragraph(&mut ui, "a");
+    ui.append(root, a);
+
+    let mut fx = Fixture::new(ui, root);
+    let a_box = fx.box_of(a);
+    assert_eq!(fx.fragments.boxes[a_box].box_type, BoxFragmentType::Normal);
+
+    fx.next_round();
+    fx.ui.set_props(
+        a,
+        (bx::Overflow(Point::new(
+            taffy::Overflow::Hidden,
+            taffy::Overflow::Visible,
+        )),),
+    );
+    fx.mark(a, DirtyFlags::NEED_BOX_LAYOUT);
+    fx.build();
+    assert_eq!(fx.box_of(a), a_box);
+    assert_eq!(
+        fx.fragments.boxes[a_box].box_type,
+        BoxFragmentType::FlowRoot
+    );
+
+    fx.next_round();
+    fx.ui
+        .set_props(a, (bx::Position(taffy::Position::Absolute),));
+    fx.mark(a, DirtyFlags::NEED_FULL_LAYOUT);
+    fx.build();
+    assert_eq!(
+        fx.fragments.boxes[fx.box_of(a)].box_type,
+        BoxFragmentType::OutOfFlow
+    );
+}
+
+#[test]
+fn inline_changes_invalidate_their_owner() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let para = ui.create(Node::Box, ());
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    let inner = text(&mut ui, "inner");
+    let badge = ui.create(
+        Node::Box,
+        (bx::DisplayOuter::Inline, bx::DisplayInner::FlowRoot),
+    );
+    let other = paragraph(&mut ui, "other");
+    ui.append(root, para);
+    ui.append(para, span);
+    ui.append(span, inner);
+    ui.append(para, badge);
+    ui.append(root, other);
+
+    let mut fx = Fixture::new(ui, root);
+    let (root_box, para_box, badge_box, other_box) = (
+        fx.box_of(root),
+        fx.box_of(para),
+        fx.box_of(badge),
+        fx.box_of(other),
+    );
+
+    // An inline element's box style lays out its owner again.
+    fx.next_round();
+    fx.ui.set_props(
+        span,
+        (bx::Padding(Rect::new(
+            Point::new(StyleUnit::Px(4.0), StyleUnit::Px(0.0)),
+            Point::new(StyleUnit::Px(4.0), StyleUnit::Px(0.0)),
+        )),),
+    );
+    fx.mark(span, DirtyFlags::NEED_BOX_LAYOUT);
+    fx.build();
+
+    assert_eq!(
+        fx.box_of(para),
+        para_box,
+        "no rebuild without content changes"
+    );
+    assert!(!fx.valid(para_box) && !fx.valid(root_box));
+    assert!(fx.valid(badge_box) && fx.valid(other_box));
+
+    // A position change staying in flow restyles the box inside.
+    fx.next_round();
+    fx.ui
+        .set_props(badge, (bx::Position(taffy::Position::Relative),));
+    fx.mark(badge, DirtyFlags::NEED_BOX_LAYOUT);
+    fx.build();
+
+    assert_eq!(fx.box_of(para), para_box);
+    assert_eq!(fx.box_of(badge), badge_box);
+    assert_eq!(
+        fx.fragments.boxes[badge_box].box_type,
+        BoxFragmentType::AtomicInline
+    );
+    assert!(!fx.valid(badge_box) && !fx.valid(para_box));
+    assert!(fx.valid(other_box));
+}
+
+#[test]
+fn viewport_changes_invalidate_dependent_boxes() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let wide = sized(&mut ui, StyleUnit::Vw(0.5));
+    let fixed = sized(&mut ui, StyleUnit::Px(100.0));
+    let para = ui.create(Node::Box, ());
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    let badge = sized(&mut ui, StyleUnit::Vw(0.1));
+    ui.set_props(
+        badge,
+        (bx::DisplayOuter::Inline, bx::DisplayInner::FlowRoot),
+    );
+    let plain = ui.create(
+        Node::Box,
+        (bx::DisplayOuter::Inline, bx::DisplayInner::FlowRoot),
+    );
+    ui.append(root, wide);
+    ui.append(root, fixed);
+    ui.append(root, para);
+    ui.append(para, span);
+    ui.append(span, badge);
+    ui.append(para, plain);
+
+    let mut fx = Fixture::new(ui, root);
+    let [
+        root_box,
+        wide_box,
+        fixed_box,
+        para_box,
+        badge_box,
+        plain_box,
+    ] = [root, wide, fixed, para, badge, plain].map(|node| fx.box_of(node));
+    let depends = |fx: &Fixture, key| {
+        fx.fragments.boxes[key]
+            .bits()
+            .contains(NodeLayoutBits::DEPENDS_VIEWPORT)
+    };
+    assert!(
+        depends(&fx, root_box) && depends(&fx, para_box),
+        "bits propagate"
+    );
+    assert!(!depends(&fx, fixed_box) && !depends(&fx, plain_box));
+
+    // Nothing depends on an unchanged viewport.
+    fx.next_round();
+    fx.build();
+    assert!(fx.valid(root_box));
+
+    fx.next_round();
+    fx.constraint =
+        LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0).with_viewport_changed(true);
+    fx.build();
+
+    assert!(!fx.valid(wide_box) && !fx.valid(badge_box));
+    assert!(!fx.valid(para_box) && !fx.valid(root_box));
+    assert!(fx.valid(fixed_box) && fx.valid(plain_box));
 }
