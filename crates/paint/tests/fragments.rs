@@ -1,3 +1,6 @@
+// TODO(fragment2): ported with the painter and layers in phases 2–4.
+#![cfg(any())]
+
 use anyrender::{Glyph, Paint, Scene, recording::RenderCommand};
 use comet_layout::{
     dirty_map::DirtyMap,

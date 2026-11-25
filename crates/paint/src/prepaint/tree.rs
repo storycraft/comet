@@ -3,33 +3,33 @@ use std::ops::Index;
 #[cfg(doc)]
 use comet_layout::dirty_map::DirtyFlags;
 use comet_layout::{
-    fragment::{Fragment, FragmentKey, tree::FragmentTree},
+    fragment2::{BoxFragment, BoxFragmentKey, FragmentTree},
     input::LayoutInputKey,
 };
 use kurbo::{Point, Shape, Vec2};
 use slotmap::{SecondaryMap, SparseSecondaryMap};
 
-use crate::prepaint::{FragmentData, LayoutInputData};
+use crate::prepaint::{FragmentData, LayoutInputData, fragment::BoxRole};
 
-/// Paint data of the fragments of a fragment tree, such as their transforms
-/// relative to their parents, and of the layout input items they were built
-/// from.
+/// Paint data of the box fragments of a fragment tree, such as their
+/// transforms relative to their parents, and of the layout input items they
+/// were built from.
 ///
 /// Filled by a [`PrepaintTreeBuilder`](super::builder::PrepaintTreeBuilder),
-/// which resolves the fragments of the layout input items marked
+/// which resolves the boxes of the layout input items marked
 /// [`DirtyFlags::NEED_PRE_PAINT`], including those the fragment builder laid
-/// out, and the fragments without data.
-/// Keys are generational, so data left behind by deleted fragments and items
-/// is never returned for the fragments and items reusing their slots, and is
+/// out, and the boxes without data.
+/// Keys are generational, so data left behind by deleted boxes and items
+/// is never returned for the boxes and items reusing their slots, and is
 /// overwritten when those are resolved.
 #[derive(Default)]
 pub struct PrepaintTree {
-    pub(super) fragment_mapping: SecondaryMap<FragmentKey, FragmentData>,
+    pub(super) fragment_mapping: SecondaryMap<BoxFragmentKey, FragmentData>,
     pub(super) layout_mapping: SecondaryMap<LayoutInputKey, LayoutInputData>,
     /// Items whose paint values, or those of their fragments, use `vw` or
     /// `vh`, resolved again when the viewport changes. Few items use them,
     /// so the map is sparse. Keyed by item, since the fragments of an item
-    /// share its props, and line fragments are replaced by layouts.
+    /// share its props, and inline part boxes are replaced by layouts.
     pub(super) viewport_dependents: SparseSecondaryMap<LayoutInputKey, ()>,
 }
 
@@ -38,8 +38,8 @@ impl PrepaintTree {
         Self::default()
     }
 
-    /// The paint data a fragment was resolved to.
-    pub fn fragment(&self, key: FragmentKey) -> Option<&FragmentData> {
+    /// The paint data a box fragment was resolved to.
+    pub fn fragment(&self, key: BoxFragmentKey) -> Option<&FragmentData> {
         self.fragment_mapping.get(key)
     }
 
@@ -61,10 +61,11 @@ impl PrepaintTree {
     }
 
     /// The scroll offset `fragment` applies to its descendants: the
-    /// [scroll](LayoutInputData::scroll) of its item for box fragments, zero
-    /// for others and for unresolved items.
-    pub fn scroll_offset(&self, fragment: &Fragment) -> Vec2 {
-        if !fragment.item.is_box() {
+    /// [scroll](LayoutInputData::scroll) of its item for
+    /// [principal](BoxRole::Principal) boxes, zero for others and for
+    /// unresolved items.
+    pub fn scroll_offset(&self, fragment: &BoxFragment) -> Vec2 {
+        if !BoxRole::of(fragment).is_principal() {
             return Vec2::ZERO;
         }
 
@@ -72,15 +73,14 @@ impl PrepaintTree {
             .map_or(Vec2::ZERO, |data| data.scroll)
     }
 
-    /// Whether `point`, in the local coordinates of a fragment, hits the
-    /// fragment itself: it falls in its
+    /// Whether `point`, in the local coordinates of a box fragment, hits the
+    /// box itself: it falls in its
     /// [border rect](FragmentData::border_rect), square at the joins of a
-    /// split fragment.
+    /// split box.
     ///
-    /// Fragments not in `fragments`, or not resolved in `self`, are never
-    /// hit.
-    pub fn hit_local(&self, fragments: &FragmentTree, key: FragmentKey, point: Point) -> bool {
-        let Some(fragment) = fragments.items.get(key) else {
+    /// Boxes not in `fragments`, or not resolved in `self`, are never hit.
+    pub fn hit_local(&self, fragments: &FragmentTree, key: BoxFragmentKey, point: Point) -> bool {
+        let Some(fragment) = fragments.get(key) else {
             return false;
         };
 
@@ -92,10 +92,10 @@ impl PrepaintTree {
     }
 }
 
-impl Index<FragmentKey> for PrepaintTree {
+impl Index<BoxFragmentKey> for PrepaintTree {
     type Output = FragmentData;
 
-    fn index(&self, key: FragmentKey) -> &FragmentData {
+    fn index(&self, key: BoxFragmentKey) -> &FragmentData {
         &self.fragment_mapping[key]
     }
 }

@@ -1,6 +1,6 @@
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
+    fragment2::{BoxFragment, BoxFragmentKey, FragmentTree},
     input::{LayoutInputKey, tree::LayoutInputTree},
     style::{
         bx::Overflow,
@@ -12,7 +12,11 @@ use comet_tree::ui::{Props, Ui};
 use kurbo::{Affine, Point, RoundedRectRadii, Size, Vec2};
 
 use crate::{
-    prepaint::{FragmentData, LayoutInputData, tree::PrepaintTree},
+    prepaint::{
+        FragmentData, LayoutInputData,
+        fragment::{BoxRole, boxes_of},
+        tree::PrepaintTree,
+    },
     style::{
         BorderRadius, OutlineOffset, OutlineWidth, ScrollLeft, ScrollTop, Transform,
         TransformOrigin,
@@ -23,12 +27,12 @@ use crate::{
 /// buffers across resolves.
 #[derive(Default)]
 pub struct PrepaintTreeBuilder {
-    /// Fragments to visit.
-    pending: Vec<FragmentKey>,
+    /// Boxes to visit.
+    pending: Vec<BoxFragmentKey>,
     /// Layout input items to resolve.
     items: Vec<LayoutInputKey>,
-    /// Fragments to resolve.
-    changed: Vec<FragmentKey>,
+    /// Boxes to resolve.
+    changed: Vec<BoxFragmentKey>,
 }
 
 /// What resolving reads from.
@@ -45,51 +49,56 @@ impl PrepaintTreeBuilder {
         Self::default()
     }
 
-    /// Builds into `tree` the fragments that need it, and their layout input
-    /// items:
-    /// - fragments under `root` of items whose [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags) in `dirty` have
+    /// Builds into `tree` the box fragments that need it, and their layout
+    /// input items:
+    /// - boxes under `root` of items whose [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags) in `dirty` have
     ///   [`DirtyFlags::NEED_PRE_PAINT`]: those the fragment builder created,
     ///   moved or resized, those whose font size the input builder resolved
     ///   to a new value, and those marked with it, such as after their paint
     ///   styles changed. Other layout changes,
     ///   [`DirtyFlags::NEED_FULL_LAYOUT`] and
     ///   [`DirtyFlags::NEED_BOX_LAYOUT`], reach pre-paint only through the
-    ///   fragments they create, move or resize,
-    /// - fragments under `root` without data in `tree`.
+    ///   boxes they create, move or resize,
+    /// - boxes under `root` without data in `tree`.
     ///
-    /// Fragments are visited from `root`, going into the children of a
-    /// fragment only when its item's
+    /// Inline items placing no box, such as lines and glyph runs, get no
+    /// data, and are skipped.
+    ///
+    /// Boxes are visited from `root`, going into the children of a box only
+    /// when its item's
     /// [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags) or
     /// [`DirtyEntry::child_bits`](comet_layout::dirty_map::DirtyEntry::child_bits)
     /// have [`DirtyFlags::NEED_PRE_PAINT`], or when it has no data in `tree`.
-    /// The former reaches the lines and anonymous blocks of a laid out box.
-    /// A [cleared](PrepaintTree::clear) `tree` resolves every fragment.
+    /// Anonymous boxes carry the item of the box owning them, and inline part
+    /// boxes the item of their inline element, inside it, so the former
+    /// reaches them. A [cleared](PrepaintTree::clear) `tree` resolves every
+    /// box.
     ///
-    /// Data only depends on the fragment or item itself, so ancestors are not
+    /// Data only depends on the box or item itself, so ancestors are not
     /// resolved. `dirty` is not cleared; the layer build reads it too, so
     /// call [`DirtyMap::clear`] after building layers.
     ///
-    /// Items one of whose fragments gets new data, including fragments
-    /// without data before, are marked [`DirtyFlags::NEED_LAYER`] in `dirty`,
-    /// for the layer build.
+    /// Items one of whose boxes gets new data, including boxes without data
+    /// before, are marked [`DirtyFlags::NEED_LAYER`] in `dirty`, for the
+    /// layer build.
     ///
     /// Changes builds cannot see, such as paint styles, must be marked.
     ///
     /// With `viewport_changed`, every item whose paint values, or those of
-    /// its fragments, use `vw` or `vh` is resolved again with all of its
-    /// fragments. Pass it when the viewport in `units` differs from the
-    /// last successful call. The root font size is not tracked: resolve into a new
-    /// or [cleared](PrepaintTree::clear) tree when it changes.
+    /// its boxes, use `vw` or `vh` is resolved again with all of its boxes.
+    /// Pass it when the viewport in `units` differs from the last successful
+    /// call. The root font size is not tracked: resolve into a new or
+    /// [cleared](PrepaintTree::clear) tree when it changes.
     ///
     /// `inputs` is the input tree `fragments` were built from, and `tree`
     /// belongs to them. `units` resolves border radii and transform origins,
     /// with each item's font size.
     ///
-    /// Returns `None` if a fragment or item to resolve no longer matches the
-    /// UI, such as when its source node was deleted after `inputs` and
+    /// Returns `None` if a box or item to resolve no longer matches the UI,
+    /// such as when its source node was deleted after `inputs` and
     /// `fragments` were built. Rebuild them, then resolve again. Data resolved
     /// before the failure stays in `tree`, so `tree` may be partly updated,
-    /// but the next call resolves the same fragments again.
+    /// but the next call resolves the same boxes again.
     #[allow(clippy::too_many_arguments)]
     pub fn build(
         &mut self,
@@ -99,7 +108,7 @@ impl PrepaintTreeBuilder {
         fragments: &FragmentTree,
         units: &UnitResolveContext,
         tree: &mut PrepaintTree,
-        root: FragmentKey,
+        root: BoxFragmentKey,
         viewport_changed: bool,
     ) -> Option<()> {
         let sources = Sources {
@@ -119,7 +128,7 @@ impl PrepaintTreeBuilder {
         pending.push(root);
 
         while let Some(key) = pending.pop() {
-            let fragment = fragments.items.get(key)?;
+            let fragment = fragments.get(key)?;
             inputs.items.get(fragment.source)?;
             let entry = dirty.entry(fragment.source);
             let missing = !tree.fragment_mapping.contains_key(key);
@@ -129,10 +138,10 @@ impl PrepaintTreeBuilder {
                 items.push(fragment.source);
             }
 
-            // Lines and anonymous blocks carry the item of the box owning
-            // them, so the children of a flagged item are visited too.
+            // Anonymous boxes carry the item of the box owning them, so the
+            // children of a flagged item are visited too.
             if (entry.flags | entry.child_bits).contains(DirtyFlags::NEED_PRE_PAINT) || missing {
-                pending.extend(fragments.items.children(key));
+                pending.extend(fragments.boxes.children(key));
             }
         }
 
@@ -145,7 +154,7 @@ impl PrepaintTreeBuilder {
 
             for key in tree.viewport_dependents.keys() {
                 items.push(key);
-                changed.extend(fragments.fragments(key));
+                changed.extend(boxes_of(fragments, inputs, key));
             }
         }
 
@@ -172,11 +181,11 @@ impl PrepaintTreeBuilder {
         for &key in changed.iter() {
             let data = sources.resolve_fragment(key)?;
 
-            // Layers read the data of their fragments, so changed data
-            // updates the layers too.
+            // Layers read the data of their boxes, so changed data updates
+            // the layers too.
             if tree.fragment_mapping.get(key) != Some(&data) {
                 tree.fragment_mapping.insert(key, data);
-                dirty.mark(inputs, fragments.items[key].source, DirtyFlags::NEED_LAYER);
+                dirty.mark(inputs, fragments.boxes[key].source, DirtyFlags::NEED_LAYER);
             }
         }
 
@@ -214,28 +223,24 @@ fn depends_viewport(props: Props<'_>) -> bool {
 }
 
 impl Sources<'_> {
-    /// Resolve the data of one fragment from the UI and the data of its item.
-    fn resolve_fragment(&self, key: FragmentKey) -> Option<FragmentData> {
-        let fragment = self.fragments.items.get(key)?;
+    /// Resolve the data of one box from the UI and the data of its item.
+    fn resolve_fragment(&self, key: BoxFragmentKey) -> Option<FragmentData> {
+        let fragment = self.fragments.get(key)?;
         let props = self.ui.props(self.inputs.items[fragment.source].node)?;
-        // Transforms only apply to boxes.
-        let box_props = if fragment.item.is_box() {
-            Some(props)
-        } else {
-            None
-        };
+        // Transforms only apply to principal boxes.
+        let box_props = BoxRole::of(fragment).is_principal().then_some(props);
 
         let TransformOrigin(origin) = box_props.map(Props::get_or_default).unwrap_or_default();
         let Transform(own_transform) = box_props.map(Props::get_or_default).unwrap_or_default();
 
-        let layout = &fragment.layout;
+        let geometry = &fragment.layout.geometry;
         let transform_origin = self.transform_origin(
-            key,
+            fragment,
             origin,
-            Size::new(layout.size.width, layout.size.height),
+            Size::new(geometry.size.width, geometry.size.height),
         );
         let transform = resolve_transform(
-            Point::new(layout.location.x, layout.location.y),
+            Point::new(geometry.location.x, geometry.location.y),
             own_transform,
             transform_origin,
         );
@@ -247,30 +252,26 @@ impl Sources<'_> {
         })
     }
 
-    /// The point a fragment's own transform is applied around, relative to
-    /// its border box of `size`, resolving `origin` with its item's font size.
+    /// The point a box's own transform is applied around, relative to its
+    /// border box of `size`, resolving `origin` with its item's font size.
     fn transform_origin(
         &self,
-        key: FragmentKey,
+        fragment: &BoxFragment,
         origin: StylePoint<StyleUnit>,
         size: Size,
     ) -> Point {
-        let source = self.fragments.items[key].source;
         let mut units = self.units.clone();
-        units.font_size = self.inputs.items[source].text_style.span.font_size as f64;
+        units.font_size = self.inputs.items[fragment.source].text_style.span.font_size as f64;
 
         let origin = origin.resolve(&units, StylePoint::new(size.width, size.height));
         Point::new(origin.x, origin.y)
     }
 
-    /// Corner radii of a fragment's border box, from its item's `props`,
-    /// resolved against the fragment's size, all four corners rounded.
-    /// `None` for fragments painting no box and items setting no radius.
-    fn border_radius(&self, fragment: &Fragment, props: Props<'_>) -> Option<RoundedRectRadii> {
-        if matches!(
-            fragment.item,
-            FragmentItem::Line { .. } | FragmentItem::AnonymousBlock { .. }
-        ) {
+    /// Corner radii of a box's border box, from its item's `props`, resolved
+    /// against the box's size, all four corners rounded. `None` for boxes
+    /// painting nothing and items setting no radius.
+    fn border_radius(&self, fragment: &BoxFragment, props: Props<'_>) -> Option<RoundedRectRadii> {
+        if !BoxRole::of(fragment).decorates() {
             return None;
         }
 
@@ -278,10 +279,12 @@ impl Sources<'_> {
         let mut units = self.units.clone();
         units.font_size = self.inputs.items[fragment.source].text_style.span.font_size as f64;
 
+        let size = fragment.layout.geometry.size;
+
         Some(border_radius(
             radius,
             &units,
-            Size::new(fragment.layout.size.width, fragment.layout.size.height),
+            Size::new(size.width, size.height),
         ))
     }
 
@@ -369,8 +372,8 @@ fn invert(transform: Affine) -> Option<Affine> {
     Some(transform.inverse()).filter(Affine::is_finite)
 }
 
-/// Apply a fragment's own `transform` around `origin`, relative to its border
-/// box, then place it at its `location` in its parent fragment.
+/// Apply a box's own `transform` around `origin`, relative to its border box,
+/// then place it at its `location` in its parent box.
 fn resolve_transform(location: Point, transform: Affine, origin: Point) -> Affine {
     let location = location.to_vec2();
 
