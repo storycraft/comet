@@ -524,10 +524,15 @@ fn runs_are_linked_and_split_elements_continue_across_them() {
     );
 
     let span = fx.item(span);
-    let first = fx.fragments.inline_layout(runs[0]).unwrap();
-    let second = fx.fragments.inline_layout(runs[1]).unwrap();
-    assert_eq!(first.continued, [span]);
-    assert_eq!(second.reopened, [span]);
+    assert!(fx.fragments.is_split_after(&fx.tree, runs[0], span));
+    assert!(fx.fragments.is_split_before(&fx.tree, runs[1], span));
+    assert!(!fx.fragments.is_split_before(&fx.tree, runs[0], span));
+    assert!(!fx.fragments.is_split_after(&fx.tree, runs[1], span));
+    let root_item = fx.item(root);
+    assert!(
+        !fx.fragments.is_split_before(&fx.tree, runs[1], root_item),
+        "the owner is not split"
+    );
     assert_eq!(fx.fragments.inline_owner(&fx.tree, span), Some(runs[0]));
 
     let pieces: Vec<_> = fx.fragments.fragments(&fx.tree, span).collect();

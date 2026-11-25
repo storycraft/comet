@@ -43,14 +43,6 @@ pub struct InlineLayout {
     /// level box it follows; `None` for the first run, or content that is
     /// not split. Kept across builds.
     pub(crate) run_start: Option<LayoutInputKey>,
-    /// Inline elements open at the start of the run, split by the block
-    /// level box before it, outermost first. Their items continue those of
-    /// the previous run.
-    pub reopened: Vec<LayoutInputKey>,
-    /// Inline elements still open at the end of the run, split by the block
-    /// level box after it, outermost first. Their items continue in the
-    /// next run.
-    pub continued: Vec<LayoutInputKey>,
     /// [Propagated](NodeLayoutBits::PROPAGATED) bits of the box styles of
     /// the inline elements in the inline content, which have no boxes of
     /// their own. Part of the bits of the owner. Set by a full build, and
@@ -151,6 +143,13 @@ impl InlineLayout {
     /// built when it is laid out.
     pub fn is_built(&self) -> bool {
         self.built
+    }
+
+    /// For a run of inline content split by block level boxes, the block
+    /// level box it follows. The inline elements holding it are split by it,
+    /// see [`FragmentTree::is_split_before`](crate::fragment2::FragmentTree::is_split_before).
+    pub fn run_start(&self) -> Option<LayoutInputKey> {
+        self.run_start
     }
 
     /// First line baseline relative to the content box top.

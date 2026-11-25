@@ -66,6 +66,8 @@ pub struct InlineContentBuilder {
     open: Vec<(usize, usize, bool)>,
     /// Inline boxes of the text being built.
     boxes: Vec<parley::InlineBox>,
+    /// Inline elements open again at the start of the run being built.
+    reopened: Vec<LayoutInputKey>,
     /// Style table index of each item's style.
     styles: FxHashMap<LayoutInputKey, u16>,
     /// Boxes inside the inline content of the latest build, in flow order,
@@ -133,9 +135,10 @@ impl InlineContentBuilder {
         let prelayout = match start {
             Some(block) => {
                 // The inline elements split by the block are open again.
-                InlinePrelayout::open_around(tree, root, block, &mut inline.reopened);
+                let mut reopened = std::mem::take(&mut self.reopened);
+                InlinePrelayout::open_around(tree, root, block, &mut reopened);
 
-                for &key in &inline.reopened {
+                for &key in &reopened {
                     let (_, bits) = cx.resolve_style(key);
                     inline.content_bits |= bits & NodeLayoutBits::PROPAGATED;
                     self.open
@@ -148,6 +151,7 @@ impl InlineContentBuilder {
                     parents.push(key);
                 }
 
+                self.reopened = reopened;
                 InlinePrelayout::after(tree, root, block)
             }
             None => InlinePrelayout::new(tree, root),
@@ -207,7 +211,6 @@ impl InlineContentBuilder {
                     // A block level box in flow ends the run, splitting the
                     // inline elements open around it.
                     if !out_of_flow && matches!(item, InputItem::Block(_)) {
-                        inline.continued.extend_from_slice(&parents[1..]);
                         break;
                     }
 
@@ -281,8 +284,6 @@ impl InlineLayout {
         self.offset_mapping.clear();
         self.items.clear();
         self.atomics.clear();
-        self.reopened.clear();
-        self.continued.clear();
         self.content_bits = NodeLayoutBits::empty();
         self.first_baseline = None;
         self.last_baseline = None;

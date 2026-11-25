@@ -219,15 +219,17 @@ fn inline_elements_split_by_blocks_continue_across_runs() {
     let (span, block) = (f.item(span), f.item(block));
 
     assert_eq!(f.inline.text, "ab");
-    assert!(f.inline.reopened.is_empty());
-    assert_eq!(f.inline.continued, [span]);
+    assert_eq!(f.inline.run_start(), None);
     assert_eq!(f.inline.range(span), Some(0..2));
 
     f.build_run(Some(block));
     assert_eq!(f.inline.text, "cde");
-    assert_eq!(f.inline.reopened, [span]);
-    assert!(f.inline.continued.is_empty());
-    assert_eq!(f.inline.range(span), Some(0..2));
+    assert_eq!(f.inline.run_start(), Some(block));
+    assert_eq!(
+        f.inline.range(span),
+        Some(0..2),
+        "the split element is open again"
+    );
     assert_eq!(
         f.inline.layout.inline_boxes().count(),
         0,
