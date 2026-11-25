@@ -1,6 +1,6 @@
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment::{FragmentItem, FragmentKey, tree::FragmentTree},
+    fragment2::{BoxFragmentKey, FragmentRef, FragmentTree, InlineItemKind},
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     style::bx::Overflow,
 };
@@ -38,9 +38,9 @@ pub struct AxTreeBuilder {
 #[derive(Clone, Copy)]
 struct Visit {
     item: LayoutInputKey,
-    /// Fragment whose space the parent node is in: the box of the nearest
+    /// Box whose space the parent node is in: the box of the nearest
     /// ancestor item with one. `None` for the root.
-    space: Option<FragmentKey>,
+    space: Option<BoxFragmentKey>,
     /// Whether the parent node was resolved in this build.
     parent_resolved: bool,
     /// Whether the scroll offset of `space` changed in this build, moving
@@ -79,9 +79,11 @@ impl AxTreeBuilder {
     /// the transform mapping the box into its parent node, from the
     /// pre-paint transforms. Other items, such as inline elements and texts
     /// in an inline flow, are in the space of their parent node, with the
-    /// area covering their fragments as bounds. Text runs have their glyph
-    /// run's box as bounds and the transform mapping it into the text's
-    /// node.
+    /// area covering their inline items as bounds: the pieces of an inline
+    /// element, or the glyph runs of a text, across lines and runs. Text runs
+    /// have their glyph run's box as bounds and the transform mapping it into
+    /// the text's node. Inline items are placed in the scrolled contents of
+    /// the box owning their inline layout.
     ///
     /// Transforms include the scroll offsets of scroll containers, so nodes
     /// inside follow the scroll. A box clipping its overflow
@@ -95,8 +97,7 @@ impl AxTreeBuilder {
     /// - when it is [`AxFlags::DIRTY`] in `tree`,
     /// - when it is new, or has a child item without a node,
     /// - when its parent node was resolved and its box is not inside the
-    ///   parent's space in the fragment tree, as its transform depends on
-    ///   both,
+    ///   parent's space in the box tree, as its transform depends on both,
     /// - when the scroll offset of the box whose space it is in changed,
     ///   along with the items in that space without a box of their own.
     ///
@@ -239,8 +240,8 @@ impl Sources<'_> {
         tree: &mut AxTree,
         key: AxKey,
         item: LayoutInputKey,
-        own: Option<FragmentKey>,
-        space: Option<FragmentKey>,
+        own: Option<BoxFragmentKey>,
+        space: Option<BoxFragmentKey>,
         children: &mut Vec<AxKey>,
         runs: &mut Vec<AxKey>,
     ) -> Option<()> {
@@ -255,7 +256,7 @@ impl Sources<'_> {
 
         match (own, space) {
             (Some(own), space) => {
-                let size = self.fragments.items.get(own)?.layout.size;
+                let size = self.fragments.get(own)?.layout.geometry.size;
                 node.set_bounds(accesskit::Rect::new(0.0, 0.0, size.width, size.height));
                 let transform = match space {
                     Some(space) => self.relative_transform(own, space)?,
@@ -267,13 +268,13 @@ impl Sources<'_> {
                 }
                 self.set_scroll(&mut node, item, own, props)?;
             }
-            // In the space of the parent node, covering its fragments.
+            // In the space of the parent node, covering its inline items.
             (None, Some(space)) => {
                 let mut bounds: Option<kurbo::Rect> = None;
-                for fragment in self.fragments.fragments(item) {
-                    let size = self.fragments.items.get(fragment)?.layout.size;
+                for fragment in self.fragments.fragments(self.inputs, item) {
+                    let size = self.fragments.geometry(fragment)?.size;
                     let rect = self
-                        .relative_transform(fragment, space)?
+                        .fragment_transform(fragment, space)?
                         .transform_rect_bbox(kurbo::Rect::from_origin_size(
                             (0.0, 0.0),
                             (size.width, size.height),
@@ -299,7 +300,7 @@ impl Sources<'_> {
         );
         if input.kind == LayoutInputKind::Text {
             let run_space = own.or(space)?;
-            let glyph_runs: Vec<_> = self.glyph_runs(item, own).collect();
+            let glyph_runs = self.glyph_runs(item, own);
             for index in 0..glyph_runs.len() {
                 let run_key = runs.get(index).copied().unwrap_or_else(|| {
                     tree.nodes.insert(AxNode {
@@ -342,7 +343,7 @@ impl Sources<'_> {
         &self,
         node: &mut accesskit::Node,
         item: LayoutInputKey,
-        own: FragmentKey,
+        own: BoxFragmentKey,
         props: Props<'_>,
     ) -> Option<()> {
         let Some(data) = self.prepaint.get(item) else {
@@ -370,49 +371,84 @@ impl Sources<'_> {
     /// The role of a node without one, generating `own` if it is a box:
     /// texts are labels, boxes laying out one inline formatting context
     /// groups, and other boxes generic containers. A box split by blocks
-    /// owns no inline layout: its anonymous blocks do.
-    fn default_role(&self, node: NodeKey, own: Option<FragmentKey>) -> accesskit::Role {
+    /// owns no inline layout: its anonymous run boxes do.
+    fn default_role(&self, node: NodeKey, own: Option<BoxFragmentKey>) -> accesskit::Role {
         if self.ui.kind(node) == Some(Node::Text) {
             accesskit::Role::Label
-        } else if own.is_some_and(|own| self.fragments.get_inline(own).is_some()) {
+        } else if own.is_some_and(|own| self.fragments.inline_layout(own).is_some()) {
             accesskit::Role::Group
         } else {
             accesskit::Role::GenericContainer
         }
     }
 
-    /// The glyph runs of a text item in order: its linked fragments in an
-    /// inline flow, or the runs inside its own box, which are not linked
-    /// with the box.
-    fn glyph_runs(
-        &self,
-        item: LayoutInputKey,
-        own: Option<FragmentKey>,
-    ) -> impl Iterator<Item = FragmentKey> {
-        let items = &self.fragments.items;
-        let in_box = own.map(|own| items.descendants(own)).into_iter().flatten();
-        let linked = own
-            .is_none()
-            .then(|| self.fragments.fragments(item))
-            .into_iter()
-            .flatten();
+    /// The glyph runs of a text item in order: its items in the inline
+    /// layouts holding it, across lines and runs, or those of the inline
+    /// layout of its own box.
+    fn glyph_runs(&self, item: LayoutInputKey, own: Option<BoxFragmentKey>) -> Vec<FragmentRef> {
+        let is_run = |fragment: &FragmentRef| {
+            let FragmentRef::Inline { owner, index } = *fragment else {
+                return false;
+            };
 
-        in_box.chain(linked).filter(move |&key| {
-            matches!(items[key].item, FragmentItem::GlyphRun { .. }) && items[key].source == item
-        })
+            self.fragments
+                .inline_layout(owner)
+                .and_then(|inline| inline.items.get(index as usize))
+                .is_some_and(|run| run.is_run() && run.source == item)
+        };
+
+        match own {
+            Some(own) => self
+                .fragments
+                .inline_layout(own)
+                .map(|inline| {
+                    inline
+                        .items_of(item)
+                        .map(|index| FragmentRef::Inline {
+                            owner: own,
+                            index: index as u32,
+                        })
+                        .filter(is_run)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            None => self
+                .fragments
+                .fragments(self.inputs, item)
+                .filter(is_run)
+                .collect(),
+        }
     }
 
     /// Whether `ancestor` is `key` or one of its ancestors.
-    fn contains(&self, ancestor: FragmentKey, key: FragmentKey) -> bool {
-        let items = &self.fragments.items;
-        core::iter::successors(Some(key), |&key| items.parent(key)).any(|key| key == ancestor)
+    fn contains(&self, ancestor: BoxFragmentKey, key: BoxFragmentKey) -> bool {
+        let boxes = &self.fragments.boxes;
+        core::iter::successors(Some(key), |&key| boxes.parent(key)).any(|key| key == ancestor)
     }
 
-    /// The transform mapping `key` into `space`, moved by the scroll offsets
-    /// of the fragments it is inside of, `space` included. Without `space`
-    /// among the ancestors of `key`, it goes through the root fragment.
-    fn relative_transform(&self, key: FragmentKey, space: FragmentKey) -> Option<Affine> {
-        let items = &self.fragments.items;
+    /// The transform mapping a fragment into `space`, like
+    /// [`Self::relative_transform`]. An inline item is placed at its location
+    /// in the scrolled contents of the box owning its inline layout.
+    fn fragment_transform(&self, fragment: FragmentRef, space: BoxFragmentKey) -> Option<Affine> {
+        match fragment {
+            FragmentRef::Box(key) => self.relative_transform(key, space),
+            FragmentRef::Inline { owner, .. } => {
+                let location = self.fragments.geometry(fragment)?.location;
+
+                Some(
+                    self.relative_transform(owner, space)?
+                        * Affine::translate(-self.scroll(owner))
+                        * Affine::translate((location.x, location.y)),
+                )
+            }
+        }
+    }
+
+    /// The transform mapping the box `key` into `space`, moved by the scroll
+    /// offsets of the boxes it is inside of, `space` included. Without
+    /// `space` among the ancestors of `key`, it goes through the root box.
+    fn relative_transform(&self, key: BoxFragmentKey, space: BoxFragmentKey) -> Option<Affine> {
+        let boxes = &self.fragments.boxes;
         let mut transform = Affine::IDENTITY;
         let mut current = Some(key);
 
@@ -422,7 +458,7 @@ impl Sources<'_> {
                 return Some(transform);
             }
             transform = self.prepaint.fragment(key)?.transform * transform;
-            current = items.parent(key);
+            current = boxes.parent(key);
             if let Some(parent) = current {
                 transform = Affine::translate(-self.scroll(parent)) * transform;
             }
@@ -432,16 +468,16 @@ impl Sources<'_> {
         Some(space.inverse() * transform)
     }
 
-    /// The transform mapping `key` into the space of the root fragment's
+    /// The transform mapping the box `key` into the space of the root box's
     /// parent, moved by the scroll offsets of its ancestors.
-    fn root_transform(&self, key: FragmentKey) -> Option<Affine> {
-        let items = &self.fragments.items;
+    fn root_transform(&self, key: BoxFragmentKey) -> Option<Affine> {
+        let boxes = &self.fragments.boxes;
         let mut transform = Affine::IDENTITY;
         let mut current = Some(key);
 
         while let Some(key) = current {
             transform = self.prepaint.fragment(key)?.transform * transform;
-            current = items.parent(key);
+            current = boxes.parent(key);
             if let Some(parent) = current {
                 transform = Affine::translate(-self.scroll(parent)) * transform;
             }
@@ -450,19 +486,29 @@ impl Sources<'_> {
         Some(transform)
     }
 
-    /// The scroll offset a fragment applies to its descendants.
-    fn scroll(&self, key: FragmentKey) -> Vec2 {
+    /// The scroll offset a box applies to its descendants.
+    fn scroll(&self, key: BoxFragmentKey) -> Vec2 {
         self.fragments
-            .items
             .get(key)
             .map_or(Vec2::ZERO, |fragment| self.prepaint.scroll_offset(fragment))
     }
 
-    /// The line box containing a glyph run.
-    fn line(&self, key: FragmentKey) -> Option<FragmentKey> {
-        let items = &self.fragments.items;
-        core::iter::successors(items.parent(key), |&key| items.parent(key))
-            .find(|&key| matches!(items[key].item, FragmentItem::Line { .. }))
+    /// The line holding a glyph run: the box owning its inline layout, and
+    /// the index of the line in it.
+    fn line(&self, fragment: FragmentRef) -> Option<(BoxFragmentKey, u32)> {
+        let FragmentRef::Inline { owner, index } = fragment else {
+            return None;
+        };
+        let item = self
+            .fragments
+            .inline_layout(owner)?
+            .items
+            .get(index as usize)?;
+
+        match item.kind {
+            InlineItemKind::Run { line, .. } => Some((owner, line)),
+            _ => None,
+        }
     }
 
     /// The [`TextRun`](accesskit::Role::TextRun) node of a glyph run, in the
@@ -476,30 +522,33 @@ impl Sources<'_> {
     /// places.
     fn text_run(
         &self,
-        key: FragmentKey,
-        space: FragmentKey,
-        previous: Option<(FragmentKey, AxKey)>,
-        next: Option<(FragmentKey, AxKey)>,
+        key: FragmentRef,
+        space: BoxFragmentKey,
+        previous: Option<(FragmentRef, AxKey)>,
+        next: Option<(FragmentRef, AxKey)>,
     ) -> Option<accesskit::Node> {
-        let fragment = self.fragments.items.get(key)?;
-        let FragmentItem::GlyphRun { line, item } = fragment.item else {
+        let FragmentRef::Inline { owner, index } = key else {
+            return None;
+        };
+        let inline = self.fragments.inline_layout(owner)?;
+        let item = inline.items.get(index as usize)?;
+        let InlineItemKind::Run { line, run } = item.kind else {
             return None;
         };
 
         let mut node = accesskit::Node::new(accesskit::Role::TextRun);
-        let size = fragment.layout.size;
+        let size = item.geometry.size;
         node.set_bounds(accesskit::Rect::new(0.0, 0.0, size.width, size.height));
-        let transform = self.relative_transform(key, space)?;
+        let transform = self.fragment_transform(key, space)?;
         if transform != Affine::IDENTITY {
             node.set_transform(accesskit::Affine::new(transform.as_coeffs()));
         }
 
-        let line_key = self.line(key)?;
-        let inline = self.fragments.inline_layout(line_key)?;
+        let line_key = (owner, line);
         let Some(PositionedLayoutItem::GlyphRun(run)) = inline
             .layout
-            .get(line)
-            .and_then(|line| line.items().nth(item))
+            .get(line as usize)
+            .and_then(|line| line.items().nth(run as usize))
         else {
             return Some(node);
         };

@@ -2,7 +2,7 @@ use accesskit::{NodeId, Role as AxRole};
 use comet_accesskit::{AxKey, AxNodeKind, AxTree, AxTreeBuilder, ax_key, node_id, style::Role};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
+    fragment2::{BoxFragmentKey, FragmentTree, FragmentTreeBuilder},
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
@@ -105,7 +105,7 @@ impl Harness {
     }
 
     /// The box fragment of a UI node.
-    fn box_fragment(&self, node: NodeKey) -> FragmentKey {
+    fn box_fragment(&self, node: NodeKey) -> BoxFragmentKey {
         self.fragments
             .box_fragment(self.inputs.item_for_node(node).unwrap())
             .unwrap()
@@ -264,7 +264,7 @@ fn follows_the_ui_tree() {
         transform_of(card_node),
         h.prepaint.fragment(card_fragment).unwrap().transform
     );
-    let size = h.fragments.items[card_fragment].layout.size;
+    let size = h.fragments.boxes[card_fragment].layout.geometry.size;
     assert_eq!(
         card_node.bounds(),
         Some(accesskit::Rect::new(0.0, 0.0, size.width, size.height))
@@ -282,16 +282,17 @@ fn follows_the_ui_tree() {
         runs.iter().copied().map(node_id).collect::<Vec<_>>()
     );
     let item = h.inputs.item_for_node(text).unwrap();
-    let glyph_runs: Vec<_> = h.fragments.fragments(item).collect();
+    let glyph_runs: Vec<_> = h.fragments.fragments(&h.inputs, item).collect();
     assert_eq!(glyph_runs.len(), runs.len());
     for (&run, &glyph_run) in runs.iter().zip(&glyph_runs) {
         let node = h.node(run);
         assert_eq!(node.role(), AxRole::TextRun);
-        // Placed through the line box into the card.
-        let line = h.fragments.items.parent(glyph_run).unwrap();
-        let placed = h.prepaint.fragment(line).unwrap().transform
-            * h.prepaint.fragment(glyph_run).unwrap().transform;
-        assert_close(transform_of(node), placed);
+        // Placed at its location in the card's inline layout.
+        let location = h.fragments.geometry(glyph_run).unwrap().location;
+        assert_close(
+            transform_of(node),
+            Affine::translate((location.x, location.y)),
+        );
     }
     assert_eq!(h.texts(), "Hello comet");
 }
@@ -331,7 +332,7 @@ fn nodes_follow_the_order_of_the_ui() {
     // root's box.
     let root_box = h.box_fragment(root);
     let block_box = h.box_fragment(block);
-    let to_root = core::iter::successors(Some(block_box), |&key| h.fragments.items.parent(key))
+    let to_root = core::iter::successors(Some(block_box), |&key| h.fragments.boxes.parent(key))
         .take_while(|&key| key != root_box)
         .fold(Affine::IDENTITY, |transform, key| {
             h.prepaint.fragment(key).unwrap().transform * transform
