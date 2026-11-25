@@ -1,6 +1,6 @@
 //! Step 3 of a build: lay out the boxes.
 //!
-//! Block boxes use Taffy's block algorithm through the [adapter](super::adapter),
+//! Block boxes use Taffy's block algorithm through the [Taffy trees](super::taffy),
 //! inline formatting contexts are [built](super::content) and laid out by
 //! their [lines](super::lines), and other boxes are leaves sized by their
 //! style.
@@ -9,8 +9,8 @@ use taffy::style::CoreStyle;
 
 use super::{
     Engine, PAINT_CHANGED,
-    adapter::{BoxTree, node_id},
     classify::ChildKind,
+    taffy::{BoxTree, node_id},
 };
 use crate::{
     fragment2::{BoxFragmentKey, BoxFragmentType},
@@ -50,7 +50,7 @@ impl Engine<'_> {
     }
 
     /// Lay out a box with the algorithm of its content.
-    pub(in crate::fragment2) fn layout_box(
+    pub(super) fn layout_box(
         &mut self,
         key: BoxFragmentKey,
         input: taffy::LayoutInput,

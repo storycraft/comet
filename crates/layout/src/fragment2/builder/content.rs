@@ -7,7 +7,7 @@
 //! remaining items keep their keys and layouts, and the subtrees of new ones
 //! are built right away.
 
-use super::{Engine, adapter::key_of};
+use super::{Engine, taffy::key_of};
 use crate::fragment2::{BoxFragmentKey, ChildLayoutType};
 
 impl Engine<'_> {

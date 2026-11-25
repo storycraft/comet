@@ -9,7 +9,6 @@
 
 pub mod builder;
 pub mod inline;
-mod taffy;
 pub mod tree;
 
 #[cfg(test)]
@@ -142,7 +141,7 @@ pub struct BoxFragmentLayout {
     /// Geometry used by later steps, such as painting.
     pub geometry: FragmentGeometry,
     /// Unrounded layout of the latest final layout pass.
-    pub unrounded: ::taffy::Layout,
+    pub unrounded: taffy::Layout,
     /// Baseline relative to the border box top, for atomic inlines and
     /// roots.
     pub baseline: Option<f32>,
@@ -160,7 +159,7 @@ pub struct BoxFragment {
     pub child_layout: ChildLayoutType,
     pub layout: BoxFragmentLayout,
     pub(crate) style: Style,
-    pub(crate) cache: ::taffy::Cache,
+    pub(crate) cache: taffy::Cache,
     /// Whether retained descendant geometry and inline items match the
     /// final cache entry.
     pub(crate) final_layout_valid: bool,
@@ -184,7 +183,7 @@ impl BoxFragment {
             child_layout,
             layout: BoxFragmentLayout::default(),
             style,
-            cache: ::taffy::Cache::new(),
+            cache: taffy::Cache::new(),
             final_layout_valid: false,
             bits: NodeLayoutBits::empty(),
             hoisted: Vec::new(),

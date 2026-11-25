@@ -1,5 +1,4 @@
-//! Taffy trees over box fragments, reusable by any layout engine owning a
-//! [`FragmentTree`].
+//! Taffy trees over box fragments, laid out by the fragment tree builder.
 //!
 //! A Taffy node id is the FFI value of a [`BoxFragmentKey`], and each box
 //! keeps its own Taffy cache. Block boxes expose their child boxes,
@@ -7,15 +6,16 @@
 //! block. Other boxes are leaves to Taffy: their engine lays out their
 //! content, and their children through [`BoxTree::root_pass`].
 //!
-//! The fragment tree builder supplies what Taffy cannot know: the algorithm
-//! laying out each box, and what follows from writing a layout.
+//! The builder supplies what Taffy cannot know: the algorithm laying out each
+//! box, and what follows from writing a layout.
 
 use std::ops::{Deref, DerefMut, Range};
 
 use slotmap::{Key, KeyData};
 use taffy::{CacheTree, LayoutPartialTree, TraversePartialTree};
 
-use super::{BoxFragment, BoxFragmentKey, BoxFragmentType, FragmentTree, builder::Engine};
+use super::Engine;
+use crate::fragment2::{BoxFragment, BoxFragmentKey, BoxFragmentType, FragmentTree};
 use crate::{
     fragment::state::NodeLayoutBits,
     style::geometry::{Point, Size},
@@ -23,7 +23,7 @@ use crate::{
 };
 
 /// The Taffy node id of a box.
-pub(in crate::fragment2) fn node_id(key: BoxFragmentKey) -> taffy::NodeId {
+pub(super) fn node_id(key: BoxFragmentKey) -> taffy::NodeId {
     taffy::NodeId::new(key.data().as_ffi())
 }
 
@@ -32,7 +32,7 @@ fn node_id_of(key: &BoxFragmentKey) -> taffy::NodeId {
 }
 
 /// The box of a Taffy node id.
-pub(in crate::fragment2) fn key_of(id: taffy::NodeId) -> BoxFragmentKey {
+pub(super) fn key_of(id: taffy::NodeId) -> BoxFragmentKey {
     KeyData::from_ffi(id.into()).into()
 }
 
@@ -41,7 +41,7 @@ pub(in crate::fragment2) fn key_of(id: taffy::NodeId) -> BoxFragmentKey {
 ///
 /// Children live in the shared buffer of the engine. Layouts of descendants
 /// push their children after this range and truncate back to it when done.
-pub(in crate::fragment2) struct BoxTree<'e, 'a> {
+pub(super) struct BoxTree<'e, 'a> {
     engine: &'e mut Engine<'a>,
     key: BoxFragmentKey,
     /// Range of the direct children in the shared buffer.
@@ -51,7 +51,7 @@ pub(in crate::fragment2) struct BoxTree<'e, 'a> {
 impl<'e, 'a> BoxTree<'e, 'a> {
     /// The tree laying out `key`. Block boxes expose their child boxes.
     /// Other boxes are leaves to Taffy.
-    pub(in crate::fragment2) fn new(engine: &'e mut Engine<'a>, key: BoxFragmentKey) -> Self {
+    pub(super) fn new(engine: &'e mut Engine<'a>, key: BoxFragmentKey) -> Self {
         let (fragments, buffer) = (&*engine.fragments, &mut engine.scratch.children);
         let start = buffer.len();
 
@@ -74,7 +74,7 @@ impl<'e, 'a> BoxTree<'e, 'a> {
     /// The tree for Taffy's root pass over `key`, or for laying out its
     /// children with `compute_child_layout`, without buffering them: neither
     /// traverses its children here.
-    pub(in crate::fragment2) fn root_pass(engine: &'e mut Engine<'a>, key: BoxFragmentKey) -> Self {
+    pub(super) fn root_pass(engine: &'e mut Engine<'a>, key: BoxFragmentKey) -> Self {
         let start = engine.scratch.children.len();
 
         Self {
@@ -282,11 +282,7 @@ fn cache_key(fragment: &BoxFragment, input: &taffy::LayoutInput) -> taffy::Layou
 ///
 /// In-flow boxes inside inline content are placed by the lines of their
 /// owner, which writes their locations itself, so their locations are kept.
-pub(in crate::fragment2) fn write_layout(
-    fragments: &mut FragmentTree,
-    key: BoxFragmentKey,
-    layout: &taffy::Layout,
-) -> bool {
+fn write_layout(fragments: &mut FragmentTree, key: BoxFragmentKey, layout: &taffy::Layout) -> bool {
     let placed_by_lines = fragments
         .get(key)
         .is_some_and(|fragment| fragment.box_type != BoxFragmentType::OutOfFlow)
@@ -322,7 +318,7 @@ pub(in crate::fragment2) fn write_layout(
 /// The layout overflow of a box laid out by Taffy, in its local coordinates:
 /// its border box, with Taffy's scrollable overflow rectangle moved from the
 /// top-left corner of the padding box to the border box.
-pub(in crate::fragment2) fn overflow(layout: &taffy::Layout) -> kurbo::Rect {
+fn overflow(layout: &taffy::Layout) -> kurbo::Rect {
     let rect = layout.scrollable_overflow_rect;
     let (x, y) = (f64::from(layout.border.left), f64::from(layout.border.top));
     let content = kurbo::Rect::new(
@@ -344,7 +340,7 @@ pub(in crate::fragment2) fn overflow(layout: &taffy::Layout) -> kurbo::Rect {
 /// `content`, an area in the local coordinates of a box with `border`, as a
 /// Taffy scrollable overflow rectangle measured from the top-left corner of
 /// its padding box. The inverse of [`overflow`] for the content.
-pub(in crate::fragment2) fn scrollable_overflow(
+pub(super) fn scrollable_overflow(
     content: kurbo::Rect,
     border: taffy::Rect<f32>,
 ) -> taffy::Rect<f32> {
@@ -355,5 +351,17 @@ pub(in crate::fragment2) fn scrollable_overflow(
         right: (content.x1 - x) as f32,
         top: (content.y0 - y) as f32,
         bottom: (content.y1 - y) as f32,
+    }
+}
+
+impl Engine<'_> {
+    /// Write a Taffy layout into the box `key`, marking its source
+    /// [`PAINT_CHANGED`](super::PAINT_CHANGED) when it moved, resized or its
+    /// overflow changed.
+    pub(super) fn set_unrounded_layout(&mut self, key: BoxFragmentKey, layout: &taffy::Layout) {
+        if write_layout(self.fragments, key, layout) {
+            let source = self.fragments.boxes[key].source;
+            self.mark_paint(source);
+        }
     }
 }

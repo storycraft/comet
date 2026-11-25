@@ -8,7 +8,7 @@ use comet_slotmap_tree::SlotTree;
 use rustc_hash::FxHashMap;
 use taffy::style::CoreStyle;
 
-use super::{Engine, PAINT_CHANGED, Scratch, adapter::node_id};
+use super::{Engine, PAINT_CHANGED, Scratch, taffy::node_id};
 use crate::{
     dirty_map::DirtyMap,
     fragment2::{

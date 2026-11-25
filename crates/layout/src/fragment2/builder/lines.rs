@@ -17,7 +17,7 @@ use taffy::{LayoutPartialTree, ResolveOrZero, style::CoreStyle};
 
 use super::{
     Engine,
-    adapter::{BoxTree, node_id, scrollable_overflow},
+    taffy::{BoxTree, node_id, scrollable_overflow},
 };
 use crate::fragment2::{BoxFragmentKey, BoxFragmentType, ChildLayoutType, inline_box_source};
 

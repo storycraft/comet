@@ -14,7 +14,6 @@
 //!    inside it, then laid out by breaking its [`lines`] and
 //!    [emitting](emit) its items.
 
-mod adapter;
 mod block;
 #[cfg(debug_assertions)]
 mod check;
@@ -24,6 +23,7 @@ mod content;
 mod emit;
 mod invalidate;
 mod lines;
+mod taffy;
 
 use comet_tree::ui::Ui;
 use rustc_hash::FxHashMap;
@@ -55,7 +55,7 @@ pub struct FragmentTreeBuilder {
 
 /// Buffers retained between builds.
 #[derive(Default)]
-pub(in crate::fragment2) struct Scratch {
+struct Scratch {
     /// Pending work of the child sync.
     tasks: Vec<Task>,
     /// Boxes created by the current build.
@@ -68,7 +68,7 @@ pub(in crate::fragment2) struct Scratch {
     /// ancestor generating one, or their own box.
     walk: Vec<(LayoutInputKey, BoxFragmentKey)>,
     /// Stack of the child boxes of the boxes being laid out.
-    pub(in crate::fragment2) children: Vec<BoxFragmentKey>,
+    children: Vec<BoxFragmentKey>,
     /// Out-of-flow boxes being placed.
     hoisted: Vec<BoxFragmentKey>,
     /// Boxes inside the inline content being laid out.
@@ -84,9 +84,9 @@ pub(in crate::fragment2) struct Scratch {
     chain: Vec<LayoutInputKey>,
     /// Out-of-flow candidates left by the latest final layout of each box
     /// inside the inline content being laid out.
-    child_candidates: FxHashMap<BoxFragmentKey, taffy::OofCandidates>,
+    child_candidates: FxHashMap<BoxFragmentKey, ::taffy::OofCandidates>,
     /// Out-of-flow candidates of the inline content being emitted.
-    candidates: taffy::OofCandidates,
+    candidates: ::taffy::OofCandidates,
     /// Index of each child among the children of the box being emitted.
     order: FxHashMap<BoxFragmentKey, u32>,
 }
@@ -190,13 +190,13 @@ impl FragmentTreeBuilder {
 }
 
 /// Borrowed state of one build.
-pub(in crate::fragment2) struct Engine<'a> {
+struct Engine<'a> {
     cx: InlineBuildContext<'a>,
     fonts: &'a mut parley::FontContext,
     content: &'a mut InlineContentBuilder,
     dirty: &'a mut DirtyMap,
-    pub(in crate::fragment2) fragments: &'a mut FragmentTree,
-    pub(in crate::fragment2) scratch: &'a mut Scratch,
+    fragments: &'a mut FragmentTree,
+    scratch: &'a mut Scratch,
     root: LayoutInputKey,
     /// The box of the root, once known.
     root_box: Option<BoxFragmentKey>,
