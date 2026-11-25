@@ -2,18 +2,17 @@
 
 pub mod collect;
 pub mod input;
+mod offset;
 
 use core::{iter::FusedIterator, ops::Range};
 
 use rustc_hash::FxHashMap;
 use slotmap::{Key, KeyData};
 
-use super::{BoxFragmentKey, FragmentGeometry};
-use crate::{
-    fragment::offset::{to_shaped, to_source},
-    fragment::state::NodeLayoutBits,
-    input::LayoutInputKey,
-};
+use offset::{to_shaped, to_source};
+
+use super::{BoxFragmentKey, FragmentGeometry, NodeLayoutBits};
+use crate::input::LayoutInputKey;
 
 /// Text, shaped layout and items of one inline formatting context, owned by
 /// the box establishing it.

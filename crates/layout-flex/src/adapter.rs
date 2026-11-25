@@ -1,6 +1,6 @@
 use comet_layout::{
     container::ContainerContext,
-    fragment::state::NodeLayoutBits,
+    fragment2::NodeLayoutBits,
     style::geometry::{AutoValue, StyleUnit},
 };
 use comet_tree::ui::Props;

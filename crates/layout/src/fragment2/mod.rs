@@ -16,6 +16,7 @@ pub mod tree;
 #[cfg(test)]
 mod tests;
 
+use bitflags::bitflags;
 use slotmap::new_key_type;
 
 pub use builder::FragmentTreeBuilder;
@@ -26,9 +27,8 @@ pub use inline::{
 pub use tree::FragmentTree;
 
 use crate::{
-    fragment::state::NodeLayoutBits,
     input::LayoutInputKey,
-    style::geometry::{Point, Rect, Size},
+    style::geometry::{Point, Rect, Size, StyleUnit},
     taffy::style::Style,
 };
 
@@ -264,4 +264,38 @@ impl BoxFragment {
 pub enum FragmentRef {
     Box(BoxFragmentKey),
     Inline { owner: BoxFragmentKey, index: u32 },
+}
+
+bitflags! {
+    /// What the layout of a box or of its subtree depends on, besides its
+    /// own content. Set when box styles are resolved and from what custom
+    /// container algorithms return. [`Self::PROPAGATED`] bits are also set
+    /// on every ancestor box up to the root of the build.
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+    pub struct NodeLayoutBits: u8 {
+        /// A length of the box itself resolves against its parent's size,
+        /// such as a percentage. Not propagated: a box whose size is known
+        /// lays out its subtree the same whatever its parent's size, since
+        /// its descendants resolve against it or boxes inside it, and
+        /// out-of-flow descendants claimed by an ancestor are laid out by
+        /// that ancestor.
+        const DEPENDS_PARENT_SIZE = 1 << 0;
+        /// A length uses `vw` or `vh`.
+        const DEPENDS_VIEWPORT = 1 << 1;
+    }
+}
+
+impl NodeLayoutBits {
+    /// Bits set on the ancestors of a box too, so a build finds the box
+    /// from the root.
+    pub const PROPAGATED: Self = Self::DEPENDS_VIEWPORT;
+
+    /// What a length of `unit` depends on.
+    pub fn of_unit(unit: StyleUnit) -> Self {
+        match unit {
+            StyleUnit::Percent(_) => Self::DEPENDS_PARENT_SIZE,
+            unit if unit.is_viewport_relative() => Self::DEPENDS_VIEWPORT,
+            _ => Self::empty(),
+        }
+    }
 }

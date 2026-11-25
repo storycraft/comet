@@ -35,7 +35,7 @@ use super::{
 };
 use crate::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment::state::NodeLayoutBits,
+    fragment2::NodeLayoutBits,
     input::{LayoutInputKey, tree::LayoutInputTree},
     style::LayoutConstraint,
 };

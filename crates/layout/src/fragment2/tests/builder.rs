@@ -5,8 +5,9 @@ use comet_tree::{
 
 use crate::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment::state::NodeLayoutBits,
-    fragment2::{BoxFragmentKey, BoxFragmentType, FragmentTree, FragmentTreeBuilder},
+    fragment2::{
+        BoxFragmentKey, BoxFragmentType, FragmentTree, FragmentTreeBuilder, NodeLayoutBits,
+    },
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},

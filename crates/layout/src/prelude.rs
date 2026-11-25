@@ -2,9 +2,9 @@
 
 pub use crate::container::{ContainerContext, ContainerLayout};
 pub use crate::dirty_map::{DirtyEntry, DirtyFlags, DirtyMap};
-pub use crate::fragment::{
-    Fragment, FragmentBox, FragmentItem, FragmentKey, builder::FragmentTreeBuilder,
-    state::NodeLayoutBits, tree::FragmentTree,
+pub use crate::fragment2::{
+    BoxFragment, BoxFragmentKey, BoxFragmentType, ChildLayoutType, FragmentGeometry, FragmentRef,
+    FragmentTree, FragmentTreeBuilder, InlineLayout, NodeLayoutBits,
 };
 pub use crate::input::{
     ChildLayout, LayoutInputItem, LayoutInputKey, LayoutInputKind,

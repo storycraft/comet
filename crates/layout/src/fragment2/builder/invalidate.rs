@@ -17,8 +17,7 @@
 use super::{Engine, classify};
 use crate::{
     dirty_map::DirtyFlags,
-    fragment::state::NodeLayoutBits,
-    fragment2::{BoxFragmentKey, BoxFragmentType},
+    fragment2::{BoxFragmentKey, BoxFragmentType, NodeLayoutBits},
     input::{LayoutInputKey, LayoutInputKind},
 };
 

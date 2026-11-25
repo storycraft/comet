@@ -6,8 +6,9 @@ use std::sync::{
 use comet_layout::{
     container::{ContainerContext, ContainerLayout},
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment::state::NodeLayoutBits,
-    fragment2::{BoxFragmentKey, ChildLayoutType, FragmentTree, FragmentTreeBuilder},
+    fragment2::{
+        BoxFragmentKey, ChildLayoutType, FragmentTree, FragmentTreeBuilder, NodeLayoutBits,
+    },
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
@@ -200,10 +201,7 @@ fn custom_layout_runs_again_when_its_box_is_dirty() {
         );
         assert_eq!(children, vec![f.box_fragment(text), f.box_fragment(block)]);
         assert_eq!(f.geometry(children[0]).location.x, 0.0);
-        assert_eq!(
-            f.geometry(children[1]).location.x,
-            f64::from(child_width)
-        );
+        assert_eq!(f.geometry(children[1]).location.x, f64::from(child_width));
 
         for &child in &children {
             let layout = f.geometry(child);
@@ -236,7 +234,10 @@ fn nested_inline_containers_measure_and_emit_their_own_descendants() {
     let inner_fragment = f.box_fragment(inner);
 
     // The inline container is an atomic inline placed by a line of the root.
-    assert_eq!(f.fragments.boxes.parent(outer_fragment), Some(fragment_root));
+    assert_eq!(
+        f.fragments.boxes.parent(outer_fragment),
+        Some(fragment_root)
+    );
     assert!(
         f.fragments
             .inline_layout(fragment_root)
@@ -430,11 +431,7 @@ fn outline(f: &Fixture, key: BoxFragmentKey, depth: usize, out: &mut Vec<String>
 
     if let Some(inline) = fragment.inline() {
         for item in &inline.items {
-            out.push(format!(
-                "{depth} - {:?} {}",
-                item.kind,
-                item.geometry.size
-            ));
+            out.push(format!("{depth} - {:?} {}", item.kind, item.geometry.size));
         }
     }
 

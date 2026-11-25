@@ -5,7 +5,7 @@ use anyrender::Paint;
 use comet_accesskit::style::Role;
 use comet_layout::{
     dirty_map::DirtyMap,
-    fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
+    fragment2::{FragmentTree, FragmentTreeBuilder},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
@@ -224,8 +224,9 @@ async fn text_changes_relayout() {
         let width = |layout: &Layout| {
             let item = layout.inputs.item_for_node(badge).unwrap();
             let fragments = &layout.fragments;
-            fragments.items[fragments.box_fragment(item).unwrap()]
+            fragments.boxes[fragments.box_fragment(item).unwrap()]
                 .layout
+                .geometry
                 .size
                 .width
         };

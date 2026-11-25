@@ -4,9 +4,8 @@ use comet_tree::{node::NodeKey, style::StyleProp, ui::Props};
 use taffy::LayoutPartialTree;
 
 use crate::{
-    fragment::state::NodeLayoutBits,
     fragment2::{
-        BoxFragmentKey,
+        BoxFragmentKey, NodeLayoutBits,
         builder::taffy::{BoxTree, node_id},
     },
     input::LayoutInputKey,

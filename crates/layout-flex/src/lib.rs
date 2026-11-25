@@ -26,7 +26,7 @@ use std::sync::{Arc, LazyLock};
 
 use comet_layout::{
     container::{ContainerContext, ContainerLayout},
-    fragment::state::NodeLayoutBits,
+    fragment2::NodeLayoutBits,
 };
 
 /// The flexbox algorithm, shared by every flex container.

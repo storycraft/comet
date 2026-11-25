@@ -869,7 +869,6 @@ dependencies = [
  "kurbo",
  "parley",
  "rustc-hash 2.1.3",
- "scopeguard",
  "slotmap",
  "taffy",
 ]

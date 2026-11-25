@@ -2,7 +2,7 @@ mod common;
 
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment::{FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
+    fragment2::{BoxFragmentKey, FragmentTree, FragmentTreeBuilder, InlineItemKind, InlineLayout},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
@@ -140,20 +140,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn print_tree(inputs: &LayoutInputTree, tree: &FragmentTree, root: FragmentKey) {
+fn print_tree(inputs: &LayoutInputTree, tree: &FragmentTree, root: BoxFragmentKey) {
     let mut pending = vec![(root, 0)];
 
     while let Some((key, depth)) = pending.pop() {
-        let fragment = &tree.items[key];
+        let fragment = &tree.boxes[key];
+        let geometry = &fragment.layout.geometry;
         let indent = "  ".repeat(depth);
         println!(
             "{indent}{key:?} {:?} node={:?} at=({:.1}, {:.1}) size=({:.1}, {:.1}) baseline={:?}",
-            fragment.item,
+            fragment.box_type,
             inputs.items.get(fragment.source).map(|item| item.node),
-            fragment.layout.location.x,
-            fragment.layout.location.y,
-            fragment.layout.size.width,
-            fragment.layout.size.height,
+            geometry.location.x,
+            geometry.location.y,
+            geometry.size.width,
+            geometry.size.height,
             fragment.layout.baseline
         );
 
@@ -164,11 +165,41 @@ fn print_tree(inputs: &LayoutInputTree, tree: &FragmentTree, root: FragmentKey) 
             );
         }
 
+        if let Some(inline) = fragment.inline() {
+            for line in inline.roots() {
+                print_inline_item(inputs, inline, line, depth + 1);
+            }
+        }
+
         pending.extend(
-            tree.items
+            tree.boxes
                 .children(key)
                 .rev()
                 .map(|child| (child, depth + 1)),
         );
+    }
+}
+
+/// Print an item of an inline layout and its subtree.
+fn print_inline_item(inputs: &LayoutInputTree, inline: &InlineLayout, index: usize, depth: usize) {
+    let item = &inline.items[index];
+    let geometry = &item.geometry;
+    let kind = match item.kind {
+        InlineItemKind::Line { line } => format!("Line({line})"),
+        InlineItemKind::Box { child } => format!("Box({child:?})"),
+        InlineItemKind::Run { line, run } => format!("Run({line}, {run})"),
+    };
+    println!(
+        "{}#{index} {kind} node={:?} at=({:.1}, {:.1}) size=({:.1}, {:.1})",
+        "  ".repeat(depth),
+        inputs.items.get(item.source).map(|item| item.node),
+        geometry.location.x,
+        geometry.location.y,
+        geometry.size.width,
+        geometry.size.height,
+    );
+
+    for child in inline.children(index) {
+        print_inline_item(inputs, inline, child, depth + 1);
     }
 }

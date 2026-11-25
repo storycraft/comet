@@ -6,7 +6,7 @@ use anyrender::{AntiAliasing, ImageRenderer, PaintScene};
 use anyrender_vello_cpu::VelloCpuImageRenderer;
 use comet_layout::{
     dirty_map::DirtyMap,
-    fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
+    fragment2::{FragmentTree, FragmentTreeBuilder},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
@@ -76,17 +76,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pending = vec![(root, 0)];
 
     while let Some((key, depth)) = pending.pop() {
-        let fragment = &fragments.items[key];
+        let fragment = &fragments.boxes[key];
         println!(
             "{}{key:?} {:?} {:?}",
             "  ".repeat(depth),
-            fragment.item,
-            fragment.layout
+            fragment.box_type,
+            fragment.layout.geometry
         );
 
         pending.extend(
             fragments
-                .items
+                .boxes
                 .children(key)
                 .rev()
                 .map(|child| (child, depth + 1)),

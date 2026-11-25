@@ -644,7 +644,7 @@ impl Engine<'_> {
         }
     }
 
-    /// Add the [propagated](crate::fragment::state::NodeLayoutBits::PROPAGATED)
+    /// Add the [propagated](crate::fragment2::NodeLayoutBits::PROPAGATED)
     /// bits of the boxes created by this build, from the `start`th one, to
     /// their ancestors.
     pub(super) fn propagate_created_bits(&mut self, start: usize) {
