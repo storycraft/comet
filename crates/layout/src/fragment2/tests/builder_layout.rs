@@ -124,9 +124,25 @@ fn wraps_text_and_links_its_runs() {
     // The span is split into pieces, one per line, containing its runs.
     let pieces: Vec<_> = inline.items_of(span).collect();
     assert!(pieces.len() > 1);
+
+    // Each piece has an inline part box decorating it, linked in order.
+    let piece_boxes: Vec<_> = pieces
+        .iter()
+        .map(|&piece| inline.items[piece].child_box().unwrap())
+        .collect();
+    assert_eq!(
+        fx.fragments.split_boxes(piece_boxes[0]).collect::<Vec<_>>(),
+        piece_boxes
+    );
+    for &key in &piece_boxes {
+        let fragment = &fx.fragments.boxes[key];
+        assert_eq!(fragment.box_type, BoxFragmentType::InlinePart);
+        assert_eq!(fragment.source, span);
+        assert!(fx.fragments.is_anonymous(key));
+    }
+
     for &piece in &pieces {
         let item = &inline.items[piece];
-        assert_eq!(item.child_box(), None);
         let children: Vec<_> = inline.children(piece).collect();
         assert!(!children.is_empty());
 
@@ -698,4 +714,133 @@ fn runs_with_only_out_of_flow_boxes_take_no_space() {
         fx.geometry(block).location.y + fx.geometry(block).size.height
     );
     assert_eq!(fx.location_in(abs, root), (5.0, 7.0));
+}
+
+/// A paragraph of `width` pixels holding `before <span>{inner}</span>`.
+fn paragraph_with_span(ui: &mut Ui, width: f64, inner: &str) -> (NodeKey, NodeKey) {
+    let root = fixed(ui, width, 400.0);
+    let before = text(ui, "before ");
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    let inner = text(ui, inner);
+    ui.append(root, before);
+    ui.append(root, span);
+    ui.append(span, inner);
+
+    (root, span)
+}
+
+#[test]
+fn piece_boxes_follow_the_lines() {
+    let mut ui = Ui::new();
+    let (root, span) = paragraph_with_span(&mut ui, 120.0, "one two three four");
+
+    let mut fx = Fixture::new(ui, root);
+    fx.layout();
+    let span_item = fx.item(span);
+    let pieces: Vec<_> = fx.fragments.inline_boxes(&fx.tree, span_item).collect();
+    assert!(pieces.len() > 1);
+    assert!(
+        pieces
+            .iter()
+            .all(|&key| fx.fragments.boxes.parent(key) == Some(fx.box_of(root)))
+    );
+
+    // Narrower: more pieces, created again and linked in order; the old
+    // boxes are gone.
+    fx.next_round();
+    fx.ui.set_props(
+        root,
+        (bx::Size(Size::new(
+            AutoValue::Value(StyleUnit::Px(60.0)),
+            AutoValue::Value(StyleUnit::Px(400.0)),
+        )),),
+    );
+    fx.mark(root, DirtyFlags::NEED_BOX_LAYOUT);
+    fx.layout();
+
+    let narrow: Vec<_> = fx.fragments.inline_boxes(&fx.tree, span_item).collect();
+    assert!(narrow.len() > pieces.len());
+    assert!(pieces.iter().all(|&key| fx.fragments.get(key).is_none()));
+    assert_eq!(fx.fragments.boxes[narrow[0]].link.prev, None);
+    assert_eq!(fx.fragments.boxes[*narrow.last().unwrap()].link.next, None);
+}
+
+#[test]
+fn piece_boxes_are_linked_across_runs() {
+    let mut ui = Ui::new();
+    let Split { root, span, block } = split_paragraph(&mut ui);
+
+    let mut fx = Fixture::new(ui, root);
+    fx.layout();
+    let span_item = fx.item(span);
+    let runs: Vec<_> = fx.fragments.runs(fx.box_of(root)).collect();
+    let pieces: Vec<_> = fx.fragments.inline_boxes(&fx.tree, span_item).collect();
+    assert_eq!(pieces.len(), 2);
+    assert_eq!(fx.fragments.boxes.parent(pieces[0]), Some(runs[0]));
+    assert_eq!(fx.fragments.boxes.parent(pieces[1]), Some(runs[1]));
+
+    // Emitting only the second run again links its new piece to the first.
+    fx.next_round();
+    let after = fx.ui.next_sibling(block).unwrap();
+    fx.ui
+        .set_props(after, (comet_tree::node::Text("changed".into()),));
+    fx.mark(after, DirtyFlags::NEED_FULL_LAYOUT);
+    fx.layout();
+
+    let relinked: Vec<_> = fx.fragments.inline_boxes(&fx.tree, span_item).collect();
+    assert_eq!(relinked.len(), 2);
+    assert_eq!(fx.fragments.boxes.parent(relinked[1]), Some(runs[1]));
+    assert_eq!(fx.fragments.boxes[relinked[0]].link.next, Some(relinked[1]));
+    assert_eq!(fx.fragments.boxes[relinked[1]].link.prev, Some(relinked[0]));
+}
+
+#[test]
+fn piece_boxes_take_their_element_style() {
+    let mut ui = Ui::new();
+    let (root, span) = paragraph_with_span(&mut ui, 400.0, "inner");
+
+    let mut fx = Fixture::new(ui, root);
+    fx.layout();
+    let span_item = fx.item(span);
+    let piece = |fx: &Fixture| {
+        fx.fragments
+            .inline_boxes(&fx.tree, span_item)
+            .next()
+            .unwrap()
+    };
+    let style = fx.fragments.boxes[piece(&fx)].style().clone();
+
+    fx.next_round();
+    let px = StyleUnit::Px(4.0);
+    fx.ui.set_props(
+        span,
+        (bx::Padding(Rect::new(
+            Point::new(px, px),
+            Point::new(px, px),
+        )),),
+    );
+    fx.mark(span, DirtyFlags::NEED_BOX_LAYOUT);
+    fx.layout();
+
+    assert_ne!(fx.fragments.boxes[piece(&fx)].style(), &style);
+}
+
+#[test]
+fn empty_elements_have_a_piece_box() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let before = text(&mut ui, "before");
+    let empty = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    ui.append(root, before);
+    ui.append(root, empty);
+
+    let mut fx = Fixture::new(ui, root);
+    fx.layout();
+
+    let empty_item = fx.item(empty);
+    let pieces: Vec<_> = fx.fragments.inline_boxes(&fx.tree, empty_item).collect();
+    assert_eq!(pieces.len(), 1);
+    let geometry = fx.fragments.boxes[pieces[0]].layout.geometry;
+    assert_eq!(geometry.size.width, 0.0);
+    assert!(geometry.location.x > 0.0, "after the text");
 }

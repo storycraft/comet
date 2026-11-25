@@ -94,6 +94,11 @@ struct Scratch {
     candidates: ::taffy::OofCandidates,
     /// Index of each child among the children of the box being emitted.
     order: FxHashMap<BoxFragmentKey, u32>,
+    /// Inline part boxes of the box being emitted, in emit order.
+    placed_pieces: Vec<BoxFragmentKey>,
+    /// Mixed inline boxes whose runs were emitted, to link the pieces of the
+    /// elements split by their blocks.
+    relink: Vec<BoxFragmentKey>,
 }
 
 /// Pending work of the child sync.
@@ -183,6 +188,7 @@ impl FragmentTreeBuilder {
 
         if layout {
             engine.layout(key);
+            engine.link_split_pieces();
             // Left by boxes that were laid out but not placed.
             engine.scratch.child_candidates.clear();
         }

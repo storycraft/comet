@@ -165,10 +165,7 @@ fn percentage_descendants_keep_fixed_size_containers_cached() {
     // Fixed size, so it lays out the same whatever the root's size.
     let container = ui.create(
         Node::Box,
-        (
-            fixed(100.0, 50.0),
-            counted(&calls, NodeLayoutBits::empty()),
-        ),
+        (fixed(100.0, 50.0), counted(&calls, NodeLayoutBits::empty())),
     );
     // Resolves against the container, not the root.
     let child = ui.create(

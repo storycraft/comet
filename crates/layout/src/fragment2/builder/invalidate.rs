@@ -155,6 +155,7 @@ impl Engine<'_> {
     fn restyle_inline(&mut self, item: LayoutInputKey, owner: BoxFragmentKey) {
         if self.cx.tree.items[item].kind == LayoutInputKind::Inline {
             let (_, bits) = self.cx.resolve_style(item);
+
             let bits = bits & NodeLayoutBits::PROPAGATED;
             let fragment = &mut self.fragments.boxes[owner];
 

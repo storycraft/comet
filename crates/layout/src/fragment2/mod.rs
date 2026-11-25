@@ -46,6 +46,10 @@ pub enum BoxFragmentType {
     /// not interact with those outside it. Inline level flow roots are
     /// [`Self::AtomicInline`].
     FlowRoot,
+    /// Piece of an inline element on one line of the inline layout of its
+    /// parent box, decorating the content it holds. An anonymous box, linked
+    /// to the other pieces of the element by [`BoxFragmentLink`].
+    InlinePart,
     /// Atomic inline box, placed by a line of the inline layout of its parent
     /// box.
     AtomicInline,
@@ -170,7 +174,8 @@ pub struct BoxFragmentLayout {
 
 /// Links the box fragments split from one source, in flow order: the
 /// anonymous run boxes of a [mixed inline](ChildLayoutType::MixedInline) box,
-/// and later boxes broken across fragmentainers.
+/// the [pieces](BoxFragmentType::InlinePart) of an inline element across
+/// lines and runs, and later boxes broken across fragmentainers.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BoxFragmentLink {
     pub prev: Option<BoxFragmentKey>,

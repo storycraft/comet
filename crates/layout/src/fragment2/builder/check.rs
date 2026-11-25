@@ -14,14 +14,25 @@ use crate::fragment2::{
 /// - a built inline layout has exactly the children of its box as the boxes
 ///   inside, the descendant counts of its items stay within their lines, and
 ///   its links pair up;
-/// - only boxes inside inline content are atomic inlines.
+/// - only boxes inside inline content are atomic inlines or inline parts,
+///   and the links of inline parts pair up within one element.
 pub(super) fn check(cx: &InlineBuildContext<'_>, fragments: &FragmentTree, root: BoxFragmentKey) {
     for key in fragments.boxes.descendants(root) {
         let fragment = &fragments.boxes[key];
         let source = fragment.source;
         let parent = fragments.boxes.parent(key);
 
-        if fragments.is_anonymous(key) {
+        if fragment.box_type == BoxFragmentType::InlinePart {
+            assert!(
+                fragments.is_anonymous(key),
+                "inline part boxes are anonymous"
+            );
+            assert!(
+                parent.is_some_and(|parent| fragments.boxes[parent].child_layout.is_inline()),
+                "inline part boxes are inside inline layouts"
+            );
+            assert!(fragment.child_layout.is_content());
+        } else if fragments.is_anonymous(key) {
             let owner = parent.map(|parent| &fragments.boxes[parent]);
             assert!(
                 owner.is_some_and(|owner| owner.child_layout.is_mixed_inline()),
@@ -47,6 +58,10 @@ pub(super) fn check(cx: &InlineBuildContext<'_>, fragments: &FragmentTree, root:
             );
         }
 
+        if fragment.box_type == BoxFragmentType::InlinePart {
+            check_piece_links(fragments, key);
+        }
+
         let in_inline =
             parent.is_some_and(|parent| fragments.boxes[parent].child_layout.is_inline());
         if fragment.box_type == BoxFragmentType::AtomicInline {
@@ -69,11 +84,23 @@ pub(super) fn check(cx: &InlineBuildContext<'_>, fragments: &FragmentTree, root:
             continue;
         };
 
-        let mut atomics: Vec<_> = inline.atomics.values().copied().collect();
+        // The children are the boxes inside, and the boxes of the pieces.
+        let mut expected: Vec<_> = inline.atomics.values().copied().collect();
+        for item in &inline.items {
+            if let Some(child) = item.child_box()
+                && fragments.boxes[child].box_type == BoxFragmentType::InlinePart
+            {
+                assert_eq!(
+                    fragments.boxes[child].layout.geometry, item.geometry,
+                    "an inline part box covers its piece"
+                );
+                expected.push(child);
+            }
+        }
         let mut children: Vec<_> = fragments.boxes.children(key).collect();
-        atomics.sort();
+        expected.sort();
         children.sort();
-        assert_eq!(atomics, children, "the boxes inside are the children");
+        assert_eq!(expected, children, "the boxes inside are the children");
 
         for (&item, &child) in &inline.atomics {
             assert_eq!(fragments.boxes[child].source, item);
@@ -134,5 +161,29 @@ fn check_runs(fragments: &FragmentTree, owner: BoxFragmentKey) {
 
     if let Some(last) = prev_run {
         assert_eq!(fragments.boxes[last].link.next, None);
+    }
+}
+
+/// The links of the inline part box `key` pair up with those of the pieces
+/// of the same element around it.
+fn check_piece_links(fragments: &FragmentTree, key: BoxFragmentKey) {
+    let fragment = &fragments.boxes[key];
+
+    let pairs = [(fragment.link.prev, true), (fragment.link.next, false)];
+
+    for (other, prev) in pairs {
+        let Some(other) = other else {
+            continue;
+        };
+        let other = &fragments.boxes[other];
+        let back = if prev {
+            other.link.next
+        } else {
+            other.link.prev
+        };
+
+        assert_eq!(other.source, fragment.source, "pieces of one element");
+        assert_eq!(other.box_type, BoxFragmentType::InlinePart);
+        assert_eq!(back, Some(key), "piece links pair up");
     }
 }

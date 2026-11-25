@@ -472,7 +472,7 @@ impl Engine<'_> {
 
     /// Set the link of the box `key`, marking its source when it changed:
     /// its split edges are painted differently.
-    fn set_link(&mut self, key: BoxFragmentKey, link: BoxFragmentLink) {
+    pub(super) fn set_link(&mut self, key: BoxFragmentKey, link: BoxFragmentLink) {
         let fragment = &mut self.fragments.boxes[key];
 
         if fragment.link != link {
@@ -579,8 +579,13 @@ impl Engine<'_> {
 
         while let Some(key) = stale {
             stale = self.fragments.boxes.next_sibling(key);
-            changed = true;
 
+            // Inline part boxes are reconciled when the lines are emitted.
+            if self.fragments.boxes[key].box_type == BoxFragmentType::InlinePart {
+                continue;
+            }
+
+            changed = true;
             if park {
                 self.park(key);
             } else {

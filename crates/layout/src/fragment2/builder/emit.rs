@@ -3,6 +3,12 @@
 //! Items are rebuilt in place, in preorder: each line, then the pieces of
 //! the inline elements open on it, glyph runs and boxes. Items of one source
 //! are linked across lines, and the boxes inside are placed.
+//!
+//! Each piece of an inline element has an inline part box decorating it,
+//! drawn under the content it holds. Those boxes are cheap, and their
+//! geometry changes with the lines anyway, so they are created again on
+//! every emit. The pieces of an element are linked across lines, and across
+//! runs once every run is emitted.
 
 use comet_slotmap_tree::SlotTree;
 use rustc_hash::FxHashMap;
@@ -12,8 +18,10 @@ use super::{Engine, PAINT_CHANGED, Scratch, taffy::node_id};
 use crate::{
     dirty_map::DirtyMap,
     fragment2::{
-        BoxFragment, BoxFragmentKey, BoxFragmentType, ChildLayoutType, FragmentGeometry,
-        InlineItem, InlineItemKind, InlineLink, inline_box_source,
+        BoxFragment, BoxFragmentKey, BoxFragmentLink, BoxFragmentType, ChildLayoutType,
+        FragmentGeometry, InlineItem, InlineItemKind, InlineLink,
+        inline::{collect::InlineBuildContext, input::InlinePrelayout},
+        inline_box_source,
     },
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     style::geometry::{Point, Size},
@@ -25,6 +33,8 @@ pub(super) struct Piece {
     source: LayoutInputKey,
     /// Index of its item.
     index: usize,
+    /// Its inline part box.
+    key: BoxFragmentKey,
     /// Union of the border boxes of its children, in the owner's
     /// coordinates.
     rect: Option<kurbo::Rect>,
@@ -64,6 +74,7 @@ impl Engine<'_> {
             child_candidates,
             candidates,
             order,
+            placed_pieces,
             ..
         } = &mut *self.scratch;
         links.clear();
@@ -77,7 +88,20 @@ impl Engine<'_> {
                 .map(|(index, child)| (child, index as u32)),
         );
 
+        // Inline part boxes of the previous emit.
+        placed_pieces.clear();
+        placed_pieces.extend(
+            self.fragments.boxes.children(key).filter(|&child| {
+                self.fragments.boxes[child].box_type == BoxFragmentType::InlinePart
+            }),
+        );
+        for &piece in placed_pieces.iter() {
+            self.fragments.delete(piece);
+        }
+        placed_pieces.clear();
+
         let mut emitter = Emitter {
+            cx: self.cx,
             tree,
             owner,
             items: &mut items,
@@ -89,6 +113,7 @@ impl Engine<'_> {
             child_candidates,
             candidates,
             order,
+            placed_pieces,
             line_extent: kurbo::Rect::ZERO,
             line_baseline: 0.0,
         };
@@ -159,12 +184,118 @@ impl Engine<'_> {
         inline.origin = origin;
         self.fragments.boxes[key].child_layout = ChildLayoutType::Inline(inline);
 
+        self.place_pieces(key);
+
         extent
+    }
+
+    /// Attach the new inline part boxes of `key` after its other children
+    /// in emit order, and link the pieces of each element in order. Pieces of
+    /// elements split by the blocks around a run are linked across runs
+    /// later.
+    fn place_pieces(&mut self, key: BoxFragmentKey) {
+        let placed = std::mem::take(&mut self.scratch.placed_pieces);
+        let mut last: FxHashMap<LayoutInputKey, BoxFragmentKey> = FxHashMap::default();
+
+        for &piece in &placed {
+            self.fragments.boxes.append(key, piece);
+
+            let source = self.fragments.boxes[piece].source;
+            let prev = last.insert(source, piece);
+            self.set_link(piece, BoxFragmentLink { prev, next: None });
+
+            if let Some(prev) = prev {
+                let link = BoxFragmentLink {
+                    next: Some(piece),
+                    ..self.fragments.boxes[prev].link
+                };
+                self.set_link(prev, link);
+            }
+        }
+
+        self.scratch.placed_pieces = placed;
+
+        // The owner of a run links the pieces across its runs.
+        if self.fragments.is_anonymous(key)
+            && let Some(owner) = self.fragments.boxes.parent(key)
+            && !self.scratch.relink.contains(&owner)
+        {
+            self.scratch.relink.push(owner);
+        }
+    }
+
+    /// Link the first and last pieces of the inline elements split by the
+    /// blocks of the mixed inline boxes whose runs were emitted.
+    pub(super) fn link_split_pieces(&mut self) {
+        let tree = self.cx.tree;
+        let mut split = Vec::new();
+
+        for owner in std::mem::take(&mut self.scratch.relink) {
+            let Some(item) = self.fragments.get(owner).map(|fragment| fragment.source) else {
+                continue;
+            };
+            let runs: Vec<_> = self.fragments.runs(owner).collect();
+
+            for pair in runs.windows(2) {
+                let [prev, run] = [pair[0], pair[1]];
+                let Some(block) = self
+                    .fragments
+                    .inline_layout(run)
+                    .and_then(|inline| inline.run_start)
+                else {
+                    continue;
+                };
+                InlinePrelayout::open_around(tree, item, block, &mut split);
+
+                for &element in &split {
+                    let (Some(last), Some(first)) = (
+                        self.piece_of(prev, element, true),
+                        self.piece_of(run, element, false),
+                    ) else {
+                        continue;
+                    };
+
+                    let link = BoxFragmentLink {
+                        next: Some(first),
+                        ..self.fragments.boxes[last].link
+                    };
+                    self.set_link(last, link);
+                    let link = BoxFragmentLink {
+                        prev: Some(last),
+                        ..self.fragments.boxes[first].link
+                    };
+                    self.set_link(first, link);
+                }
+            }
+        }
+    }
+
+    /// The first, or with `last`, the last inline part box of `element` in
+    /// the inline layout of `key`.
+    fn piece_of(
+        &self,
+        key: BoxFragmentKey,
+        element: LayoutInputKey,
+        last: bool,
+    ) -> Option<BoxFragmentKey> {
+        let inline = self.fragments.inline_layout(key)?;
+        let mut pieces = inline
+            .items
+            .iter()
+            .filter(|item| item.source == element)
+            .filter_map(|item| item.child_box());
+
+        if last {
+            pieces.next_back()
+        } else {
+            pieces.next()
+        }
     }
 }
 
 /// Emits the items of one inline layout.
 struct Emitter<'a> {
+    cx: InlineBuildContext<'a>,
     tree: &'a LayoutInputTree,
     /// Item establishing the inline formatting context.
     owner: LayoutInputKey,
@@ -186,6 +317,8 @@ struct Emitter<'a> {
     candidates: &'a mut taffy::OofCandidates,
     /// Index of each child among the children of the owner.
     order: &'a FxHashMap<BoxFragmentKey, u32>,
+    /// Inline part boxes created, in emit order.
+    placed_pieces: &'a mut Vec<BoxFragmentKey>,
     /// Union of the extents of the current line's content.
     line_extent: kurbo::Rect,
     /// Baseline of the current line, in the owner's coordinates.
@@ -267,9 +400,10 @@ impl Emitter<'_> {
 
         for position in common..self.chain.len() {
             let source = self.chain[position];
+            let key = self.piece_box(source);
             let index = self.push_item(InlineItem {
                 source,
-                kind: InlineItemKind::Box { child: None },
+                kind: InlineItemKind::Box { child: Some(key) },
                 descendants: 0,
                 link: InlineLink::default(),
                 geometry: FragmentGeometry::default(),
@@ -278,10 +412,29 @@ impl Emitter<'_> {
             self.open.push(Piece {
                 source,
                 index,
+                key,
                 rect: None,
                 extent: None,
             });
         }
+    }
+
+    /// Create the detached inline part box of a piece of the inline element
+    /// `source`, with its current style.
+    fn piece_box(&mut self, source: LayoutInputKey) -> BoxFragmentKey {
+        let (style, bits) = self.cx.resolve_style(source);
+        let mut fragment = BoxFragment::new(
+            source,
+            BoxFragmentType::InlinePart,
+            ChildLayoutType::Content,
+            style,
+        );
+        fragment.bits = bits;
+        self.dirty.mark(self.tree, source, PAINT_CHANGED);
+
+        let key = self.boxes.insert(fragment);
+        self.placed_pieces.push(key);
+        key
     }
 
     /// Finish the innermost open piece: fit it to its children.
@@ -301,6 +454,15 @@ impl Emitter<'_> {
         item.descendants = descendants;
         item.geometry = geometry(rect, extent);
         item.baseline = (self.line_baseline - rect.y0) as f32;
+
+        // The box decorating the piece covers it.
+        let geometry = item.geometry;
+        if let Some(fragment) = self.boxes.get_mut(piece.key)
+            && fragment.layout.geometry != geometry
+        {
+            fragment.layout.geometry = geometry;
+            self.dirty.mark(self.tree, piece.source, PAINT_CHANGED);
+        }
 
         self.add_to_parent(rect, extent);
     }

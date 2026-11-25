@@ -96,8 +96,10 @@ pub struct InlineItem {
 pub enum InlineItemKind {
     /// Line box, indexing the lines of the layout.
     Line { line: u32 },
-    /// Piece of an inline element on one line when `child` is `None`, else
-    /// an atomic inline or out-of-flow box.
+    /// Piece of an inline element on one line, with its
+    /// [inline part](crate::fragment2::BoxFragmentType::InlinePart) box
+    /// decorating it, or an atomic inline or out-of-flow box. A piece without
+    /// a box has no decoration.
     Box { child: Option<BoxFragmentKey> },
     /// Glyph run, indexing the items of a line of the layout.
     Run { line: u32, run: u32 },
