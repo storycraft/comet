@@ -1,10 +1,7 @@
-// TODO(fragment2): ported with the painter and layers in phases 2–4.
-#![cfg(any())]
-
 use anyrender::{Glyph, Paint, Scene, recording::RenderCommand};
 use comet_layout::{
     dirty_map::DirtyMap,
-    fragment::{FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
+    fragment2::{BoxFragmentKey, FragmentTree, FragmentTreeBuilder},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
@@ -113,7 +110,7 @@ const VIEWPORT: Size<f64> = Size::new(120.0, 400.0);
 const SCENE_VIEWPORT: Rect = Rect::new(0.0, 0.0, 120.0, 400.0);
 const UNITS: UnitResolveContext = LayoutConstraint::new_root(VIEWPORT, 16.0).units;
 
-fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, FragmentKey) {
+fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, BoxFragmentKey) {
     let mut inputs = LayoutInputTree::new();
     let mut dirty = DirtyMap::new();
     let root = LayoutInputTreeBuilder::new()
@@ -150,7 +147,7 @@ fn draw(
     ui: &Ui,
     inputs: &LayoutInputTree,
     tree: &FragmentTree,
-    root: FragmentKey,
+    root: BoxFragmentKey,
     units: &UnitResolveContext,
     viewport: Rect,
     scene: &mut Scene,
@@ -169,7 +166,7 @@ fn draw(
             dirty,
             tree,
             &mut layers,
-            tree.items[root].source,
+            tree.boxes[root].source,
         )
         .unwrap();
     painter.draw(
@@ -218,46 +215,35 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
         &mut scene,
     );
 
-    let mut pending = vec![(root, 0.0, 0.0)];
-    let mut expected_fills = Vec::new();
-    let mut expected_glyphs = 0;
+    // The span's inline part boxes are placed in the root's border box.
+    let origin = tree.boxes[root].layout.geometry.location;
+    let span_item = inputs.item_for_node(span).unwrap();
+    let expected_fills: Vec<_> = tree
+        .inline_boxes(&inputs, span_item)
+        .map(|part| {
+            let geometry = &tree.boxes[part].layout.geometry;
+            let (x, y) = (
+                origin.x + geometry.location.x,
+                origin.y + geometry.location.y,
+            );
 
-    while let Some((key, parent_x, parent_y)) = pending.pop() {
-        let fragment = &tree.items[key];
-        let x = parent_x + fragment.layout.location.x;
-        let y = parent_y + fragment.layout.location.y;
-
-        if inputs.items[fragment.source].node == span
-            && matches!(fragment.item, FragmentItem::Inline { .. })
-        {
-            expected_fills.push((
-                Rect::new(
-                    x,
-                    y,
-                    x + fragment.layout.size.width,
-                    y + fragment.layout.size.height,
-                ),
+            (
+                Rect::new(x, y, x + geometry.size.width, y + geometry.size.height),
                 yellow,
-            ));
-        }
-
-        if let FragmentItem::Line { line } = fragment.item {
-            for item in tree
-                .inline_layout(key)
-                .unwrap()
-                .layout
-                .get(line)
-                .unwrap()
-                .items()
-            {
-                if let parley::PositionedLayoutItem::GlyphRun(run) = item {
-                    expected_glyphs += run.positioned_glyphs().count();
-                }
-            }
-        }
-
-        pending.extend(tree.items.children(key).rev().map(|child| (child, x, y)));
-    }
+            )
+        })
+        .collect();
+    let expected_glyphs: usize = tree
+        .inline_layout(root)
+        .unwrap()
+        .layout
+        .lines()
+        .flat_map(|line| line.items().collect::<Vec<_>>())
+        .map(|item| match item {
+            parley::PositionedLayoutItem::GlyphRun(run) => run.positioned_glyphs().count(),
+            parley::PositionedLayoutItem::InlineBox(_) => 0,
+        })
+        .sum();
 
     let scene_fills = fills(&scene);
     let scene_glyphs = glyphs(&scene);
@@ -273,8 +259,8 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
             .all(|(glyph, _)| glyph.x >= 9.0 && glyph.y >= 7.0)
     );
 
-    tree.items[root].layout.location.x += 13.0;
-    tree.items[root].layout.location.y += 17.0;
+    tree.boxes[root].layout.geometry.location.x += 13.0;
+    tree.boxes[root].layout.geometry.location.y += 17.0;
 
     let mut shifted = Scene::new();
 
@@ -371,7 +357,7 @@ fn paints_atomic_inline_subtree_border_and_text_override_without_double_offsets(
 }
 
 #[test]
-fn standalone_text_paints_its_background_only_once() {
+fn standalone_text_paints_its_background_once_with_its_box() {
     let mut ui = Ui::new();
     let node = ui.create(
         Node::Text,
@@ -454,7 +440,7 @@ fn rounds_background_and_border_corners() {
 
 #[test]
 fn rounds_only_outer_edges_of_wrapped_fragments() {
-    for standalone in [false, true] {
+    {
         let mut ui = Ui::new();
         let text = ui.create(
             Node::Text,
@@ -463,15 +449,8 @@ fn rounds_only_outer_edges_of_wrapped_fragments() {
                     .into(),
             ),),
         );
-        let node = if standalone {
-            text
-        } else {
-            let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
-
-            ui.append(span, text);
-
-            span
-        };
+        let node = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+        ui.append(node, text);
 
         ui.set_props(
             node,
@@ -481,15 +460,8 @@ fn rounds_only_outer_edges_of_wrapped_fragments() {
             ),
         );
 
-        let root_node = if standalone {
-            node
-        } else {
-            let root = ui.create(Node::Box, ());
-
-            ui.append(root, node);
-
-            root
-        };
+        let root_node = ui.create(Node::Box, ());
+        ui.append(root_node, node);
         let (inputs, tree, root) = build(&ui, root_node);
         let mut scene = Scene::new();
 
@@ -531,7 +503,7 @@ fn rounds_only_outer_edges_of_wrapped_fragments() {
 }
 
 #[test]
-fn anonymous_blocks_paint_nothing_and_offset_their_lines() {
+fn anonymous_run_boxes_paint_nothing_and_offset_their_lines() {
     let mut ui = Ui::new();
     let gray = Color::from_rgb8(200, 200, 200);
     let yellow = Color::from_rgb8(250, 240, 20);
@@ -579,12 +551,17 @@ fn anonymous_blocks_paint_nothing_and_offset_their_lines() {
         .unwrap()
         .0;
 
-    // The root, both pieces of the span and the block; anonymous blocks add none.
+    // The root, both pieces of the span and the block; run boxes add none.
     assert_eq!(scene_fills.len(), 4);
     assert_eq!(
         scene_fills[0],
         (
-            Rect::new(0.0, 0.0, 120.0, tree.items[root].layout.size.height),
+            Rect::new(
+                0.0,
+                0.0,
+                120.0,
+                tree.boxes[root].layout.geometry.size.height
+            ),
             gray
         )
     );

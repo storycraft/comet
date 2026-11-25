@@ -15,7 +15,8 @@
 
 use comet_layout::{
     fragment2::{
-        BoxFragment, BoxFragmentKey, BoxFragmentType, FragmentRef, FragmentTree, InlineLayout,
+        BoxFragment, BoxFragmentKey, BoxFragmentType, FragmentRef, FragmentTree, InlineItem,
+        InlineLayout,
     },
     input::{LayoutInputKey, tree::LayoutInputTree},
 };
@@ -161,6 +162,17 @@ pub fn item_ref(fragments: &FragmentTree, owner: BoxFragmentKey, index: usize) -
 pub fn for_each_paint_child(
     fragments: &FragmentTree,
     fragment: FragmentRef,
+    f: impl FnMut(FragmentRef),
+) {
+    for_each_paint_child_on_lines(fragments, fragment, |_| true, f);
+}
+
+/// [`for_each_paint_child`], skipping the items on the lines `line` rejects,
+/// such as lines out of view.
+pub fn for_each_paint_child_on_lines(
+    fragments: &FragmentTree,
+    fragment: FragmentRef,
+    mut line: impl FnMut(&InlineItem) -> bool,
     mut f: impl FnMut(FragmentRef),
 ) {
     match fragment {
@@ -170,8 +182,12 @@ pub fn for_each_paint_child(
             };
 
             if let Some(inline) = parent.inline() {
-                for line in inline.roots() {
-                    for child in inline.children(line) {
+                for index in inline.roots() {
+                    if !line(&inline.items[index]) {
+                        continue;
+                    }
+
+                    for child in inline.children(index) {
                         f(item_ref(fragments, key, child));
                     }
                 }

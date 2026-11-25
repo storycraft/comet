@@ -1,5 +1,4 @@
 use anyrender::Paint;
-#[cfg(any())]
 use anyrender::{Scene, recording::RenderCommand};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
@@ -18,8 +17,6 @@ use comet_layout::{
         taffy::Overflow,
     },
 };
-// TODO(fragment2): ported with the painter and layers in phases 2–4.
-#[cfg(any())]
 use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
@@ -42,13 +39,10 @@ use comet_tree::{
     ui::Ui,
 };
 use kurbo::{Affine, Point, RoundedRectRadii, Vec2};
-#[cfg(any())]
 use kurbo::{Rect, Shape};
 use peniko::Color;
 
 const VIEWPORT: Size<f64> = Size::new(120.0, 400.0);
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 const SCENE_VIEWPORT: Rect = Rect::new(0.0, 0.0, 120.0, 400.0);
 const UNITS: UnitResolveContext = LayoutConstraint::new_root(VIEWPORT, 16.0).units;
 
@@ -178,8 +172,6 @@ impl Fixture {
         self.fragment(key).transform
     }
 
-    // TODO(fragment2): paints, ported with the painter in phases 2–4.
-    #[cfg(any())]
     /// Colors of the glyph runs painted, in paint order, with consecutive
     /// equal colors merged.
     fn text_colors(&self, ui: &Ui) -> Vec<Color> {
@@ -197,8 +189,6 @@ impl Fixture {
         colors
     }
 
-    // TODO(fragment2): paints, ported with the painter in phases 2–4.
-    #[cfg(any())]
     /// Build the paint layers of the whole fragment tree, with their root.
     fn layers(&self, ui: &Ui) -> (PaintLayerTree, PaintLayerKey) {
         let mut layers = PaintLayerTree::new();
@@ -216,8 +206,6 @@ impl Fixture {
         (layers, root)
     }
 
-    // TODO(fragment2): paints, ported with the painter in phases 2–4.
-    #[cfg(any())]
     fn draw(&self, ui: &Ui) -> Scene {
         let mut scene = Scene::new();
         let (layers, root) = self.layers(ui);
@@ -237,8 +225,6 @@ impl Fixture {
     }
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 fn solid(paint: &Paint) -> Color {
     match paint {
         Paint::Solid(color) => *color,
@@ -272,8 +258,6 @@ fn assert_affine(actual: Affine, expected: Affine) {
     }
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 /// Fills, clip layers and pops of a scene, with their bounding boxes.
 fn commands(scene: &Scene) -> Vec<String> {
     scene
@@ -505,8 +489,6 @@ fn fragment_boxes_resolve_their_border_radii() {
     }
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 #[test]
 fn text_color_is_inherited_through_the_ui() {
     let mut ui = Ui::new();
@@ -530,7 +512,7 @@ fn text_color_is_inherited_through_the_ui() {
     let root_fragment = f.build(&ui, root);
 
     assert_eq!(
-        f.fragments.items.parent(f.box_of(block)),
+        f.fragments.boxes.parent(f.box_of(block)),
         Some(root_fragment)
     );
     // Blue, then red before and inside the block, then green.
@@ -582,27 +564,23 @@ fn transforms_multiply_around_their_origins() {
         Affine::translate((0.0, 10.0)) * Affine::scale(3.0),
     );
 
-    // TODO(fragment2): paints, ported with the painter in phases 2–4.
-    #[cfg(any())]
-    {
-        // The painter draws in local coordinates, multiplying transforms down the
-        // tree.
-        let scene = f.draw(&ui);
-        let fill = scene
-            .commands
-            .iter()
-            .find_map(|command| match command {
-                RenderCommand::Fill(fill) => Some(fill),
-                _ => None,
-            })
-            .unwrap();
+    // The painter draws in local coordinates, multiplying transforms down the
+    // tree.
+    let scene = f.draw(&ui);
+    let fill = scene
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            RenderCommand::Fill(fill) => Some(fill),
+            _ => None,
+        })
+        .unwrap();
 
-        assert_affine(
-            fill.transform,
-            outer_transform * Affine::translate((5.0, 0.0)),
-        );
-        assert_eq!(fill.shape.bounding_box(), Rect::new(0.0, 0.0, 20.0, 10.0));
-    }
+    assert_affine(
+        fill.transform,
+        outer_transform * Affine::translate((5.0, 0.0)),
+    );
+    assert_eq!(fill.shape.bounding_box(), Rect::new(0.0, 0.0, 20.0, 10.0));
 }
 
 #[test]
@@ -650,24 +628,20 @@ fn overflow_clips_contents_to_the_fragment_box() {
     assert_eq!(f.clip(colored), (false, false));
     assert_eq!(f.clip(column), (true, false));
 
-    // TODO(fragment2): paints, ported with the painter in phases 2–4.
-    #[cfg(any())]
-    {
-        // A box is painted outside its own clip; its contents inside it. Clip
-        // layers nest, and unclipped axes are bounded by the viewport.
-        assert_eq!(
-            commands(&f.draw(&ui)),
-            [
-                format!("fill {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
-                format!("clip {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
-                format!("fill {:?}", Rect::new(7.0, 7.0, 17.0, 11.0)),
-                format!("clip {:?}", Rect::new(7.0, 0.0, 27.0, 400.0)),
-                format!("fill {:?}", Rect::new(7.0, 11.0, 47.0, 111.0)),
-                "pop".into(),
-                "pop".into(),
-            ]
-        );
-    }
+    // A box is painted outside its own clip; its contents inside it. Clip
+    // layers nest, and unclipped axes are bounded by the viewport.
+    assert_eq!(
+        commands(&f.draw(&ui)),
+        [
+            format!("fill {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
+            format!("clip {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
+            format!("fill {:?}", Rect::new(7.0, 7.0, 17.0, 11.0)),
+            format!("clip {:?}", Rect::new(7.0, 0.0, 27.0, 400.0)),
+            format!("fill {:?}", Rect::new(7.0, 11.0, 47.0, 111.0)),
+            "pop".into(),
+            "pop".into(),
+        ]
+    );
 }
 
 #[test]
@@ -683,19 +657,13 @@ fn only_box_fragments_clip() {
 
     // The item clips, but its inline fragments push no clip layer.
     assert_eq!(f.clip(span), (true, true));
-    // TODO(fragment2): paints, ported with the painter in phases 2–4.
-    #[cfg(any())]
-    {
-        assert!(
-            !commands(&f.draw(&ui))
-                .iter()
-                .any(|command| command.starts_with("clip"))
-        );
-    }
+    assert!(
+        !commands(&f.draw(&ui))
+            .iter()
+            .any(|command| command.starts_with("clip"))
+    );
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 #[test]
 fn clips_follow_the_transform_of_their_item() {
     let mut ui = Ui::new();
@@ -726,8 +694,6 @@ fn clips_follow_the_transform_of_their_item() {
     assert_eq!(clip.clip.bounding_box(), Rect::new(0.0, 0.0, 40.0, 20.0));
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 #[test]
 fn clips_round_with_the_border_radius_on_both_axes() {
     let mut ui = Ui::new();
@@ -768,8 +734,6 @@ fn clips_round_with_the_border_radius_on_both_axes() {
     assert_eq!(areas[1], 40.0 * 400.0);
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 #[test]
 fn content_outside_its_clip_is_not_painted() {
     let mut ui = Ui::new();
@@ -844,8 +808,6 @@ fn resolving_follows_the_layout() {
     f.assert_matches_full_resolve(&ui, root_fragment);
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 #[test]
 fn text_color_changes_paint_without_resolving() {
     let mut ui = Ui::new();
@@ -953,16 +915,12 @@ fn collapsed_fragments_have_no_inverse_transform() {
     assert_eq!(f.boxed(collapsed).inverse_transform, None);
     assert_eq!(f.boxed(content).inverse_transform, Some(Affine::IDENTITY));
 
-    // TODO(fragment2): paints, ported with the painter in phases 2–4.
-    #[cfg(any())]
-    {
-        // No clip layer is pushed for a box that covers no area.
-        assert!(
-            !commands(&f.draw(&ui))
-                .iter()
-                .any(|command| command.starts_with("clip"))
-        );
-    }
+    // No clip layer is pushed for a box that covers no area.
+    assert!(
+        !commands(&f.draw(&ui))
+            .iter()
+            .any(|command| command.starts_with("clip"))
+    );
 }
 
 #[test]
@@ -1074,8 +1032,6 @@ fn outlines_resolve_without_a_percentage_basis() {
     assert_eq!(f.data(root).outline_offset, 0.0);
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 /// Strokes of a scene, with their widths and path bounding boxes in scene
 /// coordinates.
 fn strokes(scene: &Scene) -> Vec<(f64, Rect)> {
@@ -1094,8 +1050,6 @@ fn strokes(scene: &Scene) -> Vec<(f64, Rect)> {
         .collect()
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 #[test]
 fn outlines_stroke_outside_the_offset_box() {
     let mut ui = Ui::new();
@@ -1130,8 +1084,6 @@ fn outlines_stroke_outside_the_offset_box() {
     );
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 #[test]
 fn outlines_of_split_fragments_round_all_four_corners() {
     let mut ui = Ui::new();
@@ -1189,8 +1141,6 @@ fn outlines_of_split_fragments_round_all_four_corners() {
     }
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 impl Fixture {
     /// Paint the whole tree at a display scale factor, into a physical
     /// viewport scaled with it.
@@ -1213,8 +1163,6 @@ impl Fixture {
     }
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 /// Glyphs painted, as their font size and scene position.
 fn scene_glyphs(scene: &Scene) -> Vec<(f32, Point)> {
     scene
@@ -1235,8 +1183,6 @@ fn scene_glyphs(scene: &Scene) -> Vec<(f32, Point)> {
         .collect()
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 #[test]
 fn paints_logical_layouts_at_the_display_scale_factor() {
     let mut ui = Ui::new();
@@ -1285,8 +1231,6 @@ fn paints_logical_layouts_at_the_display_scale_factor() {
     }
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 #[test]
 fn invalid_scale_factors_paint_nothing() {
     let mut ui = Ui::new();
@@ -1787,8 +1731,6 @@ fn scroll_changes_resolve_without_layout() {
     f.assert_matches_full_resolve(&ui, root_fragment);
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 /// A root with 5px padding holding a 50x30 scroll container with a 2px
 /// border, scrolled by `scroll`, with `extra` props on the container, and
 /// three 40x20 rows inside. Returns the UI, the root, the container and
@@ -1825,8 +1767,6 @@ fn scroll_fixture(
     (ui, root, scroller, rows)
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 #[test]
 fn scroll_containers_move_their_contents_but_not_themselves() {
     let (ui, root, _, _) = scroll_fixture((ScrollLeft(0.0), ScrollTop(10.0)), ());
@@ -1848,8 +1788,6 @@ fn scroll_containers_move_their_contents_but_not_themselves() {
     );
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 #[test]
 fn painted_scroll_is_clamped_to_the_scrollable_range() {
     let (ui, root, _, _) = scroll_fixture((ScrollLeft(100.0), ScrollTop(1000.0)), ());
@@ -1871,8 +1809,6 @@ fn painted_scroll_is_clamped_to_the_scrollable_range() {
     );
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 #[test]
 fn layer_owners_scroll_their_contents() {
     let (ui, root, _, _) = scroll_fixture((ScrollLeft(0.0), ScrollTop(10.0)), (Opacity(0.5),));
@@ -1897,8 +1833,6 @@ fn layer_owners_scroll_their_contents() {
     );
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 #[test]
 fn child_layers_scroll_with_their_container() {
     let (mut ui, root, _, rows) = scroll_fixture((ScrollLeft(0.0), ScrollTop(10.0)), ());
@@ -1924,8 +1858,6 @@ fn child_layers_scroll_with_their_container() {
     );
 }
 
-// TODO(fragment2): paints, ported with the painter in phases 2–4.
-#[cfg(any())]
 #[test]
 fn layers_painted_alone_scroll_with_their_ancestors() {
     let (mut ui, root, _, rows) = scroll_fixture((ScrollLeft(0.0), ScrollTop(10.0)), ());

@@ -7,8 +7,11 @@ use anyrender::Paint;
 use anyrender::PaintScene;
 use bytemuck::TransparentWrapper;
 use comet_layout::{
-    fragment::{Fragment, FragmentItem, FragmentKey, tree::FragmentTree},
-    input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
+    fragment2::{
+        BoxFragment, BoxFragmentKey, FragmentGeometry, FragmentRef, FragmentTree, InlineItem,
+        InlineItemKind,
+    },
+    input::{LayoutInputKey, tree::LayoutInputTree},
 };
 use comet_tree::{node::NodeKey, ui::Ui};
 use kurbo::{Affine, Insets, Point, Rect, RoundedRect, RoundedRectRadii, Stroke, Vec2};
@@ -17,8 +20,15 @@ use peniko::BlendMode;
 use slotmap::SecondaryMap;
 
 use crate::{
-    layer::{PaintLayerKey, tree::PaintLayerTree},
-    prepaint::{FragmentData, LayoutInputData, tree::PrepaintTree},
+    layer::{
+        PaintLayerKey,
+        tree::{PaintLayerTree, layer_owner},
+    },
+    prepaint::{
+        FragmentData, LayoutInputData,
+        fragment::{BoxRole, for_each_paint_child_on_lines, piece_of_part},
+        tree::PrepaintTree,
+    },
     style::{BorderFill, Fill, OutlineFill, TextColor},
 };
 
@@ -29,9 +39,9 @@ use crate::{
 pub struct CometPainter {
     /// Fragments to paint in the layer being painted.
     pending: Vec<Visit>,
-    /// Ancestors of a child layer's owner, up to the owner of its parent
-    /// layer, innermost first.
-    chain: Vec<FragmentKey>,
+    /// Ancestors of a child layer's owner, up to a box of its parent layer
+    /// with known transforms, innermost first.
+    chain: Vec<BoxFragmentKey>,
     /// Text color of each item looked up while painting, cleared on every
     /// paint.
     text_colors: SecondaryMap<LayoutInputKey, Paint>,
@@ -43,12 +53,10 @@ pub struct CometPainter {
 enum Visit {
     /// Paint a fragment and queue its children.
     Fragment {
-        key: FragmentKey,
-        /// Line containing the fragment, which owns the inline layout of its
-        /// glyph runs.
-        inline_owner: Option<FragmentKey>,
-        /// Maps the local coordinates of the fragment's parent to scene
-        /// coordinates.
+        fragment: FragmentRef,
+        /// Maps the coordinates of the contents of the box the fragment is
+        /// placed in to scene coordinates: its parent box, or the owner of
+        /// the inline layout holding an inline item.
         parent: Transforms,
         /// Scene bounds of the clips the fragment paints inside of.
         clip: Option<Rect>,
@@ -57,7 +65,7 @@ enum Visit {
     PopClip,
 }
 
-/// A transform from local fragment coordinates to scene coordinates, and its
+/// A transform from local box coordinates to scene coordinates, and its
 /// inverse.
 #[derive(Clone, Copy)]
 struct Transforms {
@@ -72,8 +80,7 @@ impl Transforms {
         inverse: Some(Affine::IDENTITY),
     };
 
-    /// The transforms of a fragment whose parent maps to the scene with
-    /// `self`.
+    /// The transforms of a box whose parent maps to the scene with `self`.
     fn then(self, own: &FragmentData) -> Self {
         Self {
             transform: self.transform * own.transform,
@@ -84,9 +91,18 @@ impl Transforms {
         }
     }
 
-    /// The transforms of the contents of a fragment mapping to the scene
-    /// with `self`, scrolled by `offset`: its descendants move against the
-    /// scroll, while the fragment and its clip stay in place.
+    /// The transforms of the parent of a box mapping to the scene with
+    /// `self`, undoing its own transform. `None` if it has no inverse.
+    fn undo(self, own: &FragmentData) -> Option<Self> {
+        Some(Self {
+            transform: self.transform * own.inverse_transform?,
+            inverse: self.inverse.map(|inverse| own.transform * inverse),
+        })
+    }
+
+    /// The transforms of the contents of a box mapping to the scene with
+    /// `self`, scrolled by `offset`: its descendants move against the
+    /// scroll, while the box and its clip stay in place.
     fn scrolled(self, offset: Vec2) -> Self {
         if offset == Vec2::ZERO {
             return self;
@@ -102,22 +118,45 @@ impl Transforms {
 
     /// The transforms of the contents of `fragment`, mapping to the scene
     /// with `self`: scrolled by its scroll offset.
-    fn contents(self, prepaint: &PrepaintTree, fragment: &Fragment) -> Self {
+    fn contents(self, prepaint: &PrepaintTree, fragment: &BoxFragment) -> Self {
         self.scrolled(prepaint.scroll_offset(fragment))
     }
 
     /// The transforms mapping the local coordinates of `key` to the scene,
     /// multiplied from the root down with the scroll offsets of its
-    /// ancestors, or `None` if a fragment on the way is not resolved.
-    fn of(tree: &FragmentTree, prepaint: &PrepaintTree, key: FragmentKey) -> Option<Self> {
-        let parent = match tree.items.parent(key) {
-            Some(parent) => {
-                Self::of(tree, prepaint, parent)?.contents(prepaint, tree.items.get(parent)?)
-            }
+    /// ancestors, or `None` if a box on the way is not resolved.
+    fn of(tree: &FragmentTree, prepaint: &PrepaintTree, key: BoxFragmentKey) -> Option<Self> {
+        let parent = match tree.boxes.parent(key) {
+            Some(parent) => Self::of(tree, prepaint, parent)?.contents(prepaint, tree.get(parent)?),
             None => Self::IDENTITY,
         };
 
         Some(parent.then(prepaint.fragment(key)?))
+    }
+}
+
+/// Boxes of a layer whose contents have known transforms, which the boxes
+/// painting in the layer are placed from: the owner of a box layer, or the
+/// boxes holding the inline content of an inline element's layer.
+#[derive(Clone, Copy)]
+struct Bases {
+    boxes: [(BoxFragmentKey, Transforms); 2],
+    len: usize,
+}
+
+impl Bases {
+    fn one(key: BoxFragmentKey, transforms: Transforms) -> Self {
+        Self {
+            boxes: [(key, transforms); 2],
+            len: 1,
+        }
+    }
+
+    fn get(&self, key: BoxFragmentKey) -> Option<Transforms> {
+        self.boxes[..self.len]
+            .iter()
+            .find(|(base, _)| *base == key)
+            .map(|&(_, transforms)| transforms)
     }
 }
 
@@ -135,6 +174,52 @@ struct Sources<'a> {
     scale_factor: f64,
 }
 
+impl Sources<'_> {
+    /// The transforms of the contents of `key`, placed from `bases`: the
+    /// transforms of a base, or those of the boxes down from one. `None` if
+    /// `key` is not under a base, or a box on the way is not resolved.
+    fn contents_of(&self, bases: &Bases, key: BoxFragmentKey) -> Option<Transforms> {
+        if let Some(transforms) = bases.get(key) {
+            return Some(transforms);
+        }
+
+        let parent = self.contents_of(bases, self.tree.boxes.parent(key)?)?;
+        let fragment = self.tree.get(key)?;
+
+        Some(
+            parent
+                .then(self.prepaint.fragment(key)?)
+                .contents(self.prepaint, fragment),
+        )
+    }
+
+    /// The transforms of an inline part box, and of the contents of the box
+    /// it is placed in, placed from `bases`.
+    fn part_transforms(
+        &self,
+        bases: &Bases,
+        part: BoxFragmentKey,
+    ) -> Option<(Transforms, Transforms)> {
+        let parent = self.contents_of(bases, self.tree.boxes.parent(part)?)?;
+
+        Some((parent.then(self.prepaint.fragment(part)?), parent))
+    }
+
+    /// Whether a fragment starts a layer of its own, painting it with its
+    /// descendants, and every piece of its inline element.
+    fn starts_layer(&self, fragment: FragmentRef) -> bool {
+        layer_owner(self.tree, fragment).is_some_and(|owner| self.layers.layer_of(owner).is_some())
+    }
+
+    /// Whether `bounds`, in coordinates mapped to the scene by `transform`,
+    /// may paint inside the viewport and `clip`.
+    fn visible(&self, transform: Affine, bounds: Rect, clip: Option<Rect>) -> bool {
+        let bounds = transform.transform_rect_bbox(bounds);
+
+        bounds.overlaps(self.viewport) && clip.is_none_or(|clip| bounds.overlaps(clip))
+    }
+}
+
 impl CometPainter {
     pub fn new() -> Self {
         Self::default()
@@ -145,24 +230,29 @@ impl CometPainter {
     /// `prepaint` and `layers` must be resolved and built for them. Paints
     /// nothing if `root` is not in `layers`.
     ///
-    /// Each layer paints its owner fragment, then its child layers with a
-    /// negative z index, then its other fragments in tree order, then its
-    /// other child layers, with the opacity and filters of its owner's item.
-    /// A layer with an opacity below 1, a [`Filter`](crate::style::Filter)
-    /// or a [`MixBlend`](crate::style::MixBlend) paints into a group, blended
-    /// with that opacity and blend mode and filtered in the owner's local
+    /// Each layer paints its owner, then its child layers with a negative z
+    /// index, then its other fragments in paint order, then its other child
+    /// layers, with the opacity and filters of its owner's item. The layer
+    /// of an inline element paints the inline part boxes of all of its
+    /// pieces as its owner, and their items as its fragments. A layer with
+    /// an opacity below 1, a [`Filter`](crate::style::Filter) or a
+    /// [`MixBlend`](crate::style::MixBlend) paints into a group, blended with
+    /// that opacity and blend mode and filtered in the owner's local
     /// coordinates. A transparent layer is skipped, and so is the group of a
     /// layer whose owner collapses. A
     /// [`BackdropFilter`](crate::style::BackdropFilter) filters what is
     /// painted behind the owner's border box, rounded with its border radius,
-    /// before the layer paints.
+    /// or behind each piece of an inline element, before the layer paints.
     ///
-    /// Each fragment paints with its resolved data, such as its transform and
-    /// border radius, and the text color of its source item. Fragment
-    /// transforms multiply down the fragment tree, starting with the
-    /// transforms of the root's ancestors.
+    /// Each box paints with its resolved data, such as its transform and
+    /// border radius. Box transforms multiply down the box tree, starting
+    /// with the transforms of the root's ancestors. Inline items paint in the
+    /// coordinates of the box owning their inline layout: glyph runs with
+    /// the text color of their source item, and pieces of inline elements
+    /// with their inline part boxes. Items placing no box paint no
+    /// background, border or outline.
     ///
-    /// A box fragment clipping its overflow clips its descendants to its
+    /// A principal box clipping its overflow clips its descendants to its
     /// border box, rounded with its border radius, including those painting
     /// in other layers. Clips of the root's ancestors do not apply.
     ///
@@ -181,9 +271,10 @@ impl CometPainter {
     /// Fragments painting entirely outside `viewport`, in physical pixels, or
     /// outside their clip are skipped. Fragments touching their edges are
     /// painted. Their descendants are skipped with them only when the
-    /// fragment's [overflow](comet_layout::fragment::FragmentBox::overflow)
-    /// is outside too, since children may paint outside their parents. Child layers are visited on their own,
-    /// so they paint wherever their transforms place them.
+    /// fragment's [overflow](comet_layout::fragment2::FragmentGeometry::overflow)
+    /// is outside too, since children may paint outside their parents, and
+    /// so are the items of lines out of view. Child layers are visited on
+    /// their own, so they paint wherever their transforms place them.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
@@ -204,10 +295,10 @@ impl CometPainter {
         let Some(item) = layers.layers.get(root) else {
             return;
         };
-        let parent = match tree.items.parent(item.owner) {
+        let parent = match tree.boxes.parent(item.owner) {
             // The owner sits in its parent's scrolled contents.
             Some(parent) => Transforms::of(tree, prepaint, parent)
-                .zip(tree.items.get(parent))
+                .zip(tree.get(parent))
                 .map(|(transforms, parent)| transforms.contents(prepaint, parent)),
             None => Some(Transforms::IDENTITY),
         };
@@ -240,8 +331,8 @@ impl CometPainter {
     }
 
     /// Paint a layer, after its owner's backdrop filter and inside a group
-    /// with its owner's opacity, filter and blend mode. `parent` maps the local
-    /// coordinates of the owner's parent to the scene, and `clip` bounds the
+    /// with its owner's opacity, filter and blend mode. `parent` maps the
+    /// contents of the owner's parent box to the scene, and `clip` bounds the
     /// clips the owner paints inside of, already pushed.
     fn draw_layer(
         &mut self,
@@ -255,10 +346,9 @@ impl CometPainter {
             return;
         };
         let owner = layer.owner;
-        let (Some(fragment), Some(own)) = (
-            sources.tree.items.get(owner),
-            sources.prepaint.fragment(owner),
-        ) else {
+        let (Some(fragment), Some(own)) =
+            (sources.tree.get(owner), sources.prepaint.fragment(owner))
+        else {
             return;
         };
 
@@ -270,21 +360,68 @@ impl CometPainter {
 
         let filter = layer.filter.clone();
         let backdrop_filter = layer.backdrop_filter.clone();
+        let blend_mode = layer.blend_mode;
         let transforms = parent.then(own);
+        let inline = BoxRole::of(fragment) == BoxRole::InlinePart;
+
+        // The pieces of an inline element are placed in the box holding its
+        // inline content: the box owning the inline layout of the first, or
+        // the box whose runs hold them.
+        let bases = if inline {
+            let tree = sources.tree;
+            let Some(holder) = tree.boxes.parent(owner) else {
+                return;
+            };
+            let mut bases = Bases::one(holder, parent);
+
+            if let Some(holder_fragment) = tree.get(holder)
+                && BoxRole::of(holder_fragment) == BoxRole::Anonymous
+                && let Some(outer) = tree.boxes.parent(holder)
+                && let Some(outer_transforms) = sources
+                    .prepaint
+                    .fragment(holder)
+                    .and_then(|data| parent.undo(data))
+            {
+                bases.boxes[1] = (outer, outer_transforms);
+                bases.len = 2;
+            }
+
+            bases
+        } else {
+            Bases::one(owner, transforms.contents(sources.prepaint, fragment))
+        };
 
         if let Some(backdrop_filter) = backdrop_filter {
-            draw_backdrop(
-                sources,
-                owner,
-                fragment,
-                transforms,
-                clip,
-                backdrop_filter,
-                scene,
-            );
+            if inline {
+                for part in sources.tree.split_boxes(owner) {
+                    if let Some(((part_transforms, _), part_fragment)) = sources
+                        .part_transforms(&bases, part)
+                        .zip(sources.tree.get(part))
+                    {
+                        draw_backdrop(
+                            sources,
+                            part,
+                            part_fragment,
+                            part_transforms,
+                            clip,
+                            backdrop_filter.clone(),
+                            scene,
+                        );
+                    }
+                }
+            } else {
+                draw_backdrop(
+                    sources,
+                    owner,
+                    fragment,
+                    transforms,
+                    clip,
+                    backdrop_filter,
+                    scene,
+                );
+            }
         }
 
-        let blend_mode = layer.blend_mode;
         let group = opacity < 1.0 || filter.is_some() || blend_mode.is_some();
 
         if group {
@@ -305,12 +442,29 @@ impl CometPainter {
         }
 
         // The owner paints outside its own clip, and its descendants inside
-        // it, child layers included.
-        self.draw_fragment(sources, owner, transforms, None, clip, scene);
-        let (clip, clipped) = push_clip(sources, owner, fragment, transforms, clip, scene);
-        // Descendants, child layers included, scroll with the owner's
-        // contents; its clip does not.
-        let contents = transforms.contents(sources.prepaint, fragment);
+        // it, child layers included. Inline elements do not clip.
+        let (clip, clipped) = if inline {
+            for part in sources.tree.split_boxes(owner) {
+                if let Some(((part_transforms, _), part_fragment)) = sources
+                    .part_transforms(&bases, part)
+                    .zip(sources.tree.get(part))
+                {
+                    draw_box_fragment(sources, part, part_fragment, part_transforms, clip, scene);
+                }
+            }
+
+            (clip, false)
+        } else {
+            draw_box_fragment(sources, owner, fragment, transforms, clip, scene);
+            push_clip(sources, owner, fragment, transforms, clip, scene)
+        };
+        // A box layer's descendants, child layers included, scroll with the
+        // owner's contents; its clip does not.
+        let bases = if inline {
+            bases
+        } else {
+            Bases::one(owner, transforms.contents(sources.prepaint, fragment))
+        };
 
         // The first child layer with a non-negative z index, where painting
         // child layers resumes after the contents.
@@ -322,15 +476,39 @@ impl CometPainter {
                 break;
             }
 
-            self.draw_child(sources, child, owner, contents, clip, scene);
+            self.draw_child(sources, child, &bases, clip, scene);
         }
 
-        if subtree_visible(sources, fragment, transforms, clip) {
-            self.draw_contents(sources, owner, contents, clip, scene);
+        if inline {
+            // Each piece paints its items in turn.
+            for part in sources.tree.split_boxes(owner) {
+                let (Some(piece), Some((part_transforms, parent)), Some(part_fragment)) = (
+                    piece_of_part(sources.tree, part),
+                    sources.part_transforms(&bases, part),
+                    sources.tree.get(part),
+                ) else {
+                    continue;
+                };
+
+                if sources.visible(
+                    part_transforms.transform,
+                    part_fragment.layout.geometry.overflow,
+                    clip,
+                ) {
+                    self.draw_contents(sources, piece, parent, clip, scene);
+                }
+            }
+        } else if sources.visible(
+            transforms.transform,
+            fragment.layout.geometry.overflow,
+            clip,
+        ) && let Some(contents) = bases.get(owner)
+        {
+            self.draw_contents(sources, FragmentRef::Box(owner), contents, clip, scene);
         }
 
         for child in sources.layers.layers.cursor(non_negative) {
-            self.draw_child(sources, child, owner, contents, clip, scene);
+            self.draw_child(sources, child, &bases, clip, scene);
         }
 
         if clipped {
@@ -342,16 +520,15 @@ impl CometPainter {
         }
     }
 
-    /// Paint a child layer of the layer owned by `owner`, inside the clips of
-    /// the fragments between their owners and scrolled by them. `transforms`
-    /// maps the coordinates of the contents of `owner`, scrolled, to the
-    /// scene, and `clip` bounds the clips its contents paint inside of.
+    /// Paint a child layer of a layer whose boxes in `bases` have known
+    /// transforms, inside the clips of the boxes between its owner and a base
+    /// and scrolled by them. `clip` bounds the clips the bases' contents paint
+    /// inside of.
     fn draw_child(
         &mut self,
         sources: Sources<'_>,
         child: PaintLayerKey,
-        owner: FragmentKey,
-        transforms: Transforms,
+        bases: &Bases,
         clip: Option<Rect>,
         scene: &mut impl PaintScene,
     ) {
@@ -359,29 +536,31 @@ impl CometPainter {
             return;
         };
 
-        // Fragments between the owners, innermost first.
+        // Boxes between the owner and a base, innermost first.
         self.chain.clear();
-        let mut next = sources.tree.items.parent(child_owner);
+        let mut next = sources.tree.boxes.parent(child_owner);
 
-        while let Some(fragment) = next
-            && fragment != owner
-        {
-            self.chain.push(fragment);
-            next = sources.tree.items.parent(fragment);
-        }
+        let base = loop {
+            // An outdated layer not under a base paints nowhere.
+            let Some(key) = next else {
+                return;
+            };
 
-        // An outdated layer not under the owner paints nowhere.
-        if next.is_none() {
-            return;
-        }
+            if let Some(transforms) = bases.get(key) {
+                break transforms;
+            }
 
-        let mut transforms = transforms;
+            self.chain.push(key);
+            next = sources.tree.boxes.parent(key);
+        };
+
+        let mut transforms = base;
         let mut clip = clip;
         let mut pushed = 0;
 
         for &key in self.chain.iter().rev() {
             let (Some(fragment), Some(own)) =
-                (sources.tree.items.get(key), sources.prepaint.fragment(key))
+                (sources.tree.get(key), sources.prepaint.fragment(key))
             else {
                 continue;
             };
@@ -401,99 +580,163 @@ impl CometPainter {
         }
     }
 
-    /// Paint the descendants of a layer's owner in tree order, skipping the
-    /// owners of child layers and their descendants. `transforms` maps the
-    /// coordinates of the owner's contents, scrolled, to the scene.
+    /// Paint the descendants of `fragment` in paint order, skipping the
+    /// fragments starting child layers and their descendants. `parent` maps
+    /// the coordinates the children of `fragment` are placed in to the scene:
+    /// the scrolled contents of a box, or those of the owner of the inline
+    /// layout holding an inline item.
     fn draw_contents(
         &mut self,
         sources: Sources<'_>,
-        owner: FragmentKey,
-        transforms: Transforms,
+        fragment: FragmentRef,
+        parent: Transforms,
         clip: Option<Rect>,
         scene: &mut impl PaintScene,
     ) {
         let base = self.pending.len();
-
-        self.pending
-            .extend(
-                sources
-                    .tree
-                    .items
-                    .children(owner)
-                    .rev()
-                    .map(|child| Visit::Fragment {
-                        key: child,
-                        inline_owner: None,
-                        parent: transforms,
-                        clip,
-                    }),
-            );
+        self.push_children(sources, fragment, parent, clip);
 
         while self.pending.len() > base {
             let Some(visit) = self.pending.pop() else {
                 break;
             };
 
-            let (key, mut inline_owner, parent, clip) = match visit {
+            let (fragment, parent, clip) = match visit {
                 Visit::Fragment {
-                    key,
-                    inline_owner,
+                    fragment,
                     parent,
                     clip,
-                } => (key, inline_owner, parent, clip),
+                } => (fragment, parent, clip),
                 Visit::PopClip => {
                     scene.pop_layer();
                     continue;
                 }
             };
 
-            // Child layers paint on their own.
-            if sources.layers.layer_of(key).is_some() {
+            // Child layers paint on their own, and the layer of an inline
+            // element with every piece of it and their items.
+            if sources.starts_layer(fragment) {
                 continue;
             }
 
-            let (Some(fragment), Some(own)) =
-                (sources.tree.items.get(key), sources.prepaint.fragment(key))
-            else {
-                continue;
-            };
+            match fragment {
+                FragmentRef::Box(key) => {
+                    let (Some(box_fragment), Some(own)) =
+                        (sources.tree.get(key), sources.prepaint.fragment(key))
+                    else {
+                        continue;
+                    };
 
-            if matches!(fragment.item, FragmentItem::Line { .. }) {
-                inline_owner = Some(key);
+                    let transforms = parent.then(own);
+                    draw_box_fragment(sources, key, box_fragment, transforms, clip, scene);
+
+                    // Nothing below paints in view: skip the whole subtree.
+                    if !sources.visible(
+                        transforms.transform,
+                        box_fragment.layout.geometry.overflow,
+                        clip,
+                    ) {
+                        continue;
+                    }
+
+                    // A clipping box clips its descendants, not itself.
+                    let (child_clip, clipped) =
+                        push_clip(sources, key, box_fragment, transforms, clip, scene);
+
+                    if clipped {
+                        self.pending.push(Visit::PopClip);
+                    }
+
+                    let contents = transforms.contents(sources.prepaint, box_fragment);
+                    self.push_children(sources, fragment, contents, child_clip);
+                }
+                FragmentRef::Inline { owner, index } => {
+                    let Some(inline) = sources.tree.inline_layout(owner) else {
+                        continue;
+                    };
+                    let Some(item) = inline.items.get(index as usize) else {
+                        continue;
+                    };
+
+                    match item.kind {
+                        InlineItemKind::Run { line, run } => {
+                            let text_color = self.text_color(sources, item.source);
+
+                            draw_glyph_run(
+                                sources,
+                                owner,
+                                item,
+                                (line as usize, run as usize),
+                                parent,
+                                clip,
+                                text_color,
+                                scene,
+                            );
+                        }
+                        InlineItemKind::Box { child } => {
+                            // A piece of an inline element paints its inline
+                            // part box under its items.
+                            if let Some(part) = child
+                                && let (Some(part_fragment), Some(own)) =
+                                    (sources.tree.get(part), sources.prepaint.fragment(part))
+                            {
+                                let transforms = parent.then(own);
+                                draw_box_fragment(
+                                    sources,
+                                    part,
+                                    part_fragment,
+                                    transforms,
+                                    clip,
+                                    scene,
+                                );
+
+                                if !sources.visible(
+                                    transforms.transform,
+                                    item.geometry.overflow,
+                                    clip,
+                                ) {
+                                    continue;
+                                }
+                            }
+
+                            // Its items are placed in the same box.
+                            self.push_children(sources, fragment, parent, clip);
+                        }
+                        InlineItemKind::Line { .. } => {
+                            self.push_children(sources, fragment, parent, clip);
+                        }
+                    }
+                }
             }
-
-            let transforms = parent.then(own);
-            self.draw_fragment(sources, key, transforms, inline_owner, clip, scene);
-
-            // Nothing below paints in view: skip the whole subtree.
-            if !subtree_visible(sources, fragment, transforms, clip) {
-                continue;
-            }
-
-            // A clipping fragment clips its descendants, not itself.
-            let (child_clip, clipped) = push_clip(sources, key, fragment, transforms, clip, scene);
-
-            if clipped {
-                self.pending.push(Visit::PopClip);
-            }
-
-            let contents = transforms.contents(sources.prepaint, fragment);
-
-            self.pending
-                .extend(
-                    sources
-                        .tree
-                        .items
-                        .children(key)
-                        .rev()
-                        .map(|child| Visit::Fragment {
-                            key: child,
-                            inline_owner,
-                            parent: contents,
-                            clip: child_clip,
-                        }),
-                );
         }
+    }
+
+    /// Queue the children of `fragment` in paint order, placed with
+    /// `parent`, skipping the items of lines out of view.
+    fn push_children(
+        &mut self,
+        sources: Sources<'_>,
+        fragment: FragmentRef,
+        parent: Transforms,
+        clip: Option<Rect>,
+    ) {
+        let start = self.pending.len();
+
+        for_each_paint_child_on_lines(
+            sources.tree,
+            fragment,
+            |line| sources.visible(parent.transform, line.geometry.extent(), clip),
+            |child| {
+                self.pending.push(Visit::Fragment {
+                    fragment: child,
+                    parent,
+                    clip,
+                });
+            },
+        );
+
+        // Popped from the last.
+        self.pending[start..].reverse();
     }
 
     /// The text color of an item: the [`TextColor`] of the nearest item
@@ -540,116 +783,48 @@ impl CometPainter {
 
         &self.text_colors[key]
     }
+}
 
-    /// Paint one fragment itself, without its descendants, inside the clips
-    /// bounded by `clip`.
-    fn draw_fragment(
-        &mut self,
-        sources: Sources<'_>,
-        key: FragmentKey,
-        transforms: Transforms,
-        inline_owner: Option<FragmentKey>,
-        clip: Option<Rect>,
-        scene: &mut impl PaintScene,
-    ) {
-        let Sources {
-            ui,
-            inputs,
-            tree,
-            prepaint,
-            viewport,
-            ..
-        } = sources;
-        let Some(fragment) = tree.items.get(key) else {
-            return;
-        };
-        let data = prepaint.get(fragment.source);
-        let paint_data = prepaint.fragment(key);
-        let rect = local_rect(fragment);
-        let bounds = box_bounds(fragment, data, rect);
-        let transform = transforms.transform;
-        let visible = |bounds: Rect| {
-            let bounds = transform.transform_rect_bbox(bounds);
+/// Paint the background, border and outline of a box, without its
+/// descendants, inside the clips bounded by `clip`. Anonymous boxes paint
+/// nothing. Glyph runs place no box, so the box of a standalone text root
+/// paints its background once.
+fn draw_box_fragment(
+    sources: Sources<'_>,
+    key: BoxFragmentKey,
+    fragment: &BoxFragment,
+    transforms: Transforms,
+    clip: Option<Rect>,
+    scene: &mut impl PaintScene,
+) {
+    if !BoxRole::of(fragment).decorates() {
+        return;
+    }
 
-            bounds.overlaps(viewport) && clip.is_none_or(|clip| bounds.overlaps(clip))
-        };
+    let data = sources.prepaint.get(fragment.source);
+    let geometry = &fragment.layout.geometry;
+    let rect = local_rect(geometry);
 
-        match fragment.item {
-            FragmentItem::Box { .. } => {
-                // A standalone text root also owns a layout box. Its paint
-                // belongs to its glyph fragments, not to both representations.
-                if inputs
-                    .items
-                    .get(fragment.source)
-                    .is_some_and(|item| item.kind != LayoutInputKind::Text)
-                    && visible(bounds)
-                {
-                    draw_box(
-                        ui, inputs, fragment, data, paint_data, rect, transform, scene,
-                    );
-                }
-            }
-            FragmentItem::Inline { .. } => {
-                if visible(bounds) {
-                    draw_box(
-                        ui, inputs, fragment, data, paint_data, rect, transform, scene,
-                    );
-                }
-            }
-            // Anonymous blocks only position their lines.
-            FragmentItem::AnonymousBlock { .. } => {}
-            FragmentItem::Line { .. } => {}
-            FragmentItem::GlyphRun { line, item } => {
-                if visible(bounds) {
-                    draw_box(
-                        ui, inputs, fragment, data, paint_data, rect, transform, scene,
-                    );
-                }
-
-                if let Some(owner) = inline_owner {
-                    let text_color = self.text_color(sources, fragment.source);
-
-                    draw_glyph_run(
-                        tree,
-                        fragment,
-                        owner,
-                        (line, item),
-                        rect,
-                        transform,
-                        sources.scale_factor,
-                        text_color,
-                        &visible,
-                        scene,
-                    );
-                }
-            }
-        }
+    if sources.visible(transforms.transform, box_bounds(geometry, data, rect), clip) {
+        draw_box(
+            sources,
+            fragment,
+            data,
+            sources.prepaint.fragment(key),
+            rect,
+            transforms.transform,
+            scene,
+        );
     }
 }
 
-/// Whether a fragment's descendants may paint inside the viewport and
-/// `clip`: whether its layout overflow overlaps them. `transforms` maps its local
-/// coordinates to the scene.
-fn subtree_visible(
-    sources: Sources<'_>,
-    fragment: &Fragment,
-    transforms: Transforms,
-    clip: Option<Rect>,
-) -> bool {
-    let bounds = transforms
-        .transform
-        .transform_rect_bbox(fragment.layout.overflow);
-
-    bounds.overlaps(sources.viewport) && clip.is_none_or(|clip| bounds.overlaps(clip))
-}
-
-/// Push the clip a fragment applies to its descendants, if it clips its
+/// Push the clip a box applies to its descendants, if it clips its
 /// overflow, and return the bounds of the clips its descendants paint inside
 /// of, with whether a clip layer was pushed.
 fn push_clip(
     sources: Sources<'_>,
-    key: FragmentKey,
-    fragment: &Fragment,
+    key: BoxFragmentKey,
+    fragment: &BoxFragment,
     transforms: Transforms,
     clip: Option<Rect>,
     scene: &mut impl PaintScene,
@@ -690,26 +865,22 @@ fn push_clip(
     )
 }
 
-/// Filter what is painted behind the border box of a layer's owner, with an
-/// empty layer clipped to it.
+/// Filter what is painted behind the border box of a box, with an empty
+/// layer clipped to it.
 fn draw_backdrop(
     sources: Sources<'_>,
-    key: FragmentKey,
-    fragment: &Fragment,
+    key: BoxFragmentKey,
+    fragment: &BoxFragment,
     transforms: Transforms,
     clip: Option<Rect>,
     filter: Arc<anyrender::Filter>,
     scene: &mut impl PaintScene,
 ) {
-    let rect = local_rect(fragment);
+    let rect = local_rect(&fragment.layout.geometry);
     let transform = transforms.transform;
-    let bounds = transform.transform_rect_bbox(rect);
 
     // A collapsed box has no area to filter behind.
-    if transforms.inverse.is_none()
-        || !bounds.overlaps(sources.viewport)
-        || clip.is_some_and(|clip| !bounds.overlaps(clip))
-    {
+    if transforms.inverse.is_none() || !sources.visible(transform, rect, clip) {
         return;
     }
 
@@ -731,36 +902,32 @@ fn draw_backdrop(
 }
 
 /// The border box of a fragment, in its local coordinates.
-fn local_rect(fragment: &Fragment) -> Rect {
-    Rect::from_origin_size(
-        Point::ORIGIN,
-        (fragment.layout.size.width, fragment.layout.size.height),
-    )
+fn local_rect(geometry: &FragmentGeometry) -> Rect {
+    Rect::from_origin_size(Point::ORIGIN, (geometry.size.width, geometry.size.height))
 }
 
-/// The clip of a box fragment whose item clips its overflow on the `clip`
+/// The clip of a principal box whose item clips its overflow on the `clip`
 /// axes, in its local coordinates: its border box on the clipped axes. Other
-/// fragments do not clip. Unclipped axes are bounded by the
-/// viewport, mapped back to local coordinates with `transforms`, the
-/// fragment's transforms to the scene. Fragments whose scene transform has no
-/// inverse push no clip layer.
+/// boxes do not clip. Unclipped axes are bounded by the viewport, mapped back
+/// to local coordinates with `transforms`, the box's transforms to the
+/// scene. Boxes whose scene transform has no inverse push no clip layer.
 ///
-/// Fragments clipping on both axes round the layer with their border radius.
+/// Boxes clipping on both axes round the layer with their border radius.
 /// Clipping on one axis keeps it square, as every corner then lies on the
 /// viewport bound of the unclipped axis.
 fn clip_layer(
-    fragment: &Fragment,
+    fragment: &BoxFragment,
     (x, y): (bool, bool),
     transforms: Transforms,
     viewport: Rect,
 ) -> Option<Rect> {
-    if !fragment.item.is_box() || !x && !y {
+    if !BoxRole::of(fragment).is_principal() || !x && !y {
         return None;
     }
 
     // A collapsed box paints its contents collapsed with it.
     let visible = transforms.inverse?.transform_rect_bbox(viewport);
-    let bounds = local_rect(fragment);
+    let bounds = local_rect(&fragment.layout.geometry);
 
     Some(Rect::new(
         if x { bounds.x0 } else { visible.x0 },
@@ -770,20 +937,20 @@ fn clip_layer(
     ))
 }
 
-/// Bounds of the background, border and outline painted for a fragment's
-/// border box `rect`. The border is stroked outside the box, up to its widest
-/// side, and the outline past its offset.
-fn box_bounds(fragment: &Fragment, data: Option<&LayoutInputData>, rect: Rect) -> Rect {
+/// Bounds of the background, border and outline painted for a box's border
+/// box `rect`. The border is stroked outside the box, up to its widest side,
+/// and the outline past its offset.
+fn box_bounds(geometry: &FragmentGeometry, data: Option<&LayoutInputData>, rect: Rect) -> Rect {
     let outline = data
         .filter(|data| data.outline_width > 0.0)
         .map_or(0.0, |data| data.outline_offset + data.outline_width);
-    let width = border_width(fragment).max(outline);
+    let width = border_width(geometry).max(outline);
 
     rect + Insets::uniform(width)
 }
 
-fn border_width(fragment: &Fragment) -> f64 {
-    let border = fragment.layout.border;
+fn border_width(geometry: &FragmentGeometry) -> f64 {
+    let border = geometry.border;
 
     border
         .left_top
@@ -793,28 +960,26 @@ fn border_width(fragment: &Fragment) -> f64 {
         .max(border.right_bottom.y)
 }
 
-/// The source node of a fragment.
-fn node(inputs: &LayoutInputTree, fragment: &Fragment) -> Option<NodeKey> {
+/// The source node of a box.
+fn node(inputs: &LayoutInputTree, fragment: &BoxFragment) -> Option<NodeKey> {
     inputs.items.get(fragment.source).map(|item| item.node)
 }
 
-/// Paint the background, border and outline of a fragment's border box
-/// `rect`. The background and border are rounded with the fragment's
+/// Paint the background, border and outline of a box's border box `rect`.
+/// The background and border are rounded with the box's
 /// [border radii](FragmentData::border_radii) from `paint_data`, square at
-/// the joins of a split fragment, and the outline with all four corners of
-/// its [border radius](FragmentData::border_radius).
-#[allow(clippy::too_many_arguments)]
+/// the joins of a split box, and the outline with all four corners of its
+/// [border radius](FragmentData::border_radius).
 fn draw_box(
-    ui: &Ui,
-    inputs: &LayoutInputTree,
-    fragment: &Fragment,
+    sources: Sources<'_>,
+    fragment: &BoxFragment,
     data: Option<&LayoutInputData>,
     paint_data: Option<&FragmentData>,
     rect: Rect,
     transform: Affine,
     scene: &mut impl PaintScene,
 ) {
-    let Some(props) = node(inputs, fragment).and_then(|node| ui.props(node)) else {
+    let Some(props) = node(sources.inputs, fragment).and_then(|node| sources.ui.props(node)) else {
         return;
     };
     let radii = paint_data.map_or(RoundedRectRadii::from(0.0), |data| {
@@ -832,7 +997,7 @@ fn draw_box(
         );
     }
 
-    let width = border_width(fragment);
+    let width = border_width(&fragment.layout.geometry);
 
     if width > 0.0
         && let Some(fill) = props.get::<BorderFill>()
@@ -892,65 +1057,66 @@ fn outline_path(rect: Rect, radii: RoundedRectRadii, offset: f64, width: f64) ->
     ))
 }
 
+/// Paint the glyph run `item` of the inline layout of `owner`, the run
+/// `run` of its line `line`, in the coordinates of the contents of `owner`,
+/// which `parent` maps to the scene.
 #[allow(clippy::too_many_arguments)]
 fn draw_glyph_run(
-    tree: &FragmentTree,
-    fragment: &Fragment,
-    owner_line: FragmentKey,
-    (line, item): (usize, usize),
-    rect: Rect,
-    transform: Affine,
-    scale_factor: f64,
+    sources: Sources<'_>,
+    owner: BoxFragmentKey,
+    item: &InlineItem,
+    (line, run): (usize, usize),
+    parent: Transforms,
+    clip: Option<Rect>,
     text_color: &anyrender::Paint,
-    visible: &impl Fn(Rect) -> bool,
     scene: &mut impl PaintScene,
 ) {
-    let Some(line) = tree
-        .inline_layout(owner_line)
-        .and_then(|inline| inline.layout.get(line))
-    else {
+    let Some(inline) = sources.tree.inline_layout(owner) else {
+        return;
+    };
+    let Some(line) = inline.layout.get(line) else {
+        return;
+    };
+    let Some(PositionedLayoutItem::GlyphRun(glyph_run)) = line.items().nth(run) else {
         return;
     };
 
-    let Some(PositionedLayoutItem::GlyphRun(glyph_run)) = line.items().nth(item) else {
-        return;
-    };
-
-    let run = glyph_run.run();
+    let font_run = glyph_run.run();
+    let geometry = &item.geometry;
+    let rect = local_rect(geometry) + Vec2::new(geometry.location.x, geometry.location.y);
 
     // Glyph ink can extend past the run's line box, such as accents above a
     // tight line height or italic overhangs. One em on each side bounds it.
-    let overhang = run.font_size() as f64;
+    let overhang = font_run.font_size() as f64;
 
-    if !visible(rect.inflate(overhang, overhang)) {
+    if !sources.visible(parent.transform, rect.inflate(overhang, overhang), clip) {
         return;
     }
 
-    let origin = rect.origin();
     // Parley's coordinates wrap the raw `i16` bits Anyrender takes.
-    let normalized_coords: &[i16] = TransparentWrapper::peel_slice(run.normalized_coords());
+    let normalized_coords: &[i16] = TransparentWrapper::peel_slice(font_run.normalized_coords());
 
-    // Parley's glyphs are positioned within the inline context. Offset them
-    // so the run starts at the fragment's local origin.
-    let offset_x = origin.x as f32 - glyph_run.offset();
-    let offset_y =
-        (origin.y + fragment.layout.baseline.unwrap_or_default()) as f32 - glyph_run.baseline();
+    // Parley's glyphs are positioned within the inline layout, whose origin
+    // sits at the owner's content box.
+    let origin = inline.origin();
+    let (offset_x, offset_y) = (origin.x as f32, origin.y as f32);
 
     // Glyphs are shaped at their logical size but drawn at their physical
     // font size, so they are hinted for the display's pixels. Their positions
     // scale with them, and the display scale is taken out of the transform.
+    let scale_factor = sources.scale_factor;
     let scale = scale_factor as f32;
 
     scene.draw_glyphs(
-        run.font(),
-        run.font_size() * scale,
+        font_run.font(),
+        font_run.font_size() * scale,
         true,
         normalized_coords,
         Vec2::ZERO,
         peniko::StyleRef::Fill(peniko::Fill::NonZero),
         text_color,
         1.0,
-        transform * Affine::scale(scale_factor.recip()),
+        parent.transform * Affine::scale(scale_factor.recip()),
         None,
         glyph_run.positioned_glyphs().map(|glyph| anyrender::Glyph {
             id: glyph.id,

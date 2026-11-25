@@ -1,10 +1,9 @@
-// TODO(fragment2): ported to `comet_layout::fragment2` in phases 3–4.
+// TODO(fragment2): ported to `comet_layout::fragment2` in phase 4.
 #[cfg(any())]
 pub use crate::hit::{HitTestResult, PaintHitCursor, PaintHitTester};
 pub use crate::layer::{
     PaintLayerItem, PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree,
 };
-#[cfg(any())]
 pub use crate::painter::CometPainter;
 pub use crate::prepaint::{
     FragmentData, LayoutInputData, builder::PrepaintTreeBuilder, tree::PrepaintTree,
