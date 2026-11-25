@@ -5,10 +5,7 @@ use comet_layout::{
     style::bx::Overflow,
 };
 use comet_paint::prepaint::tree::PrepaintTree;
-use comet_tree::{
-    node::{Node, NodeKey},
-    ui::{Props, Ui},
-};
+use comet_tree::ui::{Props, Ui};
 use kurbo::{Affine, Vec2};
 use parley::PositionedLayoutItem;
 
@@ -72,8 +69,9 @@ impl AxTreeBuilder {
     /// text item's node also holds a [`TextRun`](accesskit::Role::TextRun)
     /// node for each of its glyph runs, before them, carrying their text and
     /// the metrics of their characters. Platform adapters expose text runs
-    /// only through the text's node, a [`Label`](accesskit::Role::Label)
-    /// unless the text has another role.
+    /// only through the text's node, always a
+    /// [`Label`](accesskit::Role::Label): text nodes have no
+    /// [`Role`](crate::style::Role) of their own.
     ///
     /// An item with a box fragment has the box's border box as bounds, and
     /// the transform mapping the box into its parent node, from the
@@ -248,9 +246,14 @@ impl Sources<'_> {
         let input = self.inputs.items.get(item)?;
         let props = self.ui.props(input.node)?;
 
-        let role = match props.get_cloned() {
-            Some(Role(role)) => role,
-            None => self.default_role(input.node, own),
+        // Text nodes have no role of their own: they are always labels.
+        let role = if input.kind == LayoutInputKind::Text {
+            accesskit::Role::Label
+        } else {
+            match props.get_cloned() {
+                Some(Role(role)) => role,
+                None => self.default_role(own),
+            }
         };
         let mut node = accesskit::Node::new(role);
 
@@ -368,14 +371,12 @@ impl Sources<'_> {
         Some(())
     }
 
-    /// The role of a node without one, generating `own` if it is a box:
-    /// texts are labels, boxes laying out one inline formatting context
+    /// The role of a node other than a text without one, generating `own`
+    /// if it is a box: boxes laying out one inline formatting context are
     /// groups, and other boxes generic containers. A box split by blocks
     /// owns no inline layout: its anonymous run boxes do.
-    fn default_role(&self, node: NodeKey, own: Option<BoxFragmentKey>) -> accesskit::Role {
-        if self.ui.kind(node) == Some(Node::Text) {
-            accesskit::Role::Label
-        } else if own.is_some_and(|own| self.fragments.inline_layout(own).is_some()) {
+    fn default_role(&self, own: Option<BoxFragmentKey>) -> accesskit::Role {
+        if own.is_some_and(|own| self.fragments.inline_layout(own).is_some()) {
             accesskit::Role::Group
         } else {
             accesskit::Role::GenericContainer

@@ -427,7 +427,7 @@ fn roles_default_by_node_kind() {
     let spanned = h.ui.create(Node::Text, (Text(" span".into()),));
     h.ui.append(card, span);
     h.ui.append(span, spanned);
-    // A role on a text applies to its node, not to its runs.
+    // Text nodes have no role of their own: one set on them is ignored.
     h.ui.set_props(text, (Role(AxRole::Heading),));
     h.build(root);
 
@@ -437,7 +437,7 @@ fn roles_default_by_node_kind() {
     assert_eq!(h.node(h.key(block)).role(), AxRole::GenericContainer);
     assert_eq!(h.node(h.key(span)).role(), AxRole::GenericContainer);
     assert_eq!(h.node(h.key(split)).role(), AxRole::GenericContainer);
-    assert_eq!(h.node(h.key(text)).role(), AxRole::Heading);
+    assert_eq!(h.node(h.key(text)).role(), AxRole::Label);
     assert_eq!(h.node(h.key(other)).role(), AxRole::Label);
     for run in h.runs(text) {
         assert_eq!(h.node(run).role(), AxRole::TextRun);
