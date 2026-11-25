@@ -47,8 +47,9 @@ impl Engine<'_> {
                 }
             };
 
+        let start = inline.run_start;
         self.content
-            .build(&self.cx, self.fonts, source, &mut inline);
+            .build(&self.cx, self.fonts, source, start, &mut inline);
         let content_bits = inline.content_bits;
 
         let fragment = &mut self.fragments.boxes[key];

@@ -61,7 +61,6 @@ impl Engine<'_> {
             links,
             open,
             chain,
-            collapse,
             child_candidates,
             candidates,
             order,
@@ -143,10 +142,7 @@ impl Engine<'_> {
                                 // Out-of-flow boxes start at the top of the line.
                                 emitter.out_of_flow(child, kurbo::Point::new(position.x, rect.y0));
                             }
-                            Some(child) => {
-                                let collapse = collapse.get(&source).copied().unwrap_or(0.0);
-                                emitter.place_box(source, child, position, collapse);
-                            }
+                            Some(child) => emitter.place_box(source, child, position),
                             // An empty inline element.
                             None => emitter.empty_element(source, position, rect),
                         }
@@ -340,15 +336,9 @@ impl Emitter<'_> {
     }
 
     /// Place the box `child` of `source` at the margin box position
-    /// `position`, whose top margin collapsed by `collapse`, and push its
+    /// `position`, and push its
     /// item.
-    fn place_box(
-        &mut self,
-        source: LayoutInputKey,
-        child: BoxFragmentKey,
-        position: kurbo::Point,
-        collapse: f32,
-    ) {
+    fn place_box(&mut self, source: LayoutInputKey, child: BoxFragmentKey, position: kurbo::Point) {
         self.open_chain(source, false);
 
         let Some(fragment) = self.boxes.get_mut(child) else {
@@ -357,7 +347,7 @@ impl Emitter<'_> {
         let margin = fragment.layout.unrounded.margin;
         let location = Point::new(
             position.x + f64::from(margin.left),
-            position.y + f64::from(margin.top - collapse),
+            position.y + f64::from(margin.top),
         );
 
         if fragment.layout.geometry.location != location {

@@ -57,7 +57,7 @@ impl<'e, 'a> BoxTree<'e, 'a> {
 
         if fragments
             .get(key)
-            .is_some_and(|fragment| fragment.child_layout.is_block())
+            .is_some_and(|fragment| fragment.child_layout.is_block_container())
         {
             buffer.extend(fragments.boxes.children(key));
         }

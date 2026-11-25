@@ -35,6 +35,15 @@ pub fn resolve(props: Option<Props>, cx: &LayoutConstraint) -> Style {
     resolve_tracked(props, cx, &mut |_| {})
 }
 
+/// The style of an anonymous box: the declared defaults, but never
+/// positioned, so it is no containing block of out-of-flow boxes.
+pub fn anonymous(cx: &LayoutConstraint) -> Style {
+    Style {
+        position: taffy::Position::Static,
+        ..resolve(None, cx)
+    }
+}
+
 /// Resolve a box style as [`resolve`], passing the unit of every length it
 /// reads to `track`.
 pub fn resolve_tracked(

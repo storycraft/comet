@@ -8,7 +8,7 @@ use comet_tree::{
 use super::builder::{Fixture, VIEWPORT, paragraph, text};
 use crate::{
     dirty_map::DirtyFlags,
-    fragment2::{BoxFragmentType, FragmentGeometry, InlineLayout},
+    fragment2::{BoxFragmentLink, BoxFragmentType, FragmentGeometry, FragmentRef, InlineLayout},
     style::{
         bx,
         geometry::{AutoValue, Point, Rect, Size, StyleUnit},
@@ -179,7 +179,7 @@ fn places_atomic_inlines_on_lines() {
 }
 
 #[test]
-fn inline_parts_take_lines_of_their_own() {
+fn blocks_in_inline_content_are_laid_out_by_the_block_algorithm() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let before = text(&mut ui, "before");
@@ -196,28 +196,32 @@ fn inline_parts_take_lines_of_their_own() {
     let mut fx = Fixture::new(ui, root);
     fx.layout();
 
+    let root_box = fx.box_of(root);
+    assert!(fx.fragments.boxes[root_box].child_layout.is_mixed_inline());
+    assert_eq!(fx.run_texts(root), ["before", "after"]);
     assert_eq!(
         fx.fragments.boxes[fx.box_of(first)].box_type,
-        BoxFragmentType::InlinePart
+        BoxFragmentType::Normal
     );
 
+    let runs: Vec<_> = fx.fragments.runs(root_box).collect();
+    let run_height = fx.fragments.boxes[runs[0]].layout.geometry.size.height;
     let (first, second) = (fx.geometry(first), fx.geometry(second));
-    assert_eq!(
-        first.size.width, VIEWPORT.width,
-        "inline parts fill the line"
-    );
-    assert!(
-        first.location.y >= 10.0,
-        "below the first line and its margin"
-    );
+    assert_eq!(first.size.width, VIEWPORT.width, "blocks fill the line");
     assert_eq!(first.location.x, 0.0);
+    assert!(
+        (first.location.y - (run_height + 10.0)).abs() < 1e-3,
+        "below the first run and its margin"
+    );
 
     let gap = second.location.y - (first.location.y + first.size.height);
     assert!(
         (gap - 10.0).abs() < 1e-3,
         "margins collapse, got a gap of {gap}"
     );
-    assert!(fx.inline(root).roots().count() >= 4);
+
+    let last_run = fx.fragments.boxes[runs[1]].layout.geometry;
+    assert!((last_run.location.y - (second.location.y + second.size.height + 10.0)).abs() < 1e-3);
 }
 
 #[test]
@@ -468,4 +472,225 @@ fn absolute_boxes_without_insets_stay_at_their_static_position() {
         "after the text, got {x}"
     );
     assert_eq!(y, run.geometry.location.y);
+}
+
+/// A paragraph `p` holding `<span>before<div>block</div>after</span> tail`.
+struct Split {
+    root: NodeKey,
+    span: NodeKey,
+    block: NodeKey,
+}
+
+fn split_paragraph(ui: &mut Ui) -> Split {
+    let root = ui.create(Node::Box, ());
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    let before = text(ui, "before");
+    let block = paragraph(ui, "block");
+    let after = text(ui, "after");
+    let tail = text(ui, " tail");
+    ui.append(root, span);
+    ui.append(span, before);
+    ui.append(span, block);
+    ui.append(span, after);
+    ui.append(root, tail);
+
+    Split { root, span, block }
+}
+
+#[test]
+fn runs_are_linked_and_split_elements_continue_across_them() {
+    let mut ui = Ui::new();
+    let Split { root, span, block } = split_paragraph(&mut ui);
+
+    let mut fx = Fixture::new(ui, root);
+    fx.layout();
+
+    let root_box = fx.box_of(root);
+    assert!(fx.fragments.boxes[root_box].child_layout.is_mixed_inline());
+    let runs: Vec<_> = fx.fragments.runs(root_box).collect();
+    assert_eq!(runs.len(), 2);
+    assert_eq!(fx.children(root_box), [runs[0], fx.box_of(block), runs[1]]);
+    assert_eq!(
+        fx.fragments.boxes[runs[0]].link,
+        BoxFragmentLink {
+            prev: None,
+            next: Some(runs[1])
+        }
+    );
+    assert_eq!(fx.fragments.split_boxes(runs[1]).collect::<Vec<_>>(), runs);
+    assert_eq!(
+        fx.fragments.boxes[fx.box_of(block)].link,
+        BoxFragmentLink::default()
+    );
+
+    let span = fx.item(span);
+    let first = fx.fragments.inline_layout(runs[0]).unwrap();
+    let second = fx.fragments.inline_layout(runs[1]).unwrap();
+    assert_eq!(first.continued, [span]);
+    assert_eq!(second.reopened, [span]);
+    assert_eq!(fx.fragments.inline_owner(&fx.tree, span), Some(runs[0]));
+
+    let pieces: Vec<_> = fx.fragments.fragments(&fx.tree, span).collect();
+    let owners: Vec<_> = pieces
+        .iter()
+        .map(|piece| match *piece {
+            FragmentRef::Inline { owner, .. } => owner,
+            FragmentRef::Box(_) => panic!("the span has no box"),
+        })
+        .collect();
+    assert_eq!(owners, runs, "one piece in each run, in order");
+}
+
+#[test]
+fn inserting_a_block_splits_a_run_keeping_keys() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let before = text(&mut ui, "before ");
+    let atomic = badge(&mut ui, 30.0, 10.0);
+    let after = text(&mut ui, " after");
+    ui.append(root, before);
+    ui.append(root, atomic);
+    ui.append(root, after);
+
+    let mut fx = Fixture::new(ui, root);
+    fx.layout();
+    let (root_box, atomic_box) = (fx.box_of(root), fx.box_of(atomic));
+    assert!(fx.fragments.boxes[root_box].child_layout.is_inline());
+
+    // A block before the atomic inline moves it to a new run.
+    fx.next_round();
+    let block = paragraph(&mut fx.ui, "block");
+    fx.ui.before(atomic, block);
+    fx.mark(root, DirtyFlags::NEED_CHILDREN);
+    fx.layout();
+
+    assert_eq!(fx.box_of(root), root_box);
+    assert!(fx.fragments.boxes[root_box].child_layout.is_mixed_inline());
+    assert_eq!(fx.run_texts(root), ["before ", "\u{FFFC} after"]);
+    assert_eq!(fx.box_of(atomic), atomic_box, "moved with its key");
+    let runs: Vec<_> = fx.fragments.runs(root_box).collect();
+    assert_eq!(fx.fragments.boxes.parent(atomic_box), Some(runs[1]));
+    let first_run = runs[0];
+
+    // Editing the second run leaves the first one built.
+    fx.next_round();
+    fx.ui
+        .set_props(after, (comet_tree::node::Text(" later".into()),));
+    fx.mark(after, DirtyFlags::NEED_FULL_LAYOUT);
+    fx.layout();
+    assert_eq!(fx.run_texts(root), ["before ", "\u{FFFC} later"]);
+    assert_eq!(fx.fragments.runs(root_box).next(), Some(first_run));
+
+    // Removing the block makes it one inline layout again.
+    fx.next_round();
+    fx.ui.delete(block);
+    fx.mark(root, DirtyFlags::NEED_CHILDREN);
+    fx.layout();
+
+    assert_eq!(fx.box_of(root), root_box);
+    assert!(fx.fragments.boxes[root_box].child_layout.is_inline());
+    assert_eq!(fx.inline(root).text, "before \u{FFFC} later");
+    assert_eq!(fx.box_of(atomic), atomic_box);
+    assert_eq!(fx.fragments.boxes.parent(atomic_box), Some(root_box));
+}
+
+#[test]
+fn block_margins_collapse_through_a_mixed_owner() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let owner = ui.create(Node::Box, ());
+    let block = paragraph(&mut ui, "first");
+    let tail = text(&mut ui, "tail");
+    vertical_margin(&mut ui, block, 10.0);
+    ui.append(root, owner);
+    ui.append(owner, block);
+    ui.append(owner, tail);
+
+    let mut fx = Fixture::new(ui, root);
+    fx.layout();
+
+    assert!(
+        fx.fragments.boxes[fx.box_of(owner)]
+            .child_layout
+            .is_mixed_inline()
+    );
+    assert_eq!(
+        fx.geometry(owner).location.y,
+        10.0,
+        "the margin collapses through"
+    );
+    assert_eq!(fx.geometry(block).location.y, 0.0);
+}
+
+#[test]
+fn blocks_in_inline_content_can_be_flow_roots() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let before = text(&mut ui, "before");
+    let block = paragraph(&mut ui, "block");
+    ui.set_props(block, (bx::DisplayInner::FlowRoot,));
+    ui.append(root, before);
+    ui.append(root, block);
+
+    let mut fx = Fixture::new(ui, root);
+    fx.layout();
+
+    assert_eq!(
+        fx.fragments.boxes[fx.box_of(block)].box_type,
+        BoxFragmentType::FlowRoot
+    );
+}
+
+#[test]
+fn absolute_boxes_in_runs_bubble_through_the_owner() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let Split {
+        root: owner,
+        span,
+        block,
+    } = split_paragraph(&mut ui);
+    unpositioned(&mut ui, owner);
+    unpositioned(&mut ui, span);
+    let abs = absolute(&mut ui, Some((5.0, 7.0)));
+    let first = paragraph(&mut ui, "first");
+    ui.append(root, first);
+    ui.append(root, owner);
+    ui.append(span, abs);
+
+    let mut fx = Fixture::new(ui, root);
+    fx.layout();
+
+    assert!(fx.geometry(owner).location.y > 0.0);
+    assert_eq!(fx.location_in(abs, root), (5.0, 7.0));
+    assert_eq!(
+        fx.fragments.boxes[fx.box_of(root)].hoisted,
+        [fx.box_of(abs)]
+    );
+    let _ = block;
+}
+
+#[test]
+fn runs_with_only_out_of_flow_boxes_take_no_space() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    relative(&mut ui, root);
+    let before = text(&mut ui, "before");
+    let block = paragraph(&mut ui, "block");
+    let abs = absolute(&mut ui, Some((5.0, 7.0)));
+    ui.append(root, before);
+    ui.append(root, block);
+    ui.append(root, abs);
+
+    let mut fx = Fixture::new(ui, root);
+    fx.layout();
+
+    let runs: Vec<_> = fx.fragments.runs(fx.box_of(root)).collect();
+    assert_eq!(fx.run_texts(root), ["before", ""]);
+    assert_eq!(fx.fragments.boxes[runs[1]].layout.geometry.size.height, 0.0);
+    assert_eq!(
+        fx.geometry(root).size.height,
+        fx.geometry(block).location.y + fx.geometry(block).size.height
+    );
+    assert_eq!(fx.location_in(abs, root), (5.0, 7.0));
 }

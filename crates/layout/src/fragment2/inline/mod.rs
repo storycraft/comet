@@ -20,8 +20,7 @@ use crate::{
 #[derive(Debug, Default)]
 pub struct InlineLayout {
     /// Concatenated text of the inline content. Inline boxes in flow are
-    /// U+FFFC characters, and line feeds put inline part boxes on lines of
-    /// their own.
+    /// U+FFFC characters.
     pub text: String,
     /// Layout whose span brushes are the items owning the spans, and whose
     /// inline box ids are the items of the boxes, see [`inline_box_id`].
@@ -32,14 +31,26 @@ pub struct InlineLayout {
     pub offset_mapping: Vec<OffsetEntry>,
     /// Lines, inline element pieces, boxes and glyph runs, in preorder.
     pub items: Vec<InlineItem>,
-    /// Box fragment of each box inside the inline content: atomic inline,
-    /// inline part and out-of-flow boxes, the children of the owner. Set
+    /// Box fragment of each box inside the inline content: atomic inline and
+    /// out-of-flow boxes, the children of the owner. Set
     /// when the inline content is built, and read when laying out the lines.
     pub atomics: FxHashMap<LayoutInputKey, BoxFragmentKey>,
     /// Whether the inline content is built: its text shaped, and the boxes
     /// inside matching the children of the owner. Until then, the other
     /// fields hold the previous content, if any.
     pub(crate) built: bool,
+    /// For a run of inline content split by block level boxes, the block
+    /// level box it follows; `None` for the first run, or content that is
+    /// not split. Kept across builds.
+    pub(crate) run_start: Option<LayoutInputKey>,
+    /// Inline elements open at the start of the run, split by the block
+    /// level box before it, outermost first. Their items continue those of
+    /// the previous run.
+    pub reopened: Vec<LayoutInputKey>,
+    /// Inline elements still open at the end of the run, split by the block
+    /// level box after it, outermost first. Their items continue in the
+    /// next run.
+    pub continued: Vec<LayoutInputKey>,
     /// [Propagated](NodeLayoutBits::PROPAGATED) bits of the box styles of
     /// the inline elements in the inline content, which have no boxes of
     /// their own. Part of the bits of the owner. Set by a full build, and
@@ -93,7 +104,7 @@ pub enum InlineItemKind {
     /// Line box, indexing the lines of the layout.
     Line { line: u32 },
     /// Piece of an inline element on one line when `child` is `None`, else
-    /// an atomic inline, inline part or out-of-flow box.
+    /// an atomic inline or out-of-flow box.
     Box { child: Option<BoxFragmentKey> },
     /// Glyph run, indexing the items of a line of the layout.
     Run { line: u32, run: u32 },
@@ -116,7 +127,7 @@ impl InlineItem {
         matches!(self.kind, InlineItemKind::Run { .. })
     }
 
-    /// The box fragment of an atomic inline, inline part or out-of-flow box.
+    /// The box fragment of an atomic inline or out-of-flow box.
     pub const fn child_box(&self) -> Option<BoxFragmentKey> {
         match self.kind {
             InlineItemKind::Box { child } => child,

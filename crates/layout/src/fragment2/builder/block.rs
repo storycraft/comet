@@ -61,7 +61,7 @@ impl Engine<'_> {
         };
 
         match ChildKind::of(&fragment.child_layout) {
-            ChildKind::Block => self.layout_block(key, input, block_ctx),
+            ChildKind::Block | ChildKind::MixedInline => self.layout_block(key, input, block_ctx),
             ChildKind::Inline => self.compute_inline_layout(node_id(key), input),
             // TODO(container): custom container algorithms need their trait
             // integrated with box fragments. Until then containers are
@@ -202,7 +202,7 @@ impl Engine<'_> {
                 .map(|baseline| layout.border.top + layout.padding.top + baseline);
         }
 
-        if !fragment.child_layout.is_block() {
+        if !fragment.child_layout.is_block_container() {
             return None;
         }
 

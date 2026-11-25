@@ -60,6 +60,39 @@ impl<'a> InlinePrelayout<'a> {
         Self { tree, root, next }
     }
 
+    /// Resume the inline content of `root` right after `item`, an atomic
+    /// inline or block level box inside it: its content is skipped, and the
+    /// pops of the inline elements open around it follow in their turn.
+    pub fn after(tree: &'a LayoutInputTree, root: LayoutInputKey, item: LayoutInputKey) -> Self {
+        let mut prelayout = Self {
+            tree,
+            root,
+            next: None,
+        };
+
+        if tree.items.get(item).is_some() {
+            prelayout.next = prelayout.advance(item);
+        }
+
+        prelayout
+    }
+
+    /// The inline elements of `root` open around `item`, outermost first.
+    pub fn open_around(
+        tree: &LayoutInputTree,
+        root: LayoutInputKey,
+        item: LayoutInputKey,
+        out: &mut Vec<LayoutInputKey>,
+    ) {
+        out.clear();
+        out.extend(
+            std::iter::successors(tree.items.parent(item), |&key| tree.items.parent(key))
+                .take_while(|&key| key != root)
+                .filter(|&key| tree.items[key].kind == LayoutInputKind::Inline),
+        );
+        out.reverse();
+    }
+
     pub fn root(&self) -> LayoutInputKey {
         self.root
     }

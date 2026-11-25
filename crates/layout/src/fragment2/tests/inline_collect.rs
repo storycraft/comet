@@ -7,7 +7,7 @@ use crate::{
     dirty_map::DirtyMap,
     fragment2::{
         BoxFragmentType, InlineLayout, OffsetEntry,
-        inline::collect::{InlineBuildContext, InlineContentBuilder},
+        inline::collect::{FlowItem, InlineBuildContext, InlineContentBuilder, split_runs},
         inline_box_source,
     },
     input::{
@@ -42,27 +42,39 @@ impl Fixture {
             )
             .unwrap();
 
-        let mut inline = InlineLayout::new();
-        let mut builder = InlineContentBuilder::new();
-        builder.build(
-            &InlineBuildContext {
-                ui: &ui,
-                tree: &tree,
-                constraint: &CONSTRAINT,
-            },
-            &mut parley::FontContext::new(),
-            root,
-            &mut inline,
-        );
-        let children = builder.children.clone();
-
-        Self {
+        let mut fixture = Self {
             ui,
             tree,
             root,
-            inline,
-            children,
+            inline: InlineLayout::new(),
+            children: Vec::new(),
+        };
+        fixture.build_run(None);
+
+        fixture
+    }
+
+    fn cx(&self) -> InlineBuildContext<'_> {
+        InlineBuildContext {
+            ui: &self.ui,
+            tree: &self.tree,
+            constraint: &CONSTRAINT,
         }
+    }
+
+    /// Collect and shape the run of the inline content after `start`.
+    fn build_run(&mut self, start: Option<LayoutInputKey>) {
+        let mut inline = std::mem::take(&mut self.inline);
+        let mut builder = InlineContentBuilder::new();
+        builder.build(
+            &self.cx(),
+            &mut parley::FontContext::new(),
+            self.root,
+            start,
+            &mut inline,
+        );
+        self.inline = inline;
+        self.children = builder.children.clone();
     }
 
     fn item(&self, node: NodeKey) -> LayoutInputKey {
@@ -149,7 +161,7 @@ fn concatenates_text_with_boxes_and_offsets() {
 }
 
 #[test]
-fn block_boxes_take_lines_of_their_own() {
+fn block_boxes_split_the_content_into_runs() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let before = text(&mut ui, "a");
@@ -163,14 +175,89 @@ fn block_boxes_take_lines_of_their_own() {
     ui.append(root, after);
     ui.append(root, last);
 
-    let f = Fixture::new(ui, root);
+    let mut f = Fixture::new(ui, root);
+    let [first, second, last] = [first, second, last].map(|node| f.item(node));
 
-    // Adjacent blocks share no empty line, and the last leaves no
-    // trailing one.
-    assert_eq!(f.inline.text, "a\n\u{FFFC}\n\u{FFFC}\nb\n\u{FFFC}");
+    // Adjacent blocks have no run between them, and none follows the last.
+    let mut flow = Vec::new();
+    split_runs(&f.cx(), f.root, &mut flow);
     assert_eq!(
-        f.children,
-        [first, second, last].map(|node| (f.item(node), BoxFragmentType::InlinePart))
+        flow,
+        [
+            FlowItem::Run(None),
+            FlowItem::Block(first),
+            FlowItem::Block(second),
+            FlowItem::Run(Some(second)),
+            FlowItem::Block(last),
+        ]
+    );
+
+    assert_eq!(f.inline.text, "a", "the first run ends at the block");
+    assert!(f.children.is_empty());
+
+    f.build_run(Some(second));
+    assert_eq!(f.inline.text, "b");
+    assert_eq!(f.inline.offset_mapping[0].source, f.item(after));
+}
+
+#[test]
+fn inline_elements_split_by_blocks_continue_across_runs() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    let before = text(&mut ui, "ab");
+    let block = ui.create(Node::Box, ());
+    let after = text(&mut ui, "cd");
+    let tail = text(&mut ui, "e");
+    ui.append(root, span);
+    ui.append(span, before);
+    ui.append(span, block);
+    ui.append(span, after);
+    ui.append(root, tail);
+
+    let mut f = Fixture::new(ui, root);
+    let (span, block) = (f.item(span), f.item(block));
+
+    assert_eq!(f.inline.text, "ab");
+    assert!(f.inline.reopened.is_empty());
+    assert_eq!(f.inline.continued, [span]);
+    assert_eq!(f.inline.range(span), Some(0..2));
+
+    f.build_run(Some(block));
+    assert_eq!(f.inline.text, "cde");
+    assert_eq!(f.inline.reopened, [span]);
+    assert!(f.inline.continued.is_empty());
+    assert_eq!(f.inline.range(span), Some(0..2));
+    assert_eq!(
+        f.inline.layout.inline_boxes().count(),
+        0,
+        "the rest of a split element is no empty element"
+    );
+}
+
+#[test]
+fn split_elements_without_content_make_no_runs() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let span = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    let block = ui.create(Node::Box, ());
+    let empty = ui.create(Node::Box, (bx::DisplayOuter::Inline,));
+    ui.append(root, span);
+    ui.append(span, block);
+    ui.append(root, empty);
+
+    let f = Fixture::new(ui, root);
+    let mut flow = Vec::new();
+    split_runs(&f.cx(), f.root, &mut flow);
+
+    // The span has no content before or after the block, but the empty
+    // element after it is content.
+    assert_eq!(
+        flow,
+        [
+            FlowItem::Block(f.item(block)),
+            FlowItem::Run(Some(f.item(block))),
+        ]
     );
 }
 
@@ -250,6 +337,7 @@ fn building_again_reuses_the_layout() {
         },
         &mut parley::FontContext::new(),
         f.root,
+        None,
         &mut f.inline,
     );
 

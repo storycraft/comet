@@ -161,6 +161,14 @@ impl Fixture {
             .text
     }
 
+    /// The texts of the runs of a mixed inline box.
+    pub(super) fn run_texts(&self, node: NodeKey) -> Vec<String> {
+        self.fragments
+            .runs(self.box_of(node))
+            .map(|run| self.fragments.inline_layout(run).unwrap().text.clone())
+            .collect()
+    }
+
     pub(super) fn built(&self, node: NodeKey) -> bool {
         self.fragments.boxes[self.box_of(node)]
             .inline()
@@ -383,12 +391,16 @@ fn child_layout_kind_change_keeps_the_box() {
     fx.layout();
 
     assert_eq!(fx.box_of(section), section_box);
-    assert!(fx.fragments.boxes[section_box].child_layout.is_inline());
-    assert_eq!(fx.inline_text(section), "leading\n\u{FFFC}");
+    assert!(
+        fx.fragments.boxes[section_box]
+            .child_layout
+            .is_mixed_inline()
+    );
+    assert_eq!(fx.run_texts(section), ["leading"]);
     assert_eq!(fx.box_of(inner), inner_box, "child boxes are kept");
     assert_eq!(
         fx.fragments.boxes[inner_box].box_type,
-        BoxFragmentType::InlinePart
+        BoxFragmentType::Normal
     );
 
     // And back to block layout.

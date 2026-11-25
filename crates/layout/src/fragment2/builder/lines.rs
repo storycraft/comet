@@ -21,9 +21,6 @@ use super::{
 };
 use crate::fragment2::{BoxFragmentKey, BoxFragmentType, ChildLayoutType, inline_box_source};
 
-/// Byte length of the character standing for an in-flow inline box.
-const OBJECT_REPLACEMENT_LEN: usize = '\u{FFFC}'.len_utf8();
-
 /// Extent of broken lines.
 struct Flow {
     width: f32,
@@ -163,8 +160,7 @@ impl Engine<'_> {
     /// Lay out the in-flow boxes inside the inline content of `key`, and
     /// write their margin boxes into their inline boxes.
     ///
-    /// Inline part boxes take the available width, atomic inlines their
-    /// size within it.
+    /// Atomic inlines take their size within the available space.
     fn prepare(&mut self, key: BoxFragmentKey, available: taffy::Size<taffy::AvailableSpace>) {
         self.collect_in_flow_boxes(key);
         let children = std::mem::take(&mut self.scratch.inline_children);
@@ -182,8 +178,7 @@ impl Engine<'_> {
     /// box. Its size, margins and baseline are recorded for its inline box,
     /// and the out-of-flow candidates it leaves for placing it.
     ///
-    /// An inline part box with an auto width stretches to the available
-    /// width. Atomic inlines size themselves.
+    /// Atomic inlines size themselves within the available width.
     fn layout_inline_child(
         &mut self,
         owner: BoxFragmentKey,
@@ -196,19 +191,12 @@ impl Engine<'_> {
         let margin = style.margin().resolve_or_zero(parent_width, |_, _| 0.0);
         let padding = style.padding().resolve_or_zero(parent_width, |_, _| 0.0);
         let border = style.border().resolve_or_zero(parent_width, |_, _| 0.0);
-        let known_width = (fragment.box_type == BoxFragmentType::InlinePart
-            && style.size().width.is_auto())
-        .then(|| parent_width.map(|width| (width - margin.left - margin.right).max(0.0)))
-        .flatten();
         let previous = fragment.layout.unrounded;
 
         let output = BoxTree::root_pass(self, owner).compute_child_layout(
             node_id(child),
             taffy::LayoutInput {
-                known_dimensions: taffy::Size {
-                    width: known_width,
-                    height: None,
-                },
+                known_dimensions: taffy::Size::NONE,
                 known_dimensions_are_definite: taffy::Size {
                     width: true,
                     height: true,
@@ -248,10 +236,6 @@ impl Engine<'_> {
     /// Copy the margin boxes of the in-flow boxes inside the inline content
     /// of `key` into their inline boxes, so lines can be broken again
     /// without shaping.
-    ///
-    /// The margins between inline part boxes on consecutive lines collapse:
-    /// the top margin of the later box shrinks by the overlap, recorded for
-    /// placing the box.
     fn update_inline_boxes(&mut self, key: BoxFragmentKey) {
         let Some(fragment) = self.fragments.get_mut(key) else {
             return;
@@ -266,19 +250,13 @@ impl Engine<'_> {
                 }
             };
 
-        let collapse = &mut self.scratch.collapse;
-        collapse.clear();
-        // End of the previous inline part box in the text, with its bottom
-        // margin.
-        let mut previous_part: Option<(usize, f32)> = None;
-
         let count = inline.layout.inline_boxes().len();
         for index in 0..count {
-            let Some((id, text_index)) = inline
+            let Some(id) = inline
                 .layout
                 .inline_boxes()
                 .nth(index)
-                .map(|inline_box| (inline_box.id, inline_box.index))
+                .map(|inline_box| inline_box.id)
             else {
                 continue;
             };
@@ -289,7 +267,6 @@ impl Engine<'_> {
                 .copied()
                 .and_then(|child| self.fragments.get(child))
             else {
-                previous_part = None;
                 continue;
             };
 
@@ -299,32 +276,8 @@ impl Engine<'_> {
 
             let layout = &child.layout.unrounded;
             let width = layout.size.width + layout.margin.left + layout.margin.right;
-            let mut height = layout.size.height + layout.margin.top + layout.margin.bottom;
-            let mut baseline =
-                layout.margin.top + child.layout.baseline.unwrap_or(layout.size.height);
-
-            if child.box_type == BoxFragmentType::InlinePart {
-                let overlap = previous_part
-                    .filter(|&(end, _)| {
-                        inline
-                            .text
-                            .get(end..text_index)
-                            .is_some_and(|between| between.bytes().all(|byte| byte == b'\n'))
-                    })
-                    .map_or(0.0, |(_, bottom)| {
-                        bottom.max(0.0).min(layout.margin.top.max(0.0))
-                    });
-
-                if overlap > 0.0 {
-                    height -= overlap;
-                    baseline -= overlap;
-                    collapse.insert(source, overlap);
-                }
-
-                previous_part = Some((text_index + OBJECT_REPLACEMENT_LEN, layout.margin.bottom));
-            } else {
-                previous_part = None;
-            }
+            let height = layout.size.height + layout.margin.top + layout.margin.bottom;
+            let baseline = layout.margin.top + child.layout.baseline.unwrap_or(layout.size.height);
 
             inline.layout.edit_inline_box(index, |inline_box| {
                 inline_box.width = width;

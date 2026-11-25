@@ -66,7 +66,24 @@ impl Engine<'_> {
                 stack.extend(tree.items.children(item).map(|child| (child, owner)));
             }
 
-            if viewport {
+            if viewport && self.fragments.boxes[owner].child_layout.is_mixed_inline() {
+                // Runs depending on the viewport through their inline
+                // elements are laid out again, and the boxes inside them are
+                // reached from them.
+                let mut run = self.first_run(owner);
+                while let Some(key) = run {
+                    let fragment = &mut self.fragments.boxes[key];
+                    run = fragment.link.next;
+
+                    if fragment.bits.contains(NodeLayoutBits::DEPENDS_VIEWPORT) {
+                        fragment.invalidate();
+                    }
+
+                    if let Some(inline) = fragment.inline() {
+                        stack.extend(inline.atomics.keys().map(|&child| (child, key)));
+                    }
+                }
+            } else if viewport {
                 // Inline elements carry no bits, so the boxes inside inline
                 // content are reached from their owner. Those not depending
                 // on the viewport are skipped when visited.
@@ -146,6 +163,28 @@ impl Engine<'_> {
             }
             fragment.bits |= bits;
             self.propagate_bits(owner, bits);
+        }
+
+        // The runs of a mixed inline box hold its inline content. Which ones
+        // hold the item is only known once built, so all are laid out again.
+        if self.fragments.boxes[owner].child_layout.is_mixed_inline() {
+            let bits = if self.cx.tree.items[item].kind == LayoutInputKind::Inline {
+                self.cx.resolve_style(item).1 & NodeLayoutBits::PROPAGATED
+            } else {
+                NodeLayoutBits::empty()
+            };
+
+            let mut run = self.first_run(owner);
+            while let Some(key) = run {
+                let fragment = &mut self.fragments.boxes[key];
+                run = fragment.link.next;
+                fragment.invalidate();
+                fragment.bits |= bits;
+
+                if let Some(inline) = fragment.inline_mut() {
+                    inline.content_bits |= bits;
+                }
+            }
         }
 
         self.invalidate_up(owner);

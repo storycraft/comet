@@ -31,7 +31,7 @@ use slotmap::SecondaryMap;
 
 use super::{
     BoxFragmentKey, FragmentTree,
-    inline::collect::{InlineBuildContext, InlineContentBuilder},
+    inline::collect::{FlowItem, InlineBuildContext, InlineContentBuilder},
 };
 use crate::{
     dirty_map::{DirtyFlags, DirtyMap},
@@ -73,9 +73,14 @@ struct Scratch {
     hoisted: Vec<BoxFragmentKey>,
     /// Boxes inside the inline content being laid out.
     inline_children: Vec<BoxFragmentKey>,
-    /// How far the top margin of each inline part box collapsed with the
-    /// box before it.
-    collapse: FxHashMap<LayoutInputKey, f32>,
+    /// Runs and block level boxes of a mixed inline box being reconciled.
+    flow: Vec<FlowItem>,
+    /// Run boxes of a mixed inline box being reconciled, by the block they
+    /// follow.
+    runs: Vec<(Option<LayoutInputKey>, BoxFragmentKey)>,
+    /// Boxes detached for a later reconcile in this build, see
+    /// [`children`].
+    parked: Vec<BoxFragmentKey>,
     /// Index of the latest emitted inline item of each source.
     links: FxHashMap<LayoutInputKey, usize>,
     /// Inline element pieces open on the line being emitted.
@@ -180,9 +185,13 @@ impl FragmentTreeBuilder {
             engine.layout(key);
             // Left by boxes that were laid out but not placed.
             engine.scratch.child_candidates.clear();
+        }
 
-            #[cfg(debug_assertions)]
-            check::check(engine.fragments, tree, key);
+        engine.delete_parked();
+
+        #[cfg(debug_assertions)]
+        if layout {
+            check::check(&engine.cx, engine.fragments, key);
         }
 
         Some(key)

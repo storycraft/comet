@@ -4,8 +4,11 @@
 use taffy::style::CoreStyle;
 
 use crate::{
-    fragment2::{BoxFragmentType, ChildLayoutType},
-    input::{ChildLayout, LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
+    fragment2::{
+        BoxFragmentType, ChildLayoutType,
+        inline::collect::{InlineBuildContext, has_block_in_flow},
+    },
+    input::{ChildLayout, LayoutInputKey, LayoutInputKind},
     taffy::style::Style,
 };
 
@@ -14,6 +17,7 @@ use crate::{
 pub enum ChildKind {
     Block,
     Inline,
+    MixedInline,
     Container,
     Content,
 }
@@ -22,25 +26,28 @@ impl ChildKind {
     /// How the box of `key` lays out its content.
     ///
     /// Text and inline flow content establish an inline formatting context.
-    /// A block flow box does too when any child is not block level; its
-    /// block level children are then inline part boxes.
-    pub fn of_item(tree: &LayoutInputTree, key: LayoutInputKey) -> Self {
+    /// A block flow box does too when any child is not block level. Inline
+    /// content holding a block level box in flow, even inside inline
+    /// elements, is mixed: split into runs around its block level boxes.
+    pub fn of_item(cx: &InlineBuildContext<'_>, key: LayoutInputKey) -> Self {
+        let tree = cx.tree;
         let item = &tree.items[key];
 
-        match item.child_layout {
-            ChildLayout::Container => Self::Container,
-            ChildLayout::Inline => Self::Inline,
-            ChildLayout::None if item.kind == LayoutInputKind::Text => Self::Inline,
-            ChildLayout::None => Self::Content,
-            ChildLayout::Block
-                if tree
-                    .items
-                    .children(key)
-                    .any(|child| tree.items[child].kind != LayoutInputKind::Block) =>
-            {
-                Self::Inline
-            }
-            ChildLayout::Block => Self::Block,
+        let inline = match item.child_layout {
+            ChildLayout::Container => return Self::Container,
+            ChildLayout::None if item.kind == LayoutInputKind::Text => return Self::Inline,
+            ChildLayout::None => return Self::Content,
+            ChildLayout::Inline => true,
+            ChildLayout::Block => tree
+                .items
+                .children(key)
+                .any(|child| tree.items[child].kind != LayoutInputKind::Block),
+        };
+
+        match inline {
+            false => Self::Block,
+            true if has_block_in_flow(cx, key) => Self::MixedInline,
+            true => Self::Inline,
         }
     }
 
@@ -48,6 +55,7 @@ impl ChildKind {
         match layout {
             ChildLayoutType::Block => Self::Block,
             ChildLayoutType::Inline(_) => Self::Inline,
+            ChildLayoutType::MixedInline(_) => Self::MixedInline,
             ChildLayoutType::Container => Self::Container,
             ChildLayoutType::Content => Self::Content,
         }
@@ -69,4 +77,17 @@ pub fn block_box_type(style: &Style) -> BoxFragmentType {
 /// Whether a box with this style is taken out of flow.
 pub fn is_out_of_flow(style: &Style) -> bool {
     style.position() == taffy::Position::Absolute
+}
+
+impl ChildKind {
+    /// An empty content layout of this kind. Inline layouts start unbuilt.
+    pub fn layout(self) -> ChildLayoutType {
+        match self {
+            Self::Block => ChildLayoutType::Block,
+            Self::Inline => ChildLayoutType::Inline(Box::default()),
+            Self::MixedInline => ChildLayoutType::MixedInline(None),
+            Self::Container => ChildLayoutType::Container,
+            Self::Content => ChildLayoutType::Content,
+        }
+    }
 }
