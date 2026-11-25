@@ -1,6 +1,6 @@
 //! Extracting the selected text.
 
-use comet_layout::{fragment::InlineLayout, input::LayoutInputKey};
+use comet_layout::{fragment2::InlineLayout, input::LayoutInputKey};
 
 use super::{
     Window,
@@ -52,7 +52,12 @@ pub struct SelectedText<'a> {
 impl<'a> SelectedText<'a> {
     /// Start reading `range`.
     fn enter(&mut self, range: SelectedRange) {
-        let inline = self.window.pipeline.trees.fragments.get_inline(range.owner);
+        let inline = self
+            .window
+            .pipeline
+            .trees
+            .fragments
+            .inline_layout(range.owner);
         self.current = inline.map(|inline| (inline, range.start.0, range.end.0));
         self.pending_break = range.breaks && self.emitted;
     }
@@ -68,12 +73,15 @@ impl<'a> SelectedText<'a> {
             return None;
         }
 
+        // Inline elements cover the ranges of their content: only text
+        // items are read.
         inline
             .offset_mapping
             .iter()
+            .filter(|entry| entry.text)
+            .map(|entry| (entry.source, entry.range.clone()))
             .filter(|(_, range)| range.end > from && range.start < to && !range.is_empty())
             .min_by_key(|(_, range)| range.start)
-            .map(|(&item, range)| (item, range.clone()))
     }
 
     /// Whether the text of the layout item `item` can be selected: see

@@ -54,7 +54,7 @@ impl Window {
         for range in self.selected_ranges(selection) {
             let owner = range.owner;
             let (Some(inline), Some(to_scene)) = (
-                trees.fragments.get_inline(owner),
+                trees.fragments.inline_layout(owner),
                 trees.inline_to_scene(owner),
             ) else {
                 continue;

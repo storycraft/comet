@@ -2,7 +2,7 @@
 
 use core::cmp::Ordering;
 
-use comet_layout::fragment::{FragmentKey, InlineLayout};
+use comet_layout::fragment2::{BoxFragmentKey, FragmentRef, InlineLayout};
 use comet_tree::node::Text;
 use kurbo::Point;
 use parley::Affinity::{Downstream, Upstream};
@@ -142,37 +142,41 @@ impl Window {
         Some(TextPosition::new(node, index, cursor.affinity().into()))
     }
 
-    /// The fragment owning the inline layout holding `position`, and the
-    /// index of `position` in its text, from the last layout.
-    pub(super) fn layout_position(&self, position: TextPosition) -> Option<(FragmentKey, usize)> {
+    /// The box owning the inline layout holding `position`, and the index of
+    /// `position` in its text, from the last layout. Text in the runs of a
+    /// box split by blocks is held by its run box.
+    pub(super) fn layout_position(
+        &self,
+        position: TextPosition,
+    ) -> Option<(BoxFragmentKey, usize)> {
         let trees = &self.pipeline.trees;
         let item = trees.inputs.item_for_node(position.node)?;
-        let owner = trees.fragments.inline_layout_of(&trees.inputs, item)?;
+        let owner = trees.fragments.inline_owner(&trees.inputs, item)?;
         let tree = self.ui.tree().borrow();
         let text = tree.ui.prop::<Text>(position.node)?;
         let index =
             trees
                 .fragments
-                .get_inline(owner)?
+                .inline_layout(owner)?
                 .layout_index(item, &text.0, position.index)?;
 
         Some((owner, index))
     }
 
-    /// The fragment owning the selectable text under the pointer, with the
+    /// The box owning the selectable text under the pointer, with the
     /// pointer in the coordinates of its inline layout.
     ///
-    /// The innermost box or anonymous block owning an inline layout on the
+    /// The innermost box or anonymous run box owning an inline layout on the
     /// hit path of the pointer holds the text. A box hit itself, with its
-    /// inline content in anonymous blocks, holds the text of the anonymous
-    /// block under the pointer: anonymous blocks are only on the path to
-    /// the text they hold. Outside of any text, the
+    /// inline content split into runs by blocks, holds the text of the run
+    /// under the pointer: run boxes are only on the path to the text they
+    /// hold. Outside of any text, the
     /// [nearest text](Self::nearest_text) holds it. The first
     /// [`Selectable`] other than `Auto` from
     /// the node hit up the tree decides whether it can be selected there,
     /// so an unselectable span in selectable text is not selected. Text is
     /// selectable when no node decides.
-    fn text_at(&self) -> Option<(FragmentKey, Point)> {
+    fn text_at(&self) -> Option<(BoxFragmentKey, Point)> {
         let leaf = self.pointer.path.last().map(|hit| hit.node);
         if !self
             .inherited::<Selectable, _>(leaf, |prop| prop.0)
@@ -181,19 +185,24 @@ impl Window {
             return None;
         }
 
-        let fragments = &self.pipeline.trees.fragments;
+        let trees = &self.pipeline.trees;
+        let fragments = &trees.fragments;
         let mut text = None;
 
         for hit in &self.pointer.path {
-            if let Some(inline) = fragments.get_inline(hit.fragment) {
-                text = Some((hit.fragment, hit.position - inline.origin(fragments)?));
+            // Inline items are placed in the scrolled contents of the box.
+            if let FragmentRef::Box(key) = hit.fragment
+                && let Some(inline) = fragments.inline_layout(key)
+            {
+                text = Some((key, hit.position + trees.scroll(key) - inline.origin()));
             }
         }
 
         let leaf = self.pointer.path.last()?;
-        if fragments.items.get(leaf.fragment)?.item.is_box()
-            && fragments.get_inline(leaf.fragment).is_none()
-            && let Some(run) = self.run_at(leaf.fragment)
+        if let FragmentRef::Box(key) = leaf.fragment
+            && trees.is_principal(key)
+            && fragments.inline_layout(key).is_none()
+            && let Some(run) = self.run_at(key)
         {
             return Some(run);
         }
@@ -204,26 +213,24 @@ impl Window {
     /// The selectable text nearest to the pointer, with the pointer in the
     /// coordinates of its inline layout: the inline layout under the
     /// innermost box on the hit path that has any, whose owning box or
-    /// anonymous block is closest to the pointer.
-    fn nearest_text(&self) -> Option<(FragmentKey, Point)> {
+    /// anonymous run box is closest to the pointer.
+    fn nearest_text(&self) -> Option<(BoxFragmentKey, Point)> {
         let trees = &self.pipeline.trees;
         let fragments = &trees.fragments;
         let cursor = self.pointer.cursor?;
 
         self.pointer.path.iter().rev().find_map(|hit| {
-            fragments
-                .items
-                .get(hit.fragment)?
-                .item
-                .is_box()
-                .then_some(())?;
+            let FragmentRef::Box(key) = hit.fragment else {
+                return None;
+            };
+            trees.is_principal(key).then_some(())?;
 
             fragments
-                .items
-                .descendants(hit.fragment)
+                .boxes
+                .descendants(key)
                 .filter_map(|owner| {
-                    let inline = fragments.get_inline(owner)?;
-                    let node = trees.node(fragments.items.get(owner)?.source)?;
+                    let inline = fragments.inline_layout(owner)?;
+                    let node = trees.node(fragments.get(owner)?.source)?;
                     if !self
                         .inherited::<Selectable, _>(Some(node), |prop| prop.0)
                         .unwrap_or(true)
@@ -238,47 +245,43 @@ impl Window {
                         return None;
                     }
                     let local = to_scene.inverse() * cursor;
-                    let bounds = fragments.items.get(owner)?.layout.border_box();
+                    let bounds = fragments.get(owner)?.layout.geometry.border_box();
                     let dx = (bounds.x0 - local.x).max(local.x - bounds.x1).max(0.0);
                     let dy = (bounds.y0 - local.y).max(local.y - bounds.y1).max(0.0);
-                    Some((dx.hypot(dy), owner, local - inline.origin(fragments)?))
+                    let point = local + trees.scroll(owner) - inline.origin();
+                    Some((dx.hypot(dy), owner, point))
                 })
                 .min_by(|a, b| a.0.total_cmp(&b.0))
                 .map(|(_, owner, point)| (owner, point))
         })
     }
 
-    /// The anonymous block of `owner` under the pointer, with the pointer in
-    /// the coordinates of its inline layout.
-    fn run_at(&self, owner: FragmentKey) -> Option<(FragmentKey, Point)> {
+    /// The run box of `owner` under the pointer, if its inline content is
+    /// split by blocks, with the pointer in the coordinates of its inline
+    /// layout.
+    fn run_at(&self, owner: BoxFragmentKey) -> Option<(BoxFragmentKey, Point)> {
         let trees = &self.pipeline.trees;
         let cursor = self.pointer.cursor?;
 
-        trees.fragments.items.children(owner).find_map(|child| {
-            let fragment = trees.fragments.items.get(child)?;
-            if !fragment.item.is_anonymous_block() {
-                return None;
-            }
-            let to_scene = trees.fragment_to_scene(child)?;
+        trees.fragments.runs(owner).find_map(|run| {
+            let fragment = trees.fragments.get(run)?;
+            let to_scene = trees.fragment_to_scene(run)?;
             if to_scene.determinant() == 0.0 {
                 return None;
             }
 
             let local = to_scene.inverse() * cursor;
-            if !(0.0..fragment.layout.size.height).contains(&local.y) {
+            if !(0.0..fragment.layout.geometry.size.height).contains(&local.y) {
                 return None;
             }
 
-            let origin = trees
-                .fragments
-                .get_inline(child)?
-                .origin(&trees.fragments)?;
-            Some((child, local - origin))
+            let origin = trees.fragments.inline_layout(run)?.origin();
+            Some((run, local + trees.scroll(run) - origin))
         })
     }
 
     /// `position` in the coordinates of the inline layout owned by `owner`.
-    fn inline_point(&self, owner: FragmentKey, position: Point) -> Option<Point> {
+    fn inline_point(&self, owner: BoxFragmentKey, position: Point) -> Option<Point> {
         let to_scene = self.pipeline.trees.inline_to_scene(owner)?;
         if to_scene.determinant() == 0.0 {
             return None;
@@ -291,9 +294,9 @@ impl Window {
     /// layout.
     fn with_inline_layout<R>(
         &self,
-        owner: FragmentKey,
+        owner: BoxFragmentKey,
         f: impl FnOnce(&InlineLayout) -> R,
     ) -> Option<R> {
-        Some(f(self.pipeline.trees.fragments.get_inline(owner)?))
+        Some(f(self.pipeline.trees.fragments.inline_layout(owner)?))
     }
 }

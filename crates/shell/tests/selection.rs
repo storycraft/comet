@@ -446,7 +446,9 @@ fn text_between_block_boxes_is_selected() {
     // The second text starts below the block box.
     let second_y = {
         let trees = &window.pipeline().trees;
-        let layout = trees.fragments.items[trees.box_fragment(block).unwrap()].layout;
+        let layout = &trees.fragments.boxes[trees.box_fragment(block).unwrap()]
+            .layout
+            .geometry;
         layout.location.y + layout.size.height + 5.0
     };
 
@@ -594,7 +596,7 @@ fn the_highlight_goes_into_and_out_of_inline_boxes_in_order() {
     let bounds = {
         let trees = &window.pipeline().trees;
         let fragment = trees.box_fragment(inline_box).unwrap();
-        let layout = trees.fragments.items[fragment].layout;
+        let layout = &trees.fragments.boxes[fragment].layout.geometry;
         trees
             .fragment_to_scene(fragment)
             .unwrap()
@@ -844,4 +846,108 @@ fn selected_text_breaks_between_runs_of_block_boxes() {
         .collect();
 
     assert_eq!(text, format!("{FIRST}\n{SECOND}"));
+}
+
+#[test]
+fn selection_follows_the_scroll_of_the_box_holding_the_text() {
+    use comet_layout::style::{geometry::Point as StylePoint, taffy::Overflow};
+    use comet_paint::style::ScrollTop;
+
+    const TEXT: &str = "alpha beta gamma delta epsilon zeta eta theta iota kappa";
+    // A paragraph scrolling its wrapped text.
+    let nodes = Rc::new(RefCell::new(None));
+    let mut window = Window::new({
+        let nodes = nodes.clone();
+        move |cx: &UiCx| {
+            let text = cx.text(TEXT).build();
+            let paragraph = cx
+                .div()
+                .size(size(px(100), px(40)))
+                .overflow(StylePoint::new(Overflow::Visible, Overflow::Scroll))
+                .children(|_| text);
+            *nodes.borrow_mut() = Some((paragraph, text));
+            cx.div().children(|_| [paragraph])
+        }
+    });
+    open(&mut window);
+    let (paragraph, text) = nodes.borrow().unwrap();
+    let theta = TEXT.find("theta").unwrap();
+    let at = |index| TextPosition::new(text, index, Default::default());
+    let theta_rect = |window: &mut Window| {
+        window
+            .state()
+            .selection
+            .set(Some(Selection::new(at(theta), at(theta + "theta".len()))));
+        window.poll();
+        let rects = window.selection_rects();
+        let [rect] = rects.as_slice() else {
+            panic!("one line: {rects:?}");
+        };
+        *rect
+    };
+
+    let unscrolled = theta_rect(&mut window);
+    assert!(unscrolled.y1 > 40.0, "below the paragraph: {unscrolled:?}");
+    let range = window.pipeline().trees.scroll_range(paragraph).unwrap();
+    let scroll = unscrolled.y0.min(range.y);
+    window
+        .ui()
+        .tree()
+        .borrow_mut()
+        .set_prop(paragraph, ScrollTop(scroll));
+    window.poll();
+    assert!(window.layout(), "lays out");
+
+    let scrolled = theta_rect(&mut window);
+    assert!(
+        (scrolled.y0 - (unscrolled.y0 - scroll)).abs() < 0.01,
+        "the highlight moves with the text: {scrolled:?}"
+    );
+    assert!(scrolled.y1 <= 40.0, "in view: {scrolled:?}");
+
+    // A double press on the word, where it is drawn, selects it.
+    let center = scrolled.center();
+    press(&mut window, center.x, center.y, 2, Modifiers::empty());
+    assert_eq!(
+        ends(window.selection().unwrap()),
+        [(text, theta), (text, theta + "theta".len())]
+    );
+}
+
+#[test]
+fn selected_text_reads_boxes_out_of_flow_once_after_the_text() {
+    use comet_layout::style::taffy::Position;
+
+    // "Hello [inside] world" with "inside" in a positioned box taken out
+    // of the flow, then a paragraph "after".
+    let nodes = Rc::new(RefCell::new(None));
+    let mut window = Window::new({
+        let nodes = nodes.clone();
+        move |cx: &UiCx| {
+            let (hello, world, after) = (
+                cx.text("Hello ").build(),
+                cx.text("world").build(),
+                cx.text("after").build(),
+            );
+            let positioned = cx
+                .div()
+                .position(Position::Absolute)
+                .children(|cx| cx.text("inside").build());
+            let paragraph = cx
+                .div()
+                .size(size(px(400), px(30)))
+                .children(|_| [hello, positioned, world]);
+            let next = cx.div().size(size(px(400), px(30))).children(|_| after);
+            *nodes.borrow_mut() = Some((hello, after));
+            cx.div().children(|_| [paragraph, next])
+        }
+    });
+    open(&mut window);
+    let (hello, after) = nodes.borrow().unwrap();
+    let at = |node, index| TextPosition::new(node, index, Default::default());
+
+    assert_eq!(
+        chunks(&window, at(hello, 0), at(after, "after".len())),
+        ["Hello ", "world", "\n", "inside", "\n", "after"]
+    );
 }

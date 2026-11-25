@@ -1,7 +1,7 @@
 //! The selected text of each inline layout, in tree order.
 
-use comet_layout::fragment::FragmentKey;
-use parley::Affinity;
+use comet_layout::fragment2::{BoxFragmentKey, BoxFragmentType, inline::inline_box_source};
+use parley::{Affinity, InlineBoxKind};
 
 use super::Window;
 use crate::{
@@ -14,8 +14,8 @@ pub(super) type LayoutEnd = (usize, Affinity);
 
 /// The selected part of the text of one inline layout.
 pub(super) struct SelectedRange {
-    /// The fragment owning the inline layout.
-    pub owner: FragmentKey,
+    /// The box owning the inline layout.
+    pub owner: BoxFragmentKey,
     pub start: LayoutEnd,
     pub end: LayoutEnd,
     /// Whether the text starts a new block, such as a paragraph, rather
@@ -115,22 +115,22 @@ impl Iterator for SelectedRanges {
     }
 }
 
-/// An end of the selection in the text of an inline layout: the fragment
-/// owning it, the index, and the affinity.
-type End = (FragmentKey, usize, Affinity);
+/// An end of the selection in the text of an inline layout: the box owning
+/// it, the index, and the affinity.
+type End = (BoxFragmentKey, usize, Affinity);
 
 /// A part of the text of an inline layout, between the inline boxes
 /// holding other inline layouts: positions `start..=end`, with its owner.
 struct Segment {
-    owner: FragmentKey,
+    owner: BoxFragmentKey,
     start: usize,
     end: usize,
     /// See [`SelectedRange::breaks`].
     breaks: bool,
 }
 
-/// The text of the inline layouts under a fragment, in tree order, split
-/// into [`Segment`]s.
+/// The text of the inline layouts under a box, in tree order, split into
+/// [`Segment`]s.
 ///
 /// The inline layouts inside an inline box come between the positions
 /// before and after its U+FFFC character, so a position is ordered by its
@@ -144,17 +144,24 @@ struct TextOrder {
 }
 
 impl TextOrder {
-    fn new(trees: &UiTrees, root: FragmentKey) -> Self {
+    fn new(trees: &UiTrees, root: BoxFragmentKey) -> Self {
         let mut order = Self::default();
         order.visit(trees, root);
         order
     }
 
-    fn visit(&mut self, trees: &UiTrees, fragment: FragmentKey) {
+    fn visit(&mut self, trees: &UiTrees, fragment: BoxFragmentKey) {
         let fragments = &trees.fragments;
-        let Some(inline) = fragments.get_inline(fragment) else {
-            for child in fragments.items.children(fragment) {
-                self.visit(trees, child);
+        let Some(inline) = fragments.inline_layout(fragment) else {
+            // The run boxes and blocks of a box split by blocks are its
+            // children in flow order. Inline part boxes hold no text.
+            for child in fragments.boxes.children(fragment) {
+                if fragments
+                    .get(child)
+                    .is_some_and(|child| child.box_type != BoxFragmentType::InlinePart)
+                {
+                    self.visit(trees, child);
+                }
             }
             return;
         };
@@ -162,15 +169,20 @@ impl TextOrder {
         let mut start = 0;
         let mut breaks = !std::mem::take(&mut self.inline_start);
         for inline_box in inline.layout.inline_boxes() {
+            // Only boxes in flow have a U+FFFC character: those out of flow
+            // are visited after the text.
+            if !matches!(inline_box.kind, InlineBoxKind::InFlow) {
+                continue;
+            }
             let Some(child) = inline
-                .boxes()
-                .get(inline_box.id as usize)
-                .and_then(|&item| fragments.box_fragment(item))
+                .atomics
+                .get(&inline_box_source(inline_box.id))
+                .copied()
                 .filter(|&child| {
                     fragments
-                        .items
+                        .boxes
                         .descendants(child)
-                        .any(|key| fragments.get_inline(key).is_some())
+                        .any(|key| fragments.inline_layout(key).is_some())
                 })
             else {
                 continue;
@@ -197,13 +209,15 @@ impl TextOrder {
         });
 
         // Boxes placed under the owner rather than on its lines, such as
-        // positioned boxes taken out of the flow.
-        for child in fragments.items.children(fragment) {
-            if fragments
-                .items
-                .get(child)
-                .is_some_and(|item| item.item.is_box())
-            {
+        // positioned boxes taken out of the flow. Its other children are the
+        // atomic inlines visited above and inline part boxes.
+        for child in fragments.boxes.children(fragment) {
+            if fragments.get(child).is_some_and(|child| {
+                matches!(
+                    child.box_type,
+                    BoxFragmentType::OutOfFlow | BoxFragmentType::Floating
+                )
+            }) {
                 self.visit(trees, child);
             }
         }

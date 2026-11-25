@@ -1,6 +1,9 @@
 //! The focused node: moving it, and scrolling it into view.
 
-use comet_layout::style::{bx::Overflow, taffy::Overflow as OverflowKind};
+use comet_layout::{
+    fragment2::{BoxFragmentKey, FragmentRef},
+    style::{bx::Overflow, taffy::Overflow as OverflowKind},
+};
 use comet_paint::style::{ScrollLeft, ScrollTop};
 use comet_tree::{node::NodeKey, ui::Ui};
 use kurbo::{Rect, Vec2};
@@ -173,27 +176,31 @@ struct OrderPosition {
 /// from the innermost out, scrolls as little as possible, showing the start
 /// of the box when it does not fit. Only containers that move are returned.
 ///
+/// An inline element or text without a box of its own is revealed by the
+/// area covering its inline items, across lines and runs.
+///
 /// `None` when the node or one of its ancestors has no laid out fragment.
 fn reveal_scrolls(ui: &Ui, trees: &UiTrees, node: NodeKey) -> Option<Vec<(NodeKey, Vec2)>> {
-    let items = &trees.fragments.items;
-    let mut key = trees.box_fragment(node)?;
-    let size = items.get(key)?.layout.size;
-    let mut rect = Rect::new(0.0, 0.0, size.width, size.height);
+    let boxes = &trees.fragments.boxes;
+    // The root box is in no scroll container.
+    if trees
+        .box_fragment(node)
+        .is_some_and(|key| boxes.parent(key).is_none())
+    {
+        return Some(Vec::new());
+    }
+    // The area to reveal, in the scrolled contents of `holder`.
+    let (mut holder, mut rect) = revealed_area(trees, node)?;
     let mut scrolls = Vec::new();
 
-    while let Some(parent) = items.parent(key) {
-        // Into the scrolled contents of the parent.
-        rect = trees
-            .prepaint
-            .fragment(key)?
-            .transform
-            .transform_rect_bbox(rect);
-        let fragment = items.get(parent)?;
-        let mut offset = trees.prepaint.scroll_offset(fragment);
+    loop {
+        let fragment = boxes.get(holder)?;
+        let mut offset = trees.scroll(holder);
 
-        let container = fragment
-            .item
-            .is_box()
+        // Anonymous run boxes have the node of the box they split, and
+        // inline part boxes never scroll.
+        let container = trees
+            .is_principal(holder)
             .then(|| trees.node(fragment.source))
             .flatten();
         if let Some(container) = container
@@ -206,7 +213,7 @@ fn reveal_scrolls(ui: &Ui, trees: &UiTrees, node: NodeKey) -> Option<Vec<(NodeKe
             );
 
             if x || y {
-                let range = trees.fragments.scroll_range(parent)?;
+                let range = trees.fragments.scroll_range(holder)?;
                 // The props may hold more than the range allows since it
                 // shrank.
                 let current = Vec2::new(
@@ -214,7 +221,7 @@ fn reveal_scrolls(ui: &Ui, trees: &UiTrees, node: NodeKey) -> Option<Vec<(NodeKe
                     props.get_or_default::<ScrollTop>().0.clamp(0.0, range.y),
                 );
                 // The padding box, in local coordinates.
-                let layout = &fragment.layout;
+                let layout = &fragment.layout.geometry;
                 let view = Rect::new(
                     layout.border.left_top.x,
                     layout.border.left_top.y,
@@ -243,12 +250,81 @@ fn reveal_scrolls(ui: &Ui, trees: &UiTrees, node: NodeKey) -> Option<Vec<(NodeKe
             }
         }
 
-        // Into the local coordinates of the parent.
+        // Into the local coordinates of the holder, then the scrolled
+        // contents of its parent.
         rect = rect - offset;
-        key = parent;
+        let Some(parent) = boxes.parent(holder) else {
+            break;
+        };
+        rect = trees
+            .prepaint
+            .fragment(holder)?
+            .transform
+            .transform_rect_bbox(rect);
+        holder = parent;
     }
 
     Some(scrolls)
+}
+
+/// The border box of the fragments of `node`, in the scrolled contents of
+/// the box holding them: the parent of its box, or the box owning the inline
+/// layout holding its inline items. Items in the runs of a box split by
+/// blocks are held by that box.
+fn revealed_area(trees: &UiTrees, node: NodeKey) -> Option<(BoxFragmentKey, Rect)> {
+    let fragments = &trees.fragments;
+
+    if let Some(key) = trees.box_fragment(node) {
+        let size = fragments.get(key)?.layout.geometry.size;
+        let rect = Rect::new(0.0, 0.0, size.width, size.height);
+        let parent = fragments.boxes.parent(key)?;
+
+        return Some((
+            parent,
+            trees
+                .prepaint
+                .fragment(key)?
+                .transform
+                .transform_rect_bbox(rect),
+        ));
+    }
+
+    let item = trees.inputs.item_for_node(node)?;
+    let pieces: Vec<_> = fragments
+        .fragments(&trees.inputs, item)
+        .filter_map(|fragment| {
+            let FragmentRef::Inline { owner, .. } = fragment else {
+                return None;
+            };
+            let geometry = fragments.geometry(fragment)?;
+            let location = geometry.location;
+
+            Some((
+                owner,
+                geometry.border_box() + Vec2::new(location.x, location.y),
+            ))
+        })
+        .collect();
+    let &(first, _) = pieces.first()?;
+
+    if pieces.iter().all(|&(owner, _)| owner == first) {
+        let rect = pieces
+            .into_iter()
+            .map(|(_, rect)| rect)
+            .reduce(|a, b| a.union(b))?;
+        return Some((first, rect));
+    }
+
+    // Across runs: into the scrolled contents of the box they split.
+    let holder = fragments.boxes.parent(first)?;
+    let mut area: Option<Rect> = None;
+    for (owner, rect) in pieces {
+        let transform = trees.prepaint.fragment(owner)?.transform;
+        let rect = transform.transform_rect_bbox(rect - trees.scroll(owner));
+        area = Some(area.map_or(rect, |area| area.union(rect)));
+    }
+
+    Some((holder, area?))
 }
 
 /// The scroll offset of one axis showing `start..end`, in the coordinates of

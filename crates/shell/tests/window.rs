@@ -478,3 +478,45 @@ fn focus_scrolls_nested_containers_from_the_innermost() {
         "the inner box scrolled to show the row"
     );
 }
+
+#[test]
+fn focus_scrolls_an_inline_element_into_view() {
+    use comet_layout::style::bx::DisplayOuter;
+
+    // A focusable span at the end of a paragraph wrapping far below the
+    // scroll box: it has no box of its own, only pieces on its lines.
+    let span = Rc::new(RefCell::new(None));
+    let mut window = Window::new({
+        let span = span.clone();
+        move |cx: &UiCx| {
+            scroll_box(cx).children(|cx| {
+                let text = cx.text("word ".repeat(60)).build();
+                let key = cx
+                    .div()
+                    .display_outer(DisplayOuter::Inline)
+                    .focusable(true)
+                    .children(|cx| cx.text("target").build());
+                *span.borrow_mut() = Some(key);
+                cx.div().children(|_| [text, key])
+            })
+        }
+    });
+    open(&mut window);
+    let span = span.borrow().unwrap();
+    let range = window
+        .pipeline()
+        .trees
+        .scroll_range(window.root())
+        .expect("a scroll container");
+    assert!(range.y > 0.0, "the paragraph overflows: {range:?}");
+
+    window.state().focused_node.set(Some(span));
+    window.poll();
+
+    let top = scroll_top(&window, window.root());
+    assert!(
+        top > 0.0 && top <= range.y,
+        "scrolled down to the span: {top} of {}",
+        range.y
+    );
+}
