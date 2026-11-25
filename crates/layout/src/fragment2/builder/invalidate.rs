@@ -19,7 +19,7 @@ use crate::{
     dirty_map::DirtyFlags,
     fragment::state::NodeLayoutBits,
     fragment2::{BoxFragmentKey, BoxFragmentType},
-    input::LayoutInputKey,
+    input::{LayoutInputKey, LayoutInputKind},
 };
 
 impl Engine<'_> {
@@ -52,7 +52,7 @@ impl Engine<'_> {
             if entry.flags.contains(DirtyFlags::NEED_BOX_LAYOUT) || viewport {
                 match own {
                     Some(key) => self.restyle(item, key),
-                    None => self.invalidate_up(owner),
+                    None => self.restyle_inline(item, owner),
                 }
             }
 
@@ -119,10 +119,30 @@ impl Engine<'_> {
         }
 
         fragment.style = style;
-        // Propagated bits of descendants are kept.
+        // Propagated bits of descendants and of inline elements are kept.
         fragment.bits = bits | (fragment.bits & NodeLayoutBits::PROPAGATED);
 
         self.propagate_bits(key, bits);
         self.invalidate_up(key);
+    }
+
+    /// Drop the cached layouts of the box `owner`, whose inline layout holds
+    /// the inline element or text `item`, and of its ancestors. An inline
+    /// element has no box, so what its box style depends on is added to the
+    /// owner.
+    fn restyle_inline(&mut self, item: LayoutInputKey, owner: BoxFragmentKey) {
+        if self.cx.tree.items[item].kind == LayoutInputKind::Inline {
+            let (_, bits) = self.cx.resolve_style(item);
+            let bits = bits & NodeLayoutBits::PROPAGATED;
+            let fragment = &mut self.fragments.boxes[owner];
+
+            if let Some(inline) = fragment.inline_mut() {
+                inline.content_bits |= bits;
+            }
+            fragment.bits |= bits;
+            self.propagate_bits(owner, bits);
+        }
+
+        self.invalidate_up(owner);
     }
 }

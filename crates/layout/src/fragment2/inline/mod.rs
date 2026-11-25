@@ -11,6 +11,7 @@ use slotmap::{Key, KeyData};
 use super::{BoxFragmentKey, FragmentGeometry};
 use crate::{
     fragment::offset::{to_shaped, to_source},
+    fragment::state::NodeLayoutBits,
     input::LayoutInputKey,
 };
 
@@ -36,6 +37,11 @@ pub struct InlineLayout {
     /// [`InlineFragmentainer`](builder::InlineFragmentainer) as their boxes
     /// are attached, and read when laying out the lines.
     pub atomics: FxHashMap<LayoutInputKey, BoxFragmentKey>,
+    /// [Propagated](NodeLayoutBits::PROPAGATED) bits of the box styles of
+    /// the inline elements in the inline content, which have no boxes of
+    /// their own. Part of the bits of the owner. Set by a full build, and
+    /// only extended by box changes until the next one.
+    pub(crate) content_bits: NodeLayoutBits,
     /// First and last line baselines relative to the content box top.
     pub(crate) first_baseline: Option<f32>,
     pub(crate) last_baseline: Option<f32>,

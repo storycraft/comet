@@ -264,8 +264,9 @@ impl InlineLayoutBuilder {
         }
 
         let (style, bits) = cx.resolve_style(root);
+        let content_bits = inline.content_bits;
         let mut fragment = BoxFragment::new(root, box_type, ChildLayoutType::Inline(inline), style);
-        fragment.bits = bits;
+        fragment.bits = bits | content_bits;
         let key = fragments.insert(fragment);
 
         let fragmentainer = InlineFragmentainer {
@@ -364,6 +365,9 @@ impl InlineLayoutBuilder {
         for item in InlinePrelayout::new(tree, root) {
             match item {
                 InputItem::Push(key) => {
+                    let (_, bits) = cx.resolve_style(key);
+                    inline.content_bits |= bits & NodeLayoutBits::PROPAGATED;
+
                     self.open
                         .push((inline.offset_mapping.len(), self.boxes.len()));
                     inline.offset_mapping.push(OffsetEntry {
@@ -494,6 +498,7 @@ impl InlineLayout {
         self.offset_mapping.clear();
         self.items.clear();
         self.atomics.clear();
+        self.content_bits = NodeLayoutBits::empty();
         self.first_baseline = None;
         self.last_baseline = None;
         self.origin = kurbo::Vec2::ZERO;

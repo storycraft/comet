@@ -660,3 +660,90 @@ fn viewport_changes_invalidate_dependent_boxes() {
     assert!(!fx.valid(para_box) && !fx.valid(root_box));
     assert!(fx.valid(fixed_box) && fx.valid(plain_box));
 }
+
+/// Horizontal padding of `unit` on both sides.
+fn horizontal_padding(unit: StyleUnit) -> bx::Padding {
+    let zero = StyleUnit::Px(0.0);
+    bx::Padding(Rect::new(Point::new(unit, zero), Point::new(unit, zero)))
+}
+
+#[test]
+fn inline_elements_on_the_viewport_mark_their_owner() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let para = ui.create(Node::Box, ());
+    let span = ui.create(
+        Node::Box,
+        (
+            bx::DisplayOuter::Inline,
+            horizontal_padding(StyleUnit::Vw(0.01)),
+        ),
+    );
+    let inner = text(&mut ui, "inner");
+    let other = paragraph(&mut ui, "other");
+    ui.append(root, para);
+    ui.append(para, span);
+    ui.append(span, inner);
+    ui.append(root, other);
+
+    let mut fx = Fixture::new(ui, root);
+    let [root_box, para_box, other_box] = [root, para, other].map(|node| fx.box_of(node));
+    let depends = |fx: &Fixture, key| {
+        fx.fragments.boxes[key]
+            .bits()
+            .contains(NodeLayoutBits::DEPENDS_VIEWPORT)
+    };
+    assert!(depends(&fx, para_box) && depends(&fx, root_box));
+    assert!(!depends(&fx, other_box));
+
+    fx.next_round();
+    fx.constraint =
+        LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0).with_viewport_changed(true);
+    fx.build();
+
+    assert_eq!(fx.box_of(para), para_box, "laid out again without shaping");
+    assert!(!fx.valid(para_box) && !fx.valid(root_box));
+    assert!(fx.valid(other_box));
+}
+
+#[test]
+fn inline_element_box_changes_add_viewport_bits() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let para = ui.create(Node::Box, ());
+    let span = ui.create(
+        Node::Box,
+        (
+            bx::DisplayOuter::Inline,
+            horizontal_padding(StyleUnit::Px(4.0)),
+        ),
+    );
+    let inner = text(&mut ui, "inner");
+    ui.append(root, para);
+    ui.append(para, span);
+    ui.append(span, inner);
+
+    let mut fx = Fixture::new(ui, root);
+    let [root_box, para_box] = [root, para].map(|node| fx.box_of(node));
+    let depends = |fx: &Fixture, key| {
+        fx.fragments.boxes[key]
+            .bits()
+            .contains(NodeLayoutBits::DEPENDS_VIEWPORT)
+    };
+    assert!(!depends(&fx, para_box));
+
+    fx.next_round();
+    fx.ui
+        .set_props(span, (horizontal_padding(StyleUnit::Vw(0.01)),));
+    fx.mark(span, DirtyFlags::NEED_BOX_LAYOUT);
+    fx.build();
+
+    assert_eq!(fx.box_of(para), para_box);
+    assert!(depends(&fx, para_box) && depends(&fx, root_box));
+
+    // The owner's own box changes keep the bits of its inline elements.
+    fx.next_round();
+    fx.mark(para, DirtyFlags::NEED_BOX_LAYOUT);
+    fx.build();
+    assert!(depends(&fx, para_box));
+}
