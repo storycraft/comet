@@ -1,12 +1,9 @@
-use std::sync::Arc;
-
 use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,
 };
 
 use crate::{
-    container::{ContainerContext, ContainerLayout},
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{builder::FragmentTreeBuilder, state::NodeLayoutBits, tree::FragmentTree},
     input::{
@@ -20,19 +17,6 @@ use crate::{
 };
 
 const VIEWPORT: Size<f64> = Size::new(400.0, 600.0);
-
-/// A container algorithm that lays out nothing, and returns the given bits.
-struct Empty(NodeLayoutBits);
-
-impl ContainerLayout for Empty {
-    fn layout(
-        &self,
-        _: &mut ContainerContext<'_, '_>,
-        _: taffy::LayoutInput,
-    ) -> (taffy::LayoutOutput, NodeLayoutBits) {
-        (taffy::LayoutOutput::HIDDEN, self.0)
-    }
-}
 
 struct Fixture {
     inputs: LayoutInputTreeBuilder,
@@ -126,179 +110,6 @@ fn style_units_set_viewport_bits_up_to_the_root() {
     f.build(&ui, root);
 
     assert_eq!(f.bits(plain), NodeLayoutBits::DEPENDS_VIEWPORT);
-}
-
-#[test]
-fn containers_add_the_bits_their_layout_returns() {
-    let mut ui = Ui::new();
-    let root = ui.create(Node::Box, ());
-    let wrapper = ui.create(Node::Box, ());
-    let dependent = ui.create(
-        Node::Box,
-        (bx::DisplayInner::Container(Arc::new(Empty(
-            NodeLayoutBits::DEPENDS_VIEWPORT,
-        ))),),
-    );
-    let independent = ui.create(
-        Node::Box,
-        (bx::DisplayInner::Container(Arc::new(Empty(
-            NodeLayoutBits::empty(),
-        ))),),
-    );
-
-    ui.append(root, wrapper);
-    ui.append(wrapper, dependent);
-    ui.append(root, independent);
-
-    let mut f = Fixture::new();
-    f.build(&ui, root);
-
-    assert_eq!(f.bits(dependent), NodeLayoutBits::DEPENDS_VIEWPORT);
-    assert_eq!(f.bits(wrapper), NodeLayoutBits::DEPENDS_VIEWPORT);
-    assert_eq!(f.bits(root), NodeLayoutBits::DEPENDS_VIEWPORT);
-    assert!(f.bits(independent).is_empty());
-}
-
-/// A container algorithm that counts its layouts, and returns the given
-/// bits.
-struct Counted(Arc<std::sync::atomic::AtomicU32>, NodeLayoutBits);
-
-impl ContainerLayout for Counted {
-    fn layout(
-        &self,
-        _: &mut ContainerContext<'_, '_>,
-        input: taffy::LayoutInput,
-    ) -> (taffy::LayoutOutput, NodeLayoutBits) {
-        self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let output = taffy::LayoutOutput::from_outer_size(taffy::Size {
-            width: input.known_dimensions.width.unwrap_or(0.0),
-            height: input.known_dimensions.height.unwrap_or(0.0),
-        });
-
-        (output, self.1)
-    }
-}
-
-#[test]
-fn viewport_changes_skip_cached_layouts_of_viewport_dependent_boxes() {
-    use std::sync::atomic::{AtomicU32, Ordering};
-
-    let calls = Arc::new(AtomicU32::new(0));
-    let mut ui = Ui::new();
-    let root = ui.create(Node::Box, ());
-    // Fixed size, so the container's layout input never changes.
-    let wrapper = ui.create(
-        Node::Box,
-        (bx::Size(Size::new(
-            AutoValue::Value(StyleUnit::Px(100.0)),
-            AutoValue::Value(StyleUnit::Px(50.0)),
-        )),),
-    );
-    let container = ui.create(
-        Node::Box,
-        // As if it resolved a length of its own in `vw`.
-        (bx::DisplayInner::Container(Arc::new(Counted(
-            calls.clone(),
-            NodeLayoutBits::DEPENDS_VIEWPORT,
-        ))),),
-    );
-    ui.append(root, wrapper);
-    ui.append(wrapper, container);
-
-    let mut f = Fixture::new();
-    let layout = |f: &mut Fixture, width: f64, viewport_changed: bool| {
-        let viewport = Size::new(width, 600.0);
-        let input_root = f
-            .inputs
-            .build(
-                &ui,
-                &mut f.tree,
-                &mut f.dirty,
-                BuildRequest::new(root, 16.0, viewport),
-            )
-            .unwrap();
-        f.builder
-            .build(
-                &ui,
-                &f.tree,
-                &mut f.dirty,
-                input_root,
-                &mut f.fragments,
-                &LayoutConstraint::new_root(viewport, 16.0).with_viewport_changed(viewport_changed),
-            )
-            .unwrap();
-        f.dirty.clear(&f.tree, input_root);
-
-        calls.swap(0, Ordering::Relaxed)
-    };
-
-    assert!(layout(&mut f, 400.0, false) > 0);
-    assert_eq!(f.bits(container), NodeLayoutBits::DEPENDS_VIEWPORT);
-
-    // The cache serves the container while the viewport is not marked changed.
-    assert_eq!(layout(&mut f, 500.0, false), 0);
-    // A changed viewport lays out viewport dependent boxes again.
-    assert!(layout(&mut f, 600.0, true) > 0);
-}
-
-#[test]
-fn percentage_descendants_keep_fixed_size_ancestors_cached() {
-    use std::sync::atomic::{AtomicU32, Ordering};
-
-    let calls = Arc::new(AtomicU32::new(0));
-    let mut ui = Ui::new();
-    let root = ui.create(Node::Box, ());
-    // Fixed size, so it lays out the same whatever the root's size.
-    let container = ui.create(
-        Node::Box,
-        (
-            bx::Size(Size::new(
-                AutoValue::Value(StyleUnit::Px(100.0)),
-                AutoValue::Value(StyleUnit::Px(50.0)),
-            )),
-            bx::DisplayInner::Container(Arc::new(Counted(calls.clone(), NodeLayoutBits::empty()))),
-        ),
-    );
-    // Resolves against the container, not the root.
-    let child = ui.create(Node::Box, (width(StyleUnit::Percent(0.5)),));
-    ui.append(root, container);
-    ui.append(container, child);
-
-    let mut f = Fixture::new();
-    let layout = |f: &mut Fixture, width: f64| {
-        let viewport = Size::new(width, 600.0);
-        let input_root = f
-            .inputs
-            .build(
-                &ui,
-                &mut f.tree,
-                &mut f.dirty,
-                BuildRequest::new(root, 16.0, viewport),
-            )
-            .unwrap();
-        f.builder
-            .build(
-                &ui,
-                &f.tree,
-                &mut f.dirty,
-                input_root,
-                &mut f.fragments,
-                &LayoutConstraint::new_root(viewport, 16.0),
-            )
-            .unwrap();
-        f.dirty.clear(&f.tree, input_root);
-
-        calls.swap(0, Ordering::Relaxed)
-    };
-
-    assert!(layout(&mut f, 400.0) > 0);
-    assert_eq!(f.bits(child), NodeLayoutBits::DEPENDS_PARENT_SIZE);
-    // The child's percentage stays with the child.
-    assert!(f.bits(container).is_empty());
-    assert!(f.bits(root).is_empty());
-
-    // The root is laid out at the new size, but the container is cached.
-    assert_eq!(layout(&mut f, 500.0), 0);
 }
 
 #[test]

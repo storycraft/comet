@@ -4,11 +4,10 @@ use comet_tree::{node::NodeKey, style::StyleProp, ui::Props};
 use taffy::LayoutPartialTree;
 
 use crate::{
-    fragment::{
-        FragmentKey,
-        adapter::{Child, FragmentEngine},
-        engine::node_id,
-        state::NodeLayoutBits,
+    fragment::state::NodeLayoutBits,
+    fragment2::{
+        BoxFragmentKey,
+        builder::taffy::{BoxTree, node_id},
     },
     input::LayoutInputKey,
     style::geometry::StyleUnit,
@@ -43,71 +42,77 @@ pub trait ContainerLayout: Send + Sync {
 /// Every child of a container generates its own box, including text and
 /// inline children, which establish their own inline formatting contexts.
 /// Child indices follow input tree order; out-of-range indices panic.
-pub struct ContainerContext<'a, 'ui> {
-    /// Engine scoped to the container's box fragment and its child boxes, in
-    /// input tree order.
-    pub(crate) engine: FragmentEngine<'a, 'ui>,
+pub struct ContainerContext<'e, 'a> {
+    /// Taffy tree of the container's box fragment, buffering its child
+    /// boxes in input tree order.
+    pub(crate) tree: BoxTree<'e, 'a>,
 }
 
 impl ContainerContext<'_, '_> {
     /// Box fragment of the container.
-    fn root(&self) -> FragmentKey {
-        self.engine.fragment()
+    fn root(&self) -> BoxFragmentKey {
+        self.tree.key()
     }
 
-    /// Box fragment and state of a direct child.
-    fn child(&self, index: usize) -> Child {
-        self.engine.children()[index]
+    /// Box fragment of a direct child.
+    fn child(&self, index: usize) -> BoxFragmentKey {
+        self.tree.children()[index]
+    }
+
+    /// The input item of a box fragment.
+    fn item(&self, key: BoxFragmentKey) -> LayoutInputKey {
+        self.tree.fragments().boxes[key].source
+    }
+
+    /// The source node of an input item.
+    fn item_node(&self, key: LayoutInputKey) -> NodeKey {
+        self.tree.input_tree().items[key].node
     }
 
     /// The source node of this container.
     pub fn node(&self) -> NodeKey {
-        self.engine.tree.items[self.item(self.root())].node
+        self.item_node(self.item(self.root()))
     }
 
-    /// Read a custom property on the container without inheritance or defaults.
-    /// Properties of the container. Prefer this over [`Self::prop`] when
-    /// reading several properties.
+    /// Properties of the container, without inheritance or defaults. Prefer
+    /// this over [`Self::prop`] when reading several properties.
     pub fn props(&self) -> Option<Props<'_>> {
-        self.engine.ui.props(self.node())
+        self.tree.ui().props(self.node())
     }
 
+    /// Read a custom property on the container without inheritance or
+    /// defaults.
     pub fn prop<T: StyleProp>(&self) -> Option<impl Deref<Target = T> + '_> {
-        self.engine.ui.prop::<T>(self.node())
+        self.tree.ui().prop::<T>(self.node())
     }
 
     pub fn style(&self) -> &Style {
-        self.engine.fragments.style(self.root())
-    }
-
-    /// The input item of a box fragment.
-    fn item(&self, fragment: FragmentKey) -> LayoutInputKey {
-        self.engine.fragments.items[fragment].source
+        self.tree.fragments().boxes[self.root()].style()
     }
 
     pub fn child_count(&self) -> usize {
-        self.engine.children().len()
+        self.tree.children().len()
     }
 
     pub fn child_style(&self, index: usize) -> &Style {
-        &self.engine.fragments.states[self.child(index).state].style
+        self.tree.fragments().boxes[self.child(index)].style()
     }
 
     /// The source node of a direct child box.
     pub fn child_node(&self, index: usize) -> NodeKey {
-        self.engine.tree.items[self.item(self.child(index).fragment)].node
+        self.item_node(self.item(self.child(index)))
     }
 
     /// Read a property on the child's source node. This does not inherit
     /// properties from the container.
     pub fn child_prop<T: StyleProp>(&self, index: usize) -> Option<impl Deref<Target = T> + '_> {
-        self.engine.ui.prop::<T>(self.child_node(index))
+        self.tree.ui().prop::<T>(self.child_node(index))
     }
 
     /// Properties of the child's source node. Prefer this over
     /// [`Self::child_prop`] when reading several properties.
     pub fn child_props(&self, index: usize) -> Option<Props<'_>> {
-        self.engine.ui.props(self.child_node(index))
+        self.tree.ui().props(self.child_node(index))
     }
 
     /// Resolve font and viewport units for the container, keeping percentages
@@ -118,7 +123,7 @@ impl ContainerContext<'_, '_> {
 
     /// Resolve an item's custom length using its computed font size.
     pub fn resolve_child_length(&self, index: usize, value: StyleUnit) -> taffy::LengthPercentage {
-        self.resolve_item_length(self.item(self.child(index).fragment), value)
+        self.resolve_item_length(self.item(self.child(index)), value)
     }
 
     fn resolve_item_length(
@@ -126,9 +131,9 @@ impl ContainerContext<'_, '_> {
         key: LayoutInputKey,
         value: StyleUnit,
     ) -> taffy::LengthPercentage {
-        let mut constraint = self.engine.constraint.clone();
+        let mut constraint = self.tree.constraint().clone();
         constraint.units.font_size =
-            f64::from(self.engine.tree.items[key].text_style.span.font_size);
+            f64::from(self.tree.input_tree().items[key].text_style.span.font_size);
 
         conv::length(value, &constraint)
     }
@@ -144,14 +149,14 @@ impl ContainerContext<'_, '_> {
         // Block children position the out-of-flow boxes they contain while
         // laying out, since their IDs belong to Comet's tree rather than the
         // custom algorithm's local adapter.
-        let key = node_id(self.child(index).state);
-        self.engine.compute_child_layout(key, input)
+        let id = node_id(self.child(index));
+        self.tree.compute_child_layout(id, input)
     }
 
     /// Set the direct child's box, including padding, border and margin metrics.
     /// Measure it with matching known dimensions first so its contents fit.
     pub fn set_child_layout(&mut self, index: usize, layout: taffy::Layout) {
-        let key = node_id(self.child(index).state);
-        self.engine.set_unrounded_layout(key, &layout);
+        let id = node_id(self.child(index));
+        self.tree.set_unrounded_layout(id, &layout);
     }
 }

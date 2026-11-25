@@ -23,7 +23,7 @@ mod content;
 mod emit;
 mod invalidate;
 mod lines;
-mod taffy;
+pub(crate) mod taffy;
 
 use comet_tree::ui::Ui;
 use rustc_hash::FxHashMap;
@@ -199,7 +199,7 @@ impl FragmentTreeBuilder {
 }
 
 /// Borrowed state of one build.
-struct Engine<'a> {
+pub(crate) struct Engine<'a> {
     cx: InlineBuildContext<'a>,
     fonts: &'a mut parley::FontContext,
     content: &'a mut InlineContentBuilder,

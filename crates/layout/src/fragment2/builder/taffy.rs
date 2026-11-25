@@ -8,22 +8,32 @@
 //!
 //! The builder supplies what Taffy cannot know: the algorithm laying out each
 //! box, and what follows from writing a layout.
+//!
+//! Custom container algorithms lay out their children through a
+//! [`BoxTree`] of the container, wrapped in a
+//! [`ContainerContext`](crate::container::ContainerContext).
 
 use std::ops::{Deref, DerefMut, Range};
 
 use slotmap::{Key, KeyData};
 use taffy::{CacheTree, LayoutPartialTree, TraversePartialTree};
 
+use comet_tree::ui::Ui;
+
 use super::Engine;
 use crate::fragment2::{BoxFragment, BoxFragmentKey, BoxFragmentType, FragmentTree};
 use crate::{
     fragment::state::NodeLayoutBits,
-    style::geometry::{Point, Size},
+    input::tree::LayoutInputTree,
+    style::{
+        LayoutConstraint,
+        geometry::{Point, Size},
+    },
     taffy::{conv, style::Style},
 };
 
 /// The Taffy node id of a box.
-pub(super) fn node_id(key: BoxFragmentKey) -> taffy::NodeId {
+pub(crate) fn node_id(key: BoxFragmentKey) -> taffy::NodeId {
     taffy::NodeId::new(key.data().as_ffi())
 }
 
@@ -41,7 +51,7 @@ pub(super) fn key_of(id: taffy::NodeId) -> BoxFragmentKey {
 ///
 /// Children live in the shared buffer of the engine. Layouts of descendants
 /// push their children after this range and truncate back to it when done.
-pub(super) struct BoxTree<'e, 'a> {
+pub(crate) struct BoxTree<'e, 'a> {
     engine: &'e mut Engine<'a>,
     key: BoxFragmentKey,
     /// Range of the direct children in the shared buffer.
@@ -49,16 +59,15 @@ pub(super) struct BoxTree<'e, 'a> {
 }
 
 impl<'e, 'a> BoxTree<'e, 'a> {
-    /// The tree laying out `key`. Block boxes expose their child boxes.
-    /// Other boxes are leaves to Taffy.
+    /// The tree laying out `key`. Block and container boxes expose their
+    /// child boxes. Other boxes are leaves to Taffy.
     pub(super) fn new(engine: &'e mut Engine<'a>, key: BoxFragmentKey) -> Self {
         let (fragments, buffer) = (&*engine.fragments, &mut engine.scratch.children);
         let start = buffer.len();
 
-        if fragments
-            .get(key)
-            .is_some_and(|fragment| fragment.child_layout.is_block_container())
-        {
+        if fragments.get(key).is_some_and(|fragment| {
+            fragment.child_layout.is_block_container() || fragment.child_layout.is_container()
+        }) {
             buffer.extend(fragments.boxes.children(key));
         }
 
@@ -84,10 +93,37 @@ impl<'e, 'a> BoxTree<'e, 'a> {
         }
     }
 
+    /// The box being laid out.
+    pub(crate) fn key(&self) -> BoxFragmentKey {
+        self.key
+    }
+
+    /// The direct child boxes of the box being laid out, in tree order.
+    /// Empty for boxes that are leaves to Taffy.
+    pub(crate) fn children(&self) -> &[BoxFragmentKey] {
+        &self.engine.scratch.children[self.children.clone()]
+    }
+
+    pub(crate) fn fragments(&self) -> &FragmentTree {
+        self.engine.fragments
+    }
+
+    pub(crate) fn ui(&self) -> &'a Ui {
+        self.engine.cx.ui
+    }
+
+    pub(crate) fn input_tree(&self) -> &'a LayoutInputTree {
+        self.engine.cx.tree
+    }
+
+    pub(crate) fn constraint(&self) -> &'a LayoutConstraint {
+        self.engine.cx.constraint
+    }
+
     fn children_of(&self, id: taffy::NodeId) -> &[BoxFragmentKey] {
         debug_assert_eq!(key_of(id), self.key, "only the laid out box is traversed");
 
-        &self.engine.scratch.children[self.children.clone()]
+        self.children()
     }
 
     fn fragment(&self, id: taffy::NodeId) -> &BoxFragment {

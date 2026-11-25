@@ -2,8 +2,8 @@
 //!
 //! Block boxes use Taffy's block algorithm through the [Taffy trees](super::taffy),
 //! inline formatting contexts are [built](super::content) and laid out by
-//! their [lines](super::lines), and other boxes are leaves sized by their
-//! style.
+//! their [lines](super::lines), containers by their custom algorithm through
+//! a [`ContainerContext`], and other boxes are leaves sized by their style.
 
 use taffy::style::CoreStyle;
 
@@ -13,8 +13,9 @@ use super::{
     taffy::{BoxTree, node_id},
 };
 use crate::{
+    container::ContainerContext,
     fragment2::{BoxFragmentKey, BoxFragmentType},
-    style::geometry::Point,
+    style::{bx::DisplayInner, geometry::Point},
     taffy::conv,
 };
 
@@ -63,10 +64,8 @@ impl Engine<'_> {
         match ChildKind::of(&fragment.child_layout) {
             ChildKind::Block | ChildKind::MixedInline => self.layout_block(key, input, block_ctx),
             ChildKind::Inline => self.compute_inline_layout(node_id(key), input),
-            // TODO(container): custom container algorithms need their trait
-            // integrated with box fragments. Until then containers are
-            // leaves, and their children are not laid out.
-            ChildKind::Container | ChildKind::Content => self.layout_leaf(key, input),
+            ChildKind::Container => self.layout_container(key, input),
+            ChildKind::Content => self.layout_leaf(key, input),
         }
     }
 
@@ -87,6 +86,41 @@ impl Engine<'_> {
             drop(engine);
             self.place_hoisted(key);
         }
+
+        output
+    }
+
+    /// Lay out a container with its custom algorithm, through a
+    /// [`ContainerContext`] over its child boxes. Containers without an
+    /// algorithm are empty leaves.
+    fn layout_container(
+        &mut self,
+        key: BoxFragmentKey,
+        input: taffy::LayoutInput,
+    ) -> taffy::LayoutOutput {
+        let source = self.fragments.boxes[key].source;
+        // Take the algorithm out, so the prop is not borrowed while the
+        // children are laid out.
+        let algorithm = match self
+            .cx
+            .ui
+            .prop::<DisplayInner>(self.cx.tree.items[source].node)
+            .as_deref()
+        {
+            Some(DisplayInner::Container(algorithm)) => algorithm.clone(),
+            _ => return self.layout_leaf(key, input),
+        };
+
+        let mut context = ContainerContext {
+            tree: BoxTree::new(self, key),
+        };
+        let (output, bits) = algorithm.layout(&mut context, input);
+        drop(context);
+
+        // What the algorithm depends on is known once it ran, and is used by
+        // later builds.
+        self.fragments.boxes[key].bits |= bits;
+        self.propagate_bits(key, bits);
 
         output
     }

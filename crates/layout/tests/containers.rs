@@ -6,10 +6,8 @@ use std::sync::{
 use comet_layout::{
     container::{ContainerContext, ContainerLayout},
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment::{
-        FragmentItem, FragmentKey, builder::FragmentTreeBuilder, state::NodeLayoutBits,
-        tree::FragmentTree,
-    },
+    fragment::state::NodeLayoutBits,
+    fragment2::{BoxFragmentKey, ChildLayoutType, FragmentTree, FragmentTreeBuilder},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
@@ -106,7 +104,7 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn build(&mut self, ui: &Ui, node: NodeKey, width: f64) -> FragmentKey {
+    fn build(&mut self, ui: &Ui, node: NodeKey, width: f64) -> BoxFragmentKey {
         let viewport = Size::new(width, 600.0);
         let root = self
             .input_builder
@@ -133,19 +131,23 @@ impl Fixture {
         fragment
     }
 
-    fn box_fragment(&self, node: NodeKey) -> FragmentKey {
+    fn box_fragment(&self, node: NodeKey) -> BoxFragmentKey {
         self.fragments
             .box_fragment(self.inputs.item_for_node(node).unwrap())
             .unwrap()
     }
 
-    fn has_glyphs(&self, key: FragmentKey) -> bool {
-        self.fragments.items.descendants(key).any(|key| {
-            matches!(
-                self.fragments.items[key].item,
-                FragmentItem::GlyphRun { .. }
-            )
+    /// Whether the box `key` or a box under it holds glyph runs.
+    fn has_glyphs(&self, key: BoxFragmentKey) -> bool {
+        self.fragments.boxes.descendants(key).any(|key| {
+            self.fragments
+                .inline_layout(key)
+                .is_some_and(|inline| inline.items.iter().any(|item| item.is_run()))
         })
+    }
+
+    fn geometry(&self, key: BoxFragmentKey) -> comet_layout::fragment2::FragmentGeometry {
+        self.fragments.boxes[key].layout.geometry
     }
 }
 
@@ -189,22 +191,22 @@ fn custom_layout_runs_again_when_its_box_is_dirty() {
 
         let fragment_root = f.build(&ui, root, viewport_width);
         let custom_fragment = f.box_fragment(custom);
-        let children: Vec<_> = f.fragments.items.children(custom_fragment).collect();
+        let children: Vec<_> = f.fragments.boxes.children(custom_fragment).collect();
 
         assert_eq!(calls.load(Ordering::Relaxed) > 0, relayout);
         assert_eq!(
-            f.fragments.items.parent(custom_fragment),
+            f.fragments.boxes.parent(custom_fragment),
             Some(fragment_root)
         );
         assert_eq!(children, vec![f.box_fragment(text), f.box_fragment(block)]);
-        assert_eq!(f.fragments.items[children[0]].layout.location.x, 0.0);
+        assert_eq!(f.geometry(children[0]).location.x, 0.0);
         assert_eq!(
-            f.fragments.items[children[1]].layout.location.x,
+            f.geometry(children[1]).location.x,
             f64::from(child_width)
         );
 
         for &child in &children {
-            let layout = f.fragments.items[child].layout;
+            let layout = f.geometry(child);
 
             assert_eq!(layout.size.width, f64::from(child_width));
             assert_eq!(layout.location.y, 7.0);
@@ -233,18 +235,25 @@ fn nested_inline_containers_measure_and_emit_their_own_descendants() {
     let outer_fragment = f.box_fragment(outer);
     let inner_fragment = f.box_fragment(inner);
 
-    // The inline container is an atomic inline on a line of the root.
-    let line = f.fragments.items.parent(outer_fragment).unwrap();
-    assert_eq!(f.fragments.items.parent(line), Some(fragment_root));
+    // The inline container is an atomic inline placed by a line of the root.
+    assert_eq!(f.fragments.boxes.parent(outer_fragment), Some(fragment_root));
+    assert!(
+        f.fragments
+            .inline_layout(fragment_root)
+            .unwrap()
+            .items
+            .iter()
+            .any(|item| item.child_box() == Some(outer_fragment))
+    );
     assert_eq!(
-        f.fragments.items.parent(inner_fragment),
+        f.fragments.boxes.parent(inner_fragment),
         Some(outer_fragment)
     );
 
     for fragment in [outer_fragment, inner_fragment] {
-        let layout = f.fragments.items[fragment].layout;
+        let layout = f.geometry(fragment);
 
-        assert!(f.fragments.items[fragment].item.is_box());
+        assert!(f.fragments.boxes[fragment].child_layout.is_container());
         assert!(layout.size.width > 0.0);
         assert!(layout.size.height > 0.0);
     }
@@ -273,7 +282,7 @@ fn container_children_follow_reorders_and_removals() {
 
     assert_eq!(
         f.fragments
-            .items
+            .boxes
             .children(fragment_root)
             .collect::<Vec<_>>(),
         keys
@@ -290,14 +299,14 @@ fn container_children_follow_reorders_and_removals() {
     assert_eq!(f.box_fragment(children[2]), keys[2]);
     assert_eq!(
         f.fragments
-            .items
+            .boxes
             .children(fragment_root)
             .collect::<Vec<_>>(),
         vec![keys[2], keys[1]]
     );
-    assert_eq!(f.fragments.items[keys[2]].layout.location.x, 0.0);
-    assert_eq!(f.fragments.items[keys[1]].layout.location.x, 50.0);
-    assert!(f.fragments.items.get(keys[0]).is_none());
+    assert_eq!(f.geometry(keys[2]).location.x, 0.0);
+    assert_eq!(f.geometry(keys[1]).location.x, 50.0);
+    assert!(f.fragments.get(keys[0]).is_none());
 }
 
 /// Probes its only child's size at a width read from `probe`, then lays it
@@ -381,7 +390,7 @@ fn size_probes_do_not_leave_probe_geometry_in_cached_final_layouts() {
     ui.append(inner, leaf);
 
     let mut f = Fixture::default();
-    let width = |f: &Fixture, node| f.fragments.items[f.box_fragment(node)].layout.size.width;
+    let width = |f: &Fixture, node| f.geometry(f.box_fragment(node)).size.width;
 
     f.build(&ui, root, 400.0);
     assert_eq!(width(&f, leaf), 300.0);
@@ -398,24 +407,43 @@ fn size_probes_do_not_leave_probe_geometry_in_cached_final_layouts() {
     assert_eq!(width(&f, leaf), 300.0);
 }
 
-/// The fragments under `key` in tree order, with their depth, kind and size.
-fn outline(f: &Fixture, key: FragmentKey, depth: usize, out: &mut Vec<String>) {
-    let fragment = &f.fragments.items[key];
-    let kind = match fragment.item {
-        FragmentItem::Box { .. } => "box",
-        FragmentItem::AnonymousBlock { .. } => "anonymous",
-        FragmentItem::Line { .. } => "line",
-        FragmentItem::GlyphRun { .. } => "glyphs",
-        FragmentItem::Inline { .. } => "inline",
+/// The boxes under `key` in tree order, with their depth, kind and size,
+/// each followed by the items of its inline layout.
+fn outline(f: &Fixture, key: BoxFragmentKey, depth: usize, out: &mut Vec<String>) {
+    let fragment = &f.fragments.boxes[key];
+    let kind = match fragment.child_layout {
+        ChildLayoutType::Block => "block",
+        ChildLayoutType::Inline(_) => "inline",
+        ChildLayoutType::MixedInline(_) => "mixed",
+        ChildLayoutType::Container => "container",
+        ChildLayoutType::Content => "content",
     };
-    out.push(format!("{depth} {kind} {}", fragment.layout.size));
+    let anonymous = if f.fragments.is_anonymous(key) {
+        " anonymous"
+    } else {
+        ""
+    };
+    out.push(format!(
+        "{depth} {kind}{anonymous} {}",
+        fragment.layout.geometry.size
+    ));
 
-    for child in f.fragments.items.children(key) {
+    if let Some(inline) = fragment.inline() {
+        for item in &inline.items {
+            out.push(format!(
+                "{depth} - {:?} {}",
+                item.kind,
+                item.geometry.size
+            ));
+        }
+    }
+
+    for child in f.fragments.boxes.children(key) {
         outline(f, child, depth + 1, out);
     }
 }
 
-fn outlined(f: &Fixture, key: FragmentKey) -> Vec<String> {
+fn outlined(f: &Fixture, key: BoxFragmentKey) -> Vec<String> {
     let mut out = Vec::new();
     outline(f, key, 0, &mut out);
     out

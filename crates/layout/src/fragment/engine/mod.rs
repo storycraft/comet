@@ -431,8 +431,9 @@ impl Engine<'_> {
 
                 output
             }
-            Mode::Container => self.layout_container(fragment, state, input),
-            Mode::Leaf => self.layout_leaf(fragment, input),
+            // Custom container algorithms run on `fragment2` boxes only, so
+            // containers are leaves here.
+            Mode::Container | Mode::Leaf => self.layout_leaf(fragment, input),
         }
     }
 }

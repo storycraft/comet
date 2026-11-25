@@ -1,5 +1,4 @@
-//! Block level layout with Taffy: roots, leaves, custom containers and
-//! baselines. Block containers use `taffy::compute_block_layout` through the
+//! Block level layout with Taffy: roots, leaves and baselines. Block containers use `taffy::compute_block_layout` through the
 //! adapter.
 
 use taffy::style::CoreStyle;
@@ -8,10 +7,9 @@ use super::{
     Engine, FragmentEngine, FragmentKey, Mode, PAINT_CHANGED, StateKey, node_id, state_of,
 };
 use crate::{
-    container::ContainerContext,
     fragment::tree::FragmentTree,
     input::LayoutInputKind,
-    style::{bx::DisplayInner, geometry::Point},
+    style::geometry::Point,
 };
 
 impl Engine<'_> {
@@ -26,7 +24,7 @@ impl Engine<'_> {
         };
 
         taffy::compute_root_layout(
-            &mut FragmentEngine::root_pass(self, fragment, state),
+            &mut FragmentEngine::root_pass(self, state),
             node_id(state),
             available,
         );
@@ -156,42 +154,6 @@ impl Engine<'_> {
         let style = self.fragments.style(fragment);
 
         taffy::compute_leaf_layout(input, style, |_, _| 0.0, |_, _| taffy::Size::ZERO)
-    }
-
-    /// Lay out a container with its custom algorithm. Containers without an
-    /// algorithm are empty leaves.
-    pub(super) fn layout_container(
-        &mut self,
-        fragment: FragmentKey,
-        state: StateKey,
-        input: taffy::LayoutInput,
-    ) -> taffy::LayoutOutput {
-        let ui = self.ui;
-        let source = self.fragments.items[fragment].source;
-        // Take the algorithm out, so the prop is not borrowed while the
-        // children are laid out.
-        let algorithm = match ui
-            .prop::<DisplayInner>(self.tree.items[source].node)
-            .as_deref()
-        {
-            Some(DisplayInner::Container(algorithm)) => algorithm.clone(),
-            _ => return self.layout_leaf(fragment, input),
-        };
-
-        let mut context = ContainerContext {
-            engine: FragmentEngine::new(self, fragment, state),
-        };
-        let (output, bits) = algorithm.layout(&mut context, input);
-        drop(context);
-
-        // What the algorithm depends on is known once it ran, and is used by
-        // later builds.
-        if let Some(state) = self.fragments.get_state_mut(fragment) {
-            state.bits |= bits;
-        }
-        self.propagate_bits(source, bits);
-
-        output
     }
 
     /// Last in-flow line baseline, measured from the border-box top.

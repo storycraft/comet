@@ -2,9 +2,7 @@ use std::ops::Deref;
 
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment::{
-        FragmentBox, FragmentItem, FragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree,
-    },
+    fragment2::{BoxFragmentKey, FragmentGeometry, FragmentTree, FragmentTreeBuilder},
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
@@ -50,7 +48,7 @@ impl Deref for Layout {
 
 impl Layout {
     /// Build or update the trees of `root`, then clear the input flags.
-    fn build(&mut self, ui: &Ui, root: NodeKey) -> FragmentKey {
+    fn build(&mut self, ui: &Ui, root: NodeKey) -> BoxFragmentKey {
         let key = self
             .input_builder
             .build(
@@ -80,28 +78,69 @@ impl Layout {
         self.inputs.item_for_node(node).unwrap()
     }
 
-    fn node(&self, key: FragmentKey) -> Option<NodeKey> {
-        self.inputs
-            .items
-            .get(self.fragments.items[key].source)
-            .map(|item| item.node)
+    fn geometry(&self, key: BoxFragmentKey) -> FragmentGeometry {
+        self.fragments.boxes[key].layout.geometry
+    }
+
+    /// Whether the box `key` holds glyph runs of the text node `source`.
+    fn has_glyphs_of(&self, key: BoxFragmentKey, source: NodeKey) -> bool {
+        let source = self.item(source);
+
+        self.fragments.inline_layout(key).is_some_and(|inline| {
+            inline
+                .items
+                .iter()
+                .any(|item| item.is_run() && item.source == source)
+        })
+    }
+
+    /// The first baseline of the glyph runs of the text node `node`, from
+    /// the border box top of `root`.
+    fn first_baseline(&self, root: BoxFragmentKey, node: NodeKey) -> f64 {
+        let source = self.item(node);
+        let (owner, item) = self
+            .fragments
+            .boxes
+            .descendants(root)
+            .find_map(|key| {
+                let item = self
+                    .fragments
+                    .inline_layout(key)?
+                    .items
+                    .iter()
+                    .find(|item| item.is_run() && item.source == source)?;
+
+                Some((key, item))
+            })
+            .unwrap();
+
+        // Inline items are relative to the border box of their owner.
+        let mut y = item.geometry.location.y + f64::from(item.baseline);
+        let mut current = owner;
+
+        while current != root {
+            y += self.geometry(current).location.y;
+            current = self.fragments.boxes.parent(current).unwrap();
+        }
+
+        y
     }
 }
 
-fn layout(ui: &Ui, root: NodeKey) -> (Layout, FragmentKey) {
+fn layout(ui: &Ui, root: NodeKey) -> (Layout, BoxFragmentKey) {
     let mut layout = Layout::default();
     let key = layout.build(ui, root);
 
     (layout, key)
 }
 
-fn box_for(tree: &Layout, root: FragmentKey, node: NodeKey) -> FragmentBox {
+fn box_for(tree: &Layout, root: BoxFragmentKey, node: NodeKey) -> FragmentGeometry {
     let key = tree.box_fragment(tree.item(node)).unwrap();
 
-    assert!(tree.items.descendants(root).any(|other| other == key));
-    assert!(tree.items[key].item.is_box());
+    assert!(tree.boxes.descendants(root).any(|other| other == key));
+    assert!(!tree.is_anonymous(key));
 
-    tree.items[key].layout
+    tree.geometry(key)
 }
 
 fn close(actual: f64, expected: f64) {
@@ -183,8 +222,8 @@ fn percentages_use_content_size_and_padding_is_applied_once() {
         let a = box_for(&tree, key, a);
         let b = box_for(&tree, key, b);
 
-        close(tree.items[key].layout.size.width, 224.0);
-        close(tree.items[key].layout.size.height, 100.0);
+        close(tree.geometry(key).size.width, 224.0);
+        close(tree.geometry(key).size.height, 100.0);
         close(a.location.x, 12.0);
         close(a.location.y, 12.0);
         close(a.size.width, 50.0);
@@ -337,19 +376,16 @@ fn wrapped_text_and_inline_children_use_source_flex_properties() {
     ui.append(span, inside);
 
     let (tree, key) = layout(&ui, root);
-    let children: Vec<_> = tree.items.children(key).collect();
+    let children: Vec<_> = tree.boxes.children(key).collect();
 
     assert_eq!(children.len(), 2);
-    close(tree.items[children[0]].layout.size.width, 90.0);
-    close(tree.items[children[1]].layout.location.x, 90.0);
-    close(tree.items[children[1]].layout.size.width, 210.0);
+    close(tree.geometry(children[0]).size.width, 90.0);
+    close(tree.geometry(children[1]).location.x, 90.0);
+    close(tree.geometry(children[1]).size.width, 210.0);
 
-    for source in [text, inside] {
-        assert!(tree.items.descendants(key).any(|key| {
-            tree.node(key) == Some(source)
-                && matches!(tree.items[key].item, FragmentItem::GlyphRun { .. })
-        }));
-    }
+    // Each child establishes the inline formatting context of its text.
+    assert!(tree.has_glyphs_of(children[0], text));
+    assert!(tree.has_glyphs_of(children[1], inside));
 }
 
 #[test]
@@ -493,26 +529,8 @@ fn text_items_align_by_their_first_baseline() {
     ui.append(root, b);
 
     let (tree, key) = layout(&ui, root);
-    let baseline = |node| {
-        let mut current = tree
-            .items
-            .descendants(key)
-            .find(|&key| {
-                tree.node(key) == Some(node)
-                    && matches!(tree.items[key].item, FragmentItem::GlyphRun { .. })
-            })
-            .unwrap();
-        let mut y = tree.items[current].layout.baseline.unwrap();
 
-        while current != key {
-            y += tree.items[current].layout.location.y;
-            current = tree.items.parent(current).unwrap();
-        }
-
-        y
-    };
-
-    close(baseline(a), baseline(b));
+    close(tree.first_baseline(key, a), tree.first_baseline(key, b));
 }
 
 #[test]

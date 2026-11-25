@@ -20,32 +20,26 @@ use crate::{
 /// when done, so the buffer is reused across the whole build.
 pub(crate) struct FragmentEngine<'e, 'a> {
     engine: &'e mut Engine<'a>,
-    fragment: FragmentKey,
     state: StateKey,
     /// Range of the direct children in `scratch.children`.
     children: Range<usize>,
 }
 
-/// A direct child laid out by Taffy: a box or anonymous block fragment, with
+/// A direct child laid out by Taffy: a box or anonymous block fragment, by
 /// the state identifying its Taffy node.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Child {
-    pub fragment: FragmentKey,
     pub state: StateKey,
 }
 
 impl<'e, 'a> FragmentEngine<'e, 'a> {
     /// Block containers expose their fragment children: block boxes, and the
     /// anonymous blocks of mixed inline content. Lines are measured by Parley.
-    /// Custom containers expose their child boxes.
     pub fn new(engine: &'e mut Engine<'a>, fragment: FragmentKey, state: StateKey) -> Self {
         let start = engine.scratch.children.len();
 
         if engine.fragments.states.get(state).is_some_and(|state| {
-            matches!(
-                state.mode,
-                Mode::Block | Mode::MixedInline | Mode::Container
-            )
+            matches!(state.mode, Mode::Block | Mode::MixedInline)
         }) {
             let items = &engine.fragments.items;
 
@@ -54,7 +48,6 @@ impl<'e, 'a> FragmentEngine<'e, 'a> {
                 .children
                 .extend(items.children(fragment).filter_map(|child| {
                     Some(Child {
-                        fragment: child,
                         state: items[child].item.state()?,
                     })
                 }));
@@ -64,30 +57,24 @@ impl<'e, 'a> FragmentEngine<'e, 'a> {
 
         Self {
             engine,
-            fragment,
             state,
             children: start..end,
         }
     }
 
-    /// Engine for Taffy's root pass over `fragment`, without buffering its
+    /// Engine for Taffy's root pass over the fragment of `state`, without buffering its
     /// children. The root pass only reads the fragment's style and lays it
     /// out through the cached child layout, which never traverses its
     /// children here: a cache miss lays the fragment out with an engine of
     /// its own. A cached root then costs nothing per child.
-    pub fn root_pass(engine: &'e mut Engine<'a>, fragment: FragmentKey, state: StateKey) -> Self {
+    pub fn root_pass(engine: &'e mut Engine<'a>, state: StateKey) -> Self {
         let start = engine.scratch.children.len();
 
         Self {
             engine,
-            fragment,
             state,
             children: start..start,
         }
-    }
-
-    pub fn fragment(&self) -> FragmentKey {
-        self.fragment
     }
 
     /// Direct children of the fragment, in tree order.
