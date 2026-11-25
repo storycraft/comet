@@ -19,7 +19,7 @@ pub mod tree;
 
 #[cfg(doc)]
 use comet_layout::dirty_map::DirtyFlags;
-use comet_layout::fragment2::{BoxFragment, BoxFragmentType};
+use comet_layout::fragment::{BoxFragment, BoxFragmentType};
 use kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii, Vec2};
 
 /// Paint data of a layout input item, shared by all fragments it generates.
@@ -52,7 +52,7 @@ pub struct LayoutInputData {
     ///
     /// A scroll container never splits, so it generates a single box
     /// fragment the offset applies to. The range is its
-    /// [scroll range](comet_layout::fragment2::FragmentTree::scroll_range),
+    /// [scroll range](comet_layout::fragment::FragmentTree::scroll_range),
     /// which follows its overflow. The fragment builder marks
     /// fragments whose overflow changed, so the offset is resolved again.
     pub scroll: Vec2,

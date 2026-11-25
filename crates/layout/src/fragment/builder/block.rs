@@ -14,7 +14,7 @@ use super::{
 };
 use crate::{
     container::ContainerContext,
-    fragment2::{BoxFragmentKey, BoxFragmentType},
+    fragment::{BoxFragmentKey, BoxFragmentType},
     style::{bx::DisplayInner, geometry::Point},
     taffy::conv,
 };

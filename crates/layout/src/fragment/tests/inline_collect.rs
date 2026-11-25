@@ -7,7 +7,7 @@ use comet_tree::{
 
 use crate::{
     dirty_map::DirtyMap,
-    fragment2::{
+    fragment::{
         BoxFragmentType, InlineLayout, OffsetEntry,
         inline::collect::{FlowItem, InlineBuildContext, InlineContentBuilder, split_runs},
         inline_box_source,

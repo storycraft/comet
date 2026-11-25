@@ -7,7 +7,7 @@ use anyrender::Paint;
 use anyrender::PaintScene;
 use bytemuck::TransparentWrapper;
 use comet_layout::{
-    fragment2::{
+    fragment::{
         BoxFragment, BoxFragmentKey, FragmentGeometry, FragmentRef, FragmentTree, InlineItem,
         InlineItemKind,
     },
@@ -271,7 +271,7 @@ impl CometPainter {
     /// Fragments painting entirely outside `viewport`, in physical pixels, or
     /// outside their clip are skipped. Fragments touching their edges are
     /// painted. Their descendants are skipped with them only when the
-    /// fragment's [overflow](comet_layout::fragment2::FragmentGeometry::overflow)
+    /// fragment's [overflow](comet_layout::fragment::FragmentGeometry::overflow)
     /// is outside too, since children may paint outside their parents, and
     /// so are the items of lines out of view. Child layers are visited on
     /// their own, so they paint wherever their transforms place them.

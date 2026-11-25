@@ -22,7 +22,7 @@ use comet_tree::ui::Ui;
 
 use super::Engine;
 use crate::{
-    fragment2::{BoxFragment, BoxFragmentKey, BoxFragmentType, FragmentTree, NodeLayoutBits},
+    fragment::{BoxFragment, BoxFragmentKey, BoxFragmentType, FragmentTree, NodeLayoutBits},
     input::tree::LayoutInputTree,
     style::{
         LayoutConstraint,

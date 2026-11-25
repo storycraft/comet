@@ -3,7 +3,7 @@ use comet_layout::style::taffy::Position;
 use comet_layout::style::{geometry::Rect as LayoutRect, taffy::Overflow};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment2::{BoxFragmentKey, FragmentRef, FragmentTree, FragmentTreeBuilder},
+    fragment::{BoxFragmentKey, FragmentRef, FragmentTree, FragmentTreeBuilder},
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},

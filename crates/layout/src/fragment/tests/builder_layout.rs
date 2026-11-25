@@ -8,7 +8,7 @@ use comet_tree::{
 use super::builder::{Fixture, VIEWPORT, paragraph, text};
 use crate::{
     dirty_map::DirtyFlags,
-    fragment2::{BoxFragmentLink, BoxFragmentType, FragmentGeometry, FragmentRef, InlineLayout},
+    fragment::{BoxFragmentLink, BoxFragmentType, FragmentGeometry, FragmentRef, InlineLayout},
     style::{
         bx,
         geometry::{AutoValue, Point, Rect, Size, StyleUnit},

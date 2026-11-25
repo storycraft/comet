@@ -19,7 +19,7 @@ use super::{
     Engine,
     taffy::{BoxTree, node_id, scrollable_overflow},
 };
-use crate::fragment2::{BoxFragmentKey, BoxFragmentType, ChildLayoutType, inline_box_source};
+use crate::fragment::{BoxFragmentKey, BoxFragmentType, ChildLayoutType, inline_box_source};
 
 /// Extent of broken lines.
 struct Flow {

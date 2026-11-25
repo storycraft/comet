@@ -1,5 +1,5 @@
 use crate::{
-    fragment2::{BoxFragment, BoxFragmentType, ChildLayoutType, FragmentTree},
+    fragment::{BoxFragment, BoxFragmentType, ChildLayoutType, FragmentTree},
     input::LayoutInputKey,
     style::{LayoutConstraint, geometry::Size},
     taffy::style,

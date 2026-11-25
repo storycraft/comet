@@ -1,4 +1,4 @@
-use comet_layout::fragment2::{BoxFragmentKey, FragmentRef, FragmentTree};
+use comet_layout::fragment::{BoxFragmentKey, FragmentRef, FragmentTree};
 use comet_slotmap_tree::SlotTree;
 use slotmap::SecondaryMap;
 

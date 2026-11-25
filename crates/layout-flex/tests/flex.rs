@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment2::{BoxFragmentKey, FragmentGeometry, FragmentTree, FragmentTreeBuilder},
+    fragment::{BoxFragmentKey, FragmentGeometry, FragmentTree, FragmentTreeBuilder},
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},

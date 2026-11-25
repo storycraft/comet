@@ -13,7 +13,7 @@ use comet_tree::{
 use crate::{
     container::{ContainerContext, ContainerLayout},
     dirty_map::DirtyMap,
-    fragment2::{FragmentTree, FragmentTreeBuilder, NodeLayoutBits},
+    fragment::{FragmentTree, FragmentTreeBuilder, NodeLayoutBits},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,

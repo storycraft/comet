@@ -2,7 +2,7 @@
 
 use core::cmp::Ordering;
 
-use comet_layout::fragment2::{BoxFragmentKey, FragmentRef, InlineLayout};
+use comet_layout::fragment::{BoxFragmentKey, FragmentRef, InlineLayout};
 use comet_tree::node::Text;
 use kurbo::Point;
 use parley::Affinity::{Downstream, Upstream};

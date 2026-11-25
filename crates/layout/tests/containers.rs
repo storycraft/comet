@@ -6,7 +6,7 @@ use std::sync::{
 use comet_layout::{
     container::{ContainerContext, ContainerLayout},
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment2::{
+    fragment::{
         BoxFragmentKey, ChildLayoutType, FragmentTree, FragmentTreeBuilder, NodeLayoutBits,
     },
     input::{
@@ -147,7 +147,7 @@ impl Fixture {
         })
     }
 
-    fn geometry(&self, key: BoxFragmentKey) -> comet_layout::fragment2::FragmentGeometry {
+    fn geometry(&self, key: BoxFragmentKey) -> comet_layout::fragment::FragmentGeometry {
         self.fragments.boxes[key].layout.geometry
     }
 }

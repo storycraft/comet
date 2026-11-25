@@ -17,7 +17,7 @@ use taffy::style::CoreStyle;
 use super::{Engine, PAINT_CHANGED, Scratch, taffy::node_id};
 use crate::{
     dirty_map::DirtyMap,
-    fragment2::{
+    fragment::{
         BoxFragment, BoxFragmentKey, BoxFragmentLink, BoxFragmentType, ChildLayoutType,
         FragmentGeometry, InlineItem, InlineItemKind, InlineLink,
         inline::{collect::InlineBuildContext, input::InlinePrelayout},

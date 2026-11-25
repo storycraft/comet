@@ -8,7 +8,7 @@ use accesskit::{NodeId, TreeId, TreeInfo, TreeUpdate};
 use comet_accesskit::{AxKey, AxTree, ax_key, builder::AxTreeBuilder, node_id};
 use comet_layout::{
     dirty_map::DirtyMap,
-    fragment2::{BoxFragmentKey, FragmentRef, FragmentTree, builder::FragmentTreeBuilder},
+    fragment::{BoxFragmentKey, FragmentRef, FragmentTree, builder::FragmentTreeBuilder},
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},

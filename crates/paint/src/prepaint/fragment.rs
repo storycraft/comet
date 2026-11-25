@@ -14,7 +14,7 @@
 //! nothing.
 
 use comet_layout::{
-    fragment2::{
+    fragment::{
         BoxFragment, BoxFragmentKey, BoxFragmentType, FragmentRef, FragmentTree, InlineItem,
         InlineLayout,
     },

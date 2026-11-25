@@ -6,7 +6,7 @@ use anyrender::{AntiAliasing, ImageRenderer, PaintScene};
 use anyrender_vello_cpu::VelloCpuImageRenderer;
 use comet_layout::{
     dirty_map::DirtyMap,
-    fragment2::{FragmentTree, FragmentTreeBuilder},
+    fragment::{FragmentTree, FragmentTreeBuilder},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,

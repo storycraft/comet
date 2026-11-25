@@ -11,7 +11,7 @@
 //! z index other than auto starts a child layer it owns. So does an inline
 //! element setting one of them other than a transform, as inline elements
 //! are not transformed: its layer is owned by the first of its linked
-//! [inline part](comet_layout::fragment2::BoxFragmentType::InlinePart) boxes,
+//! [inline part](comet_layout::fragment::BoxFragmentType::InlinePart) boxes,
 //! and covers every piece of the element, across lines and runs. A layer
 //! covers its owner and its descendants, except those starting layers of
 //! their own and their descendants.
@@ -27,7 +27,7 @@ pub mod tree;
 
 use std::sync::Arc;
 
-use comet_layout::fragment2::BoxFragmentKey;
+use comet_layout::fragment::BoxFragmentKey;
 use peniko::BlendMode;
 use slotmap::new_key_type;
 
@@ -55,7 +55,7 @@ pub struct PaintLayerItem {
     /// Filter of the layer's contents, built from its owner's
     /// [`Filter`](crate::style::Filter) effects, in the owner's local
     /// coordinates. The filter region is the owner's
-    /// [overflow](comet_layout::fragment2::FragmentGeometry::overflow), joined
+    /// [overflow](comet_layout::fragment::FragmentGeometry::overflow), joined
     /// with those of the other pieces of an inline element, grown by the
     /// expansion of each effect. `None` if the owner sets no filter.
     pub filter: Option<Arc<anyrender::Filter>>,

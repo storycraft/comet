@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyrender::filters::FilterEffect;
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment2::{BoxFragmentKey, FragmentGeometry, FragmentRef, FragmentTree},
+    fragment::{BoxFragmentKey, FragmentGeometry, FragmentRef, FragmentTree},
     input::{LayoutInputKey, tree::LayoutInputTree},
     style::geometry::AutoValue,
 };

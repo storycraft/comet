@@ -20,7 +20,7 @@ use super::{
     input::{InlinePrelayout, InputItem},
 };
 use crate::{
-    fragment2::{BoxFragmentType, NodeLayoutBits, builder::classify},
+    fragment::{BoxFragmentType, NodeLayoutBits, builder::classify},
     input::{LayoutInputKey, SpanStyle, tree::LayoutInputTree},
     style::LayoutConstraint,
     taffy::style::{self, Style},

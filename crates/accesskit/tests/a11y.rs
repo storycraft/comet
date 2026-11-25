@@ -2,7 +2,7 @@ use accesskit::{NodeId, Role as AxRole};
 use comet_accesskit::{AxKey, AxNodeKind, AxTree, AxTreeBuilder, ax_key, node_id, style::Role};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment2::{BoxFragmentKey, FragmentTree, FragmentTreeBuilder},
+    fragment::{BoxFragmentKey, FragmentTree, FragmentTreeBuilder},
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},

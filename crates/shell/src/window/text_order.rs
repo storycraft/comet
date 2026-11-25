@@ -1,6 +1,6 @@
 //! The selected text of each inline layout, in tree order.
 
-use comet_layout::fragment2::{BoxFragmentKey, BoxFragmentType, inline::inline_box_source};
+use comet_layout::fragment::{BoxFragmentKey, BoxFragmentType, inline::inline_box_source};
 use parley::{Affinity, InlineBoxKind};
 
 use super::Window;

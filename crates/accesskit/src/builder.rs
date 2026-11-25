@@ -1,6 +1,6 @@
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment2::{BoxFragmentKey, FragmentRef, FragmentTree, InlineItemKind},
+    fragment::{BoxFragmentKey, FragmentRef, FragmentTree, InlineItemKind},
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     style::bx::Overflow,
 };

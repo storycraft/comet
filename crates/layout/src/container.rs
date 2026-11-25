@@ -4,7 +4,7 @@ use comet_tree::{node::NodeKey, style::StyleProp, ui::Props};
 use taffy::LayoutPartialTree;
 
 use crate::{
-    fragment2::{
+    fragment::{
         BoxFragmentKey, NodeLayoutBits,
         builder::taffy::{BoxTree, node_id},
     },

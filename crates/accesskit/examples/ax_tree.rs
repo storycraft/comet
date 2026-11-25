@@ -7,7 +7,7 @@ use accesskit_consumer::{NodeRef, Tree, common_filter};
 use comet_accesskit::{AxTree, AxTreeBuilder, node_id, style::Role};
 use comet_layout::{
     dirty_map::DirtyMap,
-    fragment2::{FragmentTree, FragmentTreeBuilder},
+    fragment::{FragmentTree, FragmentTreeBuilder},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,

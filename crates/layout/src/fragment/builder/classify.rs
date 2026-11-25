@@ -4,7 +4,7 @@
 use taffy::style::CoreStyle;
 
 use crate::{
-    fragment2::{
+    fragment::{
         BoxFragmentType, ChildLayoutType,
         inline::collect::{InlineBuildContext, has_block_in_flow},
     },

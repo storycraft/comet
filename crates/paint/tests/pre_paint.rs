@@ -2,7 +2,7 @@ use anyrender::Paint;
 use anyrender::{Scene, recording::RenderCommand};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment2::{BoxFragmentKey, BoxFragmentType, FragmentRef, FragmentTree, FragmentTreeBuilder},
+    fragment::{BoxFragmentKey, BoxFragmentType, FragmentRef, FragmentTree, FragmentTreeBuilder},
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},

@@ -1,14 +1,14 @@
 //! Building an inline formatting context in place, when it is laid out.
 //!
 //! The text of the inline content is collected and shaped into the
-//! [`InlineLayout`](crate::fragment2::InlineLayout) the box already owns,
+//! [`InlineLayout`](crate::fragment::InlineLayout) the box already owns,
 //! keeping its allocations. The boxes inside the inline content are then
 //! reconciled with the children of the box, in flow order: boxes of
 //! remaining items keep their keys and layouts, and the subtrees of new ones
 //! are built right away.
 
 use super::{Engine, taffy::key_of};
-use crate::fragment2::{BoxFragmentKey, ChildLayoutType};
+use crate::fragment::{BoxFragmentKey, ChildLayoutType};
 
 impl Engine<'_> {
     /// Lay out the box `node` establishing an inline formatting context,

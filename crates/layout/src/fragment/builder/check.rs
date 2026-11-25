@@ -1,7 +1,7 @@
 //! Consistency checks of a laid out fragment tree, in debug builds.
 
 use super::classify::ChildKind;
-use crate::fragment2::{
+use crate::fragment::{
     BoxFragmentKey, BoxFragmentLink, BoxFragmentType, FragmentTree,
     inline::collect::InlineBuildContext,
 };

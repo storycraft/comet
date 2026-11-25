@@ -5,7 +5,7 @@ use anyrender::Paint;
 use comet_accesskit::style::Role;
 use comet_layout::{
     dirty_map::DirtyMap,
-    fragment2::{FragmentTree, FragmentTreeBuilder},
+    fragment::{FragmentTree, FragmentTreeBuilder},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,

@@ -96,7 +96,7 @@ pub enum InlineItemKind {
     /// Line box, indexing the lines of the layout.
     Line { line: u32 },
     /// Piece of an inline element on one line, with its
-    /// [inline part](crate::fragment2::BoxFragmentType::InlinePart) box
+    /// [inline part](crate::fragment::BoxFragmentType::InlinePart) box
     /// decorating it, or an atomic inline or out-of-flow box. A piece without
     /// a box has no decoration.
     Box { child: Option<BoxFragmentKey> },
@@ -149,7 +149,7 @@ impl InlineLayout {
 
     /// For a run of inline content split by block level boxes, the block
     /// level box it follows. The inline elements holding it are split by it,
-    /// see [`FragmentTree::is_split_before`](crate::fragment2::FragmentTree::is_split_before).
+    /// see [`FragmentTree::is_split_before`](crate::fragment::FragmentTree::is_split_before).
     pub fn run_start(&self) -> Option<LayoutInputKey> {
         self.run_start
     }

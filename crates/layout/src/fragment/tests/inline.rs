@@ -1,7 +1,7 @@
 use slotmap::SlotMap;
 
 use crate::{
-    fragment2::{
+    fragment::{
         FragmentGeometry, InlineItem, InlineItemKind, InlineLayout, InlineLink, OffsetEntry,
         inline_box_id, inline_box_source,
     },

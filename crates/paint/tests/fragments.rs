@@ -1,7 +1,7 @@
 use anyrender::{Glyph, Paint, Scene, recording::RenderCommand};
 use comet_layout::{
     dirty_map::DirtyMap,
-    fragment2::{BoxFragmentKey, FragmentTree, FragmentTreeBuilder},
+    fragment::{BoxFragmentKey, FragmentTree, FragmentTreeBuilder},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,

@@ -1,7 +1,7 @@
 //! The focused node: moving it, and scrolling it into view.
 
 use comet_layout::{
-    fragment2::{BoxFragmentKey, FragmentRef},
+    fragment::{BoxFragmentKey, FragmentRef},
     style::{bx::Overflow, taffy::Overflow as OverflowKind},
 };
 use comet_paint::style::{ScrollLeft, ScrollTop};
