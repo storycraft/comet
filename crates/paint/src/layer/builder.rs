@@ -452,9 +452,9 @@ impl PaintLayerBuilder {
 }
 
 impl Sources<'_> {
-    /// The props a layout input item paints with: none for text items.
+    /// The props a layout input item paints with.
     fn props(&self, key: LayoutInputKey) -> Option<Props<'_>> {
-        paint_props(self.ui, self.inputs, key).flatten()
+        paint_props(self.ui, self.inputs, key)
     }
 
     /// The box that would own the layer an item starts: its box, or the

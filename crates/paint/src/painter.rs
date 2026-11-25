@@ -660,16 +660,13 @@ impl CometPainter {
 
                     match item.kind {
                         InlineItemKind::Run { line, run } => {
-                            let text_color = self.text_color(sources, item.source);
-
-                            draw_glyph_run(
+                            self.draw_glyph_run(
                                 sources,
                                 owner,
                                 item,
                                 (line as usize, run as usize),
                                 parent,
                                 clip,
-                                text_color,
                                 scene,
                             );
                         }
@@ -740,9 +737,10 @@ impl CometPainter {
     }
 
     /// The text color of an item: the [`TextColor`] of the nearest item
-    /// among it and its ancestors setting one, or the default. Text items
-    /// have no paint data, so the glyph runs of a text item take the color
-    /// of its nearest ancestor setting one. Inherited along the input item
+    /// among it and its ancestors setting one, or the default. A text item
+    /// paints no box, but its own color still applies to its glyph runs,
+    /// otherwise they take the color of its nearest ancestor setting one.
+    /// Inherited along the input item
     /// tree, not the fragment tree, so a block inside an inline span inherits
     /// from the span.
     ///
@@ -767,7 +765,6 @@ impl CometPainter {
                 self.items.push(key);
 
                 let own = paint_props(sources.ui, sources.inputs, key)
-                    .flatten()
                     .and_then(|props| props.get_cloned());
 
                 if let Some(TextColor(color)) = own {
@@ -783,6 +780,89 @@ impl CometPainter {
         }
 
         &self.text_colors[key]
+    }
+
+    /// Paint the glyph run `item` of the inline layout of `owner`, the run
+    /// `run` of its line `line`, in the coordinates of the contents of `owner`,
+    /// which `parent` maps to the scene.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_glyph_run(
+        &mut self,
+        sources: Sources<'_>,
+        owner: BoxFragmentKey,
+        item: &InlineItem,
+        (line, run): (usize, usize),
+        parent: Transforms,
+        clip: Option<Rect>,
+        scene: &mut impl PaintScene,
+    ) {
+        let Some(inline) = sources.tree.inline_layout(owner) else {
+            return;
+        };
+        let Some(line) = inline.layout.get(line) else {
+            return;
+        };
+        let Some(PositionedLayoutItem::GlyphRun(glyph_run)) = line.items().nth(run) else {
+            return;
+        };
+
+        let font_run = glyph_run.run();
+        let geometry = &item.geometry;
+        let rect = local_rect(geometry) + Vec2::new(geometry.location.x, geometry.location.y);
+
+        // Glyph ink can extend past the run's line box, such as accents above a
+        // tight line height or italic overhangs. One em on each side bounds it.
+        let overhang = font_run.font_size() as f64;
+
+        if !sources.visible(parent.transform, rect.inflate(overhang, overhang), clip) {
+            return;
+        }
+
+        // The brush of the run's style is the text item it was shaped from.
+        // Runs without one belong to the owner.
+        let Some(key) = glyph_run
+            .style()
+            .brush
+            .or_else(|| sources.tree.get(owner).map(|owner| owner.source))
+        else {
+            return;
+        };
+        let text_color = self.text_color(sources, key);
+
+        // Parley's coordinates wrap the raw `i16` bits Anyrender takes.
+        let normalized_coords: &[i16] =
+            TransparentWrapper::peel_slice(font_run.normalized_coords());
+
+        // Parley's glyphs are positioned within the inline layout, whose origin
+        // sits at the owner's content box.
+        let origin = inline.origin();
+        let (offset_x, offset_y) = (origin.x as f32, origin.y as f32);
+
+        // Glyphs are shaped at their logical size but drawn at their physical
+        // font size, so they are hinted for the display's pixels. Their positions
+        // scale with them, and the display scale is taken out of the transform.
+        let scale_factor = sources.scale_factor;
+        let scale = scale_factor as f32;
+
+        scene.draw_glyphs(
+            font_run.font(),
+            font_run.font_size() * scale,
+            true,
+            normalized_coords,
+            Vec2::ZERO,
+            peniko::StyleRef::Fill(peniko::Fill::NonZero),
+            text_color,
+            1.0,
+            parent.transform * Affine::scale(scale_factor.recip()),
+            None,
+            glyph_run.positioned_glyphs().map(|glyph| anyrender::Glyph {
+                id: glyph.id,
+                x: (offset_x + glyph.x) * scale,
+                y: (offset_y + glyph.y) * scale,
+            }),
+            // TODO:: add aa control
+            AntiAliasing::Enabled,
+        );
     }
 }
 
@@ -975,8 +1055,7 @@ fn draw_box(
     transform: Affine,
     scene: &mut impl PaintScene,
 ) {
-    // Text items have no paint data, so the box of a text root paints none.
-    let Some(props) = paint_props(sources.ui, sources.inputs, fragment.source).flatten() else {
+    let Some(props) = paint_props(sources.ui, sources.inputs, fragment.source) else {
         return;
     };
     let radii = paint_data.map_or(RoundedRectRadii::from(0.0), |data| {
@@ -1052,75 +1131,4 @@ fn outline_path(rect: Rect, radii: RoundedRectRadii, offset: f64, width: f64) ->
         grow(radii.bottom_right),
         grow(radii.bottom_left),
     ))
-}
-
-/// Paint the glyph run `item` of the inline layout of `owner`, the run
-/// `run` of its line `line`, in the coordinates of the contents of `owner`,
-/// which `parent` maps to the scene.
-#[allow(clippy::too_many_arguments)]
-fn draw_glyph_run(
-    sources: Sources<'_>,
-    owner: BoxFragmentKey,
-    item: &InlineItem,
-    (line, run): (usize, usize),
-    parent: Transforms,
-    clip: Option<Rect>,
-    text_color: &anyrender::Paint,
-    scene: &mut impl PaintScene,
-) {
-    let Some(inline) = sources.tree.inline_layout(owner) else {
-        return;
-    };
-    let Some(line) = inline.layout.get(line) else {
-        return;
-    };
-    let Some(PositionedLayoutItem::GlyphRun(glyph_run)) = line.items().nth(run) else {
-        return;
-    };
-
-    let font_run = glyph_run.run();
-    let geometry = &item.geometry;
-    let rect = local_rect(geometry) + Vec2::new(geometry.location.x, geometry.location.y);
-
-    // Glyph ink can extend past the run's line box, such as accents above a
-    // tight line height or italic overhangs. One em on each side bounds it.
-    let overhang = font_run.font_size() as f64;
-
-    if !sources.visible(parent.transform, rect.inflate(overhang, overhang), clip) {
-        return;
-    }
-
-    // Parley's coordinates wrap the raw `i16` bits Anyrender takes.
-    let normalized_coords: &[i16] = TransparentWrapper::peel_slice(font_run.normalized_coords());
-
-    // Parley's glyphs are positioned within the inline layout, whose origin
-    // sits at the owner's content box.
-    let origin = inline.origin();
-    let (offset_x, offset_y) = (origin.x as f32, origin.y as f32);
-
-    // Glyphs are shaped at their logical size but drawn at their physical
-    // font size, so they are hinted for the display's pixels. Their positions
-    // scale with them, and the display scale is taken out of the transform.
-    let scale_factor = sources.scale_factor;
-    let scale = scale_factor as f32;
-
-    scene.draw_glyphs(
-        font_run.font(),
-        font_run.font_size() * scale,
-        true,
-        normalized_coords,
-        Vec2::ZERO,
-        peniko::StyleRef::Fill(peniko::Fill::NonZero),
-        text_color,
-        1.0,
-        parent.transform * Affine::scale(scale_factor.recip()),
-        None,
-        glyph_run.positioned_glyphs().map(|glyph| anyrender::Glyph {
-            id: glyph.id,
-            x: (offset_x + glyph.x) * scale,
-            y: (offset_y + glyph.y) * scale,
-        }),
-        // TODO:: add aa control
-        AntiAliasing::Enabled,
-    );
 }

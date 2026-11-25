@@ -171,7 +171,7 @@ impl PrepaintTreeBuilder {
 
             // Props alone decide it, and resolving an item reads them again.
             let props = paint_props(ui, inputs, key)?;
-            if props.is_some_and(depends_viewport) {
+            if depends_viewport(props) {
                 tree.viewport_dependents.insert(key, ());
             } else {
                 tree.viewport_dependents.remove(key);
@@ -228,7 +228,7 @@ impl Sources<'_> {
         let fragment = self.fragments.get(key)?;
         let props = paint_props(self.ui, self.inputs, fragment.source)?;
         // Transforms only apply to principal boxes.
-        let box_props = props.filter(|_| BoxRole::of(fragment).is_principal());
+        let box_props = BoxRole::of(fragment).is_principal().then_some(props);
 
         let TransformOrigin(origin) = box_props.map(Props::get_or_default).unwrap_or_default();
         let Transform(own_transform) = box_props.map(Props::get_or_default).unwrap_or_default();
@@ -270,16 +270,12 @@ impl Sources<'_> {
     /// Corner radii of a box's border box, from its item's `props`, resolved
     /// against the box's size, all four corners rounded. `None` for boxes
     /// painting nothing, text items and items setting no radius.
-    fn border_radius(
-        &self,
-        fragment: &BoxFragment,
-        props: Option<Props<'_>>,
-    ) -> Option<RoundedRectRadii> {
+    fn border_radius(&self, fragment: &BoxFragment, props: Props<'_>) -> Option<RoundedRectRadii> {
         if !BoxRole::of(fragment).decorates() {
             return None;
         }
 
-        let BorderRadius(radius) = props?.get_cloned()?;
+        let BorderRadius(radius) = props.get_cloned()?;
         let mut units = self.units.clone();
         units.font_size = self.inputs.items[fragment.source].text_style.span.font_size as f64;
 
@@ -292,18 +288,10 @@ impl Sources<'_> {
         ))
     }
 
-    /// Resolve the data of one item from the UI. Text items have no paint
-    /// data: they clip nothing, draw no outline and do not scroll.
+    /// Resolve the data of one item from the UI.
     fn resolve_item(&self, key: LayoutInputKey) -> Option<LayoutInputData> {
         let item = &self.inputs.items[key];
-        let Some(props) = paint_props(self.ui, self.inputs, key)? else {
-            return Some(LayoutInputData {
-                clip: (false, false),
-                outline_width: 0.0,
-                outline_offset: 0.0,
-                scroll: Vec2::ZERO,
-            });
-        };
+        let props = paint_props(self.ui, self.inputs, key)?;
         let Overflow(overflow) = props.get_or_default();
 
         let mut units = self.units.clone();

@@ -505,9 +505,11 @@ fn text_color_is_inherited_through_the_ui() {
     let block = ui.create(Node::Box, (fixed(10.0, 10.0),));
     ui.append(span, block);
     text(&mut ui, block, "still red");
-    // Text nodes have no paint data: a color of their own is ignored.
-    let ignored = text(&mut ui, span, "still red");
-    ui.set_props(ignored, (TextColor(Paint::Solid(GREEN)),));
+    // A text node's own color applies to its glyph runs, but not to its
+    // siblings.
+    let own = text(&mut ui, span, "blue ");
+    ui.set_props(own, (TextColor(Paint::Solid(BLUE)),));
+    text(&mut ui, span, "red again ");
     let green = ui.create(
         Node::Box,
         (bx::DisplayOuter::Inline, TextColor(Paint::Solid(GREEN))),
@@ -522,8 +524,9 @@ fn text_color_is_inherited_through_the_ui() {
         f.fragments.boxes.parent(f.box_of(block)),
         Some(root_fragment)
     );
-    // Blue, then red before, inside and after the block, then green.
-    assert_eq!(f.text_colors(&ui), [BLUE, RED, GREEN]);
+    // Blue, then red before, inside and after the block, the text node's
+    // own blue, red again, then green.
+    assert_eq!(f.text_colors(&ui), [BLUE, RED, BLUE, RED, GREEN]);
 }
 
 #[test]
