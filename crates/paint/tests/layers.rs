@@ -486,15 +486,14 @@ fn clips_apply_to_descendants_in_other_layers() {
     let f = Fixture::build(&ui, root);
     let clip = format!("clip {:?}", Rect::new(0.0, 0.0, 50.0, 20.0));
 
-    // The raised layer paints after the flow content, inside the clip of its
-    // ancestor pushed again around it. Its group nests in that clip.
+    // The clipper hides its overflow, so it starts a layer: the raised layer
+    // is its child, painting after the flow content inside its clip. Its
+    // group nests in that clip.
     assert_eq!(
         commands(&f.draw(&ui)),
         [
-            clip.clone(),
-            fill(BLUE),
-            "pop".into(),
             clip,
+            fill(BLUE),
             "layer 0.5".into(),
             fill(RED),
             "pop".into(),

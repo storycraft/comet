@@ -746,10 +746,12 @@ fn clips_round_with_the_border_radius_on_both_axes() {
         })
         .collect();
 
+    // The rounded box hides its overflow, so it starts a layer, painting
+    // after the column in the root layer's contents.
     let rounded_area = Rect::new(0.0, 0.0, 40.0, 20.0).to_rounded_rect(5.0).area();
     assert_eq!(areas.len(), 2);
-    assert!((areas[0] - rounded_area).abs() < 0.1, "{areas:?}");
-    assert_eq!(areas[1], 40.0 * 400.0);
+    assert_eq!(areas[0], 40.0 * 400.0);
+    assert!((areas[1] - rounded_area).abs() < 0.1, "{areas:?}");
 }
 
 #[test]
@@ -1860,16 +1862,14 @@ fn child_layers_scroll_with_their_container() {
     let mut f = Fixture::default();
     f.build(&ui, root);
 
-    // The layer paints after the contents, inside the container's clip,
-    // pushed again for it, and scrolled.
+    // The container starts a layer, holding the row's layer as a child: it
+    // paints after the contents, inside the container's clip, and scrolled.
     assert_eq!(
         commands(&f.draw(&ui)),
         [
             format!("fill {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
             format!("clip {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
             format!("fill {:?}", Rect::new(7.0, -3.0, 47.0, 17.0)),
-            "pop".into(),
-            format!("clip {:?}", Rect::new(5.0, 5.0, 55.0, 35.0)),
             format!("fill {:?}", Rect::new(7.0, 17.0, 47.0, 37.0)),
             "pop".into(),
         ]

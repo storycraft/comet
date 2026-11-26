@@ -579,3 +579,31 @@ fn hints_are_symmetric() {
     // Setting and removing a transform both change layers.
     assert_eq!(b.hint(None), PropHint::PRE_PAINT | PropHint::LAYER);
 }
+
+#[test]
+fn overflow_changes_layers_only_when_scrolling_starts_or_stops() {
+    use comet_layout::style::{bx::Overflow, geometry::Point, taffy};
+    use comet_reactivity::ReactiveProp;
+
+    let overflow = |x, y| Overflow(Point::new(x, y));
+    let visible = overflow(taffy::Overflow::Visible, taffy::Overflow::Visible);
+    let clip = overflow(taffy::Overflow::Clip, taffy::Overflow::Visible);
+    let scroll = overflow(taffy::Overflow::Visible, taffy::Overflow::Scroll);
+    let hidden = overflow(taffy::Overflow::Hidden, taffy::Overflow::Hidden);
+
+    let base = PropHint::BOX_LAYOUT | PropHint::PRE_PAINT;
+    let all = [visible, clip, scroll, hidden];
+    for a in &all {
+        for b in &all {
+            assert_eq!(a.hint(Some(b)), b.hint(Some(a)));
+        }
+    }
+
+    assert_eq!(visible.hint(Some(&clip)), base);
+    assert_eq!(scroll.hint(Some(&hidden)), base);
+    assert_eq!(clip.hint(Some(&scroll)), base | PropHint::LAYER);
+    assert_eq!(visible.hint(Some(&hidden)), base | PropHint::LAYER);
+    // A node without the prop is visible.
+    assert_eq!(clip.hint(None), base);
+    assert_eq!(scroll.hint(None), base | PropHint::LAYER);
+}
