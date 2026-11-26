@@ -18,7 +18,10 @@ use comet_layout::{
         geometry::{Rect, Size, StyleUnit},
     },
 };
-use comet_paint::prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree};
+use comet_paint::{
+    layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
+    prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
+};
 use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,
@@ -35,6 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut dirty = DirtyMap::new();
     let mut fragments = FragmentTree::new();
     let mut prepaint = PrepaintTree::new();
+    let mut layers = PaintLayerTree::new();
     let mut tree = AxTree::new();
 
     let input_root = LayoutInputTreeBuilder::new()
@@ -68,9 +72,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             false,
         )
         .ok_or("could not resolve the pre-paint tree")?;
+    PaintLayerBuilder::new()
+        .build(&ui, &inputs, &dirty, &fragments, &mut layers, input_root)
+        .ok_or("could not build the paint layers")?;
     let root_key = AxTreeBuilder::new()
         .build(
-            &ui, &inputs, &dirty, &fragments, &prepaint, &mut tree, input_root,
+            &ui, &inputs, &dirty, &fragments, &prepaint, &layers, &mut tree, input_root,
         )
         .ok_or("could not build the accessibility tree")?;
 

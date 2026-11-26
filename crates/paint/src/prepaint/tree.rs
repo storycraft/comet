@@ -3,13 +3,13 @@ use std::ops::Index;
 #[cfg(doc)]
 use comet_layout::dirty_map::DirtyFlags;
 use comet_layout::{
-    fragment::{BoxFragment, BoxFragmentKey, FragmentTree},
+    fragment::{BoxFragmentKey, FragmentTree},
     input::LayoutInputKey,
 };
-use kurbo::{Point, Shape, Vec2};
+use kurbo::{Point, Shape};
 use slotmap::{SecondaryMap, SparseSecondaryMap};
 
-use crate::prepaint::{FragmentData, LayoutInputData, fragment::BoxRole};
+use crate::prepaint::{FragmentData, LayoutInputData};
 
 /// Paint data of the box fragments of a fragment tree, such as their
 /// transforms relative to their parents, and of the layout input items they
@@ -58,19 +58,6 @@ impl PrepaintTree {
         self.fragment_mapping.clear();
         self.layout_mapping.clear();
         self.viewport_dependents.clear();
-    }
-
-    /// The scroll offset `fragment` applies to its descendants: the
-    /// [scroll](LayoutInputData::scroll) of its item for
-    /// [principal](BoxRole::Principal) boxes, zero for others and for
-    /// unresolved items.
-    pub fn scroll_offset(&self, fragment: &BoxFragment) -> Vec2 {
-        if !BoxRole::of(fragment).is_principal() {
-            return Vec2::ZERO;
-        }
-
-        self.get(fragment.source)
-            .map_or(Vec2::ZERO, |data| data.scroll)
     }
 
     /// Whether `point`, in the local coordinates of a box fragment, hits the

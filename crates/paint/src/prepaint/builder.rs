@@ -9,7 +9,7 @@ use comet_layout::{
     },
 };
 use comet_tree::ui::{Props, Ui};
-use kurbo::{Affine, Point, RoundedRectRadii, Size, Vec2};
+use kurbo::{Affine, Point, RoundedRectRadii, Size};
 
 use crate::{
     prepaint::{
@@ -18,8 +18,7 @@ use crate::{
         tree::PrepaintTree,
     },
     style::{
-        BorderRadius, OutlineOffset, OutlineWidth, ScrollLeft, ScrollTop, Transform,
-        TransformOrigin,
+        BorderRadius, OutlineOffset, OutlineWidth, Transform, TransformOrigin,
     },
 };
 
@@ -306,26 +305,7 @@ impl Sources<'_> {
         // overflow stops at the same clips.
         let scroll = overflow.x.is_scroll_container() || overflow.y.is_scroll_container();
 
-        // Only scroll containers scroll, through their single box fragment.
-        // Both axes scroll once either does, as both clip.
-        let range = self
-            .fragments
-            .box_fragment(key)
-            .and_then(|fragment| self.fragments.scroll_range(fragment));
-        let scroll_offset = match range {
-            Some(max) if scroll => {
-                let ScrollLeft(left) = props.get_or_default();
-                let ScrollTop(top) = props.get_or_default();
-
-                // `max` first maps NaN to 0, which `min` would map to the
-                // range instead. The range is at least 0.
-                Vec2::new(left.max(0.0).min(max.x), top.max(0.0).min(max.y))
-            }
-            _ => Vec2::ZERO,
-        };
-
         Some(LayoutInputData {
-            scroll: scroll_offset,
             clip: (
                 scroll || overflow.x != OverflowMode::Visible,
                 scroll || overflow.y != OverflowMode::Visible,

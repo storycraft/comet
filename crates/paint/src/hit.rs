@@ -536,11 +536,9 @@ impl Sources<'_> {
 
     /// The scroll offset a box applies to its descendants: a point in its
     /// local coordinates plus the offset is in the coordinates of its
-    /// scrolled contents. Zero for missing boxes.
+    /// scrolled contents. Zero for boxes owning no layer.
     fn scroll(&self, key: BoxFragmentKey) -> Vec2 {
-        self.fragments
-            .get(key)
-            .map_or(Vec2::ZERO, |fragment| self.prepaint.scroll_offset(fragment))
+        self.layers.scroll_offset(key)
     }
 
     /// The location of an inline item in the box it is placed in.

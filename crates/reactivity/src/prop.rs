@@ -152,8 +152,24 @@ reactive_props!(BOX =>
     flex::AlignSelf,
 );
 
-// Affects both the layout and the clip resolved by the pre-paint step.
-reactive_props!(BOX.union(PRE_PAINT) => bx::Overflow);
+// Affects both the layout and the clip resolved by the pre-paint step. A
+// scroll container starts a layer, so only becoming or no longer being one
+// changes layers.
+impl ReactiveProp for bx::Overflow {
+    fn hint(&self, other: Option<&Self>) -> PropHint {
+        // A node without the prop has the default overflow.
+        let other = other.copied().unwrap_or_default();
+        let scrolls = |bx::Overflow(overflow): Self| {
+            overflow.x.is_scroll_container() || overflow.y.is_scroll_container()
+        };
+
+        if scrolls(*self) == scrolls(other) {
+            BOX.union(PRE_PAINT)
+        } else {
+            BOX.union(PRE_PAINT).union(LAYER)
+        }
+    }
+}
 
 // Resolved by the pre-paint step.
 reactive_props!(PRE_PAINT =>
@@ -161,8 +177,6 @@ reactive_props!(PRE_PAINT =>
     paint::BorderRadius,
     paint::OutlineWidth,
     paint::OutlineOffset,
-    paint::ScrollLeft,
-    paint::ScrollTop,
 );
 
 // Read by the fragment builder. Moving a box in or out of flow changes the
@@ -193,8 +207,11 @@ impl ReactiveProp for paint::Transform {
     }
 }
 
-// Resolved by the layer build, which also decides stacking.
+// Resolved by the layer build, which also decides stacking. Scroll offsets
+// are resolved into the layers of scroll containers.
 reactive_props!(LAYER =>
+    paint::ScrollLeft,
+    paint::ScrollTop,
     paint::ZIndex,
     paint::Opacity,
     paint::Filter,

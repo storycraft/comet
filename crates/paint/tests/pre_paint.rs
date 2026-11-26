@@ -167,6 +167,14 @@ impl Fixture {
         self.data(node).clip
     }
 
+    /// The scroll offset a node's box applies to its descendants, from the
+    /// layers built for the whole fragment tree.
+    fn scroll(&self, ui: &Ui, node: NodeKey) -> Vec2 {
+        let (layers, _) = self.layers(ui);
+
+        layers.scroll_offset(self.box_of(node))
+    }
+
     /// The transform of a fragment relative to its parent.
     fn transform(&self, key: BoxFragmentKey) -> Affine {
         self.fragment(key).transform
@@ -1654,7 +1662,7 @@ fn scroll_resolves_only_for_scroll_containers() {
     let mut f = Fixture::default();
     f.build(&ui, root);
 
-    let scrolls = nodes.map(|node| f.data(node).scroll);
+    let scrolls = nodes.map(|node| f.scroll(&ui, node));
     assert_eq!(
         scrolls,
         [
@@ -1665,7 +1673,7 @@ fn scroll_resolves_only_for_scroll_containers() {
             Vec2::ZERO,
         ]
     );
-    assert_eq!(f.data(root).scroll, Vec2::ZERO);
+    assert_eq!(f.scroll(&ui, root), Vec2::ZERO);
 }
 
 #[test]
@@ -1690,7 +1698,7 @@ fn scroll_is_clamped_to_the_overflowing_content() {
     let root_fragment = f.build(&ui, root);
 
     // Nothing overflows horizontally; 10 is within the vertical range.
-    assert_eq!(f.data(scroller).scroll, Vec2::new(0.0, 10.0));
+    assert_eq!(f.scroll(&ui, scroller), Vec2::new(0.0, 10.0));
 
     // The content, 100 high from the padding box top, overflows the 26 high
     // padding box by 74.
@@ -1699,10 +1707,10 @@ fn scroll_is_clamped_to_the_overflowing_content() {
     f.resolve(&ui, root_fragment).unwrap();
     f.clear_flags();
 
-    assert_eq!(f.data(scroller).scroll, Vec2::new(0.0, 74.0));
+    assert_eq!(f.scroll(&ui, scroller), Vec2::new(0.0, 74.0));
 
     // Shrinking the content changes the container's overflow but not its
-    // size, which marks it to resolve the clamped scroll again.
+    // size, which marks its layer to resolve the clamped scroll again.
     ui.set_props(tall, (fixed(40.0, 50.0),));
     f.dirty
         .mark_node(&f.inputs, tall, DirtyFlags::NEED_BOX_LAYOUT);
@@ -1711,12 +1719,12 @@ fn scroll_is_clamped_to_the_overflowing_content() {
         f.dirty
             .entry(f.item(scroller))
             .flags
-            .contains(DirtyFlags::NEED_PRE_PAINT)
+            .contains(DirtyFlags::NEED_LAYER)
     );
     f.resolve(&ui, root_fragment).unwrap();
     f.clear_flags();
 
-    assert_eq!(f.data(scroller).scroll, Vec2::new(0.0, 24.0));
+    assert_eq!(f.scroll(&ui, scroller), Vec2::new(0.0, 24.0));
     f.assert_matches_full_resolve(&ui, root_fragment);
 }
 
@@ -1731,13 +1739,13 @@ fn scroll_changes_resolve_without_layout() {
 
     let mut f = Fixture::default();
     let root_fragment = f.build(&ui, root);
-    assert_eq!(f.data(scroller).scroll, Vec2::ZERO);
+    assert_eq!(f.scroll(&ui, scroller), Vec2::ZERO);
 
     ui.set_props(scroller, (ScrollTop(5.0),));
     f.mark(scroller);
     f.resolve(&ui, root_fragment).unwrap();
 
-    assert_eq!(f.data(scroller).scroll, Vec2::new(0.0, 5.0));
+    assert_eq!(f.scroll(&ui, scroller), Vec2::new(0.0, 5.0));
     f.assert_matches_full_resolve(&ui, root_fragment);
 }
 

@@ -16,6 +16,7 @@ use comet_layout::{
     },
 };
 use comet_paint::{
+    layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
     style::{ScrollTop, Transform},
 };
@@ -35,10 +36,12 @@ struct Harness {
     dirty: DirtyMap,
     fragments: FragmentTree,
     prepaint: PrepaintTree,
+    layers: PaintLayerTree,
     a11y: AxTree,
     input_builder: LayoutInputTreeBuilder,
     fragment_builder: FragmentTreeBuilder,
     prepaint_builder: PrepaintTreeBuilder,
+    layer_builder: PaintLayerBuilder,
     a11y_builder: AxTreeBuilder,
     /// Root item of the last build.
     input_root: Option<LayoutInputKey>,
@@ -61,6 +64,7 @@ impl Harness {
             dirty,
             fragments,
             prepaint,
+            layers,
             a11y,
             ..
         } = self;
@@ -85,8 +89,11 @@ impl Harness {
                 false,
             )
             .expect("pre-paint tree");
+        self.layer_builder
+            .build(ui, inputs, dirty, fragments, layers, input_root)
+            .expect("paint layers");
         self.a11y_builder
-            .build(ui, inputs, dirty, fragments, prepaint, a11y, input_root)
+            .build(ui, inputs, dirty, fragments, prepaint, layers, a11y, input_root)
             .expect("accessibility tree");
         dirty.clear(inputs, input_root);
         self.input_root = Some(input_root);
@@ -158,6 +165,7 @@ impl Harness {
                 &DirtyMap::new(),
                 &self.fragments,
                 &self.prepaint,
+                &self.layers,
                 &mut fresh,
                 self.input_root.unwrap(),
             )
@@ -646,7 +654,7 @@ fn scrolling_updates_the_nodes_in_the_scrolled_space() {
     h.build(root);
 
     h.ui.set_props(scroller, (ScrollTop(20.0),));
-    h.mark(scroller, DirtyFlags::NEED_PRE_PAINT);
+    h.mark(scroller, DirtyFlags::NEED_LAYER);
     let update = h.build(root);
 
     // The container, its rows, and the text in its flow with its runs, which

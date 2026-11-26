@@ -4,7 +4,7 @@ use comet_layout::{
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     style::bx::Overflow,
 };
-use comet_paint::prepaint::tree::PrepaintTree;
+use comet_paint::{layer::tree::PaintLayerTree, prepaint::tree::PrepaintTree};
 use comet_tree::ui::{Props, Ui};
 use kurbo::{Affine, Vec2};
 use parley::PositionedLayoutItem;
@@ -52,6 +52,7 @@ struct Sources<'a> {
     inputs: &'a LayoutInputTree,
     fragments: &'a FragmentTree,
     prepaint: &'a PrepaintTree,
+    layers: &'a PaintLayerTree,
 }
 
 impl AxTreeBuilder {
@@ -110,8 +111,8 @@ impl AxTreeBuilder {
     /// first build or after a new root, the tree is cleared and every node is
     /// resolved, so the next update sends the whole tree.
     ///
-    /// Build after resolving `prepaint` for `fragments`, and before clearing
-    /// `dirty`. Returns the root node, the node of `root`, or `None` if
+    /// Build after resolving `prepaint` and building `layers` for
+    /// `fragments`, and before clearing `dirty`. Returns the root node, the node of `root`, or `None` if
     /// `root` has no box fragment, or if an item
     /// no longer matches the UI or a fragment has no pre-paint data. Nodes
     /// resolved before the failure stay in `tree`, without their flags
@@ -125,6 +126,7 @@ impl AxTreeBuilder {
         dirty: &DirtyMap,
         fragments: &FragmentTree,
         prepaint: &PrepaintTree,
+        layers: &PaintLayerTree,
         tree: &mut AxTree,
         root: LayoutInputKey,
     ) -> Option<AxKey> {
@@ -134,6 +136,7 @@ impl AxTreeBuilder {
             inputs,
             fragments,
             prepaint,
+            layers,
         };
         let Self {
             pending,
@@ -339,7 +342,7 @@ impl Sources<'_> {
     }
 
     /// Set the clip and scroll of the node of `item`, generating the box
-    /// `own`, from its pre-paint data and `props`. Scroll containers,
+    /// `own`, from its pre-paint data, the layer `own` starts and `props`. Scroll containers,
     /// scrolling or hiding their overflow on an axis, get their scroll
     /// offset and range on both axes.
     fn set_scroll(
@@ -360,10 +363,11 @@ impl Sources<'_> {
         let Overflow(overflow) = props.get_or_default();
         if overflow.x.is_scroll_container() || overflow.y.is_scroll_container() {
             let range = self.fragments.scroll_range(own)?;
-            node.set_scroll_x(data.scroll.x);
+            let scroll = self.layers.scroll_offset(own);
+            node.set_scroll_x(scroll.x);
             node.set_scroll_x_min(0.0);
             node.set_scroll_x_max(range.x);
-            node.set_scroll_y(data.scroll.y);
+            node.set_scroll_y(scroll.y);
             node.set_scroll_y_min(0.0);
             node.set_scroll_y_max(range.y);
         }
@@ -487,11 +491,10 @@ impl Sources<'_> {
         Some(transform)
     }
 
-    /// The scroll offset a box applies to its descendants.
+    /// The scroll offset a box applies to its descendants, from the layer
+    /// it starts.
     fn scroll(&self, key: BoxFragmentKey) -> Vec2 {
-        self.fragments
-            .get(key)
-            .map_or(Vec2::ZERO, |fragment| self.prepaint.scroll_offset(fragment))
+        self.layers.scroll_offset(key)
     }
 
     /// The line holding a glyph run: the box owning its inline layout, and

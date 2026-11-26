@@ -76,9 +76,7 @@ impl UiTrees {
     /// The scroll offset the box `key` applies to its contents, from the
     /// last layout.
     pub fn scroll(&self, key: BoxFragmentKey) -> Vec2 {
-        self.fragments
-            .get(key)
-            .map_or(Vec2::ZERO, |fragment| self.prepaint.scroll_offset(fragment))
+        self.layers.scroll_offset(key)
     }
 
     /// How far the box of `node` can scroll, in logical units, from the last
@@ -457,6 +455,7 @@ impl Pipeline {
             &trees.dirty,
             &trees.fragments,
             &trees.prepaint,
+            &trees.layers,
             &mut trees.ax,
             root,
         );

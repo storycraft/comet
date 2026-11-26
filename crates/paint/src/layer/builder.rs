@@ -5,7 +5,7 @@ use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{BoxFragmentKey, FragmentGeometry, FragmentRef, FragmentTree},
     input::{LayoutInputKey, tree::LayoutInputTree},
-    style::geometry::AutoValue,
+    style::{bx::Overflow, geometry::AutoValue},
 };
 use comet_tree::ui::{Props, Ui};
 use kurbo::Vec2;
@@ -18,7 +18,9 @@ use crate::{
     prepaint::fragment::{
         BoxRole, for_each_paint_child, paint_parent, paint_props, part_of_piece, piece_of_part,
     },
-    style::{BackdropFilter, Filter, MixBlend, Opacity, Transform, ZIndex},
+    style::{
+        BackdropFilter, Filter, MixBlend, Opacity, ScrollLeft, ScrollTop, Transform, ZIndex,
+    },
 };
 
 /// Builds and updates a [`PaintLayerTree`] for a fragment tree, from the
@@ -67,11 +69,13 @@ impl PaintLayerBuilder {
     ///
     /// A principal box starts a layer when its item sets a [`Transform`], an
     /// [`Opacity`], a [`Filter`], a [`BackdropFilter`] or a [`MixBlend`],
-    /// whatever its value, or a [`ZIndex`] other than auto. So does an inline
-    /// element setting one of them other than a [`Transform`], which inline
-    /// elements ignore: its first inline part box owns the layer, covering
-    /// every piece of the element. An auto z index counts as 0. Each layer
-    /// resolves its opacity, filters and blend mode from its owner's item.
+    /// whatever its value, a [`ZIndex`] other than auto, or an [`Overflow`]
+    /// scrolling or hiding its overflow on an axis, making it a scroll
+    /// container. So does an inline element setting one of them other than a
+    /// [`Transform`] or an [`Overflow`], which inline elements ignore: its
+    /// first inline part box owns the layer, covering every piece of the
+    /// element. An auto z index counts as 0. Each layer resolves its opacity,
+    /// filters, blend mode and scroll offset from its owner's item.
     ///
     /// When `tree` already holds the root layer, only the layers affected by
     /// changes marked in `dirty` are updated. Layers whose owner still starts
@@ -343,6 +347,7 @@ impl PaintLayerBuilder {
             filter: None,
             backdrop_filter: None,
             blend_mode: None,
+            scroll: Vec2::ZERO,
             pass: self.pass,
         });
         tree.by_owner.insert(owner, layer);
@@ -471,17 +476,17 @@ impl Sources<'_> {
     /// boxes of inline elements start layers.
     fn stacking(&self, key: BoxFragmentKey) -> Option<i32> {
         let fragment = self.fragments.get(key)?;
-        let transformed = match BoxRole::of(fragment) {
+        let principal = match BoxRole::of(fragment) {
             BoxRole::Principal => true,
             BoxRole::InlinePart => false,
             BoxRole::Anonymous => return None,
         };
 
-        stacking(self.props(fragment.source)?, transformed)
+        stacking(self.props(fragment.source)?, principal)
     }
 
-    /// Resolve the opacity, filters and blend mode of a layer from its
-    /// owner's item.
+    /// Resolve the opacity, filters, blend mode and scroll offset of a layer
+    /// from its owner's item.
     fn resolve(&self, item: &mut PaintLayerItem) {
         let fragment = self.fragments.get(item.owner);
         let props = fragment.and_then(|fragment| self.props(fragment.source));
@@ -503,6 +508,23 @@ impl Sources<'_> {
         item.blend_mode = props
             .and_then(|props| props.get_cloned())
             .map(|MixBlend(mode)| mode);
+
+        // Only principal scroll containers scroll, through their single box
+        // fragment. Both axes scroll once either does, as both clip.
+        let principal = fragment.is_some_and(|fragment| BoxRole::of(fragment).is_principal());
+        let props = props.filter(|&props| principal && scrolls(props));
+
+        item.scroll = match props.zip(self.fragments.scroll_range(item.owner)) {
+            Some((props, max)) => {
+                let ScrollLeft(left) = props.get_or_default();
+                let ScrollTop(top) = props.get_or_default();
+
+                // `max` first maps NaN to 0, which `min` would map to the
+                // range instead. The range is at least 0.
+                Vec2::new(left.max(0.0).min(max.x), top.max(0.0).min(max.y))
+            }
+            _ => Vec2::ZERO,
+        };
     }
 
     /// The `area` of the box `owner`, in its local coordinates, joined with
@@ -554,20 +576,29 @@ impl Sources<'_> {
 
 /// The z index of the layer a fragment with `props` starts, or `None` if it
 /// paints in the layer of its paint parent. Setting a layer style starts a
-/// layer, whatever its value, though a [`Transform`] only for fragments that
-/// are `transformed`. An auto z index counts as 0.
-fn stacking(props: Props<'_>, transformed: bool) -> Option<i32> {
+/// layer, whatever its value, though a [`Transform`] only for `principal`
+/// boxes. So does being a scroll container, for `principal` boxes only. An
+/// auto z index counts as 0.
+fn stacking(props: Props<'_>, principal: bool) -> Option<i32> {
     if let AutoValue::Value(z_index) = props.get_or_default::<ZIndex>().0 {
         return Some(z_index);
     }
 
-    let starts = transformed && props.get::<Transform>().is_some()
+    let starts = principal && (props.get::<Transform>().is_some() || scrolls(props))
         || props.get::<Opacity>().is_some()
         || props.get::<Filter>().is_some()
         || props.get::<BackdropFilter>().is_some()
         || props.get::<MixBlend>().is_some();
 
     starts.then_some(0)
+}
+
+/// Whether an item with `props` is a scroll container, scrolling or hiding
+/// its overflow on an axis.
+fn scrolls(props: Props<'_>) -> bool {
+    let Overflow(overflow) = props.get_or_default();
+
+    overflow.x.is_scroll_container() || overflow.y.is_scroll_container()
 }
 
 /// A filter applying `effects` in order to content within `bounds`, its

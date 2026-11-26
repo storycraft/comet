@@ -20,7 +20,7 @@ pub mod tree;
 #[cfg(doc)]
 use comet_layout::dirty_map::DirtyFlags;
 use comet_layout::fragment::{BoxFragment, BoxFragmentType};
-use kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii, Vec2};
+use kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii};
 
 /// Paint data of a layout input item, shared by all fragments it generates.
 #[derive(Debug, Clone, PartialEq)]
@@ -42,20 +42,6 @@ pub struct LayoutInputData {
     /// size. Negative offsets draw the outline inside the box. Percentages
     /// resolve to 0, and so does an item setting none.
     pub outline_offset: f64,
-
-    /// Scroll offset the item's box fragment applies to its descendants,
-    /// from its [`ScrollLeft`](crate::style::ScrollLeft) and
-    /// [`ScrollTop`](crate::style::ScrollTop), clamped to the range its
-    /// content overflows the padding box by, towards the right and bottom.
-    /// Zero unless the item is a scroll container, scrolling or hiding its
-    /// overflow on an axis, with a box fragment.
-    ///
-    /// A scroll container never splits, so it generates a single box
-    /// fragment the offset applies to. The range is its
-    /// [scroll range](comet_layout::fragment::FragmentTree::scroll_range),
-    /// which follows its overflow. The fragment builder marks
-    /// fragments whose overflow changed, so the offset is resolved again.
-    pub scroll: Vec2,
 }
 
 /// Paint data of a box fragment.

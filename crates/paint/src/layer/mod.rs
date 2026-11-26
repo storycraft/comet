@@ -8,7 +8,8 @@
 //!
 //! Layers are owned by box fragments. A principal box whose item sets a
 //! transform, an opacity, a filter, a backdrop filter, a mix blend mode or a
-//! z index other than auto starts a child layer it owns. So does an inline
+//! z index other than auto, or is a scroll container, scrolling or hiding its
+//! overflow on an axis, starts a child layer it owns. So does an inline
 //! element setting one of them other than a transform, as inline elements
 //! are not transformed: its layer is owned by the first of its linked
 //! [inline part](comet_layout::fragment::BoxFragmentType::InlinePart) boxes,
@@ -21,6 +22,9 @@
 //! layers. It paints with the transform of its owner, looked up in the
 //! [`PrepaintTree`](crate::prepaint::tree::PrepaintTree), and the opacity,
 //! filters and blend mode resolved into the layer from its owner's item.
+//! Its descendants, child layers included, paint moved against the scroll
+//! offset of its owner, also resolved into the layer: only layer owners
+//! scroll.
 
 pub mod builder;
 pub mod tree;
@@ -28,6 +32,7 @@ pub mod tree;
 use std::sync::Arc;
 
 use comet_layout::fragment::BoxFragmentKey;
+use kurbo::Vec2;
 use peniko::BlendMode;
 use slotmap::new_key_type;
 
@@ -72,6 +77,22 @@ pub struct PaintLayerItem {
     /// it, from its owner's [`MixBlend`](crate::style::MixBlend). `None` if
     /// the owner sets none.
     pub blend_mode: Option<BlendMode>,
+
+    /// Scroll offset the owner applies to its descendants, child layers
+    /// included, from its [`ScrollLeft`](crate::style::ScrollLeft) and
+    /// [`ScrollTop`](crate::style::ScrollTop), clamped to the range its
+    /// content overflows the padding box by, towards the right and bottom.
+    /// Zero unless the owner is a scroll container, scrolling or hiding its
+    /// overflow on an axis.
+    ///
+    /// A scroll container never splits, so it generates a single box
+    /// fragment the offset applies to. The range is its
+    /// [scroll range](comet_layout::fragment::FragmentTree::scroll_range),
+    /// which follows its overflow. The fragment builder marks the items
+    /// whose fragments changed with
+    /// [`DirtyFlags::NEED_LAYER`](comet_layout::dirty_map::DirtyFlags::NEED_LAYER),
+    /// so the offset is resolved again.
+    pub scroll: Vec2,
 
     /// The last build or update that reached the layer, to find the layers
     /// it left behind.

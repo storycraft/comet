@@ -1,5 +1,6 @@
 use comet_layout::fragment::{BoxFragmentKey, FragmentRef, FragmentTree};
 use comet_slotmap_tree::SlotTree;
+use kurbo::Vec2;
 use slotmap::SecondaryMap;
 
 use crate::{
@@ -65,6 +66,15 @@ impl PaintLayerTree {
         }
 
         None
+    }
+
+    /// The scroll offset a box applies to its descendants: the
+    /// [scroll](PaintLayerItem::scroll) of the layer it owns, zero if it owns
+    /// none.
+    pub fn scroll_offset(&self, owner: BoxFragmentKey) -> Vec2 {
+        self.layer_of(owner)
+            .and_then(|layer| self.layers.get(layer))
+            .map_or(Vec2::ZERO, |item| item.scroll)
     }
 
     pub fn clear(&mut self) {

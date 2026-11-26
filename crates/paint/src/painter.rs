@@ -116,18 +116,23 @@ impl Transforms {
         }
     }
 
-    /// The transforms of the contents of `fragment`, mapping to the scene
-    /// with `self`: scrolled by its scroll offset.
-    fn contents(self, prepaint: &PrepaintTree, fragment: &BoxFragment) -> Self {
-        self.scrolled(prepaint.scroll_offset(fragment))
+    /// The transforms of the contents of the box `key`, mapping to the scene
+    /// with `self`: scrolled by the scroll offset of the layer it owns.
+    fn contents(self, layers: &PaintLayerTree, key: BoxFragmentKey) -> Self {
+        self.scrolled(layers.scroll_offset(key))
     }
 
     /// The transforms mapping the local coordinates of `key` to the scene,
     /// multiplied from the root down with the scroll offsets of its
     /// ancestors, or `None` if a box on the way is not resolved.
-    fn of(tree: &FragmentTree, prepaint: &PrepaintTree, key: BoxFragmentKey) -> Option<Self> {
+    fn of(
+        tree: &FragmentTree,
+        prepaint: &PrepaintTree,
+        layers: &PaintLayerTree,
+        key: BoxFragmentKey,
+    ) -> Option<Self> {
         let parent = match tree.boxes.parent(key) {
-            Some(parent) => Self::of(tree, prepaint, parent)?.contents(prepaint, tree.get(parent)?),
+            Some(parent) => Self::of(tree, prepaint, layers, parent)?.contents(layers, parent),
             None => Self::IDENTITY,
         };
 
@@ -184,12 +189,11 @@ impl Sources<'_> {
         }
 
         let parent = self.contents_of(bases, self.tree.boxes.parent(key)?)?;
-        let fragment = self.tree.get(key)?;
 
         Some(
             parent
                 .then(self.prepaint.fragment(key)?)
-                .contents(self.prepaint, fragment),
+                .contents(self.layers, key),
         )
     }
 
@@ -256,9 +260,9 @@ impl CometPainter {
     /// border box, rounded with its border radius, including those painting
     /// in other layers. Clips of the root's ancestors do not apply.
     ///
-    /// A scroll container moves its descendants, including those painting
-    /// in other layers, against its clamped
-    /// [scroll offset](crate::prepaint::LayoutInputData::scroll). The
+    /// A scroll container starts a layer, moving its descendants, including
+    /// those painting in other layers, against its clamped
+    /// [scroll offset](crate::layer::PaintLayerItem::scroll). The
     /// container itself, its background, border, outline and clip stay in
     /// place. Scroll offsets of the root's ancestors apply too.
     ///
@@ -297,9 +301,8 @@ impl CometPainter {
         };
         let parent = match tree.boxes.parent(item.owner) {
             // The owner sits in its parent's scrolled contents.
-            Some(parent) => Transforms::of(tree, prepaint, parent)
-                .zip(tree.get(parent))
-                .map(|(transforms, parent)| transforms.contents(prepaint, parent)),
+            Some(parent) => Transforms::of(tree, prepaint, layers, parent)
+                .map(|transforms| transforms.contents(layers, parent)),
             None => Some(Transforms::IDENTITY),
         };
         let Some(parent) = parent else {
@@ -388,7 +391,7 @@ impl CometPainter {
 
             bases
         } else {
-            Bases::one(owner, transforms.contents(sources.prepaint, fragment))
+            Bases::one(owner, transforms.contents(sources.layers, owner))
         };
 
         if let Some(backdrop_filter) = backdrop_filter {
@@ -463,7 +466,7 @@ impl CometPainter {
         let bases = if inline {
             bases
         } else {
-            Bases::one(owner, transforms.contents(sources.prepaint, fragment))
+            Bases::one(owner, transforms.contents(sources.layers, owner))
         };
 
         // The first child layer with a non-negative z index, where painting
@@ -570,7 +573,7 @@ impl CometPainter {
             let clipped;
             (clip, clipped) = push_clip(sources, key, fragment, transforms, clip, scene);
             pushed += usize::from(clipped);
-            transforms = transforms.contents(sources.prepaint, fragment);
+            transforms = transforms.contents(sources.layers, key);
         }
 
         self.draw_layer(sources, child, transforms, clip, scene);
@@ -647,7 +650,7 @@ impl CometPainter {
                         self.pending.push(Visit::PopClip);
                     }
 
-                    let contents = transforms.contents(sources.prepaint, box_fragment);
+                    let contents = transforms.contents(sources.layers, key);
                     self.push_children(sources, fragment, contents, child_clip);
                 }
                 FragmentRef::Inline { owner, index } => {
