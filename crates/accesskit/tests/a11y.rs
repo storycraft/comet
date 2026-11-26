@@ -90,10 +90,21 @@ impl Harness {
             )
             .expect("pre-paint tree");
         self.layer_builder
-            .build(ui, inputs, dirty, fragments, layers, input_root)
+            .build(
+                ui,
+                inputs,
+                dirty,
+                fragments,
+                &constraint.units,
+                layers,
+                input_root,
+                false,
+            )
             .expect("paint layers");
         self.a11y_builder
-            .build(ui, inputs, dirty, fragments, prepaint, layers, a11y, input_root)
+            .build(
+                ui, inputs, dirty, fragments, prepaint, layers, a11y, input_root,
+            )
             .expect("accessibility tree");
         dirty.clear(inputs, input_root);
         self.input_root = Some(input_root);
@@ -270,7 +281,7 @@ fn follows_the_ui_tree() {
     assert_eq!(card_node.role(), AxRole::Group);
     assert_eq!(
         transform_of(card_node),
-        h.prepaint.fragment(card_fragment).unwrap().transform
+        h.layers.transform(&h.fragments, card_fragment).unwrap()
     );
     let size = h.fragments.boxes[card_fragment].layout.geometry.size;
     assert_eq!(
@@ -343,7 +354,7 @@ fn nodes_follow_the_order_of_the_ui() {
     let to_root = core::iter::successors(Some(block_box), |&key| h.fragments.boxes.parent(key))
         .take_while(|&key| key != root_box)
         .fold(Affine::IDENTITY, |transform, key| {
-            h.prepaint.fragment(key).unwrap().transform * transform
+            h.layers.transform(&h.fragments, key).unwrap() * transform
         });
     assert_close(transform_of(h.node(h.key(block))), to_root);
     h.assert_consistent();
@@ -501,7 +512,7 @@ fn paint_changes_update_transforms() {
 
     // The text and its runs are placed in the card, so only the card moves.
     h.ui.set_props(card, (Transform(Affine::translate((20.0, 0.0))),));
-    h.mark(card, DirtyFlags::NEED_PRE_PAINT);
+    h.mark(card, DirtyFlags::NEED_LAYER);
     let update = h.build(root);
 
     assert_eq!(Harness::ids(&update), [node_id(h.key(card))]);

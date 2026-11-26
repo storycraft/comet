@@ -19,9 +19,10 @@
 //!
 //! A layer paints its owner, then its child layers with a negative z index,
 //! then the rest of its fragments in paint order, then its other child
-//! layers. It paints with the transform of its owner, looked up in the
-//! [`PrepaintTree`](crate::prepaint::tree::PrepaintTree), and the opacity,
-//! filters and blend mode resolved into the layer from its owner's item.
+//! layers. It paints with the transform, opacity, filters and blend mode
+//! resolved into the layer from its owner's item. Only layer owners are
+//! transformed: other boxes are only placed at their layout location, see
+//! [`PaintLayerTree::transform`](tree::PaintLayerTree::transform).
 //! Its descendants, child layers included, paint moved against the scroll
 //! offset of its owner, also resolved into the layer: only layer owners
 //! scroll.
@@ -32,7 +33,7 @@ pub mod tree;
 use std::sync::Arc;
 
 use comet_layout::fragment::BoxFragmentKey;
-use kurbo::Vec2;
+use kurbo::{Affine, Vec2};
 use peniko::BlendMode;
 use slotmap::new_key_type;
 
@@ -44,9 +45,25 @@ new_key_type! {
 #[derive(Debug, Clone)]
 pub struct PaintLayerItem {
     /// Box starting the layer: a principal box, or the first inline part box
-    /// of an inline element. Its pre-paint data gives the transform the layer
-    /// paints with.
+    /// of an inline element.
     pub owner: BoxFragmentKey,
+
+    /// The owner's own [`Transform`](crate::style::Transform), applied
+    /// around its [`TransformOrigin`](crate::style::TransformOrigin), in its
+    /// local coordinates, with its border box's top-left corner at the
+    /// origin: `translate(origin) * transform * translate(-origin)`. The
+    /// origin resolves with the owner's font size, against its border box.
+    /// Identity for inline elements, which are not transformed, and owners
+    /// setting none.
+    ///
+    /// The owner is placed at its layout location after it: see
+    /// [`PaintLayerTree::transform`](tree::PaintLayerTree::transform).
+    pub transform: Affine,
+
+    /// Inverse of [`Self::transform`], such as for hit testing. `None` when
+    /// the transform is not invertible, such as when it scales an axis to
+    /// zero: the owner and its contents then cover no area in the scene.
+    pub inverse_transform: Option<Affine>,
 
     /// Z index of the layer among its sibling layers, from its owner's
     /// [`ZIndex`](crate::style::ZIndex). An auto z index counts as 0, and

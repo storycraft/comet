@@ -61,8 +61,7 @@ impl PropHint {
 ///
 /// Implement it for custom props, choosing the flags of the first step of
 /// each kind that reads the prop. Later layout steps follow from it: a laid
-/// out item is pre-painted again, and the pre-paint step marks the layers of
-/// the fragments it changes.
+/// out item is pre-painted again, and its layers resolved again.
 ///
 /// Most props invalidate the same steps whatever their values. Others tell
 /// changes apart from the two values, like [`bx::Position`], which lays out
@@ -173,7 +172,6 @@ impl ReactiveProp for bx::Overflow {
 
 // Resolved by the pre-paint step.
 reactive_props!(PRE_PAINT =>
-    paint::TransformOrigin,
     paint::BorderRadius,
     paint::OutlineWidth,
     paint::OutlineOffset,
@@ -195,21 +193,11 @@ impl ReactiveProp for bx::Position {
     }
 }
 
-// Resolved into the transform by the pre-paint step. A box with the prop
-// starts a layer whatever its value, so only setting it on a box without
-// one, or removing it, changes layers.
-impl ReactiveProp for paint::Transform {
-    fn hint(&self, other: Option<&Self>) -> PropHint {
-        match other {
-            Some(_) => PRE_PAINT,
-            None => PRE_PAINT.union(LAYER),
-        }
-    }
-}
-
-// Resolved by the layer build, which also decides stacking. Scroll offsets
-// are resolved into the layers of scroll containers.
+// Resolved by the layer build, which also decides stacking. Transforms and
+// scroll offsets are resolved into the layers their boxes start.
 reactive_props!(LAYER =>
+    paint::Transform,
+    paint::TransformOrigin,
     paint::ScrollLeft,
     paint::ScrollTop,
     paint::ZIndex,

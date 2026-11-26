@@ -21,7 +21,7 @@ use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
-    style::{BackdropFilter, Fill, Filter, MixBlend, Opacity, Transform, ZIndex},
+    style::{BackdropFilter, Fill, Filter, MixBlend, Opacity, Transform, TransformOrigin, ZIndex},
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
@@ -80,7 +80,7 @@ impl Fixture {
             .build(
                 ui,
                 &inputs,
-                &mut dirty,
+                &dirty,
                 &fragments,
                 &UNITS,
                 &mut prepaint,
@@ -92,7 +92,16 @@ impl Fixture {
         let mut layers = PaintLayerTree::new();
         let mut builder = PaintLayerBuilder::new();
         let root = builder
-            .build(ui, &inputs, &dirty, &fragments, &mut layers, input_root)
+            .build(
+                ui,
+                &inputs,
+                &dirty,
+                &fragments,
+                &UNITS,
+                &mut layers,
+                input_root,
+                false,
+            )
             .unwrap();
         dirty.clear(&inputs, input_root);
 
@@ -121,7 +130,7 @@ impl Fixture {
             .build(
                 ui,
                 &self.inputs,
-                &mut self.dirty,
+                &self.dirty,
                 &self.fragments,
                 &UNITS,
                 &mut self.prepaint,
@@ -137,8 +146,10 @@ impl Fixture {
                 &self.inputs,
                 &self.dirty,
                 &self.fragments,
+                &UNITS,
                 &mut self.layers,
                 input_root,
+                false,
             )
             .unwrap();
         self.dirty.clear(&self.inputs, input_root);
@@ -936,8 +947,10 @@ fn building_again_keeps_layer_keys() {
             &f.inputs,
             &f.dirty,
             &f.fragments,
+            &UNITS,
             &mut f.layers,
             input_root,
+            false,
         )
         .unwrap();
 
@@ -1025,7 +1038,7 @@ fn updates_match_full_builds() {
         .build(
             &ui,
             &f.inputs,
-            &mut f.dirty,
+            &f.dirty,
             &f.fragments,
             &UNITS,
             &mut f.prepaint,
@@ -1041,8 +1054,10 @@ fn updates_match_full_builds() {
             &f.inputs,
             &f.dirty,
             &f.fragments,
+            &UNITS,
             &mut f.layers,
             input_root,
+            false,
         )
         .unwrap();
     f.dirty.clear(&f.inputs, input_root);
@@ -1054,8 +1069,10 @@ fn updates_match_full_builds() {
             &f.inputs,
             &f.dirty,
             &f.fragments,
+            &UNITS,
             &mut full,
             input_root,
+            false,
         )
         .unwrap();
 
@@ -1128,8 +1145,10 @@ fn hit_testers_can_be_reused() {
             &f.inputs,
             &f.dirty,
             &f.fragments,
+            &UNITS,
             &mut f.layers,
             input_root,
+            false,
         )
         .unwrap();
     assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_ref(moved)));
@@ -1220,7 +1239,7 @@ impl Pipeline {
             .build(
                 ui,
                 &self.inputs,
-                &mut self.dirty,
+                &self.dirty,
                 &self.fragments,
                 &UNITS,
                 &mut self.prepaint,
@@ -1236,8 +1255,10 @@ impl Pipeline {
                 &self.inputs,
                 &self.dirty,
                 &self.fragments,
+                &UNITS,
                 &mut self.layers,
                 input_root,
+                false,
             )
             .unwrap();
         self.dirty.clear(&self.inputs, input_root);
@@ -1268,8 +1289,10 @@ impl Pipeline {
                 &self.inputs,
                 &self.dirty,
                 &self.fragments,
+                &UNITS,
                 &mut full,
                 input_root,
+                false,
             )
             .unwrap();
 
@@ -2006,4 +2029,113 @@ fn hit_paths_pass_through_the_pieces_of_inline_elements() {
             "layered: {layered}"
         );
     }
+}
+
+/// Build the layers of `f` again, after the marked changes, with `units`.
+fn rebuild(f: &mut Fixture, ui: &Ui, units: &UnitResolveContext, viewport_changed: bool) {
+    let input_root = f.input_root();
+    f.root = f
+        .builder
+        .build(
+            ui,
+            &f.inputs,
+            &f.dirty,
+            &f.fragments,
+            units,
+            &mut f.layers,
+            input_root,
+            viewport_changed,
+        )
+        .unwrap();
+    f.dirty.clear(&f.inputs, input_root);
+}
+
+#[test]
+fn layers_resolve_transforms_around_their_origin() {
+    let mut ui = Ui::new();
+    let root = ui.create(
+        Node::Box,
+        (bx::Padding(LayoutRect::new_all(StyleUnit::Px(5.0))),),
+    );
+    let scaled = ui.create(
+        Node::Box,
+        (fixed(20.0, 10.0), Transform(Affine::scale(2.0))),
+    );
+    let plain = ui.create(Node::Box, (fixed(20.0, 10.0),));
+    ui.append(root, scaled);
+    ui.append(root, plain);
+
+    let mut f = Fixture::build(&ui, root);
+    let around_centre =
+        Affine::translate((10.0, 5.0)) * Affine::scale(2.0) * Affine::translate((-10.0, -5.0));
+
+    let item = &f.layers.layers[f.layer_of(scaled)];
+    assert_eq!(item.transform, around_centre);
+    assert_eq!(item.inverse_transform, Some(around_centre.inverse()));
+    // Boxes are placed at their location, after their own transform.
+    assert_eq!(
+        f.layers.transform(&f.fragments, f.box_of(scaled)),
+        Some(Affine::translate((5.0, 5.0)) * around_centre)
+    );
+    assert_eq!(
+        f.layers.transform(&f.fragments, f.box_of(plain)),
+        Some(Affine::translate((5.0, 15.0)))
+    );
+    assert_eq!(
+        f.layers.inverse_transform(&f.fragments, f.box_of(plain)),
+        Some(Affine::translate((-5.0, -15.0)))
+    );
+
+    // Changing the transform only needs the layer resolved again.
+    ui.set_props(scaled, (Transform(Affine::translate((1.0, 2.0))),));
+    f.dirty.mark_node(&f.inputs, scaled, DirtyFlags::NEED_LAYER);
+    rebuild(&mut f, &ui, &UNITS, false);
+
+    assert_eq!(
+        f.layers.transform(&f.fragments, f.box_of(scaled)),
+        Some(Affine::translate((6.0, 7.0)))
+    );
+
+    // A collapsing transform has no inverse.
+    ui.set_props(scaled, (Transform(Affine::scale_non_uniform(0.0, 1.0)),));
+    f.dirty.mark_node(&f.inputs, scaled, DirtyFlags::NEED_LAYER);
+    rebuild(&mut f, &ui, &UNITS, false);
+
+    assert_eq!(
+        f.layers.inverse_transform(&f.fragments, f.box_of(scaled)),
+        None
+    );
+}
+
+#[test]
+fn viewport_changes_resolve_viewport_relative_transform_origins() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let rotated = ui.create(
+        Node::Box,
+        (
+            fixed(20.0, 10.0),
+            Transform(Affine::scale(2.0)),
+            TransformOrigin(comet_layout::style::geometry::Point::new(
+                StyleUnit::Vw(0.1),
+                StyleUnit::Px(0.0),
+            )),
+        ),
+    );
+    ui.append(root, rotated);
+
+    let mut f = Fixture::build(&ui, root);
+    let around =
+        |x: f64| Affine::translate((x, 0.0)) * Affine::scale(2.0) * Affine::translate((-x, 0.0));
+    // 10% of the 120 wide viewport.
+    assert_eq!(f.layers.layers[f.layer_of(rotated)].transform, around(12.0));
+
+    let wide = LayoutConstraint::new_root(Size::new(240.0, 400.0), 16.0).units;
+
+    // Unmarked layers keep their data until told the viewport changed.
+    rebuild(&mut f, &ui, &wide, false);
+    assert_eq!(f.layers.layers[f.layer_of(rotated)].transform, around(12.0));
+
+    rebuild(&mut f, &ui, &wide, true);
+    assert_eq!(f.layers.layers[f.layer_of(rotated)].transform, around(24.0));
 }

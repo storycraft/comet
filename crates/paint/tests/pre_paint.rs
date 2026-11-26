@@ -57,6 +57,9 @@ struct Fixture {
     dirty: DirtyMap,
     fragments: FragmentTree,
     prepaint: PrepaintTree,
+    /// Paint layers built from scratch on every resolve, holding the
+    /// transforms.
+    layers: PaintLayerTree,
     resolver: PrepaintTreeBuilder,
     input_builder: LayoutInputTreeBuilder,
     builder: FragmentTreeBuilder,
@@ -110,17 +113,35 @@ impl Fixture {
         root
     }
 
+    /// Resolve the pre-paint tree from `key`, and build the layers of the
+    /// whole fragment tree from scratch.
     fn resolve(&mut self, ui: &Ui, key: BoxFragmentKey) -> Option<()> {
-        self.resolver.build(
+        let resolved = self.resolver.build(
             ui,
             &self.inputs,
-            &mut self.dirty,
+            &self.dirty,
             &self.fragments,
             &UNITS,
             &mut self.prepaint,
             key,
             false,
-        )
+        );
+
+        self.layers.clear();
+        if let Some(input_root) = self.input_root {
+            PaintLayerBuilder::new().build(
+                ui,
+                &self.inputs,
+                &self.dirty,
+                &self.fragments,
+                &UNITS,
+                &mut self.layers,
+                input_root,
+                false,
+            );
+        }
+
+        resolved
     }
 
     /// Mark the item of a node as needing pre-paint.
@@ -177,7 +198,12 @@ impl Fixture {
 
     /// The transform of a fragment relative to its parent.
     fn transform(&self, key: BoxFragmentKey) -> Affine {
-        self.fragment(key).transform
+        self.layers.transform(&self.fragments, key).unwrap()
+    }
+
+    /// The inverse of the transform of a fragment relative to its parent.
+    fn inverse(&self, key: BoxFragmentKey) -> Option<Affine> {
+        self.layers.inverse_transform(&self.fragments, key)
     }
 
     /// Colors of the glyph runs painted, in paint order, with consecutive
@@ -206,8 +232,10 @@ impl Fixture {
                 &self.inputs,
                 &self.dirty,
                 &self.fragments,
+                &UNITS,
                 &mut layers,
                 self.input_root.unwrap(),
+                false,
             )
             .unwrap();
 
@@ -304,9 +332,8 @@ fn fragments_resolve_transforms_relative_to_their_parents() {
     assert_eq!(f.transform(root_fragment), Affine::IDENTITY);
     assert_eq!(f.transform(f.box_of(block)), Affine::translate((5.0, 5.0)));
 
-    let block_fragment = f.fragment(f.box_of(block));
     assert_eq!(
-        block_fragment.inverse_transform,
+        f.inverse(f.box_of(block)),
         Some(Affine::translate((-5.0, -5.0)))
     );
     assert_eq!(f.clip(block), (false, false));
@@ -571,14 +598,14 @@ fn transforms_multiply_around_their_origins() {
     let outer_transform =
         Affine::translate((50.0, 20.0)) * Affine::scale(2.0) * Affine::translate((-50.0, -20.0));
 
-    assert_affine(f.boxed(outer).transform, outer_transform);
+    assert_affine(f.transform(f.box_of(outer)), outer_transform);
     // A translation is the same around any origin. Ancestor transforms are
     // not included.
-    assert_affine(f.boxed(inner).transform, Affine::translate((5.0, 0.0)));
+    assert_affine(f.transform(f.box_of(inner)), Affine::translate((5.0, 0.0)));
 
     // Placed at its location in the outer box, then scaled around its corner.
     assert_affine(
-        f.boxed(corner).transform,
+        f.transform(f.box_of(corner)),
         Affine::translate((0.0, 10.0)) * Affine::scale(3.0),
     );
 
@@ -708,7 +735,7 @@ fn clips_follow_the_transform_of_their_item() {
         .unwrap();
 
     // The bounding box is clipped exactly, under the item's transform.
-    assert_affine(clip.transform, f.boxed(clipper).transform);
+    assert_affine(clip.transform, f.transform(f.box_of(clipper)));
     assert_eq!(clip.clip.bounding_box(), Rect::new(0.0, 0.0, 40.0, 20.0));
 }
 
@@ -802,17 +829,18 @@ fn resolving_follows_the_layout() {
     let mut f = Fixture::default();
     f.build(&ui, root);
     let clipper_fragment = f.box_of(clipper);
-    let root_data = f.boxed(root).clone();
+    let root_transform = f.transform(f.box_of(root));
 
     ui.set_props(top, (fixed(10.0, 30.0),));
     f.dirty
         .mark_node(&f.inputs, top, DirtyFlags::NEED_BOX_LAYOUT);
     f.layout(&ui, root);
 
-    // Resolved data is kept until it is resolved again.
+    // Locations are read from the layout, so the moved box is placed at
+    // once, with the own transform its layer kept.
     assert_affine(
         f.transform(clipper_fragment),
-        Affine::translate((3.0, 10.0)),
+        Affine::translate((3.0, 30.0)),
     );
 
     // Resolving follows the moved and resized fragments.
@@ -824,7 +852,7 @@ fn resolving_follows_the_layout() {
         Affine::translate((3.0, 30.0)),
     );
     // The root grew, but it stays in place.
-    assert_eq!(f.boxed(root).transform, root_data.transform);
+    assert_eq!(f.transform(f.box_of(root)), root_transform);
     f.assert_matches_full_resolve(&ui, root_fragment);
 }
 
@@ -900,14 +928,11 @@ fn inverse_transforms_map_parent_coordinates_back() {
     let mut f = Fixture::default();
     f.build(&ui, root);
 
-    assert_eq!(f.boxed(root).inverse_transform, Some(Affine::IDENTITY));
+    assert_eq!(f.inverse(f.box_of(root)), Some(Affine::IDENTITY));
 
     for node in [outer, inner] {
-        let data = f.boxed(node);
-        assert_affine(
-            data.inverse_transform.unwrap() * data.transform,
-            Affine::IDENTITY,
-        );
+        let key = f.box_of(node);
+        assert_affine(f.inverse(key).unwrap() * f.transform(key), Affine::IDENTITY);
     }
 }
 
@@ -932,8 +957,8 @@ fn collapsed_fragments_have_no_inverse_transform() {
     f.build(&ui, root);
 
     // Its contents keep their own inverse, relative to the collapsed box.
-    assert_eq!(f.boxed(collapsed).inverse_transform, None);
-    assert_eq!(f.boxed(content).inverse_transform, Some(Affine::IDENTITY));
+    assert_eq!(f.inverse(f.box_of(collapsed)), None);
+    assert_eq!(f.inverse(f.box_of(content)), Some(Affine::IDENTITY));
 
     // No clip layer is pushed for a box that covers no area.
     assert!(
@@ -1000,7 +1025,7 @@ fn resolving_marked_fragments_leaves_unmarked_descendants_as_they_are() {
 
     // Only the parent's item and fragment are resolved again.
     assert_eq!(f.clip(parent), (true, true));
-    assert_eq!(f.boxed(parent).transform.as_coeffs()[0], 2.0);
+    assert_eq!(f.transform(f.box_of(parent)).as_coeffs()[0], 2.0);
     assert_eq!(f.clip(child), (false, false));
     assert_eq!(f.boxed(child), &child_data);
 
@@ -1009,7 +1034,7 @@ fn resolving_marked_fragments_leaves_unmarked_descendants_as_they_are() {
     f.resolve(&ui, f.root.unwrap()).unwrap();
 
     assert_eq!(f.clip(child), (true, true));
-    assert_eq!(f.boxed(child).transform.as_coeffs()[0], 3.0);
+    assert_eq!(f.transform(f.box_of(child)).as_coeffs()[0], 3.0);
 }
 
 #[test]
@@ -1277,7 +1302,7 @@ impl Fixture {
             .build(
                 ui,
                 &self.inputs,
-                &mut self.dirty.clone(),
+                &self.dirty,
                 &self.fragments,
                 &UNITS,
                 &mut full,
@@ -1339,7 +1364,10 @@ fn incremental_resolves_follow_changed_fragments_only() {
     f.layout(&ui, root);
     f.resolve_changed(&ui, fragment_root);
     f.assert_matches_full_resolve(&ui, fragment_root);
-    assert_affine(f.boxed(middle).transform, Affine::translate((0.0, 50.0)));
+    assert_affine(
+        f.transform(f.box_of(middle)),
+        Affine::translate((0.0, 50.0)),
+    );
     f.clear_flags();
 
     // Boxes that did not move or resize are skipped, so an unmarked paint
@@ -1403,15 +1431,15 @@ fn resolves_both_changed_and_marked_fragments() {
 
     f.resolve_changed(&ui, fragment_root);
     f.assert_matches_full_resolve(&ui, fragment_root);
-    assert_affine(f.boxed(wrapper).transform, Affine::translate((0.0, 30.0)));
+    assert_affine(
+        f.transform(f.box_of(wrapper)),
+        Affine::translate((0.0, 30.0)),
+    );
     assert!(f.boxed(marked).border_radius.is_some());
 
-    // The resolver keeps the flags for the caller to clear, and marks the
-    // layers of the fragments it changed.
-    assert_eq!(
-        f.dirty.entry(f.item(marked)).flags,
-        prepaint | DirtyFlags::NEED_LAYER
-    );
+    // The resolver keeps the flags for the caller to clear, and marks
+    // nothing: layers do not read pre-paint data.
+    assert_eq!(f.dirty.entry(f.item(marked)).flags, prepaint);
     f.clear_flags();
     assert!(f.dirty.entry(f.item(marked)).flags.is_empty());
     assert!(f.dirty.entry(f.item(root)).child_bits.is_empty());
@@ -1506,7 +1534,7 @@ fn viewport_changes_resolve_viewport_dependent_paint_values_again() {
             .build(
                 ui,
                 &f.inputs,
-                &mut f.dirty,
+                &f.dirty,
                 &f.fragments,
                 units,
                 &mut f.prepaint,

@@ -64,7 +64,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(
             &ui,
             &inputs,
-            &mut dirty,
+            &dirty,
             &fragments,
             &constraint.units,
             &mut prepaint,
@@ -73,7 +73,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .ok_or("could not resolve the pre-paint tree")?;
     PaintLayerBuilder::new()
-        .build(&ui, &inputs, &dirty, &fragments, &mut layers, input_root)
+        .build(
+            &ui,
+            &inputs,
+            &dirty,
+            &fragments,
+            &constraint.units,
+            &mut layers,
+            input_root,
+            false,
+        )
         .ok_or("could not build the paint layers")?;
     let root_key = AxTreeBuilder::new()
         .build(

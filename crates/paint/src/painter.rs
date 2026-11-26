@@ -80,22 +80,33 @@ impl Transforms {
         inverse: Some(Affine::IDENTITY),
     };
 
-    /// The transforms of a box whose parent maps to the scene with `self`.
-    fn then(self, own: &FragmentData) -> Self {
+    /// The transforms of the box `key` to its parent box, from `layers`:
+    /// see [`PaintLayerTree::transform`]. `None` if it is not in `tree`.
+    fn own(tree: &FragmentTree, layers: &PaintLayerTree, key: BoxFragmentKey) -> Option<Self> {
+        Some(Self {
+            transform: layers.transform(tree, key)?,
+            inverse: layers.inverse_transform(tree, key),
+        })
+    }
+
+    /// The transforms of a box whose parent maps to the scene with `self`,
+    /// and which maps to its parent with `own`.
+    fn then(self, own: Self) -> Self {
         Self {
             transform: self.transform * own.transform,
             inverse: own
-                .inverse_transform
+                .inverse
                 .zip(self.inverse)
                 .map(|(own, parent)| own * parent),
         }
     }
 
     /// The transforms of the parent of a box mapping to the scene with
-    /// `self`, undoing its own transform. `None` if it has no inverse.
-    fn undo(self, own: &FragmentData) -> Option<Self> {
+    /// `self`, undoing `own`, its transforms to its parent. `None` if it has
+    /// no inverse.
+    fn undo(self, own: Self) -> Option<Self> {
         Some(Self {
-            transform: self.transform * own.inverse_transform?,
+            transform: self.transform * own.inverse?,
             inverse: self.inverse.map(|inverse| own.transform * inverse),
         })
     }
@@ -125,18 +136,13 @@ impl Transforms {
     /// The transforms mapping the local coordinates of `key` to the scene,
     /// multiplied from the root down with the scroll offsets of its
     /// ancestors, or `None` if a box on the way is not resolved.
-    fn of(
-        tree: &FragmentTree,
-        prepaint: &PrepaintTree,
-        layers: &PaintLayerTree,
-        key: BoxFragmentKey,
-    ) -> Option<Self> {
+    fn of(tree: &FragmentTree, layers: &PaintLayerTree, key: BoxFragmentKey) -> Option<Self> {
         let parent = match tree.boxes.parent(key) {
-            Some(parent) => Self::of(tree, prepaint, layers, parent)?.contents(layers, parent),
+            Some(parent) => Self::of(tree, layers, parent)?.contents(layers, parent),
             None => Self::IDENTITY,
         };
 
-        Some(parent.then(prepaint.fragment(key)?))
+        Some(parent.then(Self::own(tree, layers, key)?))
     }
 }
 
@@ -180,6 +186,11 @@ struct Sources<'a> {
 }
 
 impl Sources<'_> {
+    /// The transforms of the box `key` to its parent box.
+    fn own(&self, key: BoxFragmentKey) -> Option<Transforms> {
+        Transforms::own(self.tree, self.layers, key)
+    }
+
     /// The transforms of the contents of `key`, placed from `bases`: the
     /// transforms of a base, or those of the boxes down from one. `None` if
     /// `key` is not under a base, or a box on the way is not resolved.
@@ -190,11 +201,7 @@ impl Sources<'_> {
 
         let parent = self.contents_of(bases, self.tree.boxes.parent(key)?)?;
 
-        Some(
-            parent
-                .then(self.prepaint.fragment(key)?)
-                .contents(self.layers, key),
-        )
+        Some(parent.then(self.own(key)?).contents(self.layers, key))
     }
 
     /// The transforms of an inline part box, and of the contents of the box
@@ -206,7 +213,7 @@ impl Sources<'_> {
     ) -> Option<(Transforms, Transforms)> {
         let parent = self.contents_of(bases, self.tree.boxes.parent(part)?)?;
 
-        Some((parent.then(self.prepaint.fragment(part)?), parent))
+        Some((parent.then(self.own(part)?), parent))
     }
 
     /// Whether a fragment starts a layer of its own, painting it with its
@@ -301,7 +308,7 @@ impl CometPainter {
         };
         let parent = match tree.boxes.parent(item.owner) {
             // The owner sits in its parent's scrolled contents.
-            Some(parent) => Transforms::of(tree, prepaint, layers, parent)
+            Some(parent) => Transforms::of(tree, layers, parent)
                 .map(|transforms| transforms.contents(layers, parent)),
             None => Some(Transforms::IDENTITY),
         };
@@ -349,9 +356,7 @@ impl CometPainter {
             return;
         };
         let owner = layer.owner;
-        let (Some(fragment), Some(own)) =
-            (sources.tree.get(owner), sources.prepaint.fragment(owner))
-        else {
+        let (Some(fragment), Some(own)) = (sources.tree.get(owner), sources.own(owner)) else {
             return;
         };
 
@@ -380,10 +385,7 @@ impl CometPainter {
             if let Some(holder_fragment) = tree.get(holder)
                 && BoxRole::of(holder_fragment) == BoxRole::Anonymous
                 && let Some(outer) = tree.boxes.parent(holder)
-                && let Some(outer_transforms) = sources
-                    .prepaint
-                    .fragment(holder)
-                    .and_then(|data| parent.undo(data))
+                && let Some(outer_transforms) = sources.own(holder).and_then(|own| parent.undo(own))
             {
                 bases.boxes[1] = (outer, outer_transforms);
                 bases.len = 2;
@@ -562,9 +564,7 @@ impl CometPainter {
         let mut pushed = 0;
 
         for &key in self.chain.iter().rev() {
-            let (Some(fragment), Some(own)) =
-                (sources.tree.get(key), sources.prepaint.fragment(key))
-            else {
+            let (Some(fragment), Some(own)) = (sources.tree.get(key), sources.own(key)) else {
                 continue;
             };
 
@@ -624,8 +624,7 @@ impl CometPainter {
 
             match fragment {
                 FragmentRef::Box(key) => {
-                    let (Some(box_fragment), Some(own)) =
-                        (sources.tree.get(key), sources.prepaint.fragment(key))
+                    let (Some(box_fragment), Some(own)) = (sources.tree.get(key), sources.own(key))
                     else {
                         continue;
                     };
@@ -678,7 +677,7 @@ impl CometPainter {
                             // part box under its items.
                             if let Some(part) = child
                                 && let (Some(part_fragment), Some(own)) =
-                                    (sources.tree.get(part), sources.prepaint.fragment(part))
+                                    (sources.tree.get(part), sources.own(part))
                             {
                                 let transforms = parent.then(own);
                                 draw_box_fragment(

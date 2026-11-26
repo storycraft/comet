@@ -3,12 +3,15 @@ use std::sync::Arc;
 use anyrender::filters::FilterEffect;
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment::{BoxFragmentKey, FragmentGeometry, FragmentRef, FragmentTree},
+    fragment::{BoxFragment, BoxFragmentKey, FragmentGeometry, FragmentRef, FragmentTree},
     input::{LayoutInputKey, tree::LayoutInputTree},
-    style::{bx::Overflow, geometry::AutoValue},
+    style::{
+        bx::Overflow,
+        geometry::{AutoValue, Point as StylePoint, StyleUnit, UnitResolveContext},
+    },
 };
 use comet_tree::ui::{Props, Ui};
-use kurbo::Vec2;
+use kurbo::{Affine, Point, Size, Vec2};
 
 use crate::{
     layer::{
@@ -19,7 +22,8 @@ use crate::{
         BoxRole, for_each_paint_child, paint_parent, paint_props, part_of_piece, piece_of_part,
     },
     style::{
-        BackdropFilter, Filter, MixBlend, Opacity, ScrollLeft, ScrollTop, Transform, ZIndex,
+        BackdropFilter, Filter, MixBlend, Opacity, ScrollLeft, ScrollTop, Transform,
+        TransformOrigin, ZIndex,
     },
 };
 
@@ -41,6 +45,8 @@ pub struct PaintLayerBuilder {
     detached: Vec<PaintLayerKey>,
     /// Layers to delete, children after their parents.
     deleting: Vec<PaintLayerKey>,
+    /// Layers to resolve again after the viewport changed.
+    viewport: Vec<PaintLayerKey>,
 }
 
 /// What building reads from.
@@ -49,6 +55,7 @@ struct Sources<'a> {
     ui: &'a Ui,
     inputs: &'a LayoutInputTree,
     fragments: &'a FragmentTree,
+    units: &'a UnitResolveContext,
 }
 
 #[derive(Clone, Copy)]
@@ -74,36 +81,46 @@ impl PaintLayerBuilder {
     /// container. So does an inline element setting one of them other than a
     /// [`Transform`] or an [`Overflow`], which inline elements ignore: its
     /// first inline part box owns the layer, covering every piece of the
-    /// element. An auto z index counts as 0. Each layer resolves its opacity,
-    /// filters, blend mode and scroll offset from its owner's item.
+    /// element. An auto z index counts as 0. Each layer resolves its
+    /// transform, opacity, filters, blend mode and scroll offset from its
+    /// owner's item.
     ///
     /// When `tree` already holds the root layer, only the layers affected by
     /// changes marked in `dirty` are updated. Layers whose owner still starts
     /// one keep their keys. Items with [`DirtyFlags::NEED_LAYER`], which
     /// [`DirtyFlags::NEED_CHILDREN`] includes, are checked for boxes gaining,
     /// losing or reordering a layer, and the layers they own resolve their
-    /// data again. It is marked when a layer style changes, by the fragment
-    /// builder for the items whose fragments it changed, including every item
-    /// of an inline layout it emitted again, and by the
-    /// [pre-paint build](crate::prepaint::builder::PrepaintTreeBuilder::build)
-    /// for boxes whose data changed.
+    /// data again. It is marked when a layer style changes, and by the
+    /// fragment builder for the items whose fragments it changed, including
+    /// every item of an inline layout it emitted again.
+    ///
+    /// `units` resolves transform origins, with the font size of each owner.
+    /// With `viewport_changed`, every layer whose owner's transform origin
+    /// uses `vw` or `vh` resolves its data again. Pass it when the viewport
+    /// in `units` differs from the last build. The root font size is not
+    /// tracked: build into a new or [cleared](PaintLayerTree::clear) tree
+    /// when it changes.
     ///
     /// `inputs` is the input tree `fragments` were built from. Build before
     /// clearing `dirty`. Returns `None` if `root` has no box fragment in
     /// `fragments`.
+    #[allow(clippy::too_many_arguments)]
     pub fn build(
         &mut self,
         ui: &Ui,
         inputs: &LayoutInputTree,
         dirty: &DirtyMap,
         fragments: &FragmentTree,
+        units: &UnitResolveContext,
         tree: &mut PaintLayerTree,
         root: LayoutInputKey,
+        viewport_changed: bool,
     ) -> Option<PaintLayerKey> {
         let sources = Sources {
             ui,
             inputs,
             fragments,
+            units,
         };
         let root_fragment = fragments.box_fragment(root)?;
         self.pass = self.pass.wrapping_add(1);
@@ -111,6 +128,9 @@ impl PaintLayerBuilder {
 
         let root_layer = match tree.layer_of(root_fragment) {
             Some(layer) if tree.layers.parent(layer).is_none() => {
+                if viewport_changed {
+                    self.resolve_viewport(sources, tree);
+                }
                 self.update(sources, dirty, tree, root, layer);
                 layer
             }
@@ -155,6 +175,26 @@ impl PaintLayerBuilder {
         self.delete_pending(tree);
 
         root_layer
+    }
+
+    /// Resolve the data of the layers whose owner's transform origin uses
+    /// `vw` or `vh` again.
+    fn resolve_viewport(&mut self, sources: Sources<'_>, tree: &mut PaintLayerTree) {
+        self.viewport.clear();
+        self.viewport
+            .extend(tree.by_owner.iter().filter_map(|(owner, &layer)| {
+                let props = sources.props(sources.fragments.get(owner)?.source)?;
+                let TransformOrigin(origin) = props.get_cloned()?;
+                let viewport = origin.x.is_viewport_relative() || origin.y.is_viewport_relative();
+
+                viewport.then_some(layer)
+            }));
+
+        for &layer in &self.viewport {
+            if let Some(item) = tree.layers.get_mut(layer) {
+                sources.resolve(item);
+            }
+        }
     }
 
     /// Resolve the data of the layers owned by marked items again, and place
@@ -342,6 +382,8 @@ impl PaintLayerBuilder {
     ) -> PaintLayerKey {
         let layer = tree.layers.insert(PaintLayerItem {
             owner,
+            transform: Affine::IDENTITY,
+            inverse_transform: Some(Affine::IDENTITY),
             z_index,
             opacity: 1.0,
             filter: None,
@@ -485,11 +527,20 @@ impl Sources<'_> {
         stacking(self.props(fragment.source)?, principal)
     }
 
-    /// Resolve the opacity, filters, blend mode and scroll offset of a layer
-    /// from its owner's item.
+    /// Resolve the transform, opacity, filters, blend mode and scroll offset
+    /// of a layer from its owner's item.
     fn resolve(&self, item: &mut PaintLayerItem) {
         let fragment = self.fragments.get(item.owner);
         let props = fragment.and_then(|fragment| self.props(fragment.source));
+
+        // Only principal boxes are transformed.
+        item.transform = fragment
+            .zip(props)
+            .filter(|(fragment, _)| BoxRole::of(fragment).is_principal())
+            .map_or(Affine::IDENTITY, |(fragment, props)| {
+                self.transform(fragment, props)
+            });
+        item.inverse_transform = invert(item.transform);
 
         item.opacity = props.map_or(1.0, |props| {
             let Opacity(opacity) = props.get_or_default();
@@ -525,6 +576,26 @@ impl Sources<'_> {
             }
             _ => Vec2::ZERO,
         };
+    }
+
+    /// The own transform of a principal box with `props`: its [`Transform`]
+    /// applied around its [`TransformOrigin`], resolved with its item's font
+    /// size against its border box.
+    fn transform(&self, fragment: &BoxFragment, props: Props<'_>) -> Affine {
+        let Transform(transform) = props.get_or_default();
+
+        if transform == Affine::IDENTITY {
+            return Affine::IDENTITY;
+        }
+
+        let TransformOrigin(origin) = props.get_or_default();
+        let mut units = self.units.clone();
+        units.font_size = self.inputs.items[fragment.source].text_style.span.font_size as f64;
+
+        let size = fragment.layout.geometry.size;
+        let origin = resolve_origin(origin, &units, Size::new(size.width, size.height));
+
+        Affine::translate(origin) * transform * Affine::translate(-origin)
     }
 
     /// The `area` of the box `owner`, in its local coordinates, joined with
@@ -591,6 +662,30 @@ fn stacking(props: Props<'_>, principal: bool) -> Option<i32> {
         || props.get::<MixBlend>().is_some();
 
     starts.then_some(0)
+}
+
+/// The point of a border box of `size` that `origin` resolves to, as a
+/// vector from its top-left corner. Percentages use its width and height.
+fn resolve_origin(origin: StylePoint<StyleUnit>, units: &UnitResolveContext, size: Size) -> Vec2 {
+    let origin = origin.resolve(units, StylePoint::new(size.width, size.height));
+
+    Point::new(origin.x, origin.y).to_vec2()
+}
+
+/// The inverse of `transform`, or `None` if it collapses an axis and has no
+/// inverse.
+fn invert(transform: Affine) -> Option<Affine> {
+    if transform == Affine::IDENTITY {
+        return Some(Affine::IDENTITY);
+    }
+
+    let determinant = transform.determinant();
+
+    if determinant == 0.0 || !determinant.is_finite() {
+        return None;
+    }
+
+    Some(transform.inverse()).filter(Affine::is_finite)
 }
 
 /// Whether an item with `props` is a scroll container, scrolling or hiding

@@ -4,12 +4,12 @@ use comet_layout::{
     input::{LayoutInputKey, tree::LayoutInputTree},
     style::{
         bx::Overflow,
-        geometry::{Point as StylePoint, Rect, StyleUnit, UnitResolveContext},
+        geometry::{Rect, StyleUnit, UnitResolveContext},
         taffy::Overflow as OverflowMode,
     },
 };
 use comet_tree::ui::{Props, Ui};
-use kurbo::{Affine, Point, RoundedRectRadii, Size};
+use kurbo::{RoundedRectRadii, Size};
 
 use crate::{
     prepaint::{
@@ -17,9 +17,7 @@ use crate::{
         fragment::{BoxRole, boxes_of, paint_props},
         tree::PrepaintTree,
     },
-    style::{
-        BorderRadius, OutlineOffset, OutlineWidth, Transform, TransformOrigin,
-    },
+    style::{BorderRadius, OutlineOffset, OutlineWidth},
 };
 
 /// Builds a [`PrepaintTree`] for a fragment tree. Keep it to reuse its
@@ -74,12 +72,8 @@ impl PrepaintTreeBuilder {
     /// box.
     ///
     /// Data only depends on the box or item itself, so ancestors are not
-    /// resolved. `dirty` is not cleared; the layer build reads it too, so
-    /// call [`DirtyMap::clear`] after building layers.
-    ///
-    /// Items one of whose boxes gets new data, including boxes without data
-    /// before, are marked [`DirtyFlags::NEED_LAYER`] in `dirty`, for the
-    /// layer build.
+    /// resolved. `dirty` is only read: the layer build reads it too, so call
+    /// [`DirtyMap::clear`] after building layers.
     ///
     /// Changes builds cannot see, such as paint styles, must be marked.
     ///
@@ -90,8 +84,8 @@ impl PrepaintTreeBuilder {
     /// [cleared](PrepaintTree::clear) tree when it changes.
     ///
     /// `inputs` is the input tree `fragments` were built from, and `tree`
-    /// belongs to them. `units` resolves border radii and transform origins,
-    /// with each item's font size.
+    /// belongs to them. `units` resolves border radii and outlines, with each
+    /// item's font size.
     ///
     /// Returns `None` if a box or item to resolve no longer matches the UI,
     /// such as when its source node was deleted after `inputs` and
@@ -103,7 +97,7 @@ impl PrepaintTreeBuilder {
         &mut self,
         ui: &Ui,
         inputs: &LayoutInputTree,
-        dirty: &mut DirtyMap,
+        dirty: &DirtyMap,
         fragments: &FragmentTree,
         units: &UnitResolveContext,
         tree: &mut PrepaintTree,
@@ -179,13 +173,7 @@ impl PrepaintTreeBuilder {
 
         for &key in changed.iter() {
             let data = sources.resolve_fragment(key)?;
-
-            // Layers read the data of their boxes, so changed data updates
-            // the layers too.
-            if tree.fragment_mapping.get(key) != Some(&data) {
-                tree.fragment_mapping.insert(key, data);
-                dirty.mark(inputs, fragments.boxes[key].source, DirtyFlags::NEED_LAYER);
-            }
+            tree.fragment_mapping.insert(key, data);
         }
 
         Some(())
@@ -212,9 +200,6 @@ fn depends_viewport(props: Props<'_>) -> bool {
         .is_some_and(|BorderRadius(radius)| rect(radius))
         || props
             .get_cloned()
-            .is_some_and(|TransformOrigin(origin)| viewport(origin.x) || viewport(origin.y))
-        || props
-            .get_cloned()
             .is_some_and(|OutlineWidth(width)| viewport(width))
         || props
             .get_cloned()
@@ -226,44 +211,10 @@ impl Sources<'_> {
     fn resolve_fragment(&self, key: BoxFragmentKey) -> Option<FragmentData> {
         let fragment = self.fragments.get(key)?;
         let props = paint_props(self.ui, self.inputs, fragment.source)?;
-        // Transforms only apply to principal boxes.
-        let box_props = BoxRole::of(fragment).is_principal().then_some(props);
-
-        let TransformOrigin(origin) = box_props.map(Props::get_or_default).unwrap_or_default();
-        let Transform(own_transform) = box_props.map(Props::get_or_default).unwrap_or_default();
-
-        let geometry = &fragment.layout.geometry;
-        let transform_origin = self.transform_origin(
-            fragment,
-            origin,
-            Size::new(geometry.size.width, geometry.size.height),
-        );
-        let transform = resolve_transform(
-            Point::new(geometry.location.x, geometry.location.y),
-            own_transform,
-            transform_origin,
-        );
 
         Some(FragmentData {
-            transform,
-            inverse_transform: invert(transform),
             border_radius: self.border_radius(fragment, props),
         })
-    }
-
-    /// The point a box's own transform is applied around, relative to its
-    /// border box of `size`, resolving `origin` with its item's font size.
-    fn transform_origin(
-        &self,
-        fragment: &BoxFragment,
-        origin: StylePoint<StyleUnit>,
-        size: Size,
-    ) -> Point {
-        let mut units = self.units.clone();
-        units.font_size = self.inputs.items[fragment.source].text_style.span.font_size as f64;
-
-        let origin = origin.resolve(&units, StylePoint::new(size.width, size.height));
-        Point::new(origin.x, origin.y)
     }
 
     /// Corner radii of a box's border box, from its item's `props`, resolved
@@ -334,34 +285,4 @@ fn border_radius(
         resolve(radius.right_bottom.y),
         resolve(radius.left_top.x),
     )
-}
-
-/// The inverse of `transform`, or `None` if it collapses an axis and has no
-/// inverse.
-fn invert(transform: Affine) -> Option<Affine> {
-    if transform == Affine::IDENTITY {
-        return Some(Affine::IDENTITY);
-    }
-
-    let determinant = transform.determinant();
-
-    if determinant == 0.0 || !determinant.is_finite() {
-        return None;
-    }
-
-    Some(transform.inverse()).filter(Affine::is_finite)
-}
-
-/// Apply a box's own `transform` around `origin`, relative to its border box,
-/// then place it at its `location` in its parent box.
-fn resolve_transform(location: Point, transform: Affine, origin: Point) -> Affine {
-    let location = location.to_vec2();
-
-    if transform == Affine::IDENTITY {
-        return Affine::translate(location);
-    }
-
-    let origin = origin.to_vec2();
-
-    Affine::translate(location + origin) * transform * Affine::translate(-origin)
 }

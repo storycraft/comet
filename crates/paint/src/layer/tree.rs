@@ -1,6 +1,6 @@
 use comet_layout::fragment::{BoxFragmentKey, FragmentRef, FragmentTree};
 use comet_slotmap_tree::SlotTree;
-use kurbo::Vec2;
+use kurbo::{Affine, Vec2};
 use slotmap::SecondaryMap;
 
 use crate::{
@@ -68,6 +68,45 @@ impl PaintLayerTree {
         None
     }
 
+    /// Maps the local coordinates of the box `key` in `fragments`, with its
+    /// border box's top-left corner at the origin, to the local coordinates
+    /// of its parent box: the [own transform](PaintLayerItem::transform) of
+    /// the layer it owns, if any, then its layout location:
+    /// `translate(location) * own`. Ancestor transforms are not included:
+    /// multiply them from the root down to map into scene coordinates.
+    /// `None` if `key` is not in `fragments`.
+    pub fn transform(&self, fragments: &FragmentTree, key: BoxFragmentKey) -> Option<Affine> {
+        let location = Affine::translate(location(fragments, key)?);
+
+        Some(match self.own(key) {
+            Some(item) if item.transform != Affine::IDENTITY => location * item.transform,
+            _ => location,
+        })
+    }
+
+    /// Inverse of [`Self::transform`], mapping the local coordinates of the
+    /// parent box back to those of the box `key`. `None` if `key` is not in
+    /// `fragments`, or its transform collapses an axis.
+    pub fn inverse_transform(
+        &self,
+        fragments: &FragmentTree,
+        key: BoxFragmentKey,
+    ) -> Option<Affine> {
+        let location = Affine::translate(-location(fragments, key)?);
+
+        match self.own(key) {
+            Some(item) if item.transform != Affine::IDENTITY => {
+                Some(item.inverse_transform? * location)
+            }
+            _ => Some(location),
+        }
+    }
+
+    /// The layer the box `owner` owns, if any.
+    fn own(&self, owner: BoxFragmentKey) -> Option<&PaintLayerItem> {
+        self.layers.get(self.layer_of(owner)?)
+    }
+
     /// The scroll offset a box applies to its descendants: the
     /// [scroll](PaintLayerItem::scroll) of the layer it owns, zero if it owns
     /// none.
@@ -81,6 +120,13 @@ impl PaintLayerTree {
         self.layers.clear();
         self.by_owner.clear();
     }
+}
+
+/// The layout location of the box `key` in its parent box.
+fn location(fragments: &FragmentTree, key: BoxFragmentKey) -> Option<Vec2> {
+    let location = fragments.get(key)?.layout.geometry.location;
+
+    Some(Vec2::new(location.x, location.y))
 }
 
 /// The box that would own the layer a fragment starts: a principal box

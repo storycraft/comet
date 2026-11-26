@@ -532,24 +532,22 @@ fn position_hints_compare_flow_with_the_default_when_missing() {
 }
 
 #[test]
-fn transform_changes_layers_only_when_set_on_a_box_without_one() {
+fn transform_changes_only_resolve_layers() {
+    use comet_layout::dirty_map::DirtyFlags;
     use comet_paint::style::Transform;
 
     let mut tree = UiTree::new();
     let node = tree.ui.create(Node::Box, ());
 
+    // Setting a transform starts a layer, which resolves it.
     assert!(tree.set_prop(node, Transform(kurbo::Affine::translate((4.0, 0.0)))));
-    assert_eq!(flags(&tree, node), PropHint::PRE_PAINT | PropHint::LAYER);
+    assert_eq!(flags(&tree, node), PropHint::LAYER);
     tree.take_changes().for_each(drop);
 
-    // The box starts a layer already: only its transform is resolved again.
+    // Changing it only resolves the layer again, without pre-painting.
     assert!(tree.set_prop(node, Transform(kurbo::Affine::IDENTITY)));
-    assert_eq!(flags(&tree, node), PropHint::PRE_PAINT);
-    assert!(
-        !flags(&tree, node)
-            .layout()
-            .contains(comet_layout::dirty_map::DirtyFlags::NEED_LAYER)
-    );
+    assert_eq!(flags(&tree, node), PropHint::LAYER);
+    assert_eq!(flags(&tree, node).layout(), DirtyFlags::NEED_LAYER);
 }
 
 #[test]
@@ -575,9 +573,10 @@ fn hints_are_symmetric() {
     let a = Transform(kurbo::Affine::IDENTITY);
     let b = Transform(kurbo::Affine::translate((4.0, 0.0)));
     assert_eq!(a.hint(Some(&b)), b.hint(Some(&a)));
-    assert_eq!(a.hint(Some(&b)), PropHint::PRE_PAINT);
-    // Setting and removing a transform both change layers.
-    assert_eq!(b.hint(None), PropHint::PRE_PAINT | PropHint::LAYER);
+    // Transforms are resolved by the layer build, which also notices boxes
+    // gaining or losing one.
+    assert_eq!(a.hint(Some(&b)), PropHint::LAYER);
+    assert_eq!(b.hint(None), PropHint::LAYER);
 }
 
 #[test]

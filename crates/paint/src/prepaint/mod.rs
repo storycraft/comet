@@ -1,8 +1,10 @@
 //! Paint data resolved for a fragment tree before painting.
 //!
 //! A [`PrepaintTree`](tree::PrepaintTree) holds the [`FragmentData`] of every
-//! box fragment, such as its transform relative to its parent box, and the
-//! [`LayoutInputData`] of every layout input item. Inline items placing no
+//! box fragment, such as its border radius, and the [`LayoutInputData`] of
+//! every layout input item. Transforms and scroll offsets are resolved into
+//! the [paint layers](crate::layer) instead, which do not read pre-paint
+//! data. Inline items placing no
 //! box, such as lines and glyph runs, have no data: they paint at their
 //! location in the box owning them. Data only depends on the box or item
 //! itself, and box data on its item, so any box can be resolved again on its
@@ -20,7 +22,7 @@ pub mod tree;
 #[cfg(doc)]
 use comet_layout::dirty_map::DirtyFlags;
 use comet_layout::fragment::{BoxFragment, BoxFragmentType};
-use kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii};
+use kurbo::{Point, Rect, RoundedRect, RoundedRectRadii};
 
 /// Paint data of a layout input item, shared by all fragments it generates.
 #[derive(Debug, Clone, PartialEq)]
@@ -47,24 +49,6 @@ pub struct LayoutInputData {
 /// Paint data of a box fragment.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FragmentData {
-    /// Maps the box's local coordinates, with its border box's top-left
-    /// corner at the origin, to the local coordinates of its parent box.
-    /// A [principal](fragment::BoxRole::Principal) box applies its own
-    /// [`Transform`](crate::style::Transform) around its transform origin,
-    /// then is placed at its layout location:
-    /// `translate(location + origin) * transform * translate(-origin)`.
-    /// Other boxes are only placed.
-    /// Ancestor transforms are not included: multiply them from the root
-    /// down to map into scene coordinates.
-    pub transform: Affine,
-
-    /// Inverse of [`Self::transform`], mapping the parent fragment's local
-    /// coordinates back to the fragment's, such as for hit testing. `None`
-    /// when the transform is not invertible, such as when it scales an axis
-    /// to zero: the fragment and its contents then cover no area in the
-    /// scene.
-    pub inverse_transform: Option<Affine>,
-
     /// Corner radii of the fragment's border box, resolved from its item's
     /// [`BorderRadius`](crate::style::BorderRadius) with its font size,
     /// against the fragment's own size: percentages resolve against its

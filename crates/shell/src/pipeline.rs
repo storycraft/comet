@@ -73,6 +73,12 @@ impl UiTrees {
             .is_some_and(|fragment| BoxRole::of(fragment).is_principal())
     }
 
+    /// Maps the local coordinates of the box `key` to those of its parent
+    /// box, from the last layout: see [`PaintLayerTree::transform`].
+    pub fn transform(&self, key: BoxFragmentKey) -> Option<Affine> {
+        self.layers.transform(&self.fragments, key)
+    }
+
     /// The scroll offset the box `key` applies to its contents, from the
     /// last layout.
     pub fn scroll(&self, key: BoxFragmentKey) -> Vec2 {
@@ -102,13 +108,11 @@ impl UiTrees {
     /// ancestors, from the last layout.
     pub fn fragment_to_scene(&self, key: BoxFragmentKey) -> Option<Affine> {
         let boxes = &self.fragments.boxes;
-        let mut affine = self.prepaint.fragment(key)?.transform;
+        let mut affine = self.transform(key)?;
         let mut next = boxes.parent(key);
 
         while let Some(key) = next {
-            affine = self.prepaint.fragment(key)?.transform
-                * Affine::translate(-self.scroll(key))
-                * affine;
+            affine = self.transform(key)? * Affine::translate(-self.scroll(key)) * affine;
             next = boxes.parent(key);
         }
 
@@ -189,6 +193,9 @@ pub struct Pipeline {
     /// Logical viewport the pre-paint tree was last resolved with, kept when
     /// a resolve fails, so the next one resolves viewport units again.
     prepaint_viewport: Option<Size<f64>>,
+    /// Logical viewport the layer tree was last built with, kept when a
+    /// build fails, so the next one resolves viewport units again.
+    layer_viewport: Option<Size<f64>>,
     a11y: Accessibility,
 }
 
@@ -300,12 +307,27 @@ impl Pipeline {
         );
 
         // Layers keep their keys, so building from the root again only places
-        // the layers whose fragments gained, lost or reordered a layer.
+        // the layers whose fragments gained, lost or reordered a layer. They
+        // do not read the pre-paint tree, but are only built once it is
+        // resolved, so a failed layout resolves both again.
+        let layer_viewport_changed = self
+            .layer_viewport
+            .is_some_and(|previous| previous != viewport);
         let layer_root = resolved.and_then(|()| {
-            builders
-                .layers
-                .build(ui, inputs, dirty, &*fragments, layers, input_root)
+            builders.layers.build(
+                ui,
+                inputs,
+                dirty,
+                &*fragments,
+                &constraint.units,
+                layers,
+                input_root,
+                layer_viewport_changed,
+            )
         });
+        if layer_root.is_some() {
+            self.layer_viewport = Some(viewport);
+        }
         // Flags were consumed by the fragment build, the pre-paint resolve,
         // the layer build and the accessibility build. On failure they are kept, so the
         // next layout resolves the items laid out by this one again.
@@ -397,7 +419,7 @@ fn resolve_prepaint(
     builders: &mut UiBuilders,
     ui: &Ui,
     inputs: &LayoutInputTree,
-    dirty: &mut DirtyMap,
+    dirty: &DirtyMap,
     fragments: &FragmentTree,
     prepaint: &mut PrepaintTree,
     units: &UnitResolveContext,

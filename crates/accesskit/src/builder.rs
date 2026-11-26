@@ -12,12 +12,12 @@ use parley::PositionedLayoutItem;
 use crate::{AxFlags, AxKey, AxNode, AxNodeKind, node_id, style::Role, tree::AxTree};
 
 /// Layout flags of an item whose node is resolved again:
-/// - [`DirtyFlags::NEED_LAYER`]: a paint property of the item changed.
+/// - [`DirtyFlags::NEED_LAYER`]: a paint property of the item changed, such
+///   as its transform or scroll offset, resolved into its layer.
 /// - [`DirtyFlags::NEED_CHILDREN`]: its children changed. It includes
 ///   [`DirtyFlags::NEED_LAYER`].
 /// - [`DirtyFlags::NEED_PRE_PAINT`]: its fragments were laid out, moved or
-///   resized, or their transforms changed, so its bounds, transform or text
-///   runs may have changed.
+///   resized, so its bounds or text runs may have changed.
 const RESOLVE: DirtyFlags = DirtyFlags::NEED_LAYER.union(DirtyFlags::NEED_PRE_PAINT);
 
 /// Builds and updates an [`AxTree`] for a layout. Keep it to reuse its
@@ -76,7 +76,7 @@ impl AxTreeBuilder {
     ///
     /// An item with a box fragment has the box's border box as bounds, and
     /// the transform mapping the box into its parent node, from the
-    /// pre-paint transforms. Other items, such as inline elements and texts
+    /// layer transforms. Other items, such as inline elements and texts
     /// in an inline flow, are in the space of their parent node, with the
     /// area covering their inline items as bounds: the pieces of an inline
     /// element, or the glyph runs of a text, across lines and runs. Text runs
@@ -267,7 +267,7 @@ impl Sources<'_> {
                 let transform = match space {
                     Some(space) => self.relative_transform(own, space)?,
                     // The root has no parent node.
-                    None => self.prepaint.fragment(own)?.transform,
+                    None => self.layers.transform(self.fragments, own)?,
                 };
                 if transform != Affine::IDENTITY {
                     node.set_transform(accesskit::Affine::new(transform.as_coeffs()));
@@ -462,7 +462,7 @@ impl Sources<'_> {
             if key == space {
                 return Some(transform);
             }
-            transform = self.prepaint.fragment(key)?.transform * transform;
+            transform = self.layers.transform(self.fragments, key)? * transform;
             current = boxes.parent(key);
             if let Some(parent) = current {
                 transform = Affine::translate(-self.scroll(parent)) * transform;
@@ -481,7 +481,7 @@ impl Sources<'_> {
         let mut current = Some(key);
 
         while let Some(key) = current {
-            transform = self.prepaint.fragment(key)?.transform * transform;
+            transform = self.layers.transform(self.fragments, key)? * transform;
             current = boxes.parent(key);
             if let Some(parent) = current {
                 transform = Affine::translate(-self.scroll(parent)) * transform;

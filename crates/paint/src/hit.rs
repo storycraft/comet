@@ -247,9 +247,9 @@ impl PaintHitTester {
             .get(holder)
             .is_some_and(|fragment| BoxRole::of(fragment) == BoxRole::Anonymous)
             && let Some(outer) = fragments.boxes.parent(holder)
-            && let Some(data) = sources.prepaint.fragment(holder)
+            && let Some(transform) = sources.layers.transform(fragments, holder)
         {
-            bases.boxes[1] = (outer, data.transform * point);
+            bases.boxes[1] = (outer, transform * point);
             bases.len = 2;
         }
 
@@ -529,9 +529,9 @@ impl PaintHitCursor<'_> {
 
 impl Sources<'_> {
     /// `point`, in the coordinates the box `key` is placed in, in its local
-    /// coordinates. `None` if it collapses, or is not resolved.
+    /// coordinates. `None` if it collapses, or is missing.
     fn local(&self, key: BoxFragmentKey, point: Point) -> Option<Point> {
-        Some(self.prepaint.fragment(key)?.inverse_transform? * point)
+        Some(self.layers.inverse_transform(self.fragments, key)? * point)
     }
 
     /// The scroll offset a box applies to its descendants: a point in its

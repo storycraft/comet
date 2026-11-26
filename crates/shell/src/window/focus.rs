@@ -256,11 +256,7 @@ fn reveal_scrolls(ui: &Ui, trees: &UiTrees, node: NodeKey) -> Option<Vec<(NodeKe
         let Some(parent) = boxes.parent(holder) else {
             break;
         };
-        rect = trees
-            .prepaint
-            .fragment(holder)?
-            .transform
-            .transform_rect_bbox(rect);
+        rect = trees.transform(holder)?.transform_rect_bbox(rect);
         holder = parent;
     }
 
@@ -279,14 +275,7 @@ fn revealed_area(trees: &UiTrees, node: NodeKey) -> Option<(BoxFragmentKey, Rect
         let rect = Rect::new(0.0, 0.0, size.width, size.height);
         let parent = fragments.boxes.parent(key)?;
 
-        return Some((
-            parent,
-            trees
-                .prepaint
-                .fragment(key)?
-                .transform
-                .transform_rect_bbox(rect),
-        ));
+        return Some((parent, trees.transform(key)?.transform_rect_bbox(rect)));
     }
 
     let item = trees.inputs.item_for_node(node)?;
@@ -319,7 +308,7 @@ fn revealed_area(trees: &UiTrees, node: NodeKey) -> Option<(BoxFragmentKey, Rect
     let holder = fragments.boxes.parent(first)?;
     let mut area: Option<Rect> = None;
     for (owner, rect) in pieces {
-        let transform = trees.prepaint.fragment(owner)?.transform;
+        let transform = trees.transform(owner)?;
         let rect = transform.transform_rect_bbox(rect - trees.scroll(owner));
         area = Some(area.map_or(rect, |area| area.union(rect)));
     }
