@@ -56,7 +56,7 @@ fn sizes(ui: &Ui, root: NodeKey, contents: &ContentManager, nodes: &[NodeKey]) -
             &mut dirty,
             input_root,
             &mut fragments,
-            &LayoutConstraint::new_root(VIEWPORT, 16.0),
+            &LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0),
         )
         .unwrap();
 
@@ -135,4 +135,70 @@ fn missing_contents_fall_back_to_their_style() {
         sizes(&ui, root, &contents, &[empty, sized]),
         [(0.0, 0.0), (20.0, 10.0)]
     );
+}
+
+/// A content 30 physical pixels square, measured in logical units.
+struct Physical;
+
+impl Content for Physical {
+    fn measure(&self, input: &MeasureInput<'_>) -> taffy::Size<f32> {
+        let side = (30.0 / input.scale_factor) as f32;
+
+        taffy::Size {
+            width: side,
+            height: side,
+        }
+    }
+
+    fn draw(&self, _: &DrawInput<'_>, _: &mut anyrender::Scene) {}
+}
+
+#[test]
+fn content_boxes_are_measured_again_with_a_new_scale_factor() {
+    let mut contents = ContentManager::new();
+    let id = contents.insert(Physical);
+
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let content = ui.create(Node::Box, (DisplayInner::Content(id),));
+    ui.append(root, content);
+
+    let mut inputs = LayoutInputTree::new();
+    let mut dirty = DirtyMap::new();
+    let input_root = LayoutInputTreeBuilder::new()
+        .build(
+            &ui,
+            &mut inputs,
+            &mut dirty,
+            BuildRequest::new(root, 16.0, VIEWPORT),
+        )
+        .unwrap();
+    let mut fragments = FragmentTree::new();
+    let mut builder = FragmentTreeBuilder::new();
+    let mut layout = |dirty: &mut DirtyMap, scale_factor: f64, viewport_changed: bool| {
+        builder
+            .build(
+                &ui,
+                &inputs,
+                &contents,
+                dirty,
+                input_root,
+                &mut fragments,
+                &LayoutConstraint::new_root(VIEWPORT, 16.0, scale_factor)
+                    .with_viewport_changed(viewport_changed),
+            )
+            .unwrap();
+        dirty.clear(&inputs, input_root);
+
+        let key = fragments
+            .box_fragment(inputs.item_for_node(content).unwrap())
+            .unwrap();
+        let size = fragments.boxes[key].layout.geometry.size;
+
+        (size.width, size.height)
+    };
+
+    assert_eq!(layout(&mut dirty, 1.0, false), (30.0, 30.0));
+    // A display twice as dense halves the logical size.
+    assert_eq!(layout(&mut dirty, 2.0, true), (15.0, 15.0));
 }

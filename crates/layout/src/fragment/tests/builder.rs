@@ -23,7 +23,7 @@ use crate::{
 use comet_geometry::{AutoValue, Point, Rect, Size, StyleUnit};
 
 pub(super) const VIEWPORT: Size<f64> = Size::new(400.0, 600.0);
-const CONSTRAINT: LayoutConstraint = LayoutConstraint::new_root(VIEWPORT, 16.0);
+const CONSTRAINT: LayoutConstraint = LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0);
 
 pub(super) struct Fixture {
     pub(super) ui: Ui,
@@ -755,7 +755,7 @@ fn viewport_changes_invalidate_dependent_boxes() {
 
     fx.next_round();
     fx.constraint =
-        LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0).with_viewport_changed(true);
+        LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0, 1.0).with_viewport_changed(true);
     fx.build();
 
     assert!(!fx.valid(wide_box) && !fx.valid(badge_box));
@@ -800,7 +800,7 @@ fn inline_elements_on_the_viewport_mark_their_owner() {
 
     fx.next_round();
     fx.constraint =
-        LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0).with_viewport_changed(true);
+        LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0, 1.0).with_viewport_changed(true);
     fx.build();
 
     assert_eq!(fx.box_of(para), para_box, "laid out again without shaping");

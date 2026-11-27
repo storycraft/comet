@@ -275,7 +275,8 @@ bitflags! {
         /// out-of-flow descendants claimed by an ancestor are laid out by
         /// that ancestor.
         const DEPENDS_PARENT_SIZE = 1 << 0;
-        /// A length uses `vw` or `vh`.
+        /// A length uses `vw` or `vh`, or the box displays a content, which
+        /// measures itself with the display's scale factor.
         const DEPENDS_VIEWPORT = 1 << 1;
     }
 }

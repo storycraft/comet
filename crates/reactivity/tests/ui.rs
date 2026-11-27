@@ -93,7 +93,7 @@ impl Layout {
                 dirty,
                 input_root,
                 fragments,
-                &LayoutConstraint::new_root(viewport, 16.0),
+                &LayoutConstraint::new_root(viewport, 16.0, 1.0),
             )
             .expect("fragment tree");
         dirty.clear(inputs, input_root);

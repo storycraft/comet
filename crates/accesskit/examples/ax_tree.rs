@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             BuildRequest::new(root, 16.0, VIEWPORT),
         )
         .ok_or("could not build the layout input tree")?;
-    let constraint = LayoutConstraint::new_root(VIEWPORT, 16.0);
+    let constraint = LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0);
     let fragment_root = FragmentTreeBuilder::new()
         .build(
             &ui,

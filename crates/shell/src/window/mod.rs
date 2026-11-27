@@ -242,7 +242,12 @@ impl Window {
         let viewport = comet_geometry::Size::new(size.width, size.height);
         let laid_out = self
             .pipeline
-            .layout(&mut self.ui.tree().borrow_mut(), self.ui.root(), viewport)
+            .layout(
+                &mut self.ui.tree().borrow_mut(),
+                self.ui.root(),
+                viewport,
+                self.viewport.scale_factor,
+            )
             .is_some();
 
         // A node focused before it was laid out is revealed now. The scroll

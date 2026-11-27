@@ -15,7 +15,7 @@ use super::{
 };
 use crate::{
     container::ContainerContext,
-    fragment::{BoxFragmentKey, BoxFragmentType},
+    fragment::{BoxFragmentKey, BoxFragmentType, NodeLayoutBits},
     style::bx::DisplayInner,
     taffy::conv,
 };
@@ -153,6 +153,15 @@ impl Engine<'_> {
         };
 
         let known_dimensions = content_known_dimensions(style, &input);
+        let scale_factor = self.cx.constraint.scale_factor;
+
+        // Contents measure with the scale factor, which changes with the
+        // display, as viewport changes do.
+        let bits = NodeLayoutBits::DEPENDS_VIEWPORT;
+        self.fragments.boxes[key].bits |= bits;
+        self.propagate_bits(key, bits);
+
+        let style = &self.fragments.boxes[key].style;
 
         taffy::compute_leaf_layout(
             input,
@@ -164,6 +173,7 @@ impl Engine<'_> {
                     known_dimensions,
                     available_space,
                     parent_size: input.parent_size,
+                    scale_factor,
                 })
             },
         )

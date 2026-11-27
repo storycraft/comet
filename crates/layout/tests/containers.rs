@@ -127,7 +127,7 @@ impl Fixture {
                 &mut self.dirty,
                 root,
                 &mut self.fragments,
-                &LayoutConstraint::new_root(viewport, 16.0),
+                &LayoutConstraint::new_root(viewport, 16.0, 1.0),
             )
             .unwrap();
         self.dirty.clear(&self.inputs, root);

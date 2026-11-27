@@ -12,7 +12,7 @@ use taffy::style::CoreStyle;
 #[test]
 fn display_semantics_do_not_depend_on_taffy_display_defaults() {
     let mut ui = Ui::new();
-    let cx = LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0);
+    let cx = LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0, 1.0);
 
     for (inner, block, replaced) in [
         (bx::DisplayInner::Flow, true, false),
@@ -33,7 +33,7 @@ fn display_semantics_do_not_depend_on_taffy_display_defaults() {
 
 #[test]
 fn anonymous_boxes_use_comet_defaults() {
-    let cx = LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0);
+    let cx = LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0, 1.0);
     let style = resolve(None, &cx);
 
     assert!(style.is_block());
@@ -65,7 +65,7 @@ fn adapter_resolves_constraint_units_and_preserves_percentages() {
             )),
         ),
     );
-    let mut cx = LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0);
+    let mut cx = LayoutConstraint::new_root(Size::new(800.0, 600.0), 16.0, 1.0);
     cx.units.font_size = 24.0;
 
     let style = resolve(ui.props(node), &cx);

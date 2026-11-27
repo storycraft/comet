@@ -37,7 +37,7 @@ use taffy::{Overflow, Position};
 
 const VIEWPORT: Size<f64> = Size::new(120.0, 400.0);
 const SCENE_VIEWPORT: Rect = Rect::new(0.0, 0.0, 120.0, 400.0);
-const UNITS: UnitResolveContext = LayoutConstraint::new_root(VIEWPORT, 16.0).units;
+const UNITS: UnitResolveContext = LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0).units;
 
 const RED: Color = Color::from_rgb8(200, 20, 20);
 const GREEN: Color = Color::from_rgb8(20, 160, 20);
@@ -76,7 +76,7 @@ impl Fixture {
                 &mut dirty,
                 input_root,
                 &mut fragments,
-                &LayoutConstraint::new_root(VIEWPORT, 16.0),
+                &LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0),
             )
             .unwrap();
 
@@ -1267,7 +1267,7 @@ impl Pipeline {
                 &mut self.dirty,
                 input_root,
                 &mut self.fragments,
-                &LayoutConstraint::new_root(VIEWPORT, 16.0),
+                &LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0),
             )
             .unwrap();
         self.resolver
@@ -2165,7 +2165,7 @@ fn viewport_changes_resolve_viewport_relative_transform_origins() {
     // 10% of the 120 wide viewport.
     assert_eq!(f.layers.layers[f.layer_of(rotated)].transform, around(12.0));
 
-    let wide = LayoutConstraint::new_root(Size::new(240.0, 400.0), 16.0).units;
+    let wide = LayoutConstraint::new_root(Size::new(240.0, 400.0), 16.0, 1.0).units;
 
     // Unmarked layers keep their data until told the viewport changed.
     rebuild(&mut f, &ui, &wide, false);

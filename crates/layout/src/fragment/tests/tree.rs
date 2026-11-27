@@ -12,7 +12,7 @@ fn delete_removes_source_lookups() {
     let mut keys = SlotMap::<LayoutInputKey, ()>::with_key();
     let (a, b) = (keys.insert(()), keys.insert(()));
     let mut tree = FragmentTree::new();
-    let cx = LayoutConstraint::new_root(Size::new(100.0, 100.0), 16.0);
+    let cx = LayoutConstraint::new_root(Size::new(100.0, 100.0), 16.0, 1.0);
     let new = |source| {
         BoxFragment::new(
             source,
@@ -38,7 +38,7 @@ fn boxes_outside_source_lookup_are_anonymous() {
     let mut keys = SlotMap::<LayoutInputKey, ()>::with_key();
     let a = keys.insert(());
     let mut tree = FragmentTree::new();
-    let cx = LayoutConstraint::new_root(Size::new(100.0, 100.0), 16.0);
+    let cx = LayoutConstraint::new_root(Size::new(100.0, 100.0), 16.0, 1.0);
     let new = || {
         BoxFragment::new(
             a,

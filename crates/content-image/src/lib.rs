@@ -14,7 +14,8 @@ use crate::style::{ImageExtend, ImageRendering};
 /// A raster image, sized and placed in its box by the
 /// [content styles](comet_content::style) of the box's node, and sampled
 /// and extended by its [image styles](style). Its natural size is its pixel
-/// size, and it is drawn opaque.
+/// size in logical units: one image pixel per physical pixel of the display.
+/// It is drawn opaque.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImageContent {
     pub image: ImageData,
@@ -25,20 +26,19 @@ impl ImageContent {
         Self { image }
     }
 
-    /// Pixel size of the image, also its natural size in logical units.
-    fn size(&self) -> kurbo::Size {
+    /// Pixel size of the image.
+    fn pixel_size(&self) -> kurbo::Size {
         kurbo::Size::new(f64::from(self.image.width), f64::from(self.image.height))
     }
 }
 
 impl Content for ImageContent {
     fn measure(&self, input: &MeasureInput<'_>) -> taffy::Size<f32> {
-        ObjectStyle::of(input.props).measure(self.size(), input)
+        ObjectStyle::of(input.props).measure(self.pixel_size(), input)
     }
 
     fn draw(&self, input: &DrawInput<'_>, scene: &mut Scene) {
-        let size = self.size();
-        let rect = ObjectStyle::of(input.props).place(size, input);
+        let rect = ObjectStyle::of(input.props).place(self.pixel_size(), input);
         let extend: ImageExtend = input.props.get_or_default();
         let brush = ImageBrush {
             image: &self.image,
@@ -49,7 +49,10 @@ impl Content for ImageContent {
             Fill::NonZero,
             Affine::IDENTITY,
             Paint::Image(brush),
-            Some(Affine::translate(rect.origin().to_vec2()) * fit_transform(size, rect.size())),
+            Some(
+                Affine::translate(rect.origin().to_vec2())
+                    * fit_transform(self.pixel_size(), rect.size()),
+            ),
             &extended(rect, input.size, extend),
             AntiAliasing::Enabled,
         );

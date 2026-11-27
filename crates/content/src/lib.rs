@@ -58,6 +58,10 @@ pub struct MeasureInput<'a> {
     pub available_space: taffy::Size<taffy::AvailableSpace>,
     /// Size of the box's parent, if known.
     pub parent_size: taffy::Size<Option<f32>>,
+    /// Physical pixels per logical unit of the display. Sizes are logical:
+    /// a content with a physical size, such as the pixels of an image,
+    /// measures it divided by this.
+    pub scale_factor: f64,
 }
 
 /// The box a content draws into, supplied by paint.

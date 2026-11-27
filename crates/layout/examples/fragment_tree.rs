@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut fragment_builder = FragmentTreeBuilder::new();
 
     let mut viewport = Size::new(320.0, 600.0);
-    let mut constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE);
+    let mut constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE, 1.0);
     let input_root = input_builder
         .build(
             &ui,
@@ -91,7 +91,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // A narrower viewport reflows the lines. Only text styles depending on
     // the viewport are resolved again.
     viewport = Size::new(180.0, 600.0);
-    constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE).with_viewport_changed(true);
+    constraint =
+        LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE, 1.0).with_viewport_changed(true);
     inputs.invalidate_viewport(&mut dirty, input_root);
     input_builder
         .build(
@@ -121,7 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // the marked item again and flags its new kind for the fragment builder.
     ui.set_props(interruption, (DisplayOuter::Inline, DisplayInner::FlowRoot));
     dirty.mark_node(&inputs, interruption, DirtyFlags::NEED_FULL_LAYOUT);
-    constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE);
+    constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE, 1.0);
 
     input_builder
         .build(

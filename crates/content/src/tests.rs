@@ -49,6 +49,7 @@ impl Fixture {
                 height: taffy::AvailableSpace::MaxContent,
             },
             parent_size: taffy::Size::NONE,
+            scale_factor: 1.0,
         }
     }
 }
@@ -137,19 +138,19 @@ fn fits_size_the_drawn_content() {
     let box_size = kurbo_size(100.0, 100.0);
 
     assert_eq!(
-        style(ObjectFit::None).fitted_size(natural, box_size),
+        style(ObjectFit::None).fitted_size(natural, 1.0, box_size),
         natural
     );
     assert_eq!(
-        style(ObjectFit::Fill).fitted_size(natural, box_size),
+        style(ObjectFit::Fill).fitted_size(natural, 1.0, box_size),
         box_size
     );
     assert_eq!(
-        style(ObjectFit::Contain).fitted_size(natural, box_size),
+        style(ObjectFit::Contain).fitted_size(natural, 1.0, box_size),
         kurbo_size(100.0, 50.0)
     );
     assert_eq!(
-        style(ObjectFit::Cover).fitted_size(natural, box_size),
+        style(ObjectFit::Cover).fitted_size(natural, 1.0, box_size),
         kurbo_size(200.0, 100.0)
     );
 }
@@ -223,4 +224,23 @@ fn fit_transforms_scale_the_source_onto_the_box() {
         fit_transform(kurbo::Size::ZERO, kurbo::Size::new(40.0, 40.0)),
         kurbo::Affine::IDENTITY
     );
+}
+
+#[test]
+fn physical_sizes_are_measured_and_placed_in_logical_units() {
+    let fx = Fixture::new();
+    let physical = kurbo_size(200.0, 100.0);
+    let mut input = fx.input(None, None);
+    input.scale_factor = 2.0;
+
+    assert_eq!(
+        ObjectStyle::default().measure(physical, &input),
+        size(100.0, 50.0)
+    );
+    assert_eq!(
+        style(ObjectFit::None).fitted_size(physical, 2.0, kurbo_size(40.0, 40.0)),
+        kurbo_size(100.0, 50.0)
+    );
+    // A scale factor that is not positive leaves the size physical.
+    assert_eq!(crate::style::logical_size(physical, 0.0), physical);
 }

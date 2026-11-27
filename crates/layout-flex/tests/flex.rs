@@ -68,7 +68,7 @@ impl Layout {
                 &mut self.dirty,
                 key,
                 &mut self.fragments,
-                &LayoutConstraint::new_root(VIEWPORT, 16.0),
+                &LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0),
             )
             .unwrap();
         self.dirty.clear(&self.inputs, key);
@@ -576,7 +576,8 @@ fn viewport_gaps_follow_viewport_changes() {
                 &mut layout.dirty,
                 key,
                 &mut layout.fragments,
-                &LayoutConstraint::new_root(viewport, 16.0).with_viewport_changed(viewport_changed),
+                &LayoutConstraint::new_root(viewport, 16.0, 1.0)
+                    .with_viewport_changed(viewport_changed),
             )
             .unwrap();
         layout.dirty.clear(&layout.inputs, key);

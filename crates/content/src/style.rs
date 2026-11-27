@@ -53,7 +53,7 @@ define_style_props!(
 );
 
 /// The content style props of a node, measuring and placing a content of a
-/// natural size in its box.
+/// physical size in its box, in logical units.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ObjectStyle {
     pub fit: ObjectFit,
@@ -85,10 +85,13 @@ impl ObjectStyle {
         }
     }
 
-    /// The size of a content `natural` in size before fitting: its natural
-    /// width, with the height following the [`AspectRatio`] when it sets
-    /// one.
-    pub fn intrinsic_size(&self, natural: kurbo::Size) -> kurbo::Size {
+    /// The size before fitting, in logical units, of a content `physical` in
+    /// size on a display of `scale_factor`: its
+    /// [logical size](logical_size), with the height following the
+    /// [`AspectRatio`] when it sets one.
+    pub fn intrinsic_size(&self, physical: kurbo::Size, scale_factor: f64) -> kurbo::Size {
+        let natural = logical_size(physical, scale_factor);
+
         match self.ratio(natural) {
             Some(ratio) if self.aspect_ratio != AutoValue::Auto => {
                 kurbo::Size::new(natural.width, natural.width / ratio)
@@ -97,16 +100,17 @@ impl ObjectStyle {
         }
     }
 
-    /// The content box size of a box displaying a content `natural` in size,
-    /// under `input`, as a Taffy leaf measure function returns it:
+    /// The content box size, in logical units, of a box displaying a content
+    /// `physical` in size, under `input` and on its display, as a Taffy leaf
+    /// measure function returns it:
     /// - the known sizes, with a missing axis following the aspect ratio,
     /// - else the [intrinsic size](Self::intrinsic_size), scaled down to fit
     ///   the definite available space when the fit is
     ///   [`Contain`](ObjectFit::Contain).
-    pub fn measure(&self, natural: kurbo::Size, input: &MeasureInput<'_>) -> taffy::Size<f32> {
+    pub fn measure(&self, physical: kurbo::Size, input: &MeasureInput<'_>) -> taffy::Size<f32> {
         let known = input.known_dimensions;
-        let intrinsic = self.intrinsic_size(natural);
-        let ratio = self.ratio(natural);
+        let intrinsic = self.intrinsic_size(physical, input.scale_factor);
+        let ratio = self.ratio(logical_size(physical, input.scale_factor));
         let from_ratio = |length: f32, ratio: Option<f64>, fallback: f64| {
             ratio.map_or(fallback as f32, |ratio| (f64::from(length) * ratio) as f32)
         };
@@ -140,10 +144,16 @@ impl ObjectStyle {
         }
     }
 
-    /// The size a content `natural` in size is drawn at in a content box
-    /// `box_size` in size, by the [fit](ObjectFit).
-    pub fn fitted_size(&self, natural: kurbo::Size, box_size: kurbo::Size) -> kurbo::Size {
-        let intrinsic = self.intrinsic_size(natural);
+    /// The size, in logical units, a content `physical` in size on a display
+    /// of `scale_factor` is drawn at in a content box `box_size` in size, by
+    /// the [fit](ObjectFit).
+    pub fn fitted_size(
+        &self,
+        physical: kurbo::Size,
+        scale_factor: f64,
+        box_size: kurbo::Size,
+    ) -> kurbo::Size {
+        let intrinsic = self.intrinsic_size(physical, scale_factor);
         let scale = |pick: fn(f64, f64) -> f64| {
             if intrinsic.width <= 0.0 || intrinsic.height <= 0.0 {
                 return box_size;
@@ -188,11 +198,12 @@ impl ObjectStyle {
         kurbo::Rect::from_origin_size(position - anchor, size)
     }
 
-    /// The rectangle a content `natural` in size is drawn in, in the content
-    /// box of `input`: [fitted](Self::fitted_size) to it and
-    /// [positioned](Self::position) in it.
-    pub fn place(&self, natural: kurbo::Size, input: &DrawInput<'_>) -> kurbo::Rect {
-        let size = self.fitted_size(natural, input.size);
+    /// The rectangle, in logical units, a content `physical` in size is
+    /// drawn in, in the content box of `input` and on its display:
+    /// [fitted](Self::fitted_size) to it and [positioned](Self::position)
+    /// in it.
+    pub fn place(&self, physical: kurbo::Size, input: &DrawInput<'_>) -> kurbo::Rect {
+        let size = self.fitted_size(physical, input.scale_factor, input.size);
 
         self.position(size, input.size, &input.units)
     }
@@ -207,6 +218,18 @@ impl ObjectStyle {
         };
 
         (width > 0.0 && height > 0.0).then(|| width / height)
+    }
+}
+
+/// The logical size of a content `physical` in size on a display of
+/// `scale_factor` physical pixels per logical unit: one physical unit of the
+/// content per physical pixel. The physical size itself for a scale factor
+/// that is not positive and finite.
+pub fn logical_size(physical: kurbo::Size, scale_factor: f64) -> kurbo::Size {
+    if scale_factor > 0.0 && scale_factor.is_finite() {
+        physical / scale_factor
+    } else {
+        physical
     }
 }
 

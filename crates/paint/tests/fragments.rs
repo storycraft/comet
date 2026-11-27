@@ -110,7 +110,7 @@ fn assert_path_close(actual: &BezPath, expected: &BezPath) {
 
 const VIEWPORT: Size<f64> = Size::new(120.0, 400.0);
 const SCENE_VIEWPORT: Rect = Rect::new(0.0, 0.0, 120.0, 400.0);
-const UNITS: UnitResolveContext = LayoutConstraint::new_root(VIEWPORT, 16.0).units;
+const UNITS: UnitResolveContext = LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0).units;
 
 fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, BoxFragmentKey) {
     let mut inputs = LayoutInputTree::new();
@@ -133,7 +133,7 @@ fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, BoxFragmentK
             &mut dirty,
             root,
             &mut fragments,
-            &LayoutConstraint::new_root(VIEWPORT, 16.0),
+            &LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0),
         )
         .unwrap();
     // Flags are dropped: `draw` resolves into fresh trees, which resolve

@@ -25,7 +25,7 @@ use crate::{
 use comet_geometry::Size;
 
 const VIEWPORT: Size<f64> = Size::new(400.0, 600.0);
-const CONSTRAINT: LayoutConstraint = LayoutConstraint::new_root(VIEWPORT, 16.0);
+const CONSTRAINT: LayoutConstraint = LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0);
 
 struct Fixture {
     ui: Ui,

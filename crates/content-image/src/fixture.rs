@@ -7,10 +7,13 @@ use comet_tree::{
     ui::{Props, Ui},
 };
 
-/// A box node without props, for the props of the inputs.
+/// A box node without props, for the props of the inputs, on a display of
+/// a scale factor.
 pub struct Fixture {
     ui: Ui,
     node: NodeKey,
+    /// Physical pixels per logical unit of the inputs, 1 by default.
+    pub scale_factor: f64,
 }
 
 impl Fixture {
@@ -18,7 +21,11 @@ impl Fixture {
         let mut ui = Ui::new();
         let node = ui.create(Node::Box, ());
 
-        Self { ui, node }
+        Self {
+            ui,
+            node,
+            scale_factor: 1.0,
+        }
     }
 
     /// A box node with `props`.
@@ -26,7 +33,11 @@ impl Fixture {
         let mut ui = Ui::new();
         let node = ui.create(Node::Box, props);
 
-        Self { ui, node }
+        Self {
+            ui,
+            node,
+            scale_factor: 1.0,
+        }
     }
 
     fn props(&self) -> Props<'_> {
@@ -42,6 +53,7 @@ impl Fixture {
                 height: taffy::AvailableSpace::MaxContent,
             },
             parent_size: taffy::Size::NONE,
+            scale_factor: self.scale_factor,
         }
     }
 
@@ -64,7 +76,7 @@ impl Fixture {
         DrawInput {
             props: self.props(),
             size: kurbo::Size::new(width, height),
-            scale_factor: 2.0,
+            scale_factor: self.scale_factor,
             units: comet_geometry::UnitResolveContext::default(),
         }
     }

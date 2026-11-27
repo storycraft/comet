@@ -75,7 +75,7 @@ impl Harness {
             .input_builder
             .build(ui, inputs, dirty, BuildRequest::new(root, 16.0, VIEWPORT))
             .expect("input tree");
-        let constraint = LayoutConstraint::new_root(VIEWPORT, 16.0);
+        let constraint = LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0);
         let fragment_root = self
             .fragment_builder
             .build(

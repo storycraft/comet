@@ -50,7 +50,7 @@ use taffy::Overflow;
 
 const VIEWPORT: Size<f64> = Size::new(120.0, 400.0);
 const SCENE_VIEWPORT: Rect = Rect::new(0.0, 0.0, 120.0, 400.0);
-const UNITS: UnitResolveContext = LayoutConstraint::new_root(VIEWPORT, 16.0).units;
+const UNITS: UnitResolveContext = LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0).units;
 
 const RED: Color = Color::from_rgb8(200, 20, 20);
 const GREEN: Color = Color::from_rgb8(20, 160, 20);
@@ -113,7 +113,7 @@ impl Fixture {
                 &mut self.dirty,
                 input_root,
                 &mut self.fragments,
-                &LayoutConstraint::new_root(VIEWPORT, 16.0),
+                &LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0),
             )
             .unwrap();
         self.input_root = Some(input_root);
@@ -1752,7 +1752,7 @@ fn viewport_changes_resolve_viewport_dependent_paint_values_again() {
     assert!(!f.prepaint.depends_viewport(f.item(absolute)));
     assert!(!f.prepaint.depends_viewport(f.item(root)));
 
-    let wide = LayoutConstraint::new_root(Size::new(200.0, 400.0), 16.0).units;
+    let wide = LayoutConstraint::new_root(Size::new(200.0, 400.0), 16.0, 1.0).units;
     let resolve = |f: &mut Fixture, ui: &Ui, units, viewport_changed| {
         f.resolver
             .build(

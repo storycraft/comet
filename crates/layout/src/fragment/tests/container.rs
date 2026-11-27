@@ -86,7 +86,8 @@ impl Trees {
                 &mut self.dirty,
                 input_root,
                 &mut self.fragments,
-                &LayoutConstraint::new_root(viewport, 16.0).with_viewport_changed(viewport_changed),
+                &LayoutConstraint::new_root(viewport, 16.0, 1.0)
+                    .with_viewport_changed(viewport_changed),
             )
             .unwrap();
         self.dirty.clear(&self.tree, input_root);

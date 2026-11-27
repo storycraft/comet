@@ -189,6 +189,8 @@ pub struct Pipeline {
     layer_root: Option<PaintLayerKey>,
     /// Logical viewport of the last successful layout.
     viewport: Option<Size<f64>>,
+    /// Scale factor of the last successful layout.
+    scale_factor: Option<f64>,
     /// Logical viewport the input tree was resolved with, kept when a later
     /// step of the layout fails.
     input_viewport: Option<Size<f64>>,
@@ -260,10 +262,17 @@ impl Pipeline {
         }
     }
 
-    /// Take the changes of `tree`, then lay them out at `viewport` and place
-    /// the layers. On failure, nothing is painted until a later layout
-    /// succeeds.
-    pub fn layout(&mut self, tree: &mut UiTree, root: NodeKey, viewport: Size<f64>) -> Option<()> {
+    /// Take the changes of `tree`, then lay them out at `viewport`, in
+    /// logical units, on a display of `scale_factor` physical pixels per
+    /// logical unit, and place the layers. On failure, nothing is painted
+    /// until a later layout succeeds.
+    pub fn layout(
+        &mut self,
+        tree: &mut UiTree,
+        root: NodeKey,
+        viewport: Size<f64>,
+        scale_factor: f64,
+    ) -> Option<()> {
         self.take_changes(tree);
         let ui = &tree.ui;
         let contents = &tree.contents;
@@ -279,6 +288,7 @@ impl Pipeline {
         let builders = &mut self.builders;
         // Cleared until the layout succeeds.
         let previous_viewport = self.viewport.take();
+        let previous_scale_factor = self.scale_factor.take();
         // Cleared until the layers are placed. The layer tree keeps the root
         // layer, so the layers keep their keys.
         self.layer_root = None;
@@ -297,8 +307,12 @@ impl Pipeline {
         let input_root = builders.inputs.build(ui, inputs, dirty, request)?;
         self.input_viewport = Some(viewport);
 
-        let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE)
-            .with_viewport_changed(previous_viewport.is_some_and(|previous| previous != viewport));
+        // Contents measure with the scale factor, so a new one lays them
+        // out again, as a new viewport does.
+        let viewport_changed = previous_viewport.is_some_and(|previous| previous != viewport)
+            || previous_scale_factor.is_some_and(|previous| previous != scale_factor);
+        let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE, scale_factor)
+            .with_viewport_changed(viewport_changed);
         let Some(fragment_root) = builders.fragments.build(
             ui,
             inputs,
@@ -369,6 +383,7 @@ impl Pipeline {
         self.build_accessibility(ui, input_root);
         self.trees.dirty.clear(&self.trees.inputs, input_root);
         self.viewport = Some(viewport);
+        self.scale_factor = Some(scale_factor);
 
         Some(())
     }

@@ -121,3 +121,25 @@ fn image_style_changes_only_paint_again() {
         PropHint::RENDER
     );
 }
+
+#[test]
+fn image_pixels_are_physical_pixels() {
+    // Two physical pixels per logical unit.
+    let mut fx = Fixture::new();
+    fx.scale_factor = 2.0;
+    let content = ImageContent::new(image(20, 10));
+    assert_eq!(content.measure(&fx.input(None, None)), size(10.0, 5.0));
+
+    // Drawn at its logical size, centred, the pixels halved onto it.
+    let RenderCommand::Fill(fill) = fx.draw_one(&content, 40.0, 40.0) else {
+        panic!("images draw a fill");
+    };
+    assert_eq!(
+        fill.shape.bounding_box(),
+        kurbo::Rect::new(15.0, 17.5, 25.0, 22.5)
+    );
+    assert_eq!(
+        fill.brush_transform,
+        Some(Affine::translate((15.0, 17.5)) * Affine::scale(0.5))
+    );
+}
