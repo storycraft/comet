@@ -16,7 +16,7 @@ use comet_layout::style::{
     bx::{DisplayInner, DisplayOuter},
     geometry::{AutoValue, Point},
 };
-use comet_paint::style::UserSelect;
+use comet_paint::style::{BoxDecorationBreak, UserSelect};
 use comet_shell::cursor::CursorIcon;
 use comet_tree::node::NodeKey;
 use parley::Alignment;
@@ -194,8 +194,43 @@ fn block_inline_sample(cx: &UiCx) -> NodeKey {
                     ]
                 }),
             cx.text(" Then the outer text continues.").build(),
+            decoration_break(cx, BoxDecorationBreak::Break),
+            decoration_break(cx, BoxDecorationBreak::Clone),
         ]
     })
+}
+
+/// A paragraph with a rounded span wrapping over several lines, its pieces
+/// decorated as `decoration` says: squared where they join with `Break`,
+/// each rounded on its own with `Clone`.
+fn decoration_break(cx: &UiCx, decoration: BoxDecorationBreak) -> NodeKey {
+    let (label, color) = match decoration {
+        BoxDecorationBreak::Break => ("Break / ", Color::from_rgb8(255, 226, 204)),
+        BoxDecorationBreak::Clone => ("Clone / ", Color::from_rgb8(232, 222, 255)),
+    };
+
+    cx.div()
+        .margin(sides(px(12), px(0), px(0), px(0)))
+        .children(|cx| {
+            [
+                cx.div()
+                    .display_outer(DisplayOuter::Inline)
+                    .font_weight(parley::FontWeight::SEMI_BOLD)
+                    .text_color(AutoValue::Value(solid(MUTED)))
+                    .children(|cx| cx.text(label).build()),
+                cx.div()
+                    .display_outer(DisplayOuter::Inline)
+                    .box_decoration_break(decoration)
+                    .fill(solid(color))
+                    .border_radius(all(px(10)))
+                    .children(|cx| {
+                        cx.text(
+                            "a rounded span broken across lines, its pieces decorated as one box or each on its own, as the decoration break says.",
+                        )
+                        .build()
+                    }),
+            ]
+        })
 }
 
 fn rich_text_sample(cx: &UiCx) -> NodeKey {
