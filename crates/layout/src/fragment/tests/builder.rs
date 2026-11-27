@@ -372,6 +372,18 @@ fn root_inline_build_keeps_the_root_box() {
 }
 
 #[test]
+fn text_root_gets_an_anonymous_box() {
+    let mut ui = Ui::new();
+    let root = text(&mut ui, "one");
+
+    let fx = Fixture::new(ui, root);
+    let fragment = &fx.fragments.boxes[fx.box_of(root)];
+
+    assert_eq!(fragment.box_type, BoxFragmentType::Anonymous);
+    assert_eq!(fx.inline_text(root), "one");
+}
+
+#[test]
 fn child_layout_kind_change_keeps_the_box() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());

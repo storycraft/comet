@@ -10,10 +10,11 @@ use comet_tree::{
     ui::Ui,
 };
 
+use super::builder::{Fixture, text};
 use crate::{
     container::{ContainerContext, ContainerLayout},
-    dirty_map::DirtyMap,
-    fragment::{NodeLayoutBits, builder::FragmentTreeBuilder, tree::FragmentTree},
+    dirty_map::{DirtyFlags, DirtyMap},
+    fragment::{BoxFragmentType, NodeLayoutBits, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
@@ -191,4 +192,31 @@ fn percentage_descendants_keep_fixed_size_containers_cached() {
 
     // The root is laid out at the new size, but the container is cached.
     assert_eq!(layout(&mut trees, 500.0), 0);
+}
+
+#[test]
+fn text_children_of_containers_get_anonymous_boxes() {
+    let calls = Arc::new(AtomicU32::new(0));
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, (counted(&calls, NodeLayoutBits::empty()),));
+    let leaf = text(&mut ui, "one");
+    ui.append(root, leaf);
+
+    let mut fx = Fixture::new(ui, root);
+    let leaf_box = fx.box_of(leaf);
+    let box_type = |fx: &Fixture, node| fx.fragments.boxes[fx.box_of(node)].box_type;
+    assert_eq!(box_type(&fx, leaf), BoxFragmentType::Anonymous);
+    assert!(fx.fragments.boxes[leaf_box].child_layout.is_inline());
+
+    // Reconciled and restyled, the box stays anonymous.
+    fx.next_round();
+    let other = text(&mut fx.ui, "two");
+    fx.ui.append(root, other);
+    fx.mark(root, DirtyFlags::NEED_CHILDREN);
+    fx.mark(leaf, DirtyFlags::NEED_BOX_LAYOUT);
+    fx.layout();
+
+    assert_eq!(fx.box_of(leaf), leaf_box);
+    assert_eq!(box_type(&fx, leaf), BoxFragmentType::Anonymous);
+    assert_eq!(box_type(&fx, other), BoxFragmentType::Anonymous);
 }

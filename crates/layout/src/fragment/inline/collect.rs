@@ -21,7 +21,7 @@ use super::{
 };
 use crate::{
     fragment::{BoxFragmentType, NodeLayoutBits, builder::classify},
-    input::{LayoutInputKey, text::SpanStyle, tree::LayoutInputTree},
+    input::{LayoutInputKey, LayoutInputKind, text::SpanStyle, tree::LayoutInputTree},
     style::LayoutConstraint,
     taffy::style::{self, Style},
 };
@@ -38,8 +38,14 @@ pub struct InlineBuildContext<'a> {
 
 impl InlineBuildContext<'_> {
     /// Resolve the box style of an item, with what its layout depends on.
+    /// Text has no box properties: its box, if any, has the
+    /// [anonymous](style::anonymous) style.
     pub fn resolve_style(&self, key: LayoutInputKey) -> (Style, NodeLayoutBits) {
         let item = &self.tree.items[key];
+        if item.kind == LayoutInputKind::Text {
+            return (style::anonymous(self.constraint), NodeLayoutBits::empty());
+        }
+
         let mut cx = self.constraint.clone();
         cx.units.font_size = f64::from(item.text_style.span.font_size);
 

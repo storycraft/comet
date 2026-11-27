@@ -349,7 +349,8 @@ impl Engine<'_> {
                     Some(key) => {
                         let parked = self.fragments.boxes.parent(key).is_none();
                         let fragment = &mut self.fragments.boxes[key];
-                        let box_type = classify::block_box_type(&fragment.style);
+                        let box_type =
+                            classify::block_box_type(&self.cx, block, &fragment.style, None);
 
                         if fragment.box_type != box_type {
                             fragment.box_type = box_type;
@@ -541,7 +542,7 @@ impl Engine<'_> {
                     let moved = self.fragments.boxes.parent(key) != Some(parent);
                     let fragment = &mut self.fragments.boxes[key];
                     let box_type =
-                        box_type.unwrap_or_else(|| classify::block_box_type(&fragment.style));
+                        classify::block_box_type(&self.cx, child, &fragment.style, box_type);
 
                     if fragment.box_type != box_type {
                         fragment.box_type = box_type;
@@ -600,7 +601,7 @@ impl Engine<'_> {
     /// out.
     ///
     /// The box is a `box_type` box, or with `None`, the type of a child of a
-    /// block or container box.
+    /// block or container box. The box of a text item is always anonymous.
     fn create(
         &mut self,
         item: LayoutInputKey,
@@ -608,7 +609,7 @@ impl Engine<'_> {
     ) -> BoxFragmentKey {
         let kind = ChildKind::of_item(&self.cx, item);
         let (style, bits) = self.cx.resolve_style(item);
-        let box_type = box_type.unwrap_or_else(|| classify::block_box_type(&style));
+        let box_type = classify::block_box_type(&self.cx, item, &style, box_type);
 
         let mut fragment = BoxFragment::new(item, box_type, kind.layout(), style);
         fragment.bits = bits;

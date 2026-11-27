@@ -136,7 +136,7 @@ impl Engine<'_> {
                 "moving a box inside inline content in or out of flow needs a full layout"
             );
         } else if !is_root {
-            fragment.box_type = classify::block_box_type(&style);
+            fragment.box_type = classify::block_box_type(&self.cx, item, &style, None);
         }
 
         fragment.style = style;

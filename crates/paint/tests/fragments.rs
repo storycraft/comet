@@ -380,7 +380,8 @@ fn text_nodes_paint_no_background_of_their_own() {
         &mut scene,
     );
 
-    // Text nodes have no paint data, even as a root with a box.
+    // Text generates no box of its own: as a root, it gets an anonymous box,
+    // which paints nothing.
     assert!(fills(&scene).is_empty());
     assert!(!glyphs(&scene).is_empty());
 }

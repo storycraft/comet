@@ -63,10 +63,22 @@ impl ChildKind {
     }
 }
 
-/// The type of a box that is a child of a block or container box, or a
-/// build root, from its style.
-pub fn block_box_type(style: &Style) -> BoxFragmentType {
-    if is_out_of_flow(style) {
+/// The type of the box of `key`, a child of a block or container box, or a
+/// build root, with the resolved `style`, or `requested` if given. The box of
+/// a text item is always [anonymous](BoxFragmentType::Anonymous): text
+/// generates no box of its own, so the box only wraps it in an inline
+/// formatting context and paints nothing.
+pub fn block_box_type(
+    cx: &InlineBuildContext<'_>,
+    key: LayoutInputKey,
+    style: &Style,
+    requested: Option<BoxFragmentType>,
+) -> BoxFragmentType {
+    if cx.tree.items[key].kind == LayoutInputKind::Text {
+        BoxFragmentType::Anonymous
+    } else if let Some(box_type) = requested {
+        box_type
+    } else if is_out_of_flow(style) {
         BoxFragmentType::OutOfFlow
     } else if style.establishes_flow_root() {
         BoxFragmentType::FlowRoot

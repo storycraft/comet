@@ -1,14 +1,18 @@
 //! Consistency checks of a laid out fragment tree, in debug builds.
 
 use super::classify::ChildKind;
-use crate::fragment::{
-    BoxFragmentKey, BoxFragmentLink, BoxFragmentType, inline::collect::InlineBuildContext,
-    tree::FragmentTree,
+use crate::{
+    fragment::{
+        BoxFragmentKey, BoxFragmentLink, BoxFragmentType, inline::collect::InlineBuildContext,
+        tree::FragmentTree,
+    },
+    input::LayoutInputKind,
 };
 
 /// Check the boxes of `root` once laid out:
 /// - every box is the box of its source, or an anonymous run box of a mixed
-///   inline box, and its content layout kind matches its source;
+///   inline box, and its content layout kind matches its source; only the
+///   boxes of text items are anonymous among the former;
 /// - the runs of a mixed inline box are never adjacent, and are linked in
 ///   order; other boxes are not linked;
 /// - a built inline layout has exactly the children of its box as the boxes
@@ -50,6 +54,11 @@ pub(super) fn check(cx: &InlineBuildContext<'_>, fragments: &FragmentTree, root:
                 fragments.box_fragment(source),
                 Some(key),
                 "a box is the box of its source"
+            );
+            assert_eq!(
+                fragment.box_type == BoxFragmentType::Anonymous,
+                cx.tree.items[source].kind == LayoutInputKind::Text,
+                "the box of a text item, and only it, is anonymous"
             );
             assert_eq!(
                 ChildKind::of(&fragment.child_layout),
