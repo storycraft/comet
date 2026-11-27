@@ -1,5 +1,6 @@
 mod absolute;
 mod flex;
+mod image;
 mod layers;
 mod reactive;
 mod scroll;
@@ -151,6 +152,7 @@ pub fn sample_ui(cx: &UiCx) -> NodeKey {
                         reactive::showcase(cx),
                         scroll::showcase(cx),
                         selection::showcase(cx),
+                        image::showcase(cx),
                     ]
                 });
 

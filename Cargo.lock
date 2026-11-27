@@ -828,6 +828,7 @@ dependencies = [
  "anyrender_vello_gpu",
  "comet-accesskit",
  "comet-content",
+ "comet-content-image",
  "comet-layout",
  "comet-layout-flex",
  "comet-paint",

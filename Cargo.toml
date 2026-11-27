@@ -12,6 +12,7 @@ license = "Apache-2.0"
 comet-tree = { path = "./crates/tree" }
 comet-slotmap-tree = { path = "./crates/slotmap-tree" }
 comet-content = { path = "./crates/content" }
+comet-content-image = { path = "./crates/content-image" }
 comet-layout = { path = "./crates/layout" }
 comet-paint = { path = "./crates/paint" }
 comet-accesskit = { path = "./crates/accesskit" }
