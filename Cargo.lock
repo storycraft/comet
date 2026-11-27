@@ -874,18 +874,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "comet-content-external"
-version = "0.1.0"
-dependencies = [
- "anyrender",
- "comet-content",
- "comet-tree",
- "kurbo",
- "peniko",
- "taffy",
-]
-
-[[package]]
 name = "comet-content-image"
 version = "0.1.0"
 dependencies = [
