@@ -8,7 +8,9 @@
 //! sizing constraints of each box in a [`MeasureInput`], and paint the size of
 //! its content box in a [`DrawInput`], so one content can be shared by any
 //! number of boxes. Both carry the [`Props`] of the box's node, so a content
-//! can read style props of its own, such as how to fit into the box.
+//! can read style props, such as the [content styles](style) fitting it into
+//! the box, which [`ObjectStyle`](style::ObjectStyle) measures and places
+//! contents with.
 //!
 //! Every content draws into the scene of the layer its box paints in, images
 //! and external textures alike. Images are provided by
@@ -17,10 +19,12 @@
 
 pub mod manager;
 pub mod prelude;
+pub mod style;
 
 use std::num::NonZeroU64;
 
 use anyrender::Scene;
+use comet_geometry::UnitResolveContext;
 use comet_tree::ui::Props;
 
 /// Opaque identifier of a [`Content`] in a [`ContentManager`](manager::ContentManager).
@@ -57,7 +61,7 @@ pub struct MeasureInput<'a> {
 }
 
 /// The box a content draws into, supplied by paint.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct DrawInput<'a> {
     /// Props of the node of the box being drawn.
     pub props: Props<'a>,
@@ -67,6 +71,10 @@ pub struct DrawInput<'a> {
     /// Physical pixels per logical unit of the display, such as to pick the
     /// resolution of the drawing.
     pub scale_factor: f64,
+    /// Font and viewport sizes of the box, resolving the relative lengths of
+    /// its style props, such as its
+    /// [`ObjectPosition`](style::ObjectPosition).
+    pub units: UnitResolveContext,
 }
 
 /// An external content drawn by replaced boxes.
@@ -83,36 +91,6 @@ pub trait Content {
     /// Draw the content into the content box described by `input`, in its
     /// local coordinates.
     fn draw(&self, input: &DrawInput<'_>, scene: &mut Scene);
-}
-
-/// Size of a replaced content with a natural size, under `input`: the known
-/// sizes, with a missing axis following the natural aspect ratio, or the
-/// natural size when neither is known.
-pub fn natural_measure(natural: kurbo::Size, input: &MeasureInput<'_>) -> taffy::Size<f32> {
-    let (width, height) = (natural.width as f32, natural.height as f32);
-
-    let (width, height) = match (input.known_dimensions.width, input.known_dimensions.height) {
-        (Some(w), Some(h)) => (w, h),
-        (Some(w), None) => (
-            w,
-            if width > 0.0 {
-                w * height / width
-            } else {
-                height
-            },
-        ),
-        (None, Some(h)) => (
-            if height > 0.0 {
-                h * width / height
-            } else {
-                width
-            },
-            h,
-        ),
-        (None, None) => (width, height),
-    };
-
-    taffy::Size { width, height }
 }
 
 /// Brush transform mapping a source `natural` pixels in size, such as an

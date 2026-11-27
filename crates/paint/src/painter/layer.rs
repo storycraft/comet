@@ -8,6 +8,7 @@ use comet_layout::{
         BoxFragment, BoxFragmentKey, FragmentGeometry, FragmentRef, inline::InlineItem,
         inline::InlineItemKind,
     },
+    input::LayoutInputKey,
     style::bx::DisplayInner,
 };
 use comet_tree::ui::Props;
@@ -585,7 +586,15 @@ fn draw_box(
 
         match &fill.0 {
             Paint::Content(id) => draw_content(
-                sources, recording, *id, props, rect, &shape, transform, scene,
+                sources,
+                recording,
+                fragment.source,
+                *id,
+                props,
+                rect,
+                &shape,
+                transform,
+                scene,
             ),
             paint => {
                 if let Some(paint) = scene_paint(paint) {
@@ -648,7 +657,15 @@ fn draw_box(
         let content = content_box(&fragment.layout.geometry, rect);
 
         draw_content(
-            sources, recording, *id, props, content, &content, transform, scene,
+            sources,
+            recording,
+            fragment.source,
+            *id,
+            props,
+            content,
+            &content,
+            transform,
+            scene,
         );
     }
 
@@ -696,6 +713,7 @@ fn scene_paint(paint: &Paint) -> Option<PaintRef<'_>> {
 fn draw_content(
     sources: Sources<'_>,
     recording: &mut Scene,
+    source: LayoutInputKey,
     id: ContentId,
     props: Props<'_>,
     rect: Rect,
@@ -707,12 +725,18 @@ fn draw_content(
         return;
     };
 
+    let mut units = sources.prepaint.units().clone();
+    if let Some(item) = sources.inputs.items.get(source) {
+        units.font_size = f64::from(item.text_style.span.font_size);
+    }
+
     recording.reset();
     content.draw(
         &DrawInput {
             props,
             size: rect.size(),
             scale_factor: sources.scale_factor,
+            units,
         },
         recording,
     );

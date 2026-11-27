@@ -20,6 +20,14 @@ impl Fixture {
         Self { ui, node }
     }
 
+    /// A box node fitting its content as `fit` says.
+    pub fn fitted(fit: comet_content::style::ObjectFit) -> Self {
+        let mut ui = Ui::new();
+        let node = ui.create(Node::Box, (fit,));
+
+        Self { ui, node }
+    }
+
     fn props(&self) -> Props<'_> {
         self.ui.props(self.node).unwrap()
     }
@@ -36,29 +44,31 @@ impl Fixture {
         }
     }
 
+    /// The only command `content` records in a `width` x `height` box of
+    /// this node.
+    pub fn draw_one(
+        &self,
+        content: &dyn Content,
+        width: f64,
+        height: f64,
+    ) -> anyrender::recording::RenderCommand {
+        let mut scene = anyrender::Scene::new();
+        content.draw(&self.draw(width, height), &mut scene);
+
+        assert_eq!(scene.commands.len(), 1);
+        scene.commands.pop().unwrap()
+    }
+
     pub fn draw(&self, width: f64, height: f64) -> DrawInput<'_> {
         DrawInput {
             props: self.props(),
             size: kurbo::Size::new(width, height),
             scale_factor: 2.0,
+            units: comet_geometry::UnitResolveContext::default(),
         }
     }
 }
 
 pub fn size(width: f32, height: f32) -> taffy::Size<f32> {
     taffy::Size { width, height }
-}
-
-/// The only command `content` records in a `width` x `height` box.
-pub fn draw_one(
-    content: &dyn Content,
-    width: f64,
-    height: f64,
-) -> anyrender::recording::RenderCommand {
-    let fx = Fixture::new();
-    let mut scene = anyrender::Scene::new();
-    content.draw(&fx.draw(width, height), &mut scene);
-
-    assert_eq!(scene.commands.len(), 1);
-    scene.commands.pop().unwrap()
 }

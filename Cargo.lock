@@ -872,6 +872,7 @@ name = "comet-content"
 version = "0.1.0"
 dependencies = [
  "anyrender",
+ "comet-geometry",
  "comet-tree",
  "kurbo",
  "rustc-hash 2.1.3",
@@ -884,6 +885,7 @@ version = "0.1.0"
 dependencies = [
  "anyrender",
  "comet-content",
+ "comet-geometry",
  "comet-tree",
  "kurbo",
  "peniko",

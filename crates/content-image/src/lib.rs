@@ -2,12 +2,13 @@
 //! [`comet_content`].
 
 use anyrender::{AntiAliasing, Paint, PaintScene, Scene};
-use kurbo::{Affine, Point, Rect};
+use kurbo::Affine;
 use peniko::{Fill, ImageBrush, ImageData};
 
-use comet_content::{Content, DrawInput, MeasureInput, fit_transform, natural_measure};
+use comet_content::{Content, DrawInput, MeasureInput, fit_transform, style::ObjectStyle};
 
-/// A raster image, stretched over the content box.
+/// A raster image, sized and placed in its box by the
+/// [content styles](comet_content::style) of the box's node.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImageContent {
     pub brush: ImageBrush,
@@ -47,16 +48,21 @@ impl ImageContent {
 
 impl Content for ImageContent {
     fn measure(&self, input: &MeasureInput<'_>) -> taffy::Size<f32> {
-        natural_measure(self.natural_size, input)
+        ObjectStyle::of(input.props).measure(self.natural_size, input)
     }
 
     fn draw(&self, input: &DrawInput<'_>, scene: &mut Scene) {
+        let rect = ObjectStyle::of(input.props).place(self.natural_size, input);
+
         scene.fill(
             Fill::NonZero,
             Affine::IDENTITY,
             Paint::Image(self.brush.as_ref()),
-            Some(fit_transform(self.pixel_size(), input.size)),
-            &Rect::from_origin_size(Point::ORIGIN, input.size),
+            Some(
+                Affine::translate(rect.origin().to_vec2())
+                    * fit_transform(self.pixel_size(), rect.size()),
+            ),
+            &rect,
             AntiAliasing::Enabled,
         );
     }

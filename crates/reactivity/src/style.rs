@@ -11,6 +11,7 @@
 //!     .build()
 //! ```
 
+use comet_content::style as content;
 use comet_geometry::{AutoValue, Point, Rect, Size, StyleUnit};
 use comet_layout::style::bx;
 use comet_layout_flex::{flex, style as flex_style};
@@ -112,6 +113,15 @@ pub trait Styled: Sized {
         mix_blend: paint::MixBlend => peniko::BlendMode;
         scroll_left: paint::ScrollLeft => f64;
         scroll_top: paint::ScrollTop => f64;
+
+        // Content
+        object_fit: content::ObjectFit => content::ObjectFit;
+        object_anchor: content::ObjectAnchor => Point<StyleUnit>;
+        object_position: content::ObjectPosition => Point<StyleUnit>;
+        /// The aspect ratio of the content a box displays, see
+        /// [`content::AspectRatio`]. Not the box's own
+        /// [`aspect_ratio`](Self::aspect_ratio).
+        content_aspect_ratio: content::AspectRatio => AutoValue<Size<f64>>;
 
         // Accessibility.
         role: comet_accesskit::style::Role => accesskit::Role;

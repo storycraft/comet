@@ -2,6 +2,7 @@
 
 use bitflags::bitflags;
 use comet_accesskit::style as a11y;
+use comet_content::style as content;
 use comet_layout::{dirty_map::DirtyFlags, style::bx};
 use comet_layout_flex::style as flex;
 use comet_paint::style as paint;
@@ -138,6 +139,8 @@ reactive_props!(BOX =>
     bx::BorderEndCap,
     bx::BorderDashPattern,
     bx::BorderDashOffset,
+    content::ObjectFit,
+    content::AspectRatio,
     flex::FlexDirection,
     flex::FlexWrap,
     flex::FlexLineCount,
@@ -219,6 +222,8 @@ reactive_props!(REPAINT =>
     paint::BorderFill,
     paint::OutlineFill,
     paint::AntiAliasing,
+    content::ObjectAnchor,
+    content::ObjectPosition,
 );
 
 // Read by the accessibility build only.

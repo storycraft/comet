@@ -117,6 +117,7 @@ impl PrepaintTreeBuilder {
         root: BoxFragmentKey,
         viewport_changed: bool,
     ) -> Option<()> {
+        tree.units = units.clone();
         let sources = Sources {
             ui,
             inputs,

@@ -1,6 +1,8 @@
 //! Boxes displaying a content, sized by it.
 
-use comet_content::{Content, DrawInput, MeasureInput, manager::ContentManager, natural_measure};
+use comet_content::{
+    Content, DrawInput, MeasureInput, manager::ContentManager, style::ObjectStyle,
+};
 use comet_geometry::{AutoValue, Rect, Size, StyleUnit};
 use comet_layout::{
     dirty_map::DirtyMap,
@@ -26,7 +28,7 @@ struct Natural;
 
 impl Content for Natural {
     fn measure(&self, input: &MeasureInput<'_>) -> taffy::Size<f32> {
-        natural_measure(kurbo::Size::new(30.0, 15.0), input)
+        ObjectStyle::default().measure(kurbo::Size::new(30.0, 15.0), input)
     }
 
     fn draw(&self, _: &DrawInput<'_>, _: &mut anyrender::Scene) {}

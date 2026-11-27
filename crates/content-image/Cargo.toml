@@ -14,4 +14,5 @@ peniko = { workspace = true }
 taffy = { workspace = true }
 
 [dev-dependencies]
+comet-geometry = { workspace = true }
 comet-tree = { workspace = true }

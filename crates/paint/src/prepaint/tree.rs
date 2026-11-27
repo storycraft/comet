@@ -1,5 +1,6 @@
 use std::ops::Index;
 
+use comet_geometry::UnitResolveContext;
 #[cfg(doc)]
 use comet_layout::dirty_map::DirtyFlags;
 use comet_layout::{
@@ -34,6 +35,8 @@ pub struct PrepaintTree {
     /// so the map is sparse. Keyed by item, since the fragments of an item
     /// share its props, and inline part boxes are replaced by layouts.
     pub(super) viewport_dependents: SparseSecondaryMap<LayoutInputKey, ()>,
+    /// Root font size and viewport the tree was last resolved with.
+    pub(super) units: UnitResolveContext,
 }
 
 impl PrepaintTree {
@@ -75,6 +78,12 @@ impl PrepaintTree {
     /// resolved with `vw` or `vh` lengths.
     pub fn depends_viewport(&self, key: LayoutInputKey) -> bool {
         self.viewport_dependents.contains_key(key)
+    }
+
+    /// Root font size and viewport the tree was last resolved with, such as
+    /// to resolve other lengths of its items at paint time.
+    pub fn units(&self) -> &UnitResolveContext {
+        &self.units
     }
 
     pub fn clear(&mut self) {
