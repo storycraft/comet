@@ -17,6 +17,7 @@ use comet_paint::{
     layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
+    selection::rects::SelectionRects,
 };
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use kurbo::Affine;
@@ -120,6 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &inputs,
                 &fragments,
                 &prepaint,
+                &SelectionRects::default(),
                 &layers,
                 layer_root,
                 kurbo::Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),

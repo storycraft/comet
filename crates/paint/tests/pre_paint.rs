@@ -19,7 +19,7 @@ use comet_layout::{
         },
     },
 };
-use comet_paint::selection::{Affinity, Selection, TextPosition};
+use comet_paint::selection::{Affinity, Selection, TextPosition, rects::SelectionRects};
 use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
@@ -61,6 +61,8 @@ struct Fixture {
     dirty: DirtyMap,
     fragments: FragmentTree,
     prepaint: PrepaintTree,
+    /// Rectangles behind the selected text, built by [`Fixture::select`].
+    selection: SelectionRects,
     /// Paint layers built from scratch on every resolve, holding the
     /// transforms.
     layers: PaintLayerTree,
@@ -254,6 +256,7 @@ impl Fixture {
             &self.inputs,
             &self.fragments,
             &self.prepaint,
+            &self.selection,
             &layers,
             root,
             SCENE_VIEWPORT,
@@ -266,13 +269,13 @@ impl Fixture {
 }
 
 impl Fixture {
-    /// Resolve the selection areas for `selection`.
+    /// Build the selection rects for `selection`.
     fn select(&mut self, ui: &Ui, selection: Option<Selection>) {
-        self.resolver.build_selection(
+        self.selection.build(
             ui,
             &self.inputs,
             &self.fragments,
-            &mut self.prepaint,
+            &self.prepaint,
             self.root.unwrap(),
             selection,
         );
@@ -1371,6 +1374,7 @@ impl Fixture {
             &self.inputs,
             &self.fragments,
             &self.prepaint,
+            &self.selection,
             &layers,
             root,
             SCENE_VIEWPORT.scale_from_origin(scale_factor),
@@ -2100,6 +2104,7 @@ fn layers_painted_alone_scroll_with_their_ancestors() {
         &f.inputs,
         &f.fragments,
         &f.prepaint,
+        &f.selection,
         &layers,
         layer,
         SCENE_VIEWPORT,
@@ -2250,7 +2255,7 @@ fn selection_areas_cover_the_selected_text_items() {
 
     let mut f = Fixture::default();
     f.build(&ui, root);
-    let area = |f: &Fixture, node| f.prepaint.selection_area(f.item(node)).to_vec();
+    let area = |f: &Fixture, node| f.selection.rects(f.item(node)).to_vec();
 
     f.select(&ui, Some(selection((first, 0), (last, 5))));
     // Each selected text item has its own area, side by side on the line.
@@ -2261,6 +2266,15 @@ fn selection_areas_cover_the_selected_text_items() {
     // Unselectable text is left out, and so is text after the extent.
     assert!(area(&f, skipped).is_empty());
     assert!(area(&f, unselected).is_empty());
+    // The rectangles of both items are stored next to each other, in
+    // selection order, each item holding its range of them.
+    let first_item = f.selection.get(f.item(first)).unwrap();
+    let last_item = f.selection.get(f.item(last)).unwrap();
+    assert_eq!(first_item.rects, 0..1);
+    assert_eq!(last_item.rects, 1..2);
+    assert_eq!(f.selection.all(), [first_area[0], last_area[0]]);
+    assert_eq!(f.selection.items().count(), 2);
+    assert!(f.selection.get(f.item(skipped)).is_none());
 
     // A part of a text item selects only that part.
     f.select(&ui, Some(selection((last, 1), (last, 3))));
@@ -2272,6 +2286,8 @@ fn selection_areas_cover_the_selected_text_items() {
     // Clearing the selection clears every area.
     f.select(&ui, None);
     assert!(area(&f, last).is_empty());
+    assert!(f.selection.is_empty());
+    assert!(f.selection.all().is_empty());
 }
 
 #[test]

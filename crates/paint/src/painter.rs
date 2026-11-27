@@ -29,6 +29,7 @@ use crate::{
         fragment::{BoxRole, for_each_paint_child_on_lines, paint_props, piece_of_part},
         tree::PrepaintTree,
     },
+    selection::rects::SelectionRects,
     style::{BorderFill, Fill, OutlineFill},
 };
 
@@ -175,6 +176,8 @@ struct Sources<'a> {
     inputs: &'a LayoutInputTree,
     tree: &'a FragmentTree,
     prepaint: &'a PrepaintTree,
+    /// Rectangles behind the selected text.
+    selection: &'a SelectionRects,
     layers: &'a PaintLayerTree,
     /// The scene's viewport, in physical pixels.
     viewport: Rect,
@@ -260,6 +263,10 @@ impl CometPainter {
     /// with their inline part boxes. Items placing no box paint no
     /// background, border or outline.
     ///
+    /// Each glyph run paints the [`SelectionRects`] of its text item across
+    /// it with the item's selection background, then its glyphs, then the
+    /// selected glyphs again in the item's selection color.
+    ///
     /// A principal box clipping its overflow clips its descendants to its
     /// border box, rounded with its border radius, including those painting
     /// in other layers. Clips of the root's ancestors do not apply.
@@ -290,6 +297,7 @@ impl CometPainter {
         inputs: &LayoutInputTree,
         tree: &FragmentTree,
         prepaint: &PrepaintTree,
+        selection: &SelectionRects,
         layers: &PaintLayerTree,
         root: PaintLayerKey,
         viewport: Rect,
@@ -327,6 +335,7 @@ impl CometPainter {
             inputs,
             tree,
             prepaint,
+            selection,
             layers,
             viewport,
             scale_factor,
@@ -792,8 +801,8 @@ impl CometPainter {
         self.selection.clear();
         self.selection.extend(
             sources
-                .prepaint
-                .selection_area(key)
+                .selection
+                .rects(key)
                 .iter()
                 .map(|area| *area + origin)
                 .filter(|area| area.y0 < rect.y1 && area.y1 > rect.y0)

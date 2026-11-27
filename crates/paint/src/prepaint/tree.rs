@@ -6,7 +6,7 @@ use comet_layout::{
     fragment::{BoxFragmentKey, tree::FragmentTree},
     input::LayoutInputKey,
 };
-use kurbo::{Point, Rect, Shape};
+use kurbo::{Point, Shape};
 use slotmap::{SecondaryMap, SparseSecondaryMap};
 
 use crate::prepaint::{FragmentData, LayoutInputData};
@@ -31,9 +31,6 @@ pub struct PrepaintTree {
     /// so the map is sparse. Keyed by item, since the fragments of an item
     /// share its props, and inline part boxes are replaced by layouts.
     pub(super) viewport_dependents: SparseSecondaryMap<LayoutInputKey, ()>,
-    /// Selection area of each text item with selected text. Few items are
-    /// selected, so the map is sparse.
-    pub(super) selection_areas: SparseSecondaryMap<LayoutInputKey, Vec<Rect>>,
 }
 
 impl PrepaintTree {
@@ -49,14 +46,6 @@ impl PrepaintTree {
     /// The paint data a layout input item was resolved to.
     pub fn get(&self, key: LayoutInputKey) -> Option<&LayoutInputData> {
         self.layout_mapping.get(key)
-    }
-
-    /// The selection area of a text item: the rectangles behind its selected
-    /// text, in the coordinates of the inline layout holding it, from the
-    /// last [selection resolve](super::builder::PrepaintTreeBuilder::build_selection).
-    /// Empty if none of its text is selected.
-    pub fn selection_area(&self, key: LayoutInputKey) -> &[Rect] {
-        self.selection_areas.get(key).map_or(&[], Vec::as_slice)
     }
 
     /// Whether the text of an item can be selected, as resolved into its
@@ -75,7 +64,6 @@ impl PrepaintTree {
         self.fragment_mapping.clear();
         self.layout_mapping.clear();
         self.viewport_dependents.clear();
-        self.selection_areas.clear();
     }
 
     /// Whether `point`, in the local coordinates of a box fragment, hits the

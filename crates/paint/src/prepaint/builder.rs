@@ -19,7 +19,6 @@ use crate::{
         fragment::{BoxRole, boxes_of, paint_props},
         tree::PrepaintTree,
     },
-    selection::{Selection, order::selected_ranges, text::next_text_item},
     style::{
         BorderRadius, OutlineOffset, OutlineWidth, Selectable, SelectionColor, SelectionFill,
         TextColor,
@@ -197,82 +196,6 @@ impl PrepaintTreeBuilder {
         }
 
         Some(())
-    }
-}
-
-impl PrepaintTreeBuilder {
-    /// Resolve the [selection areas](PrepaintTree::selection_area) of the
-    /// text items under `root` for `selection`, replacing those of the last
-    /// call. Each selected text item that can be
-    /// [selected](LayoutInputData::selectable) gets the rectangles
-    /// parley highlights for its selected text. Without a selection, or
-    /// with a collapsed one, no item has any.
-    ///
-    /// Areas follow the inline layouts, so resolve them after every layout
-    /// while text is selected, and once more when the selection is cleared.
-    /// `inputs` is the input tree `fragments` were built from, and `tree`
-    /// belongs to them.
-    pub fn build_selection(
-        &mut self,
-        ui: &Ui,
-        inputs: &LayoutInputTree,
-        fragments: &FragmentTree,
-        tree: &mut PrepaintTree,
-        root: BoxFragmentKey,
-        selection: Option<Selection>,
-    ) {
-        let PrepaintTree {
-            selection_areas: areas,
-            layout_mapping: items,
-            ..
-        } = tree;
-        // Keep the buffers of the items selected again.
-        for area in areas.values_mut() {
-            area.clear();
-        }
-
-        if let Some(selection) = selection {
-            for range in selected_ranges(ui, inputs, fragments, root, selection) {
-                let Some(inline) = fragments.inline_layout(range.owner) else {
-                    continue;
-                };
-                let layout = &inline.layout;
-                let mut from = range.start.0;
-
-                while let Some((item, text)) = next_text_item(inline, from, range.end.0) {
-                    let start = if text.start <= range.start.0 {
-                        range.start
-                    } else {
-                        (text.start, parley::Affinity::Downstream)
-                    };
-                    let end = if text.end >= range.end.0 {
-                        range.end
-                    } else {
-                        (text.end, parley::Affinity::Upstream)
-                    };
-                    from = end.0;
-
-                    if !items.get(item).is_some_and(|data| data.selectable) {
-                        continue;
-                    }
-
-                    let Some(area) = areas.entry(item).map(|entry| entry.or_default()) else {
-                        continue;
-                    };
-                    // Indices past the text, such as of text edited since,
-                    // end it.
-                    let cursor = |(index, affinity)| {
-                        parley::Cursor::from_byte_index(layout, index, affinity)
-                    };
-                    parley::Selection::new(cursor(start), cursor(end))
-                        .geometry_with(layout, |rect, _| {
-                            area.push(kurbo::Rect::new(rect.x0, rect.y0, rect.x1, rect.y1))
-                        });
-                }
-            }
-        }
-
-        areas.retain(|_, area| !area.is_empty());
     }
 }
 

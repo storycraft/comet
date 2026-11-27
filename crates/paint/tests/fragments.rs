@@ -15,6 +15,7 @@ use comet_paint::{
     layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
+    selection::rects::SelectionRects,
     style::{BorderFill, BorderRadius, Fill, TextColor},
 };
 use comet_tree::{
@@ -172,7 +173,16 @@ fn draw(
         )
         .unwrap();
     painter.draw(
-        ui, inputs, tree, &prepaint, &layers, layer_root, viewport, 1.0, scene,
+        ui,
+        inputs,
+        tree,
+        &prepaint,
+        &SelectionRects::default(),
+        &layers,
+        layer_root,
+        viewport,
+        1.0,
+        scene,
     );
 }
 

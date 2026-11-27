@@ -7,11 +7,13 @@
 //! either order.
 //!
 //! The [`order`] and [`text`] modules find the selected parts of the inline
-//! layouts of a fragment tree, and the selected text. Whether text can be
+//! layouts of a fragment tree, and the selected text. The [`rects`] module
+//! builds the rectangles painted behind it. Whether text can be
 //! selected is resolved by the pre-paint step, see
 //! [`LayoutInputData::selectable`](crate::prepaint::LayoutInputData::selectable).
 
 pub mod order;
+pub mod rects;
 pub mod text;
 
 use comet_layout::{

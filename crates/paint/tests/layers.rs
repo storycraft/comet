@@ -20,6 +20,7 @@ use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
+    selection::rects::SelectionRects,
     style::{BackdropFilter, Fill, Filter, MixBlend, Opacity, Transform, TransformOrigin, ZIndex},
 };
 use comet_tree::{
@@ -219,6 +220,7 @@ impl Fixture {
             &self.inputs,
             &self.fragments,
             &self.prepaint,
+            &SelectionRects::default(),
             &self.layers,
             self.root,
             SCENE_VIEWPORT,

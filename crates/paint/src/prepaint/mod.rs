@@ -70,7 +70,7 @@ pub struct LayoutInputData {
     pub selection_color: Paint,
 
     /// Fill painted behind the item's selected glyphs, its
-    /// [selection area](tree::PrepaintTree::selection_area): its
+    /// [selection rects](crate::selection::rects::SelectionRects): its
     /// [`SelectionFill`](crate::style::SelectionFill), or the parent item's
     /// when auto. [`DEFAULT_SELECTION_BACKGROUND`] at the root.
     pub selection_background: Paint,

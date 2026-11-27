@@ -24,7 +24,7 @@ use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, fragment::BoxRole, tree::PrepaintTree},
-    selection::Selection,
+    selection::{Selection, rects::SelectionRects},
 };
 use comet_reactivity::{prop::PropHint, tree::UiTree};
 use comet_tree::{node::NodeKey, ui::Ui};
@@ -42,6 +42,8 @@ pub struct UiTrees {
     pub dirty: DirtyMap,
     pub fragments: FragmentTree,
     pub prepaint: PrepaintTree,
+    /// Rectangles behind the selected text, built with every layout.
+    pub selection: SelectionRects,
     pub layers: PaintLayerTree,
     /// Accessibility nodes, built while accessibility is active.
     pub ax: AxTree,
@@ -270,6 +272,7 @@ impl Pipeline {
             dirty,
             fragments,
             prepaint,
+            selection,
             layers,
             ..
         } = &mut self.trees;
@@ -320,10 +323,10 @@ impl Pipeline {
             fragment_root,
         );
 
-        // Selection areas follow the inline layouts, so they are resolved
-        // with every layout.
+        // Selection rects follow the inline layouts, so they are built with
+        // every layout.
         if resolved.is_some() {
-            builders.prepaint.build_selection(
+            selection.build(
                 ui,
                 inputs,
                 fragments,
@@ -385,6 +388,7 @@ impl Pipeline {
             &trees.inputs,
             &trees.fragments,
             &trees.prepaint,
+            &trees.selection,
             &trees.layers,
             layer_root,
             physical,
