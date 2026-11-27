@@ -1,7 +1,10 @@
 //! Input dispatch to nodes, focus and scrolling of a headless window, with
 //! handlers set through the `InputStyled` helpers.
 
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use comet_layout::style::{geometry::Point as StylePoint, unit::*};
 use comet_reactivity::{cx::UiCx, style::Styled};
@@ -338,6 +341,44 @@ fn wheel_scrolls_the_innermost_scroll_container() {
         .map(|top| top.0);
     assert_eq!(top, Some(40.0), "one line down");
     assert!(window.needs_redraw(), "the scroll asks for a frame");
+}
+
+#[test]
+fn wheel_does_not_pass_to_outer_container_at_the_end() {
+    let inner = Rc::new(Cell::new(None));
+    let mut window = Window::new({
+        let inner = inner.clone();
+        move |cx: &UiCx| {
+            scroll_box(cx).children(|cx| {
+                let key = scroll_box(cx)
+                    .children(|cx| cx.div().size(size(px(100), px(300))).build());
+                inner.set(Some(key));
+                vec![key, cx.div().size(size(px(100), px(300))).build()]
+            })
+        }
+    });
+    open(&mut window);
+    let inner = inner.get().unwrap();
+
+    // Up, while the inner container is already at its top.
+    window.pointer_event(&PointerEvent::Scroll(PointerScrollEvent {
+        pointer: MOUSE,
+        delta: ScrollDelta::LineDelta(0.0, 1.0),
+        state: state(10.0, 10.0),
+    }));
+    assert_eq!(scroll_top(&window, inner), 0.0);
+    assert_eq!(scroll_top(&window, window.root()), 0.0, "not passed out");
+
+    // Down, past the end of the inner container.
+    for _ in 0..20 {
+        window.pointer_event(&PointerEvent::Scroll(PointerScrollEvent {
+            pointer: MOUSE,
+            delta: ScrollDelta::LineDelta(0.0, -1.0),
+            state: state(10.0, 10.0),
+        }));
+    }
+    assert_eq!(scroll_top(&window, inner), 200.0, "at its end");
+    assert_eq!(scroll_top(&window, window.root()), 0.0, "not passed out");
 }
 
 #[test]

@@ -243,9 +243,10 @@ impl Window {
         update(self.state.cursor, self.writers.cursor, cursor);
     }
 
-    /// Scroll the innermost scroll container of `path` that can still move
-    /// by `delta`, clamped to how far its content overflows in the last
-    /// layout. Scrolling down moves the content up. The scroll is painted in
+    /// Scroll the innermost scroll container of `path` by `delta`, clamped
+    /// to how far its content overflows in the last layout. Scrolling down
+    /// moves the content up. The scroll never passes to an outer container,
+    /// even when the innermost one is at its end. The scroll is painted in
     /// the next frame, which the change requests.
     fn scroll(&mut self, path: &[NodeKey], delta: ScrollDelta) {
         let delta = self.viewport.scroll_delta(delta);
@@ -259,6 +260,9 @@ impl Window {
                 continue;
             };
             let overflow = props.get_or_default::<Overflow>().0;
+            if overflow.x != OverflowKind::Scroll && overflow.y != OverflowKind::Scroll {
+                continue;
+            }
             // The props may hold more than the range allows since it shrank.
             let left = props.get_or_default::<ScrollLeft>().0.min(range.x);
             let top = props.get_or_default::<ScrollTop>().0.min(range.y);
@@ -277,8 +281,8 @@ impl Window {
             if new_left != left || new_top != top {
                 tree.set_prop(node, ScrollLeft(new_left));
                 tree.set_prop(node, ScrollTop(new_top));
-                return;
             }
+            return;
         }
     }
 
