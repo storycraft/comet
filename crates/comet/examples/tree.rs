@@ -23,7 +23,7 @@ use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use kurbo::Affine;
 
 const WIDTH: u32 = 1100;
-const HEIGHT: u32 = 1400;
+const HEIGHT: u32 = 2200;
 /// Physical pixels per logical unit of the rendered image.
 const SCALE_FACTOR: f64 = 1.0;
 
