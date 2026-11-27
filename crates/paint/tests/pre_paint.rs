@@ -2208,7 +2208,7 @@ fn selection_paints_inherit_from_the_parent() {
     let mut f = Fixture::default();
     let fragment_root = f.build(&ui, root);
 
-    // Black on blue at the root.
+    // Navy on blue at the root.
     assert_eq!(
         f.data(root).selection_color,
         Paint::Solid(DEFAULT_SELECTION_COLOR)
@@ -2325,7 +2325,7 @@ fn selection_backgrounds_paint_behind_the_selected_glyphs() {
     assert_eq!(commands(&f, &ui), [glyphs_of(BLUE)]);
 
     // The fill goes behind the glyphs, and the selected glyphs paint again
-    // over them in the selection color, black by default, clipped to the
+    // over them in the selection color, navy by default, clipped to the
     // selection.
     f.select(&ui, Some(selection((label, 0), (label, 5))));
     let selected = |color: Color| {

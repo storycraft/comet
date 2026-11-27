@@ -76,10 +76,11 @@ pub struct LayoutInputData {
     pub selection_background: Paint,
 }
 
-/// The [selection color](LayoutInputData::selection_color) of the root:
-/// black, which reads well on the light, semi transparent
-/// [selection background](DEFAULT_SELECTION_BACKGROUND).
-pub const DEFAULT_SELECTION_COLOR: Color = Color::BLACK;
+/// The [selection color](LayoutInputData::selection_color) of the root: a
+/// deep navy in the hue of the light, semi transparent
+/// [selection background](DEFAULT_SELECTION_BACKGROUND), softer than black
+/// while keeping about 7:1 contrast over it on a white page.
+pub const DEFAULT_SELECTION_COLOR: Color = Color::from_rgb8(20, 48, 110);
 
 /// The [selection background](LayoutInputData::selection_background) of the
 /// root: semi transparent blue.

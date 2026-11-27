@@ -64,7 +64,7 @@ define_style_props!(
     pub TextColor: AutoValue<Paint> = AutoValue::Auto;
 
     /// Color of the selected text of a node and its descendants. Auto
-    /// follows the parent's selection color, black at the root.
+    /// follows the parent's selection color, a deep navy at the root.
     #[derive(Debug, Clone, PartialEq)]
     pub SelectionColor: AutoValue<Paint> = AutoValue::Auto;
 
