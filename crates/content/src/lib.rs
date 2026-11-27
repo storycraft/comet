@@ -26,7 +26,7 @@ use std::num::NonZeroU64;
 
 use anyrender::{ResourceId, Scene};
 
-/// Identifier of a [`Content`] in a [`ContentManager`](manager::ContentManager).
+/// Opaque identifier of a [`Content`] in a [`ContentManager`](manager::ContentManager).
 ///
 /// Ids are never reused by a manager, so a box keeping the id of a removed
 /// content draws nothing rather than another content.
@@ -34,11 +34,11 @@ use anyrender::{ResourceId, Scene};
 pub struct ContentId(NonZeroU64);
 
 impl ContentId {
-    pub const fn new(id: NonZeroU64) -> Self {
+    pub const fn from_ffi(id: NonZeroU64) -> Self {
         Self(id)
     }
 
-    pub const fn get(self) -> NonZeroU64 {
+    pub const fn as_ffi(self) -> NonZeroU64 {
         self.0
     }
 }

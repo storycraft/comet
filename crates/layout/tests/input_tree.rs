@@ -96,7 +96,7 @@ fn fresh_tree_mirrors_ui_with_full_layout_flags() {
     let block = ui.create(Node::Box, (DisplayOuter::Block,));
     let content = ui.create(
         Node::Box,
-        (DisplayInner::Content(ContentId::new(NonZeroU64::MIN)),),
+        (DisplayInner::Content(ContentId::from_ffi(NonZeroU64::MIN)),),
     );
     let hidden = ui.create(Node::Text, ());
     let atomic = ui.create(Node::Box, (DisplayOuter::Inline, DisplayInner::FlowRoot));
@@ -929,7 +929,7 @@ fn update_reconciles_children_when_child_layout_changes() {
     // Content display has no child items.
     ui.set_props(
         parent,
-        (DisplayInner::Content(ContentId::new(NonZeroU64::MIN)),),
+        (DisplayInner::Content(ContentId::from_ffi(NonZeroU64::MIN)),),
     );
     dirty.mark_node(&tree, parent, FULL);
     build(&mut builder, &ui, root, &mut tree, &mut dirty);

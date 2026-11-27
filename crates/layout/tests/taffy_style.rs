@@ -20,7 +20,7 @@ fn display_semantics_do_not_depend_on_taffy_display_defaults() {
         (bx::DisplayInner::Flow, true, false),
         (bx::DisplayInner::FlowRoot, false, false),
         (
-            bx::DisplayInner::Content(ContentId::new(NonZeroU64::MIN)),
+            bx::DisplayInner::Content(ContentId::from_ffi(NonZeroU64::MIN)),
             false,
             true,
         ),

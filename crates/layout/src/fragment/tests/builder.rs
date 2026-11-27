@@ -205,7 +205,7 @@ fn fresh_build_classifies_boxes() {
     let absolute = ui.create(Node::Box, (bx::Position(taffy::Position::Absolute),));
     let content = ui.create(
         Node::Box,
-        (bx::DisplayInner::Content(ContentId::new(NonZeroU64::MIN)),),
+        (bx::DisplayInner::Content(ContentId::from_ffi(NonZeroU64::MIN)),),
     );
 
     ui.append(root, para);

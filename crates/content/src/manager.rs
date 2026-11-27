@@ -38,7 +38,7 @@ impl ContentManager {
 
     /// Add `content` under a new id.
     pub fn insert_boxed(&mut self, content: Box<dyn Content>) -> ContentId {
-        let id = ContentId::new(self.next);
+        let id = ContentId::from_ffi(self.next);
         self.next = self.next.checked_add(1).expect("content ids exhausted");
         self.contents.insert(id, content);
 
