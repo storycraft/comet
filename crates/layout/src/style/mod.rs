@@ -1,8 +1,6 @@
 pub mod bx;
-pub mod geometry;
-pub mod unit;
 
-use crate::style::geometry::{Size, UnitResolveContext};
+use comet_geometry::{Size, UnitResolveContext};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutConstraint {

@@ -1,9 +1,10 @@
 use crate::{
     fragment::{BoxFragment, BoxFragmentType, ChildLayoutType, tree::FragmentTree},
     input::LayoutInputKey,
-    style::{LayoutConstraint, geometry::Size},
+    style::LayoutConstraint,
     taffy::style,
 };
+use comet_geometry::Size;
 use slotmap::SlotMap;
 
 #[test]

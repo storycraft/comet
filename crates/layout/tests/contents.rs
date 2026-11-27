@@ -1,6 +1,7 @@
 //! Boxes displaying a content, sized by it.
 
 use comet_content::{Content, DrawInput, MeasureInput, manager::ContentManager, natural_measure};
+use comet_geometry::{AutoValue, Rect, Size, StyleUnit};
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -11,7 +12,6 @@ use comet_layout::{
     style::{
         LayoutConstraint,
         bx::{self, DisplayInner},
-        geometry::{AutoValue, Rect, Size, StyleUnit},
     },
 };
 use comet_tree::{

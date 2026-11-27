@@ -11,8 +11,9 @@ use crate::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
-    style::{bx, geometry::Size},
+    style::bx,
 };
+use comet_geometry::Size;
 
 fn build(ui: &Ui, root: NodeKey) -> (LayoutInputTree, LayoutInputKey) {
     let mut tree = LayoutInputTree::new();

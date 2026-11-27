@@ -1,7 +1,7 @@
 //! Everything needed to write components: the builder, style helpers and
 //! units, handlers, and the `reactive_graph` signal API.
 
-pub use comet_layout::style::unit::*;
+pub use comet_geometry::unit::*;
 pub use comet_reactivity::{prelude::*, prop::ReactiveProp};
 pub use reactive_graph::{prelude::*, signal::signal, wrappers::read::Signal};
 

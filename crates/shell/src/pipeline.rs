@@ -7,6 +7,7 @@
 use accesskit::{NodeId, TreeId, TreeInfo, TreeUpdate};
 use comet_accesskit::{AxKey, ax_key, builder::AxTreeBuilder, node_id, tree::AxTree};
 use comet_content::manager::ContentManager;
+use comet_geometry::{Size, UnitResolveContext};
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{BoxFragmentKey, FragmentRef, builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -15,10 +16,7 @@ use comet_layout::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
-    style::{
-        LayoutConstraint,
-        geometry::{Size, UnitResolveContext},
-    },
+    style::LayoutConstraint,
 };
 use comet_paint::{
     hit::PaintHitTester,

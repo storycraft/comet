@@ -4,6 +4,7 @@ use std::sync::{
     atomic::{AtomicU32, Ordering},
 };
 
+use comet_geometry::{AutoValue, Size, StyleUnit};
 use comet_layout::{
     container::{ContainerContext, ContainerLayout},
     dirty_map::{DirtyFlags, DirtyMap},
@@ -18,7 +19,6 @@ use comet_layout::{
     style::{
         LayoutConstraint,
         bx::{self, DisplayInner, DisplayOuter},
-        geometry::{AutoValue, Size, StyleUnit},
     },
 };
 use comet_tree::{

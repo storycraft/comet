@@ -1,6 +1,7 @@
 use comet_content::manager::ContentManager;
 use std::ops::Deref;
 
+use comet_geometry::{AutoValue, Rect, Size, StyleUnit};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{
@@ -11,10 +12,7 @@ use comet_layout::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
-    style::{
-        LayoutConstraint, bx,
-        geometry::{AutoValue, Rect, Size, StyleUnit},
-    },
+    style::{LayoutConstraint, bx},
 };
 use comet_layout_flex::{flex as flex_layout, style as flex};
 use comet_tree::{

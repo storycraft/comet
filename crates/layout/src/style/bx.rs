@@ -6,10 +6,9 @@ use kurbo;
 use parley;
 use taffy;
 
-use crate::{
-    container::ContainerLayout,
-    style::geometry::{self, AutoValue, Point, Rect, StyleUnit},
-};
+use crate::container::ContainerLayout;
+use comet_geometry as geometry;
+use comet_geometry::{AutoValue, Point, Rect, StyleUnit};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DisplayOuter {

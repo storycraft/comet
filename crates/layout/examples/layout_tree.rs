@@ -1,5 +1,6 @@
 mod common;
 
+use comet_geometry::{Size, StyleUnit};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     input::{
@@ -7,10 +8,7 @@ use comet_layout::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
-    style::{
-        bx::{DisplayInner, DisplayOuter, FontSize},
-        geometry::{Size, StyleUnit},
-    },
+    style::bx::{DisplayInner, DisplayOuter, FontSize},
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},

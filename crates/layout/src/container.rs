@@ -9,9 +9,9 @@ use crate::{
         builder::taffy::{BoxTree, node_id},
     },
     input::LayoutInputKey,
-    style::geometry::StyleUnit,
     taffy::{conv, style::Style},
 };
+use comet_geometry::StyleUnit;
 
 /// A custom layout algorithm for one box and its direct children.
 pub trait ContainerLayout: Send + Sync {

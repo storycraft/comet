@@ -26,8 +26,8 @@ use crate::{
         },
     },
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
-    style::geometry::{Point, Size},
 };
+use comet_geometry::{Point, Size};
 
 /// A piece of an inline element open on the current line.
 #[derive(Debug, Clone, Copy)]

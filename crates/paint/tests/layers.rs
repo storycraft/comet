@@ -1,6 +1,7 @@
 use anyrender::{Scene, recording::RenderCommand};
 use comet_content::manager::ContentManager;
-use comet_layout::style::geometry::Rect as LayoutRect;
+use comet_geometry::Rect as LayoutRect;
+use comet_geometry::{AutoValue, Size, StyleUnit, UnitResolveContext};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{BoxFragmentKey, FragmentRef, builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -9,10 +10,7 @@ use comet_layout::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
-    style::{
-        LayoutConstraint, bx,
-        geometry::{AutoValue, Size, StyleUnit, UnitResolveContext},
-    },
+    style::{LayoutConstraint, bx},
 };
 use comet_paint::hit::{HitTestResult, PaintHitTester};
 use comet_paint::style;
@@ -496,7 +494,7 @@ fn clips_apply_to_descendants_in_other_layers() {
         Node::Box,
         (
             fixed(50.0, 20.0),
-            bx::Overflow(comet_layout::style::geometry::Point::new(
+            bx::Overflow(comet_geometry::Point::new(
                 Overflow::Hidden,
                 Overflow::Hidden,
             )),
@@ -899,7 +897,7 @@ fn clips_and_rounded_corners_limit_hits() {
         Node::Box,
         (
             fixed(40.0, 20.0),
-            bx::Overflow(comet_layout::style::geometry::Point::new(
+            bx::Overflow(comet_geometry::Point::new(
                 Overflow::Hidden,
                 Overflow::Hidden,
             )),
@@ -1674,7 +1672,7 @@ fn scrolled_rows(
         Node::Box,
         (
             fixed(50.0, 30.0),
-            bx::Overflow(comet_layout::style::geometry::Point::new(
+            bx::Overflow(comet_geometry::Point::new(
                 Overflow::Hidden,
                 Overflow::Hidden,
             )),
@@ -2153,7 +2151,7 @@ fn viewport_changes_resolve_viewport_relative_transform_origins() {
         (
             fixed(20.0, 10.0),
             Transform(Affine::scale(2.0)),
-            TransformOrigin(comet_layout::style::geometry::Point::new(
+            TransformOrigin(comet_geometry::Point::new(
                 StyleUnit::Vw(0.1),
                 StyleUnit::Px(0.0),
             )),

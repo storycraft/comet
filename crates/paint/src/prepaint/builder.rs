@@ -1,11 +1,9 @@
+use comet_geometry::{AutoValue, Rect, StyleUnit, UnitResolveContext};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{BoxFragment, BoxFragmentKey, tree::FragmentTree},
     input::{LayoutInputKey, tree::LayoutInputTree},
-    style::{
-        bx::Overflow,
-        geometry::{AutoValue, Rect, StyleUnit, UnitResolveContext},
-    },
+    style::bx::Overflow,
 };
 use comet_tree::ui::{Props, Ui};
 use kurbo::{RoundedRectRadii, Size};

@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
 use anyrender::filters::FilterEffect;
+use comet_geometry::{AutoValue, Point as StylePoint, StyleUnit, UnitResolveContext};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{BoxFragment, BoxFragmentKey, FragmentGeometry, FragmentRef, tree::FragmentTree},
     input::{LayoutInputKey, tree::LayoutInputTree},
-    style::{
-        bx::Overflow,
-        geometry::{AutoValue, Point as StylePoint, StyleUnit, UnitResolveContext},
-    },
+    style::bx::Overflow,
 };
 use comet_tree::ui::{Props, Ui};
 use kurbo::{Affine, Point, Size, Vec2};

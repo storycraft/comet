@@ -1,5 +1,8 @@
 use anyrender::{Scene, recording::RenderCommand};
 use comet_content::manager::ContentManager;
+use comet_geometry::{
+    AutoValue, Point as LayoutPoint, Rect as LayoutRect, Size, StyleUnit, UnitResolveContext,
+};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{
@@ -11,13 +14,7 @@ use comet_layout::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
-    style::{
-        LayoutConstraint, bx,
-        geometry::{
-            AutoValue, Point as LayoutPoint, Rect as LayoutRect, Size, StyleUnit,
-            UnitResolveContext,
-        },
-    },
+    style::{LayoutConstraint, bx},
 };
 use comet_paint::selection::{Affinity, Selection, TextPosition, rects::SelectionRects};
 use comet_paint::style;

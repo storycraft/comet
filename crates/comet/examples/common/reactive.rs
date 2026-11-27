@@ -1,7 +1,7 @@
 use core::f64::consts::TAU;
 
 use comet::prelude::*;
-use comet_layout::style::geometry::AutoValue;
+use comet_geometry::AutoValue;
 use comet_tree::node::NodeKey;
 use kurbo::Affine;
 use peniko::Color;

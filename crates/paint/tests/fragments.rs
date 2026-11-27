@@ -1,5 +1,6 @@
 use anyrender::{AntiAliasing as EdgeMode, Glyph, Scene, recording::RenderCommand};
 use comet_content::manager::ContentManager;
+use comet_geometry::{AutoValue, Rect as LayoutRect, Size, StyleUnit, UnitResolveContext};
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{BoxFragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -7,10 +8,7 @@ use comet_layout::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
-    style::{
-        LayoutConstraint, bx,
-        geometry::{AutoValue, Rect as LayoutRect, Size, StyleUnit, UnitResolveContext},
-    },
+    style::{LayoutConstraint, bx},
 };
 use comet_paint::style;
 use comet_paint::style::Paint;

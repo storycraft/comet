@@ -4,7 +4,7 @@
 //! Percentages use fractions (`StyleUnit::Percent(0.1)` means 10%).
 //! Lengths in gaps and flex bases accept all Comet units.
 
-use comet_layout::style::geometry::{AutoValue, Size, StyleUnit};
+use comet_geometry::{AutoValue, Size, StyleUnit};
 use comet_tree::style::define_style_props;
 
 define_style_props!(

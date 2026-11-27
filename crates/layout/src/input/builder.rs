@@ -12,11 +12,9 @@ use crate::{
         text::{resolve_text_style, root_text_style},
         tree::LayoutInputTree,
     },
-    style::{
-        bx::{DisplayInner, DisplayOuter},
-        geometry::{Size, UnitResolveContext},
-    },
+    style::bx::{DisplayInner, DisplayOuter},
 };
+use comet_geometry::{Size, UnitResolveContext};
 
 /// What [`LayoutInputTreeBuilder::build`] builds.
 #[derive(Debug, Clone, Copy, PartialEq)]

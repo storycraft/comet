@@ -1,6 +1,6 @@
 use anyrender::filters::FilterEffect;
 use comet_content::ContentId;
-use comet_layout::style::geometry::{AutoValue, Point, Rect, StyleUnit};
+use comet_geometry::{AutoValue, Point, Rect, StyleUnit};
 use comet_tree::style::{StyleProp, define_style_props};
 use kurbo::Affine;
 use peniko::BlendMode;

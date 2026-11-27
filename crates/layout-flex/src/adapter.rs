@@ -1,8 +1,5 @@
-use comet_layout::{
-    container::ContainerContext,
-    fragment::NodeLayoutBits,
-    style::geometry::{AutoValue, StyleUnit},
-};
+use comet_geometry::{AutoValue, StyleUnit};
+use comet_layout::{container::ContainerContext, fragment::NodeLayoutBits};
 use comet_tree::ui::Props;
 use taffy::{
     CoreStyle, FlexboxContainerStyle, FlexboxItemStyle, LayoutContainingBlock,

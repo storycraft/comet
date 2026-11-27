@@ -1,7 +1,7 @@
 //! Mouse cursors.
 
 /// A mouse cursor, by the keywords of the CSS `cursor` property. `auto` is
-/// [`AutoValue::Auto`](comet_layout::style::geometry::AutoValue::Auto) of the
+/// [`AutoValue::Auto`](comet_geometry::AutoValue::Auto) of the
 /// [`Cursor`](crate::style::Cursor) prop, and `none` is no icon.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CursorIcon {

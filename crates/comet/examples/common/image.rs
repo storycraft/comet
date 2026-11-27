@@ -1,10 +1,8 @@
 use comet::prelude::*;
 use comet_content::ContentId;
 use comet_content_image::ImageContent;
-use comet_layout::style::{
-    bx::{DisplayInner, DisplayOuter},
-    geometry::AutoValue,
-};
+use comet_geometry::AutoValue;
+use comet_layout::style::bx::{DisplayInner, DisplayOuter};
 use comet_paint::style::Paint;
 use comet_reactivity::cx::NodeBuild;
 use comet_tree::node::NodeKey;

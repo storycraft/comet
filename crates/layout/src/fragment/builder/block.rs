@@ -16,9 +16,10 @@ use super::{
 use crate::{
     container::ContainerContext,
     fragment::{BoxFragmentKey, BoxFragmentType},
-    style::{bx::DisplayInner, geometry::Point},
+    style::bx::DisplayInner,
     taffy::conv,
 };
+use comet_geometry::Point;
 
 impl Engine<'_> {
     /// Lay out the box of the build root in the available space of the
@@ -310,7 +311,7 @@ impl Engine<'_> {
 /// parent: the sizes set by its style reach it as definite available space,
 /// as does the space of a box sized by its content. A content needs them to
 /// keep its aspect ratio, such as an image with only a width.
-/// 
+///
 /// TODO:: REMOVE
 fn content_known_dimensions(
     style: &impl CoreStyle,

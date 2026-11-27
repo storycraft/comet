@@ -119,8 +119,8 @@ fn hits_items_inside_their_border_boxes() {
     let (owner, text) = (keys.insert(()), keys.insert(()));
     let mut layout = InlineLayout::new();
     let mut run = item(text, InlineItemKind::Run { line: 0, run: 0 }, 0);
-    run.geometry.location = crate::style::geometry::Point::new(10.0, 4.0);
-    run.geometry.size = crate::style::geometry::Size::new(20.0, 8.0);
+    run.geometry.location = comet_geometry::Point::new(10.0, 4.0);
+    run.geometry.size = comet_geometry::Size::new(20.0, 8.0);
     layout.items = vec![item(owner, InlineItemKind::Line { line: 0 }, 1), run];
 
     let hit = |x, y| layout.hit_local(1, kurbo::Point::new(x, y));

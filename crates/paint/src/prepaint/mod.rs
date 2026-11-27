@@ -64,7 +64,7 @@ pub struct LayoutInputData {
     /// Primary color of the item's content, like `currentColor`, which its
     /// glyph runs paint with: its [`Color`](crate::style::Color), or the
     /// parent item's color when
-    /// [auto](comet_layout::style::geometry::AutoValue::Auto). Black for the
+    /// [auto](comet_geometry::AutoValue::Auto). Black for the
     /// root. Inherited along the input item tree, not the fragment tree, so a
     /// block inside an inline span inherits from the span.
     pub color: Paint,

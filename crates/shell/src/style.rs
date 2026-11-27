@@ -16,7 +16,7 @@
 
 use core::cell::RefCell;
 
-use comet_layout::style::geometry::AutoValue;
+use comet_geometry::AutoValue;
 use comet_reactivity::{
     prop::{PropHint, ReactiveProp},
     style::Styled,

@@ -3,6 +3,10 @@ use std::{cell::RefCell, rc::Rc};
 
 use any_spawner::Executor;
 use comet_accesskit::style::Role;
+use comet_geometry::{
+    AutoValue, Rect, Size, StyleUnit,
+    unit::{auto, axis, percent, px, vh},
+};
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -13,8 +17,6 @@ use comet_layout::{
     style::{
         LayoutConstraint,
         bx::{DisplayInner, DisplayOuter, FontSize, MinSize, Padding},
-        geometry::{AutoValue, Rect, Size, StyleUnit},
-        unit::{auto, axis, percent, px, vh},
     },
 };
 use comet_layout_flex::style::Gap;
@@ -264,7 +266,7 @@ async fn helpers_bind_values_and_signals() {
                 .gap(gap)
                 .font_size(size)
                 .padding(axis(px(2), percent(50)))
-                .min_size(comet_layout::style::unit::size(auto(), vh(100)))
+                .min_size(comet_geometry::unit::size(auto(), vh(100)))
                 .build()
         });
 
@@ -585,7 +587,8 @@ fn hints_are_symmetric() {
 
 #[test]
 fn overflow_changes_layers_only_when_scrolling_starts_or_stops() {
-    use comet_layout::style::{bx::Overflow, geometry::Point};
+    use comet_geometry::Point;
+    use comet_layout::style::bx::Overflow;
 
     let overflow = |x, y| Overflow(Point::new(x, y));
     let visible = overflow(taffy::Overflow::Visible, taffy::Overflow::Visible);

@@ -1,11 +1,9 @@
 use std::num::NonZeroU64;
 
 use comet_content::ContentId;
+use comet_geometry::{AutoValue, Rect, Size, StyleUnit};
 use comet_layout::{
-    style::{
-        LayoutConstraint, bx,
-        geometry::{AutoValue, Rect, Size, StyleUnit},
-    },
+    style::{LayoutConstraint, bx},
     taffy::style::resolve,
 };
 use comet_tree::{node::Node, ui::Ui};

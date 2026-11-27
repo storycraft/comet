@@ -7,7 +7,7 @@ mod common;
 use core::f64::consts::TAU;
 
 use comet::{prelude::*, winit::window::WindowAttributes};
-use comet_layout::style::geometry::{AutoValue, Point};
+use comet_geometry::{AutoValue, Point};
 use comet_paint::style::Paint;
 use comet_tree::node::NodeKey;
 use kurbo::Affine;

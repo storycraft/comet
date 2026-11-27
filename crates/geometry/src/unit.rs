@@ -8,17 +8,14 @@
 //! [`AutoValue`] sides as well:
 //!
 //! ```
-//! use comet_layout::style::{
-//!     geometry::{AutoValue, Rect, Size, StyleUnit},
-//!     unit::*,
-//! };
+//! use comet_geometry::{AutoValue, Rect, Size, StyleUnit, unit::*};
 //!
 //! let padding: Rect<StyleUnit> = axis(px(8), px(16));
 //! let min_size: Size<AutoValue<StyleUnit>> = size(auto(), vh(100));
 //! assert_eq!(min_size.height, AutoValue::Value(StyleUnit::Vh(1.0)));
 //! ```
 
-use crate::style::geometry::{AutoValue, Point, Rect, Size, StyleUnit};
+use crate::{AutoValue, Point, Rect, Size, StyleUnit};
 
 /// `v` pixels.
 pub fn px(v: impl Into<f64>) -> StyleUnit {

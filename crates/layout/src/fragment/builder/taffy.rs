@@ -24,12 +24,10 @@ use super::Engine;
 use crate::{
     fragment::{BoxFragment, BoxFragmentKey, BoxFragmentType, NodeLayoutBits, tree::FragmentTree},
     input::tree::LayoutInputTree,
-    style::{
-        LayoutConstraint,
-        geometry::{Point, Size},
-    },
+    style::LayoutConstraint,
     taffy::{conv, style::Style},
 };
+use comet_geometry::{Point, Size};
 
 /// The Taffy node id of a box.
 pub(crate) fn node_id(key: BoxFragmentKey) -> taffy::NodeId {

@@ -3,6 +3,7 @@ use std::num::NonZeroU64;
 use comet_content::ContentId;
 use std::sync::Arc;
 
+use comet_geometry::{Size, StyleUnit};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     input::{
@@ -11,10 +12,7 @@ use comet_layout::{
         text::TextStyleBits,
         tree::LayoutInputTree,
     },
-    style::{
-        bx::{self, DisplayInner, DisplayOuter},
-        geometry::{Size, StyleUnit},
-    },
+    style::bx::{self, DisplayInner, DisplayOuter},
 };
 use comet_tree::{node::Node, ui::Ui};
 

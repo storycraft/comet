@@ -1,10 +1,13 @@
 use comet_content::manager::ContentManager;
 mod common;
 
+use comet_geometry::Size;
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{
-        BoxFragmentKey, builder::FragmentTreeBuilder, inline::InlineItemKind, inline::InlineLayout,
+        BoxFragmentKey,
+        builder::FragmentTreeBuilder,
+        inline::{InlineItemKind, InlineLayout},
         tree::FragmentTree,
     },
     input::{
@@ -14,7 +17,6 @@ use comet_layout::{
     style::{
         LayoutConstraint,
         bx::{DisplayInner, DisplayOuter},
-        geometry::Size,
     },
 };
 use comet_tree::node::Text;

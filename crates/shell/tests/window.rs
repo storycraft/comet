@@ -6,7 +6,7 @@ use std::{
     rc::Rc,
 };
 
-use comet_layout::style::{geometry::Point as StylePoint, unit::*};
+use comet_geometry::{Point as StylePoint, unit::*};
 use comet_reactivity::{cx::UiCx, style::Styled};
 use comet_shell::{style::InputStyled, window::Window};
 use comet_tree::node::NodeKey;

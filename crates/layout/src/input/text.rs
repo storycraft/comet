@@ -8,10 +8,8 @@ use comet_tree::ui::Props;
 use super::LayoutInputKey;
 use parley::Alignment;
 
-use crate::style::{
-    bx,
-    geometry::{StyleUnit, UnitResolveContext},
-};
+use crate::style::bx;
+use comet_geometry::{StyleUnit, UnitResolveContext};
 
 /// Parley style of a text span. Its brush is set while shaping to the item
 /// owning the span, so glyph runs map back to their item.

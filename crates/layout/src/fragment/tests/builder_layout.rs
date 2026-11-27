@@ -9,11 +9,9 @@ use super::builder::{Fixture, VIEWPORT, paragraph, text};
 use crate::{
     dirty_map::DirtyFlags,
     fragment::{BoxFragmentLink, BoxFragmentType, FragmentGeometry, FragmentRef, InlineLayout},
-    style::{
-        bx,
-        geometry::{AutoValue, Point, Rect, Size, StyleUnit},
-    },
+    style::bx,
 };
+use comet_geometry::{AutoValue, Point, Rect, Size, StyleUnit};
 
 /// A box of `width` by `height` pixels.
 fn fixed(ui: &mut Ui, width: f64, height: f64) -> NodeKey {

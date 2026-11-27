@@ -17,7 +17,7 @@ use core::iter::successors;
 use std::time::Instant;
 
 use accesskit::{Action, ActionRequest, TreeUpdate};
-use comet_layout::style::geometry::AutoValue;
+use comet_geometry::AutoValue;
 use comet_reactivity::cx::UiCx;
 use comet_tree::{node::NodeKey, style::StyleProp};
 use dpi::PhysicalSize;
@@ -239,7 +239,7 @@ impl Window {
         self.ui.poll();
 
         let size = self.viewport.size();
-        let viewport = comet_layout::style::geometry::Size::new(size.width, size.height);
+        let viewport = comet_geometry::Size::new(size.width, size.height);
         let laid_out = self
             .pipeline
             .layout(&mut self.ui.tree().borrow_mut(), self.ui.root(), viewport)

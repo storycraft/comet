@@ -829,6 +829,7 @@ dependencies = [
  "comet-accesskit",
  "comet-content",
  "comet-content-image",
+ "comet-geometry",
  "comet-layout",
  "comet-layout-flex",
  "comet-paint",
@@ -855,6 +856,7 @@ dependencies = [
  "accesskit_consumer",
  "bitflags 2.13.2",
  "comet-content",
+ "comet-geometry",
  "comet-layout",
  "comet-paint",
  "comet-slotmap-tree",
@@ -889,12 +891,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "comet-geometry"
+version = "0.1.0"
+dependencies = [
+ "derive_more",
+]
+
+[[package]]
 name = "comet-layout"
 version = "0.1.0"
 dependencies = [
  "anyrender",
  "bitflags 2.13.2",
  "comet-content",
+ "comet-geometry",
  "comet-slotmap-tree",
  "comet-tree",
  "derive_more",
@@ -910,6 +920,7 @@ name = "comet-layout-flex"
 version = "0.1.0"
 dependencies = [
  "comet-content",
+ "comet-geometry",
  "comet-layout",
  "comet-tree",
  "taffy",
@@ -923,6 +934,7 @@ dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
  "comet-content",
+ "comet-geometry",
  "comet-layout",
  "comet-slotmap-tree",
  "comet-tree",
@@ -944,6 +956,7 @@ dependencies = [
  "bitflags 2.13.2",
  "comet-accesskit",
  "comet-content",
+ "comet-geometry",
  "comet-layout",
  "comet-layout-flex",
  "comet-paint",
@@ -966,6 +979,7 @@ dependencies = [
  "anyrender",
  "comet-accesskit",
  "comet-content",
+ "comet-geometry",
  "comet-layout",
  "comet-paint",
  "comet-reactivity",

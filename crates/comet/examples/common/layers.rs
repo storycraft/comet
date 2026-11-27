@@ -1,6 +1,6 @@
 use anyrender::filters::FilterEffect;
 use comet::prelude::*;
-use comet_layout::style::geometry::AutoValue;
+use comet_geometry::AutoValue;
 use comet_reactivity::cx::NodeBuild;
 use comet_tree::node::NodeKey;
 use kurbo::{Affine, Vec2};

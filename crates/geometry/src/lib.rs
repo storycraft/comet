@@ -1,3 +1,9 @@
+//! Style geometry: lengths in style units, auto values and the sizes,
+//! points and rectangles holding them, shared by layout, paint and
+//! content styles.
+
+pub mod unit;
+
 /// Relative, Absolute size unit
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum StyleUnit {
@@ -50,11 +56,11 @@ pub struct UnitResolveContext {
     pub viewport: Size<f64>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, derive_more::Display)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, derive_more::From, derive_more::Display)]
 pub enum AutoValue<T> {
     #[default]
     Auto,
-    Value(T),
+    Value(#[from] T),
 }
 
 impl<T> AutoValue<T> {
@@ -70,12 +76,6 @@ impl<T> AutoValue<T> {
             AutoValue::Auto => auto_value,
             AutoValue::Value(v) => v,
         }
-    }
-}
-
-impl<T> From<T> for AutoValue<T> {
-    fn from(value: T) -> Self {
-        Self::Value(value)
     }
 }
 

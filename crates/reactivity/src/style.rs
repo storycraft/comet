@@ -11,10 +11,8 @@
 //!     .build()
 //! ```
 
-use comet_layout::style::{
-    bx,
-    geometry::{AutoValue, Point, Rect, Size, StyleUnit},
-};
+use comet_geometry::{AutoValue, Point, Rect, Size, StyleUnit};
+use comet_layout::style::bx;
 use comet_layout_flex::{flex, style as flex_style};
 use comet_paint::style as paint;
 use reactive_graph::{traits::Get, wrappers::read::Signal};

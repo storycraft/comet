@@ -18,11 +18,9 @@ use crate::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
-    style::{
-        LayoutConstraint, bx,
-        geometry::{AutoValue, Point, Rect, Size, StyleUnit},
-    },
+    style::{LayoutConstraint, bx},
 };
+use comet_geometry::{AutoValue, Point, Rect, Size, StyleUnit};
 
 pub(super) const VIEWPORT: Size<f64> = Size::new(400.0, 600.0);
 const CONSTRAINT: LayoutConstraint = LayoutConstraint::new_root(VIEWPORT, 16.0);

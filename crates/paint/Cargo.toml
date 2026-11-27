@@ -7,6 +7,7 @@ authors = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
+comet-geometry = { workspace = true }
 comet-content = { workspace = true }
 comet-tree = { workspace = true }
 comet-layout = { workspace = true }

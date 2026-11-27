@@ -21,11 +21,8 @@ use slotmap::new_key_type;
 
 use inline::InlineLayout;
 
-use crate::{
-    input::LayoutInputKey,
-    style::geometry::{Point, Rect, Size, StyleUnit},
-    taffy::style::Style,
-};
+use crate::{input::LayoutInputKey, taffy::style::Style};
+use comet_geometry::{Point, Rect, Size, StyleUnit};
 
 new_key_type! {
     pub struct BoxFragmentKey;

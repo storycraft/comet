@@ -7,6 +7,7 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+comet-geometry = { workspace = true }
 comet-layout.workspace = true
 comet-layout-flex.workspace = true
 comet-paint.workspace = true

@@ -2,7 +2,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use comet_layout::style::{geometry::AutoValue, unit::*};
+use comet_geometry::{AutoValue, unit::*};
 use comet_reactivity::{cx::UiCx, style::Styled};
 use comet_shell::{cursor::CursorIcon, style::InputStyled, window::Window};
 use dpi::{PhysicalPosition, PhysicalSize};

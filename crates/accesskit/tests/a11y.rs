@@ -3,6 +3,7 @@ use comet_accesskit::{
     AxKey, AxNodeKind, ax_key, builder::AxTreeBuilder, node_id, style::Role, tree::AxTree,
 };
 use comet_content::manager::ContentManager;
+use comet_geometry::{AutoValue, Point, Rect, Size, StyleUnit};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{BoxFragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -14,7 +15,6 @@ use comet_layout::{
     style::{
         LayoutConstraint,
         bx::{self, DisplayOuter, Padding},
-        geometry::{AutoValue, Point, Rect, Size, StyleUnit},
     },
 };
 use comet_paint::{

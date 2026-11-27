@@ -5,8 +5,8 @@ use super::conv;
 use crate::style::{
     LayoutConstraint,
     bx::{self, DisplayInner},
-    geometry::{AutoValue, StyleUnit},
 };
+use comet_geometry::{AutoValue, StyleUnit};
 
 /// Box style adapter shared by layout algorithms.
 ///

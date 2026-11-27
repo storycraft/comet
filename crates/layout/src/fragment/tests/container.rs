@@ -21,11 +21,9 @@ use crate::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
     },
-    style::{
-        LayoutConstraint, bx,
-        geometry::{AutoValue, Size, StyleUnit},
-    },
+    style::{LayoutConstraint, bx},
 };
+use comet_geometry::{AutoValue, Size, StyleUnit};
 
 /// A container algorithm that counts its layouts, sizes itself by its known
 /// dimensions, and returns the given bits.

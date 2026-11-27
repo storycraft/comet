@@ -1,0 +1,10 @@
+[package]
+name = "comet-geometry"
+description = "Style geometry types for comet"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+derive_more = { version = "2.1.1", features = ["full"] }

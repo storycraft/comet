@@ -4,7 +4,8 @@
 //! properties from [`styles`] on the container and its children.
 //!
 //! ```
-//! use comet_layout::style::{bx::DisplayInner, geometry::{Size, StyleUnit}};
+//! use comet_geometry::{Size, StyleUnit};
+//! use comet_layout::style::bx::DisplayInner;
 //! use comet_layout_flex::prelude::*;
 //! use comet_tree::{node::Node, ui::Ui};
 //!

@@ -1,5 +1,6 @@
 //! Geometry conversion, separate from the engine-independent geometry types.
-use crate::style::{LayoutConstraint, geometry as g};
+use crate::style::LayoutConstraint;
+use comet_geometry as g;
 
 pub fn to_size<T, U>(v: g::Size<T>, mut f: impl FnMut(T) -> U) -> taffy::Size<U> {
     taffy::Size {

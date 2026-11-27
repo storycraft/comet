@@ -11,8 +11,6 @@ pub use crate::input::{
     builder::{BuildRequest, LayoutInputTreeBuilder},
     tree::LayoutInputTree,
 };
-pub use crate::style::{
-    self, LayoutConstraint,
-    bx::*,
-    geometry::{self, AutoValue, Point, Rect, StyleUnit},
-};
+pub use crate::style::{self, LayoutConstraint, bx::*};
+pub use comet_geometry as geometry;
+pub use comet_geometry::{AutoValue, Point, Rect, StyleUnit};

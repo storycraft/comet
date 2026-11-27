@@ -12,10 +12,8 @@ use comet::{
     prelude::*,
     ui_events::keyboard::{Key, NamedKey},
 };
-use comet_layout::style::{
-    bx::{DisplayInner, DisplayOuter},
-    geometry::{AutoValue, Point},
-};
+use comet_geometry::{AutoValue, Point};
+use comet_layout::style::bx::{DisplayInner, DisplayOuter};
 use comet_paint::style::Paint;
 use comet_paint::style::{BoxDecorationBreak, UserSelect};
 use comet_shell::cursor::CursorIcon;

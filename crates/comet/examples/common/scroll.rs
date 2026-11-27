@@ -1,5 +1,5 @@
 use comet::prelude::*;
-use comet_layout::style::geometry::{AutoValue, Point, StyleUnit};
+use comet_geometry::{AutoValue, Point, StyleUnit};
 use comet_reactivity::cx::NodeBuild;
 use comet_tree::node::NodeKey;
 use peniko::Color;

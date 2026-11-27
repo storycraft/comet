@@ -2,7 +2,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use comet_layout::style::{geometry::AutoValue, unit::*};
+use comet_geometry::{AutoValue, unit::*};
 use comet_paint::{
     selection::{Affinity, Selection, TextPosition},
     style::UserSelect,
@@ -848,7 +848,7 @@ fn selected_text_breaks_between_runs_of_block_boxes() {
 
 #[test]
 fn selection_follows_the_scroll_of_the_box_holding_the_text() {
-    use comet_layout::style::geometry::Point as StylePoint;
+    use comet_geometry::Point as StylePoint;
     use comet_paint::style::ScrollTop;
     use taffy::Overflow;
 
