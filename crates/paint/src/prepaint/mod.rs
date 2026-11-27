@@ -21,7 +21,6 @@ pub mod builder;
 pub mod fragment;
 pub mod tree;
 
-use anyrender::Paint;
 #[cfg(doc)]
 use comet_layout::dirty_map::DirtyFlags;
 use comet_layout::{
@@ -31,7 +30,7 @@ use comet_layout::{
 use kurbo::{Point, Rect, RoundedRect, RoundedRectRadii};
 use peniko::Color;
 
-use crate::style::BoxDecorationBreak;
+use crate::style::{BoxDecorationBreak, Paint};
 
 /// Paint data of a layout input item, shared by all fragments it generates.
 #[derive(Debug, Clone, PartialEq)]

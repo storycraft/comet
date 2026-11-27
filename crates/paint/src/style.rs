@@ -1,4 +1,5 @@
-use anyrender::{Paint, filters::FilterEffect};
+use anyrender::filters::FilterEffect;
+use comet_content::ContentId;
 use comet_layout::style::geometry::{AutoValue, Point, Rect, StyleUnit};
 use comet_tree::style::{StyleProp, define_style_props};
 use kurbo::Affine;
@@ -137,3 +138,15 @@ pub enum BoxDecorationBreak {
 }
 
 impl StyleProp for BoxDecorationBreak {}
+
+/// How a shape or glyph run is filled, such as by a box's
+/// [`Background`] or a node's [`Color`].
+#[derive(Debug, Clone, PartialEq, derive_more::From)]
+pub enum Paint {
+    /// A solid color.
+    Solid(#[from] peniko::Color),
+    /// A gradient.
+    Gradient(#[from] peniko::Gradient),
+    /// The content of the id, drawn over the filled shape.
+    Content(#[from] ContentId),
+}

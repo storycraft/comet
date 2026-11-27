@@ -7,7 +7,6 @@ mod selection;
 
 use std::rc::Rc;
 
-use anyrender::Paint;
 use comet::{
     prelude::*,
     ui_events::keyboard::{Key, NamedKey},
@@ -16,6 +15,7 @@ use comet_layout::style::{
     bx::{DisplayInner, DisplayOuter},
     geometry::{AutoValue, Point},
 };
+use comet_paint::style::Paint;
 use comet_paint::style::{BoxDecorationBreak, UserSelect};
 use comet_shell::cursor::CursorIcon;
 use comet_tree::node::NodeKey;

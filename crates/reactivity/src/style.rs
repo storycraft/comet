@@ -11,7 +11,6 @@
 //!     .build()
 //! ```
 
-use anyrender::Paint;
 use comet_layout::style::{
     bx,
     geometry::{AutoValue, Point, Rect, Size, StyleUnit},
@@ -95,14 +94,14 @@ pub trait Styled: Sized {
         /// Let a press select the text of the node and its descendants, or
         /// not, or keep whether the node above does with [`AutoValue::Auto`].
         selectable: paint::Selectable => AutoValue<paint::UserSelect>;
-        color: paint::Color => AutoValue<Paint>;
-        selection_color: paint::SelectionColor => AutoValue<Paint>;
-        selection_fill: paint::SelectionFill => AutoValue<Paint>;
+        color: paint::Color => AutoValue<paint::Paint>;
+        selection_color: paint::SelectionColor => AutoValue<paint::Paint>;
+        selection_fill: paint::SelectionFill => AutoValue<paint::Paint>;
 
         // Paint
-        background: paint::Background => Paint;
-        border_fill: paint::BorderFill => Paint;
-        outline_fill: paint::OutlineFill => Paint;
+        background: paint::Background => paint::Paint;
+        border_fill: paint::BorderFill => paint::Paint;
+        outline_fill: paint::OutlineFill => paint::Paint;
         anti_aliasing: paint::AntiAliasing => bool;
         outline_width: paint::OutlineWidth => StyleUnit;
         outline_offset: paint::OutlineOffset => StyleUnit;

@@ -21,3 +21,4 @@ slotmap = { workspace = true }
 bitflags = { workspace = true }
 
 taffy = { workspace = true }
+derive_more = { version = "2.1.1", features = ["from"] }

@@ -1,7 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
 use any_spawner::Executor;
-use anyrender::Paint;
 use comet_accesskit::style::Role;
 use comet_layout::{
     dirty_map::DirtyMap,
@@ -19,6 +18,7 @@ use comet_layout::{
 };
 use comet_layout_flex::style::Gap;
 use comet_paint::style::Background;
+use comet_paint::style::Paint;
 use comet_reactivity::{
     cx::UiCx,
     prelude::{FlexStyled, Styled},

@@ -1,4 +1,3 @@
-use anyrender::Paint;
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{BoxFragment, BoxFragmentKey, tree::FragmentTree},
@@ -20,8 +19,8 @@ use crate::{
         tree::PrepaintTree,
     },
     style::{
-        self, BorderRadius, OutlineOffset, OutlineWidth, Selectable, SelectionColor, SelectionFill,
-        UserSelect,
+        self, BorderRadius, OutlineOffset, OutlineWidth, Paint, Selectable, SelectionColor,
+        SelectionFill, UserSelect,
     },
 };
 

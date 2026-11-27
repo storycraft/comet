@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use anyrender::PaintScene;
-use anyrender::{AntiAliasing, Paint};
+use anyrender::{AntiAliasing, PaintRef};
 use bytemuck::TransparentWrapper;
 use comet_layout::{
     fragment::{
@@ -30,7 +30,7 @@ use crate::{
         tree::PrepaintTree,
     },
     selection::rects::SelectionRects,
-    style::{self, Background, BorderFill, BoxDecorationBreak, OutlineFill},
+    style::{self, Background, BorderFill, BoxDecorationBreak, OutlineFill, Paint},
 };
 
 /// Paints final fragments in the order of their [`PaintLayerTree`], with the
@@ -812,15 +812,17 @@ impl CometPainter {
                 .filter(|area| area.x0 < area.x1),
         );
 
-        for area in &self.selection {
-            scene.fill(
-                peniko::Fill::NonZero,
-                parent.transform,
-                &data.selection_background,
-                None,
-                area,
-                anti_aliasing,
-            );
+        if let Some(background) = scene_paint(&data.selection_background) {
+            for area in &self.selection {
+                scene.fill(
+                    peniko::Fill::NonZero,
+                    parent.transform,
+                    background.clone(),
+                    None,
+                    area,
+                    anti_aliasing,
+                );
+            }
         }
 
         // Glyphs are shaped at their logical size but drawn at their physical
@@ -828,7 +830,11 @@ impl CometPainter {
         // scale with them, and the display scale is taken out of the transform.
         let scale_factor = sources.scale_factor;
         let scale = scale_factor as f32;
-        let draw = |scene: &mut _, paint| {
+        let draw = |scene: &mut _, paint: &Paint| {
+            let Some(paint) = scene_paint(paint) else {
+                return;
+            };
+
             draw_glyphs(
                 scene,
                 font_run.font(),
@@ -871,7 +877,7 @@ fn draw_glyphs(
     font: &peniko::FontData,
     font_size: f32,
     normalized_coords: &[i16],
-    paint: &Paint,
+    paint: PaintRef<'_>,
     transform: Affine,
     glyphs: impl Iterator<Item = anyrender::Glyph> + Clone,
     anti_aliasing: AntiAliasing,
@@ -1115,11 +1121,13 @@ fn draw_box(
         data.border_radii(fragment, decoration_break)
     });
 
-    if let Some(fill) = props.get::<Background>() {
+    if let Some(fill) = props.get::<Background>()
+        && let Some(paint) = scene_paint(&fill.0)
+    {
         scene.fill(
             peniko::Fill::NonZero,
             transform,
-            &fill.0,
+            paint,
             None,
             &rect.to_rounded_rect(radii),
             anti_aliasing,
@@ -1130,6 +1138,7 @@ fn draw_box(
 
     if width > 0.0
         && let Some(fill) = props.get::<BorderFill>()
+        && let Some(paint) = scene_paint(&fill.0)
     {
         // A broken box leaves out the border on the sides joining its other
         // fragments: the border is stroked outside the box, so clipping at
@@ -1151,7 +1160,7 @@ fn draw_box(
         scene.stroke(
             &Stroke::new(width),
             transform,
-            &fill.0,
+            paint,
             None,
             &rect.inset(-width / 2.0).to_rounded_rect(radii),
             anti_aliasing,
@@ -1164,13 +1173,14 @@ fn draw_box(
 
     if let Some(data) = data.filter(|data| data.outline_width > 0.0)
         && let Some(fill) = props.get::<OutlineFill>()
+        && let Some(paint) = scene_paint(&fill.0)
     {
         let width = data.outline_width;
 
         scene.stroke(
             &Stroke::new(width),
             transform,
-            &fill.0,
+            paint,
             None,
             &outline_path(
                 rect,
@@ -1182,6 +1192,17 @@ fn draw_box(
             ),
             anti_aliasing,
         );
+    }
+}
+
+/// The scene paint of `paint`. `None` for
+/// [content](Paint::Content) paints, which are not drawn yet.
+fn scene_paint(paint: &Paint) -> Option<PaintRef<'_>> {
+    match paint {
+        Paint::Solid(color) => Some(anyrender::Paint::Solid(*color)),
+        Paint::Gradient(gradient) => Some(anyrender::Paint::Gradient(gradient)),
+        // TODO: draw the content over the filled shape.
+        Paint::Content(_) => None,
     }
 }
 

@@ -1,4 +1,3 @@
-use anyrender::Paint;
 use anyrender::{Scene, recording::RenderCommand};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
@@ -21,6 +20,7 @@ use comet_layout::{
 };
 use comet_paint::selection::{Affinity, Selection, TextPosition, rects::SelectionRects};
 use comet_paint::style;
+use comet_paint::style::Paint;
 use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
@@ -299,9 +299,9 @@ fn selection(anchor: (NodeKey, usize), extent: (NodeKey, usize)) -> Selection {
     )
 }
 
-fn solid(paint: &Paint) -> Color {
+fn solid(paint: &anyrender::Paint) -> Color {
     match paint {
-        Paint::Solid(color) => *color,
+        anyrender::Paint::Solid(color) => *color,
         _ => panic!("test only uses solid paints"),
     }
 }

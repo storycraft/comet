@@ -1,4 +1,4 @@
-use anyrender::{Paint, Scene, recording::RenderCommand};
+use anyrender::{Scene, recording::RenderCommand};
 use comet_layout::style::geometry::Rect as LayoutRect;
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
@@ -16,6 +16,7 @@ use comet_layout::{
 use comet_paint::hit::{HitTestResult, PaintHitTester};
 use comet_paint::style;
 use comet_paint::style::BorderRadius;
+use comet_paint::style::Paint;
 use comet_paint::style::ScrollTop;
 use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
@@ -242,9 +243,9 @@ fn fixed(width: f64, height: f64) -> bx::Size {
     ))
 }
 
-fn solid(paint: &Paint) -> Color {
+fn solid(paint: &anyrender::Paint) -> Color {
     match paint {
-        Paint::Solid(color) => *color,
+        anyrender::Paint::Solid(color) => *color,
         _ => panic!("test only uses solid paints"),
     }
 }
@@ -1910,7 +1911,7 @@ fn painted(scene: &Scene) -> Vec<(String, usize)> {
     painted
 }
 
-fn fill_name(paint: &Paint) -> String {
+fn fill_name(paint: &anyrender::Paint) -> String {
     fill(solid(paint))
 }
 

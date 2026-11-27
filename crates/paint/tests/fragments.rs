@@ -1,4 +1,4 @@
-use anyrender::{AntiAliasing as EdgeMode, Glyph, Paint, Scene, recording::RenderCommand};
+use anyrender::{AntiAliasing as EdgeMode, Glyph, Scene, recording::RenderCommand};
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{BoxFragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -12,6 +12,7 @@ use comet_layout::{
     },
 };
 use comet_paint::style;
+use comet_paint::style::Paint;
 use comet_paint::{
     layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
@@ -82,9 +83,9 @@ fn glyphs(scene: &Scene) -> Vec<(Glyph, Color)> {
         .collect()
 }
 
-fn solid(paint: &Paint) -> Color {
+fn solid(paint: &anyrender::Paint) -> Color {
     match paint {
-        Paint::Solid(color) => *color,
+        anyrender::Paint::Solid(color) => *color,
         _ => panic!("test only uses solid paints"),
     }
 }
@@ -838,4 +839,22 @@ fn paints_with_the_anti_aliasing_of_each_node() {
             ("glyphs", EdgeMode::Disabled),
         ]
     );
+}
+
+#[test]
+fn content_paints_are_not_drawn_yet() {
+    let mut ui = Ui::new();
+    let id = comet_content::ContentId::from_ffi(std::num::NonZeroU64::MIN);
+    let root = ui.create(Node::Box, ());
+    let content = ui.create(
+        Node::Box,
+        (
+            fixed(10.0, 10.0),
+            Background(Paint::Content(id)),
+            BorderFill(Paint::Content(id)),
+        ),
+    );
+    ui.append(root, content);
+
+    assert!(paint(&ui, root).commands.is_empty());
 }
