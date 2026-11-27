@@ -218,6 +218,7 @@ reactive_props!(REPAINT =>
     paint::Fill,
     paint::BorderFill,
     paint::OutlineFill,
+    paint::AntiAliasing,
 );
 
 // Read by the accessibility build only.

@@ -13,6 +13,12 @@ define_style_props!(
     #[derive(Debug, Clone, PartialEq)]
     pub OutlineFill: Paint;
 
+    /// Whether the node's shapes and glyphs are drawn with anti-aliased
+    /// edges: its background, border, outline, glyphs and selection
+    /// background. Not inherited.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub AntiAliasing: bool = true;
+
     /// Width of the outline. Percentages resolve against the parent's
     /// outline width.
     #[derive(Debug, Clone, Copy, PartialEq)]

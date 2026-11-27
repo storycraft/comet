@@ -12,7 +12,7 @@ use comet_layout::{
     },
     input::tree::LayoutInputTree,
 };
-use comet_tree::ui::Ui;
+use comet_tree::ui::{Props, Ui};
 use kurbo::{
     Affine, BezPath, Insets, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke, Vec2,
 };
@@ -30,7 +30,7 @@ use crate::{
         tree::PrepaintTree,
     },
     selection::rects::SelectionRects,
-    style::{BorderFill, BoxDecorationBreak, Fill, OutlineFill},
+    style::{self, BorderFill, BoxDecorationBreak, Fill, OutlineFill},
 };
 
 /// Paints final fragments in the order of their [`PaintLayerTree`], with the
@@ -786,6 +786,8 @@ impl CometPainter {
 
         // Resolved by the pre-paint step. Runs of items it missed are skipped.
         let data = sources.prepaint.get(key)?;
+        let anti_aliasing = paint_props(sources.ui, sources.inputs, key)
+            .map_or(AntiAliasing::Enabled, anti_aliasing);
 
         // Parley's coordinates wrap the raw `i16` bits Anyrender takes.
         let normalized_coords: &[i16] =
@@ -817,7 +819,7 @@ impl CometPainter {
                 &data.selection_background,
                 None,
                 area,
-                AntiAliasing::Enabled,
+                anti_aliasing,
             );
         }
 
@@ -839,6 +841,7 @@ impl CometPainter {
                     x: (offset_x + glyph.x) * scale,
                     y: (offset_y + glyph.y) * scale,
                 }),
+                anti_aliasing,
             )
         };
 
@@ -862,6 +865,7 @@ impl CometPainter {
 }
 
 /// Draw `glyphs` of `font` filled with `paint`, with `transform`.
+#[allow(clippy::too_many_arguments)]
 fn draw_glyphs(
     scene: &mut impl PaintScene,
     font: &peniko::FontData,
@@ -870,6 +874,7 @@ fn draw_glyphs(
     paint: &Paint,
     transform: Affine,
     glyphs: impl Iterator<Item = anyrender::Glyph> + Clone,
+    anti_aliasing: AntiAliasing,
 ) {
     scene.draw_glyphs(
         font,
@@ -883,8 +888,7 @@ fn draw_glyphs(
         transform,
         None,
         glyphs,
-        // TODO:: add aa control
-        AntiAliasing::Enabled,
+        anti_aliasing,
     );
 }
 
@@ -1103,6 +1107,7 @@ fn draw_box(
     let Some(props) = paint_props(sources.ui, sources.inputs, fragment.source) else {
         return;
     };
+    let anti_aliasing = anti_aliasing(props);
     let decoration_break = data.map_or_else(BoxDecorationBreak::default, |data| {
         data.box_decoration_break
     });
@@ -1117,7 +1122,7 @@ fn draw_box(
             &fill.0,
             None,
             &rect.to_rounded_rect(radii),
-            AntiAliasing::Enabled,
+            anti_aliasing,
         );
     }
 
@@ -1149,7 +1154,7 @@ fn draw_box(
             &fill.0,
             None,
             &rect.inset(-width / 2.0).to_rounded_rect(radii),
-            AntiAliasing::Enabled,
+            anti_aliasing,
         );
 
         if clipped {
@@ -1175,8 +1180,18 @@ fn draw_box(
                 data.outline_offset,
                 width,
             ),
-            AntiAliasing::Enabled,
+            anti_aliasing,
         );
+    }
+}
+
+/// How a node draws the edges of its shapes and glyphs, from its
+/// [`AntiAliasing`](style::AntiAliasing) in `props`.
+fn anti_aliasing(props: Props<'_>) -> AntiAliasing {
+    if props.get_or_default::<style::AntiAliasing>().0 {
+        AntiAliasing::Enabled
+    } else {
+        AntiAliasing::Disabled
     }
 }
 

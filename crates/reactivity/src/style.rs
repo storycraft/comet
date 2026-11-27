@@ -103,6 +103,7 @@ pub trait Styled: Sized {
         fill: paint::Fill => Paint;
         border_fill: paint::BorderFill => Paint;
         outline_fill: paint::OutlineFill => Paint;
+        anti_aliasing: paint::AntiAliasing => bool;
         outline_width: paint::OutlineWidth => StyleUnit;
         outline_offset: paint::OutlineOffset => StyleUnit;
         transform: paint::Transform => kurbo::Affine;

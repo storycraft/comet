@@ -1,4 +1,4 @@
-use anyrender::{Glyph, Paint, Scene, recording::RenderCommand};
+use anyrender::{AntiAliasing as EdgeMode, Glyph, Paint, Scene, recording::RenderCommand};
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{BoxFragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -16,7 +16,7 @@ use comet_paint::{
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
     selection::rects::SelectionRects,
-    style::{BorderFill, BorderRadius, Fill, TextColor},
+    style::{AntiAliasing, BorderFill, BorderRadius, Fill, TextColor},
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
@@ -790,5 +790,48 @@ fn paints_hoisted_boxes_positioned_into_view_past_boxes_below_it() {
     assert_eq!(
         fills(&paint(&ui, root)),
         [(Rect::new(7.0, 5.0, 17.0, 15.0), green)]
+    );
+}
+
+#[test]
+fn paints_with_the_anti_aliasing_of_each_node() {
+    let mut ui = Ui::new();
+    let color = Paint::Solid(Color::from_rgb8(20, 20, 200));
+    let root = ui.create(Node::Box, ());
+    let smooth = ui.create(Node::Box, (fixed(10.0, 10.0), Fill(color.clone())));
+    let aliased = ui.create(
+        Node::Box,
+        (fixed(10.0, 10.0), Fill(color), AntiAliasing(false)),
+    );
+    // Not inherited: the text sets its own.
+    let para = ui.create(Node::Box, (AntiAliasing(false),));
+    let smooth_text = ui.create(Node::Text, (Text("a".into()),));
+    let aliased_para = ui.create(Node::Box, ());
+    let aliased_text = ui.create(Node::Text, (Text("b".into()), AntiAliasing(false)));
+    ui.append(root, smooth);
+    ui.append(root, aliased);
+    ui.append(root, para);
+    ui.append(para, smooth_text);
+    ui.append(root, aliased_para);
+    ui.append(aliased_para, aliased_text);
+
+    let modes: Vec<_> = paint(&ui, root)
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            RenderCommand::Fill(fill) => Some(("fill", fill.anti_aliasing)),
+            RenderCommand::GlyphRun(run) => Some(("glyphs", run.anti_aliasing)),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(
+        modes,
+        [
+            ("fill", EdgeMode::Enabled),
+            ("fill", EdgeMode::Disabled),
+            ("glyphs", EdgeMode::Enabled),
+            ("glyphs", EdgeMode::Disabled),
+        ]
     );
 }
