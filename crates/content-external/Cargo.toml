@@ -1,0 +1,17 @@
+[package]
+name = "comet-content-external"
+description = "External texture content for comet"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+anyrender = { workspace = true }
+comet-content = { workspace = true }
+kurbo = { workspace = true }
+peniko = { workspace = true }
+taffy = { workspace = true }
+
+[dev-dependencies]
+comet-tree = { workspace = true }

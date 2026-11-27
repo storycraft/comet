@@ -1,10 +1,13 @@
-//! Image contents.
+//! Image contents for comet: raster images drawn by replaced boxes, see
+//! [`comet_content`].
 
 use anyrender::{AntiAliasing, Paint, PaintScene, Scene};
 use kurbo::{Affine, Point, Rect};
 use peniko::{Fill, ImageBrush, ImageData};
 
-use crate::{Content, ContentKind, DrawInput, MeasureInput, fit_transform, natural_measure};
+use comet_content::{
+    Content, ContentKind, DrawInput, MeasureInput, fit_transform, natural_measure,
+};
 
 /// A raster image, stretched over the content box.
 #[derive(Debug, Clone, PartialEq)]
@@ -64,3 +67,8 @@ impl Content for ImageContent {
         );
     }
 }
+
+#[cfg(test)]
+mod fixture;
+#[cfg(test)]
+mod tests;

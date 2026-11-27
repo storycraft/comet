@@ -17,11 +17,12 @@
 //!   show an external texture rendered on their own. Their boxes start paint
 //!   layers of their own, so the texture can later be handed to a compositor
 //!   surface. Until then they draw the texture into the same scene.
+//!
+//! Images are provided by `comet-content-image`, and external textures by
+//! `comet-content-external`.
 
-pub mod image;
 pub mod manager;
 pub mod prelude;
-pub mod texture;
 
 use std::num::NonZeroU64;
 

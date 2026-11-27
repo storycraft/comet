@@ -1,10 +1,14 @@
-//! External texture contents.
+//! External texture contents for comet: textures rendered outside the UI,
+//! such as video frames or 3D scenes, drawn by replaced boxes, see
+//! [`comet_content`].
 
 use anyrender::{AntiAliasing, Paint, PaintScene, ResourceId, Scene};
 use kurbo::{Affine, Point, Rect};
 use peniko::{Fill, ImageBrush, ImageSampler};
 
-use crate::{Content, ContentKind, DrawInput, MeasureInput, fit_transform, natural_measure};
+use comet_content::{
+    Content, ContentKind, DrawInput, MeasureInput, fit_transform, natural_measure,
+};
 
 /// An external texture, such as a video frame or a 3D scene, registered with
 /// the render context, stretched over the content box.
@@ -67,3 +71,8 @@ impl Content for TextureContent {
         );
     }
 }
+
+#[cfg(test)]
+mod fixture;
+#[cfg(test)]
+mod tests;

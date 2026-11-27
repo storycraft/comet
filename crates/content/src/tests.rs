@@ -1,14 +1,12 @@
-use anyrender::{Paint, ResourceId, Scene, recording::RenderCommand};
+use anyrender::Scene;
 use comet_tree::{
     node::{Node, NodeKey},
     ui::{Props, Ui},
 };
-use kurbo::{Affine, Shape};
-use peniko::{Blob, ImageAlphaType, ImageData, ImageFormat};
 
 use crate::{
-    Content, ContentKind, DrawInput, MeasureInput, image::ImageContent, manager::ContentManager,
-    natural_measure, texture::TextureContent,
+    Content, ContentKind, DrawInput, MeasureInput, fit_transform, manager::ContentManager,
+    natural_measure,
 };
 
 /// A box node without props, for the props of the inputs.
@@ -42,14 +40,23 @@ impl Fixture {
     }
 }
 
-fn image(width: u32, height: u32) -> ImageData {
-    ImageData {
-        data: Blob::from(vec![0; (width * height * 4) as usize]),
-        format: ImageFormat::Rgba8,
-        alpha_type: ImageAlphaType::Alpha,
-        width,
-        height,
+/// A content of a fixed natural size, drawing nothing.
+struct Fixed(kurbo::Size);
+
+impl Content for Fixed {
+    fn kind(&self) -> ContentKind {
+        ContentKind::Scene
     }
+
+    fn measure(&self, input: &MeasureInput<'_>) -> taffy::Size<f32> {
+        natural_measure(self.0, input)
+    }
+
+    fn draw(&self, _: &DrawInput<'_>, _: &mut Scene) {}
+}
+
+fn fixed(width: f64, height: f64) -> Fixed {
+    Fixed(kurbo::Size::new(width, height))
 }
 
 fn size(width: f32, height: f32) -> taffy::Size<f32> {
@@ -89,12 +96,12 @@ fn natural_sizes_follow_their_aspect_ratio() {
 #[test]
 fn ids_are_never_reused() {
     let mut contents = ContentManager::new();
-    let a = contents.insert(ImageContent::new(image(1, 1)));
-    let b = contents.insert(ImageContent::new(image(2, 2)));
+    let a = contents.insert(fixed(1.0, 1.0));
+    let b = contents.insert(fixed(2.0, 2.0));
     assert_ne!(a, b);
 
     assert!(contents.remove(a).is_some());
-    let c = contents.insert(ImageContent::new(image(3, 3)));
+    let c = contents.insert(fixed(3.0, 3.0));
     assert!(![a, b].contains(&c));
     assert!(contents.get(a).is_none());
     assert_eq!(contents.len(), 2);
@@ -104,80 +111,27 @@ fn ids_are_never_reused() {
 fn replacing_keeps_the_id() {
     let fx = Fixture::new();
     let mut contents = ContentManager::new();
-    let id = contents.insert(ImageContent::new(image(1, 1)));
+    let id = contents.insert(fixed(1.0, 1.0));
 
-    assert!(
-        contents
-            .replace(id, ImageContent::new(image(4, 2)))
-            .is_some()
-    );
+    assert!(contents.replace(id, fixed(4.0, 2.0)).is_some());
     let measured = contents.get(id).unwrap().measure(&fx.input(None, None));
     assert_eq!(measured, size(4.0, 2.0));
 
     contents.remove(id);
-    assert!(
-        contents
-            .replace(id, ImageContent::new(image(1, 1)))
-            .is_none()
-    );
+    assert!(contents.replace(id, fixed(1.0, 1.0)).is_none());
     assert!(contents.is_empty());
 }
 
-/// The only command `content` records in a `width` x `height` box.
-fn draw_one(content: &dyn Content, width: f64, height: f64) -> RenderCommand {
-    let mut scene = Scene::new();
-    let fx = Fixture::new();
-    content.draw(
-        &DrawInput {
-            props: fx.props(),
-            size: kurbo::Size::new(width, height),
-            scale_factor: 2.0,
-        },
-        &mut scene,
-    );
-
-    assert_eq!(scene.commands.len(), 1);
-    scene.commands.pop().unwrap()
-}
-
 #[test]
-fn images_stretch_over_the_content_box() {
-    let fx = Fixture::new();
-    let content = ImageContent::new(image(20, 10)).with_natural_size(kurbo::Size::new(10.0, 5.0));
-    assert_eq!(content.kind(), ContentKind::Scene);
-    assert_eq!(content.measure(&fx.input(None, None)), size(10.0, 5.0));
+fn fit_transforms_scale_the_source_onto_the_box() {
+    let natural = kurbo::Size::new(20.0, 10.0);
 
-    let RenderCommand::Fill(fill) = draw_one(&content, 40.0, 40.0) else {
-        panic!("images draw a fill");
-    };
-    assert!(matches!(fill.brush, Paint::Image(_)));
     assert_eq!(
-        fill.brush_transform,
-        Some(Affine::scale_non_uniform(2.0, 4.0))
+        fit_transform(natural, kurbo::Size::new(40.0, 40.0)),
+        kurbo::Affine::scale_non_uniform(2.0, 4.0)
     );
     assert_eq!(
-        fill.shape.bounding_box(),
-        kurbo::Rect::new(0.0, 0.0, 40.0, 40.0)
+        fit_transform(kurbo::Size::ZERO, kurbo::Size::new(40.0, 40.0)),
+        kurbo::Affine::IDENTITY
     );
-}
-
-#[test]
-fn textures_draw_their_resource() {
-    let fx = Fixture::new();
-    let resource = ResourceId::new();
-    let content = TextureContent::new(resource, 64, 32);
-    assert_eq!(content.kind(), ContentKind::Texture { resource });
-    assert_eq!(
-        content.measure(&fx.input(Some(32.0), None)),
-        size(32.0, 16.0)
-    );
-
-    let RenderCommand::Fill(fill) = draw_one(&content, 32.0, 16.0) else {
-        panic!("textures draw a fill");
-    };
-    let Paint::Resource(brush) = fill.brush else {
-        panic!("textures fill with their resource");
-    };
-    assert_eq!(brush.image, resource);
-    assert_eq!(fill.brush_transform, Some(Affine::scale(0.5)));
 }
