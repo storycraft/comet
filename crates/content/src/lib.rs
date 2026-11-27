@@ -7,7 +7,8 @@
 //! A content keeps no state of the boxes drawing it. Layout supplies the
 //! sizing constraints of each box in a [`MeasureInput`], and paint the size of
 //! its content box in a [`DrawInput`], so one content can be shared by any
-//! number of boxes.
+//! number of boxes. Both carry the [`Props`] of the box's node, so a content
+//! can read style props of its own, such as how to fit into the box.
 //!
 //! There are two [kinds](ContentKind) of contents:
 //! - [Scene](ContentKind::Scene) contents, such as images, draw with the
@@ -25,6 +26,7 @@ pub mod texture;
 use std::num::NonZeroU64;
 
 use anyrender::{ResourceId, Scene};
+use comet_tree::ui::Props;
 
 /// Opaque identifier of a [`Content`] in a [`ContentManager`](manager::ContentManager).
 ///
@@ -56,8 +58,10 @@ pub enum ContentKind {
 /// Sizing constraints of a content box, supplied by layout, like the
 /// arguments of a Taffy leaf measure function. Sizes are of the content box,
 /// in logical units.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MeasureInput {
+#[derive(Clone, Copy)]
+pub struct MeasureInput<'a> {
+    /// Props of the node of the box being measured.
+    pub props: Props<'a>,
     /// Sizes the box already has on each axis, such as from its style or a
     /// stretching parent.
     pub known_dimensions: taffy::Size<Option<f32>>,
@@ -68,8 +72,10 @@ pub struct MeasureInput {
 }
 
 /// The box a content draws into, supplied by paint.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct DrawInput {
+#[derive(Clone, Copy)]
+pub struct DrawInput<'a> {
+    /// Props of the node of the box being drawn.
+    pub props: Props<'a>,
     /// Size of the content box, in logical units. The content draws in the
     /// rectangle from the origin to this size.
     pub size: kurbo::Size,
@@ -81,7 +87,8 @@ pub struct DrawInput {
 /// An external content drawn by replaced boxes.
 ///
 /// It sizes and draws itself from the inputs alone, keeping no state of the
-/// boxes using it, so it can be shared across them.
+/// boxes using it, so it can be shared across them. Style props it reads
+/// from the inputs' [`Props`] are its own to define.
 pub trait Content {
     /// How the content is drawn. Fixed for the lifetime of the content.
     fn kind(&self) -> ContentKind;
@@ -89,17 +96,17 @@ pub trait Content {
     /// Size of the content box under `input`, in logical units. Taffy
     /// applies the box's padding, border, min and max sizes and aspect ratio
     /// around it.
-    fn measure(&self, input: &MeasureInput) -> taffy::Size<f32>;
+    fn measure(&self, input: &MeasureInput<'_>) -> taffy::Size<f32>;
 
     /// Draw the content into the content box described by `input`, in its
     /// local coordinates.
-    fn draw(&self, input: &DrawInput, scene: &mut Scene);
+    fn draw(&self, input: &DrawInput<'_>, scene: &mut Scene);
 }
 
 /// Size of a replaced content with a natural size, under `input`: the known
 /// sizes, with a missing axis following the natural aspect ratio, or the
 /// natural size when neither is known.
-pub fn natural_measure(natural: kurbo::Size, input: &MeasureInput) -> taffy::Size<f32> {
+pub fn natural_measure(natural: kurbo::Size, input: &MeasureInput<'_>) -> taffy::Size<f32> {
     let (width, height) = (natural.width as f32, natural.height as f32);
 
     let (width, height) = match (input.known_dimensions.width, input.known_dimensions.height) {

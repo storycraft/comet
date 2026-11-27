@@ -49,11 +49,11 @@ impl Content for TextureContent {
         }
     }
 
-    fn measure(&self, input: &MeasureInput) -> taffy::Size<f32> {
+    fn measure(&self, input: &MeasureInput<'_>) -> taffy::Size<f32> {
         natural_measure(self.natural_size, input)
     }
 
-    fn draw(&self, input: &DrawInput, scene: &mut Scene) {
+    fn draw(&self, input: &DrawInput<'_>, scene: &mut Scene) {
         scene.fill(
             Fill::NonZero,
             Affine::IDENTITY,

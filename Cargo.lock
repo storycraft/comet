@@ -867,6 +867,7 @@ name = "comet-content"
 version = "0.1.0"
 dependencies = [
  "anyrender",
+ "comet-tree",
  "kurbo",
  "peniko",
  "rustc-hash 2.1.3",
