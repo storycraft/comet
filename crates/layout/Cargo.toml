@@ -9,6 +9,7 @@ license = { workspace = true }
 [dependencies]
 bitflags = { workspace = true }
 comet-slotmap-tree = { workspace = true }
+comet-content = { workspace = true }
 comet-tree = { workspace = true }
 derive_more = { version = "2.1.1", features = ["full"] }
 

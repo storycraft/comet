@@ -1,3 +1,6 @@
+use std::num::NonZeroU64;
+
+use comet_content::ContentId;
 use comet_layout::{
     style::{
         LayoutConstraint, bx,
@@ -16,7 +19,11 @@ fn display_semantics_do_not_depend_on_taffy_display_defaults() {
     for (inner, block, replaced) in [
         (bx::DisplayInner::Flow, true, false),
         (bx::DisplayInner::FlowRoot, false, false),
-        (bx::DisplayInner::Content, false, true),
+        (
+            bx::DisplayInner::Content(ContentId::new(NonZeroU64::MIN)),
+            false,
+            true,
+        ),
     ] {
         let node = ui.create(Node::Box, (inner,));
         let style = resolve(ui.props(node), &cx);

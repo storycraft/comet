@@ -1,3 +1,6 @@
+use std::num::NonZeroU64;
+
+use comet_content::ContentId;
 use comet_tree::{
     node::{Node, NodeKey, Text},
     ui::Ui,
@@ -200,7 +203,10 @@ fn fresh_build_classifies_boxes() {
     let empty = ui.create(Node::Box, ());
     let flow_root = ui.create(Node::Box, (bx::DisplayInner::FlowRoot,));
     let absolute = ui.create(Node::Box, (bx::Position(taffy::Position::Absolute),));
-    let content = ui.create(Node::Box, (bx::DisplayInner::Content,));
+    let content = ui.create(
+        Node::Box,
+        (bx::DisplayInner::Content(ContentId::new(NonZeroU64::MIN)),),
+    );
 
     ui.append(root, para);
     ui.append(root, section);

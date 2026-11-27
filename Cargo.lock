@@ -863,10 +863,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "comet-content"
+version = "0.1.0"
+dependencies = [
+ "anyrender",
+ "kurbo",
+ "peniko",
+ "rustc-hash 2.1.3",
+ "taffy",
+]
+
+[[package]]
 name = "comet-layout"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.13.2",
+ "comet-content",
  "comet-slotmap-tree",
  "comet-tree",
  "derive_more",
@@ -893,6 +905,7 @@ dependencies = [
  "anyrender",
  "bitflags 2.13.2",
  "bytemuck",
+ "comet-content",
  "comet-layout",
  "comet-slotmap-tree",
  "comet-tree",

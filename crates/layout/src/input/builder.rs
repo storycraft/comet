@@ -466,7 +466,7 @@ fn classify(node: Node, props: Props) -> (LayoutInputKind, ChildLayout) {
     };
 
     let child_layout = match inner {
-        Some(DisplayInner::Content) => ChildLayout::None,
+        Some(DisplayInner::Content(_)) => ChildLayout::None,
         Some(DisplayInner::Container(_)) => ChildLayout::Container,
         // Inline flow children participate in the surrounding inline formatting context.
         _ if kind == LayoutInputKind::Inline => ChildLayout::Inline,

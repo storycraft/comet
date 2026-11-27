@@ -64,7 +64,7 @@ pub fn resolve_tracked(
 
     Style {
         block: matches!(inner.as_deref(), None | Some(DisplayInner::Flow)),
-        replaced: matches!(inner.as_deref(), Some(DisplayInner::Content)),
+        replaced: matches!(inner.as_deref(), Some(DisplayInner::Content(_))),
         position: value!(Position),
         box_sizing: value!(BoxSizing),
         overflow: conv::to_point(value!(Overflow), |v| v),

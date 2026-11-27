@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use comet_content::ContentId;
 use comet_tree::style::{StyleProp, define_style_props};
 use kurbo;
 use parley;
@@ -29,16 +30,19 @@ pub enum DisplayInner {
     Container(Arc<dyn ContainerLayout>),
     /// Establish a new flow context and layout children inside.
     FlowRoot,
-    /// Display a content inside. Children will not be laid out.
-    Content,
+    /// Display the external content of the id inside, sized and drawn by
+    /// it, as a replaced element. Children will not be laid out.
+    Content(ContentId),
 }
 impl StyleProp for DisplayInner {}
 
-/// Containers are equal when they share the same algorithm instance.
+/// Containers are equal when they share the same algorithm instance, and
+/// contents when they show the same content.
 impl PartialEq for DisplayInner {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Container(a), Self::Container(b)) => Arc::ptr_eq(a, b),
+            (Self::Content(a), Self::Content(b)) => a == b,
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
     }

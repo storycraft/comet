@@ -1,3 +1,6 @@
+use std::num::NonZeroU64;
+
+use comet_content::ContentId;
 use std::sync::Arc;
 
 use comet_layout::{
@@ -91,7 +94,10 @@ fn fresh_tree_mirrors_ui_with_full_layout_flags() {
     let span = ui.create(Node::Box, (DisplayOuter::Inline,));
     let text = ui.create(Node::Text, ());
     let block = ui.create(Node::Box, (DisplayOuter::Block,));
-    let content = ui.create(Node::Box, (DisplayInner::Content,));
+    let content = ui.create(
+        Node::Box,
+        (DisplayInner::Content(ContentId::new(NonZeroU64::MIN)),),
+    );
     let hidden = ui.create(Node::Text, ());
     let atomic = ui.create(Node::Box, (DisplayOuter::Inline, DisplayInner::FlowRoot));
     let atomic_text = ui.create(Node::Text, ());
@@ -921,7 +927,10 @@ fn update_reconciles_children_when_child_layout_changes() {
     dirty.clear(&tree, key);
 
     // Content display has no child items.
-    ui.set_props(parent, (DisplayInner::Content,));
+    ui.set_props(
+        parent,
+        (DisplayInner::Content(ContentId::new(NonZeroU64::MIN)),),
+    );
     dirty.mark_node(&tree, parent, FULL);
     build(&mut builder, &ui, root, &mut tree, &mut dirty);
     assert_eq!(tree.item_for_node(text), None);
