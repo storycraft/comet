@@ -10,23 +10,17 @@
 //! number of boxes. Both carry the [`Props`] of the box's node, so a content
 //! can read style props of its own, such as how to fit into the box.
 //!
-//! There are two [kinds](ContentKind) of contents:
-//! - [Scene](ContentKind::Scene) contents, such as images, draw with the
-//!   scene of the layer their box paints in.
-//! - [Texture](ContentKind::Texture) contents, such as videos or 3D scenes,
-//!   show an external texture rendered on their own. Their boxes start paint
-//!   layers of their own, so the texture can later be handed to a compositor
-//!   surface. Until then they draw the texture into the same scene.
-//!
-//! Images are provided by `comet-content-image`, and external textures by
-//! `comet-content-external`.
+//! Every content draws into the scene of the layer its box paints in, images
+//! and external textures alike. Images are provided by
+//! `comet-content-image`, and external textures, such as videos or 3D scenes
+//! rendered outside the UI, by `comet-content-external`.
 
 pub mod manager;
 pub mod prelude;
 
 use std::num::NonZeroU64;
 
-use anyrender::{ResourceId, Scene};
+use anyrender::Scene;
 use comet_tree::ui::Props;
 
 /// Opaque identifier of a [`Content`] in a [`ContentManager`](manager::ContentManager).
@@ -44,16 +38,6 @@ impl ContentId {
     pub const fn as_ffi(self) -> NonZeroU64 {
         self.0
     }
-}
-
-/// How a content is drawn into the scene.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ContentKind {
-    /// Drawn with the scene of the layer its box paints in.
-    Scene,
-    /// Shows the external texture registered as `resource` with the render
-    /// context. Its box starts a paint layer of its own.
-    Texture { resource: ResourceId },
 }
 
 /// Sizing constraints of a content box, supplied by layout, like the
@@ -91,9 +75,6 @@ pub struct DrawInput<'a> {
 /// boxes using it, so it can be shared across them. Style props it reads
 /// from the inputs' [`Props`] are its own to define.
 pub trait Content {
-    /// How the content is drawn. Fixed for the lifetime of the content.
-    fn kind(&self) -> ContentKind;
-
     /// Size of the content box under `input`, in logical units. Taffy
     /// applies the box's padding, border, min and max sizes and aspect ratio
     /// around it.

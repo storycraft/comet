@@ -5,8 +5,7 @@ use comet_tree::{
 };
 
 use crate::{
-    Content, ContentKind, DrawInput, MeasureInput, fit_transform, manager::ContentManager,
-    natural_measure,
+    Content, DrawInput, MeasureInput, fit_transform, manager::ContentManager, natural_measure,
 };
 
 /// A box node without props, for the props of the inputs.
@@ -44,10 +43,6 @@ impl Fixture {
 struct Fixed(kurbo::Size);
 
 impl Content for Fixed {
-    fn kind(&self) -> ContentKind {
-        ContentKind::Scene
-    }
-
     fn measure(&self, input: &MeasureInput<'_>) -> taffy::Size<f32> {
         natural_measure(self.0, input)
     }

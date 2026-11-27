@@ -1,5 +1,5 @@
 use anyrender::{Paint, recording::RenderCommand};
-use comet_content::{Content, ContentKind, manager::ContentManager};
+use comet_content::{Content, manager::ContentManager};
 use kurbo::{Affine, Shape};
 use peniko::{Blob, ImageAlphaType, ImageData, ImageFormat};
 
@@ -22,7 +22,6 @@ fn image(width: u32, height: u32) -> ImageData {
 fn images_stretch_over_the_content_box() {
     let fx = Fixture::new();
     let content = ImageContent::new(image(20, 10)).with_natural_size(kurbo::Size::new(10.0, 5.0));
-    assert_eq!(content.kind(), ContentKind::Scene);
     assert_eq!(content.measure(&fx.input(None, None)), size(10.0, 5.0));
 
     let RenderCommand::Fill(fill) = draw_one(&content, 40.0, 40.0) else {

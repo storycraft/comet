@@ -1,5 +1,5 @@
 use anyrender::{Paint, ResourceId, recording::RenderCommand};
-use comet_content::{Content, ContentKind};
+use comet_content::Content;
 use kurbo::Affine;
 
 use crate::{
@@ -12,7 +12,6 @@ fn textures_draw_their_resource() {
     let fx = Fixture::new();
     let resource = ResourceId::new();
     let content = TextureContent::new(resource, 64, 32);
-    assert_eq!(content.kind(), ContentKind::Texture { resource });
     assert_eq!(
         content.measure(&fx.input(Some(32.0), None)),
         size(32.0, 16.0)

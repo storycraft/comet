@@ -5,9 +5,7 @@ use anyrender::{AntiAliasing, Paint, PaintScene, Scene};
 use kurbo::{Affine, Point, Rect};
 use peniko::{Fill, ImageBrush, ImageData};
 
-use comet_content::{
-    Content, ContentKind, DrawInput, MeasureInput, fit_transform, natural_measure,
-};
+use comet_content::{Content, DrawInput, MeasureInput, fit_transform, natural_measure};
 
 /// A raster image, stretched over the content box.
 #[derive(Debug, Clone, PartialEq)]
@@ -48,10 +46,6 @@ impl ImageContent {
 }
 
 impl Content for ImageContent {
-    fn kind(&self) -> ContentKind {
-        ContentKind::Scene
-    }
-
     fn measure(&self, input: &MeasureInput<'_>) -> taffy::Size<f32> {
         natural_measure(self.natural_size, input)
     }

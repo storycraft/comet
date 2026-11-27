@@ -1,3 +1,1 @@
-pub use crate::{
-    Content, ContentId, ContentKind, DrawInput, MeasureInput, manager::ContentManager,
-};
+pub use crate::{Content, ContentId, DrawInput, MeasureInput, manager::ContentManager};

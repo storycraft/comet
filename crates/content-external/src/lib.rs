@@ -6,9 +6,7 @@ use anyrender::{AntiAliasing, Paint, PaintScene, ResourceId, Scene};
 use kurbo::{Affine, Point, Rect};
 use peniko::{Fill, ImageBrush, ImageSampler};
 
-use comet_content::{
-    Content, ContentKind, DrawInput, MeasureInput, fit_transform, natural_measure,
-};
+use comet_content::{Content, DrawInput, MeasureInput, fit_transform, natural_measure};
 
 /// An external texture, such as a video frame or a 3D scene, registered with
 /// the render context, stretched over the content box.
@@ -47,12 +45,6 @@ impl TextureContent {
 }
 
 impl Content for TextureContent {
-    fn kind(&self) -> ContentKind {
-        ContentKind::Texture {
-            resource: self.resource,
-        }
-    }
-
     fn measure(&self, input: &MeasureInput<'_>) -> taffy::Size<f32> {
         natural_measure(self.natural_size, input)
     }
