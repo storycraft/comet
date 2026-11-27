@@ -1,3 +1,4 @@
+use comet_content::manager::ContentManager;
 use std::num::NonZeroU64;
 
 use comet_content::ContentId;
@@ -83,6 +84,7 @@ impl Fixture {
             self.builder.build(
                 &self.ui,
                 &self.tree,
+                &ContentManager::new(),
                 &mut self.dirty,
                 layout_root,
                 &mut self.fragments,
@@ -92,6 +94,7 @@ impl Fixture {
             self.builder.update(
                 &self.ui,
                 &self.tree,
+                &ContentManager::new(),
                 &mut self.dirty,
                 layout_root,
                 &mut self.fragments,
@@ -205,7 +208,9 @@ fn fresh_build_classifies_boxes() {
     let absolute = ui.create(Node::Box, (bx::Position(taffy::Position::Absolute),));
     let content = ui.create(
         Node::Box,
-        (bx::DisplayInner::Content(ContentId::from_ffi(NonZeroU64::MIN)),),
+        (bx::DisplayInner::Content(ContentId::from_ffi(
+            NonZeroU64::MIN,
+        )),),
     );
 
     ui.append(root, para);

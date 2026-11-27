@@ -131,6 +131,7 @@ fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, BoxFragmentK
         .build(
             ui,
             &inputs,
+            &ContentManager::new(),
             &mut dirty,
             root,
             &mut fragments,

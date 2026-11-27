@@ -19,3 +19,6 @@ rustc-hash = "2.1.3"
 slotmap = { workspace = true }
 
 taffy = { workspace = true, features = ["block_layout", "float_layout", "content_size"] }
+
+[dev-dependencies]
+anyrender = { workspace = true }

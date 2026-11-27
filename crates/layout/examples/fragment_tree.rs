@@ -1,3 +1,4 @@
+use comet_content::manager::ContentManager;
 mod common;
 
 use comet_layout::{
@@ -47,6 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(
             &ui,
             &inputs,
+            &ContentManager::new(),
             &mut dirty,
             input_root,
             &mut fragments,
@@ -71,6 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(
             &ui,
             &inputs,
+            &ContentManager::new(),
             &mut dirty,
             input_root,
             &mut fragments,
@@ -100,6 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(
             &ui,
             &inputs,
+            &ContentManager::new(),
             &mut dirty,
             input_root,
             &mut fragments,
@@ -129,6 +133,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(
             &ui,
             &inputs,
+            &ContentManager::new(),
             &mut dirty,
             input_root,
             &mut fragments,

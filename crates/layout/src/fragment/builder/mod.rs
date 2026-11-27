@@ -25,6 +25,7 @@ mod invalidate;
 mod lines;
 pub(crate) mod taffy;
 
+use comet_content::manager::ContentManager;
 use comet_tree::ui::Ui;
 use rustc_hash::FxHashMap;
 use slotmap::SecondaryMap;
@@ -127,31 +128,41 @@ impl FragmentTreeBuilder {
     /// not cleared.
     ///
     /// Boxes whose layout is still valid are not laid out again.
+    ///
+    /// Boxes displaying a content, with `DisplayInner::Content`, are sized by
+    /// the [`Content`](comet_content::Content) of their id in `contents`, or
+    /// by their style alone when it is missing.
+    #[allow(clippy::too_many_arguments)]
     pub fn build(
         &mut self,
         ui: &Ui,
         tree: &LayoutInputTree,
+        contents: &ContentManager,
         dirty: &mut DirtyMap,
         root: LayoutInputKey,
         fragments: &mut FragmentTree,
         constraint: &LayoutConstraint,
     ) -> Option<BoxFragmentKey> {
-        self.run(ui, tree, dirty, root, fragments, constraint, true)
+        self.run(ui, tree, contents, dirty, root, fragments, constraint, true)
     }
 
     /// Run the steps of [`Self::build`] before laying out: sync the box
     /// structure and invalidate the affected caches.
     #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn update(
         &mut self,
         ui: &Ui,
         tree: &LayoutInputTree,
+        contents: &ContentManager,
         dirty: &mut DirtyMap,
         root: LayoutInputKey,
         fragments: &mut FragmentTree,
         constraint: &LayoutConstraint,
     ) -> Option<BoxFragmentKey> {
-        self.run(ui, tree, dirty, root, fragments, constraint, false)
+        self.run(
+            ui, tree, contents, dirty, root, fragments, constraint, false,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -159,6 +170,7 @@ impl FragmentTreeBuilder {
         &mut self,
         ui: &Ui,
         tree: &LayoutInputTree,
+        contents: &ContentManager,
         dirty: &mut DirtyMap,
         root: LayoutInputKey,
         fragments: &mut FragmentTree,
@@ -177,6 +189,7 @@ impl FragmentTreeBuilder {
             },
             fonts: &mut self.fonts,
             content: &mut self.content,
+            contents,
             dirty,
             fragments,
             scratch: &mut self.scratch,
@@ -210,6 +223,8 @@ pub(crate) struct Engine<'a> {
     cx: InlineBuildContext<'a>,
     fonts: &'a mut parley::FontContext,
     content: &'a mut InlineContentBuilder,
+    /// Contents sizing the boxes displaying them.
+    contents: &'a ContentManager,
     dirty: &'a mut DirtyMap,
     fragments: &'a mut FragmentTree,
     scratch: &'a mut Scratch,

@@ -1,3 +1,4 @@
+use comet_content::manager::ContentManager;
 use std::sync::{
     Arc,
     atomic::{AtomicU32, Ordering},
@@ -122,6 +123,7 @@ impl Fixture {
             .build(
                 ui,
                 &self.inputs,
+                &ContentManager::new(),
                 &mut self.dirty,
                 root,
                 &mut self.fragments,

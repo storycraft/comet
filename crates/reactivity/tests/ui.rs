@@ -1,3 +1,4 @@
+use comet_content::manager::ContentManager;
 use std::{cell::RefCell, rc::Rc};
 
 use any_spawner::Executor;
@@ -86,6 +87,7 @@ impl Layout {
             .build(
                 ui,
                 inputs,
+                &ContentManager::new(),
                 dirty,
                 input_root,
                 fragments,

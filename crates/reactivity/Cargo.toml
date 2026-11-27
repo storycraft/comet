@@ -24,5 +24,6 @@ reactive_graph = { workspace = true }
 taffy = { workspace = true }
 
 [dev-dependencies]
+comet-content = { workspace = true }
 any_spawner = { version = "0.3.0", features = ["tokio"] }
 tokio = { version = "1.54.1", features = ["macros", "rt", "time"] }

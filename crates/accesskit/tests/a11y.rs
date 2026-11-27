@@ -2,6 +2,7 @@ use accesskit::{NodeId, Role as AxRole};
 use comet_accesskit::{
     AxKey, AxNodeKind, ax_key, builder::AxTreeBuilder, node_id, style::Role, tree::AxTree,
 };
+use comet_content::manager::ContentManager;
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{BoxFragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -77,7 +78,15 @@ impl Harness {
         let constraint = LayoutConstraint::new_root(VIEWPORT, 16.0);
         let fragment_root = self
             .fragment_builder
-            .build(ui, inputs, dirty, input_root, fragments, &constraint)
+            .build(
+                ui,
+                inputs,
+                &ContentManager::new(),
+                dirty,
+                input_root,
+                fragments,
+                &constraint,
+            )
             .expect("fragment tree");
         self.prepaint_builder
             .build(

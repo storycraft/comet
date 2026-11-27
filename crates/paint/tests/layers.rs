@@ -74,6 +74,7 @@ impl Fixture {
             .build(
                 ui,
                 &inputs,
+                &ContentManager::new(),
                 &mut dirty,
                 input_root,
                 &mut fragments,
@@ -1264,6 +1265,7 @@ impl Pipeline {
             .build(
                 ui,
                 &self.inputs,
+                &ContentManager::new(),
                 &mut self.dirty,
                 input_root,
                 &mut self.fragments,

@@ -2,6 +2,8 @@
 //! `accesskit_consumer`, which platform adapters are built on, reads it:
 //! first every node, then the nodes adapters expose.
 
+use comet_content::manager::ContentManager;
+
 use accesskit::{NodeId, Role as AxRole, TreeId, TreeInfo, TreeUpdate};
 use accesskit_consumer::{NodeRef, Tree, common_filter};
 use comet_accesskit::{builder::AxTreeBuilder, node_id, style::Role, tree::AxTree};
@@ -54,6 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build(
             &ui,
             &inputs,
+            &ContentManager::new(),
             &mut dirty,
             input_root,
             &mut fragments,

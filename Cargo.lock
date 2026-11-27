@@ -853,6 +853,7 @@ dependencies = [
  "accesskit",
  "accesskit_consumer",
  "bitflags 2.13.2",
+ "comet-content",
  "comet-layout",
  "comet-paint",
  "comet-slotmap-tree",
@@ -890,6 +891,7 @@ dependencies = [
 name = "comet-layout"
 version = "0.1.0"
 dependencies = [
+ "anyrender",
  "bitflags 2.13.2",
  "comet-content",
  "comet-slotmap-tree",
@@ -906,6 +908,7 @@ dependencies = [
 name = "comet-layout-flex"
 version = "0.1.0"
 dependencies = [
+ "comet-content",
  "comet-layout",
  "comet-tree",
  "taffy",
@@ -939,6 +942,7 @@ dependencies = [
  "anyrender",
  "bitflags 2.13.2",
  "comet-accesskit",
+ "comet-content",
  "comet-layout",
  "comet-layout-flex",
  "comet-paint",

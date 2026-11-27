@@ -129,9 +129,11 @@ impl CoreStyle for Style {
         self.replaced
     }
 
+    /// Replaced boxes, displaying a content, resolve an auto width to the
+    /// size of their content instead of being stretched by block layout, as
+    /// in Taffy's own style.
     fn is_compressible_replaced(&self) -> bool {
-        // TODO
-        false
+        self.replaced
     }
 
     fn position(&self) -> taffy::Position {

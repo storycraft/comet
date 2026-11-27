@@ -1,5 +1,7 @@
 //! Custom container algorithms laid out by the fragment tree builder.
 
+use comet_content::manager::ContentManager;
+
 use std::sync::{
     Arc,
     atomic::{AtomicU32, Ordering},
@@ -82,6 +84,7 @@ impl Trees {
             .build(
                 ui,
                 &self.tree,
+                &ContentManager::new(),
                 &mut self.dirty,
                 input_root,
                 &mut self.fragments,

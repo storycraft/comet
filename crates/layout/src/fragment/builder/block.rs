@@ -5,6 +5,7 @@
 //! their [lines](super::lines), containers by their custom algorithm through
 //! a [`ContainerContext`], and other boxes are leaves sized by their style.
 
+use comet_content::MeasureInput;
 use taffy::style::CoreStyle;
 
 use super::{
@@ -125,15 +126,46 @@ impl Engine<'_> {
         output
     }
 
-    /// Lay out a box without children, sized by its style alone.
+    /// Lay out a box without children: a box displaying a content is sized
+    /// by the content of its id, measured as a Taffy leaf, and others, or
+    /// those whose content is missing, by their style alone.
     fn layout_leaf(
         &mut self,
         key: BoxFragmentKey,
         input: taffy::LayoutInput,
     ) -> taffy::LayoutOutput {
-        let style = &self.fragments.boxes[key].style;
+        let fragment = &self.fragments.boxes[key];
+        let style = &fragment.style;
+        let node = self.cx.tree.items[fragment.source].node;
+        let props = self.cx.ui.props(node);
+        let content = props.and_then(|props| {
+            let id = match props.get::<DisplayInner>().as_deref() {
+                Some(DisplayInner::Content(id)) => *id,
+                _ => return None,
+            };
 
-        taffy::compute_leaf_layout(input, style, |_, _| 0.0, |_, _| taffy::Size::ZERO)
+            Some((props, self.contents.get(id)?))
+        });
+
+        let Some((props, content)) = content else {
+            return taffy::compute_leaf_layout(input, style, |_, _| 0.0, |_, _| taffy::Size::ZERO);
+        };
+
+        let known_dimensions = content_known_dimensions(style, &input);
+
+        taffy::compute_leaf_layout(
+            input,
+            style,
+            |_, _| 0.0,
+            |_, available_space| {
+                content.measure(&MeasureInput {
+                    props,
+                    known_dimensions,
+                    available_space,
+                    parent_size: input.parent_size,
+                })
+            },
+        )
     }
 
     /// Make the out-of-flow boxes positioned by `containing` relative to
@@ -268,4 +300,51 @@ impl Engine<'_> {
         let layout = &fragment.layout.unrounded;
         Some(layout.size.height + layout.margin.bottom)
     }
+}
+
+/// The content box sizes of a leaf box already known under `input`: those
+/// known by its parent, or else set by its own style, resolved against its
+/// parent as Taffy resolves leaves, less its padding and border.
+///
+/// Taffy only passes a leaf's measure function the sizes known by its
+/// parent: the sizes set by its style reach it as definite available space,
+/// as does the space of a box sized by its content. A content needs them to
+/// keep its aspect ratio, such as an image with only a width.
+/// 
+/// TODO:: REMOVE
+fn content_known_dimensions(
+    style: &impl CoreStyle,
+    input: &taffy::LayoutInput,
+) -> taffy::Size<Option<f32>> {
+    use taffy::util::{MaybeMath, MaybeResolve, ResolveOrZero};
+
+    let calc = |_, _| 0.0;
+    let parent = input.parent_size;
+    let padding_border = style.padding().resolve_or_zero(parent.width, calc)
+        + style.border().resolve_or_zero(parent.width, calc);
+    let inset = padding_border.sum_axes();
+
+    let style_size = match input.sizing_mode {
+        // Style sizes are ignored when measuring the content size.
+        taffy::SizingMode::ContentSize => taffy::Size::NONE,
+        taffy::SizingMode::InherentSize => {
+            let box_sizing = if style.box_sizing() == taffy::BoxSizing::ContentBox {
+                inset
+            } else {
+                taffy::Size::ZERO
+            };
+
+            style
+                .size()
+                .maybe_resolve(parent, calc)
+                .maybe_apply_aspect_ratio(style.aspect_ratio())
+                .maybe_add(box_sizing)
+        }
+    };
+
+    input
+        .known_dimensions
+        .or(style_size)
+        .maybe_sub(inset)
+        .map(|size| size.map(|size| size.max(0.0)))
 }

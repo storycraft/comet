@@ -19,5 +19,6 @@ parley = { workspace = true }
 slotmap = { workspace = true }
 
 [dev-dependencies]
+comet-content = { workspace = true }
 taffy = { workspace = true }
 accesskit_consumer = "0.39.2"

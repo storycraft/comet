@@ -1,3 +1,4 @@
+use comet_content::manager::ContentManager;
 use std::ops::Deref;
 
 use comet_layout::{
@@ -65,6 +66,7 @@ impl Layout {
             .build(
                 ui,
                 &self.inputs,
+                &ContentManager::new(),
                 &mut self.dirty,
                 key,
                 &mut self.fragments,
@@ -572,6 +574,7 @@ fn viewport_gaps_follow_viewport_changes() {
             .build(
                 &ui,
                 &layout.inputs,
+                &ContentManager::new(),
                 &mut layout.dirty,
                 key,
                 &mut layout.fragments,

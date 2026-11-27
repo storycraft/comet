@@ -278,6 +278,7 @@ impl Pipeline {
             prepaint,
             selection,
             layers,
+            contents,
             ..
         } = &mut self.trees;
         let builders = &mut self.builders;
@@ -303,11 +304,15 @@ impl Pipeline {
 
         let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE)
             .with_viewport_changed(previous_viewport.is_some_and(|previous| previous != viewport));
-        let Some(fragment_root) =
-            builders
-                .fragments
-                .build(ui, inputs, dirty, input_root, fragments, &constraint)
-        else {
+        let Some(fragment_root) = builders.fragments.build(
+            ui,
+            inputs,
+            contents,
+            dirty,
+            input_root,
+            fragments,
+            &constraint,
+        ) else {
             dirty.clear(inputs, input_root);
             return None;
         };

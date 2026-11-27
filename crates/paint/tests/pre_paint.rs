@@ -112,6 +112,7 @@ impl Fixture {
             .build(
                 ui,
                 &self.inputs,
+                &ContentManager::new(),
                 &mut self.dirty,
                 input_root,
                 &mut self.fragments,
