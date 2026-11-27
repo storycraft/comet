@@ -15,7 +15,7 @@ use comet_paint::style;
 use comet_paint::style::Paint;
 use comet_paint::{
     layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
-    painter::CometPainter,
+    painter::CometCompositePainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
     selection::rects::SelectionRects,
     style::{AntiAliasing, Background, BorderFill, BorderRadius},
@@ -146,7 +146,7 @@ fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, BoxFragmentK
 /// then paint them.
 #[allow(clippy::too_many_arguments)]
 fn draw(
-    painter: &mut CometPainter,
+    painter: &mut CometCompositePainter,
     ui: &Ui,
     inputs: &LayoutInputTree,
     tree: &FragmentTree,
@@ -215,7 +215,7 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
     ui.append(span, text);
 
     let (inputs, mut tree, root) = build(&ui, root_node);
-    let mut renderer = CometPainter::new();
+    let mut renderer = CometCompositePainter::new();
     let mut scene = Scene::new();
 
     draw(
@@ -334,7 +334,7 @@ fn paints_atomic_inline_subtree_border_and_text_override_without_double_offsets(
     let mut scene = Scene::new();
 
     draw(
-        &mut CometPainter::new(),
+        &mut CometCompositePainter::new(),
         &ui,
         &inputs,
         &tree,
@@ -385,7 +385,7 @@ fn text_nodes_paint_no_background_of_their_own() {
     let mut scene = Scene::new();
 
     draw(
-        &mut CometPainter::new(),
+        &mut CometCompositePainter::new(),
         &ui,
         &inputs,
         &tree,
@@ -427,7 +427,7 @@ fn rounds_background_and_border_corners() {
     let mut scene = Scene::new();
 
     draw(
-        &mut CometPainter::new(),
+        &mut CometCompositePainter::new(),
         &ui,
         &inputs,
         &tree,
@@ -485,7 +485,7 @@ fn rounds_only_outer_edges_of_wrapped_fragments() {
         let mut scene = Scene::new();
 
         draw(
-            &mut CometPainter::new(),
+            &mut CometCompositePainter::new(),
             &ui,
             &inputs,
             &tree,
@@ -553,7 +553,7 @@ fn anonymous_run_boxes_paint_nothing_and_offset_their_lines() {
     let mut scene = Scene::new();
 
     draw(
-        &mut CometPainter::new(),
+        &mut CometCompositePainter::new(),
         &ui,
         &inputs,
         &tree,
@@ -647,7 +647,7 @@ fn skips_fragments_outside_viewport_but_paints_their_overflowing_children() {
 
     let mut all = Scene::new();
     draw(
-        &mut CometPainter::new(),
+        &mut CometCompositePainter::new(),
         &ui,
         &inputs,
         &tree,
@@ -667,7 +667,7 @@ fn skips_fragments_outside_viewport_but_paints_their_overflowing_children() {
 
     let mut culled = Scene::new();
     draw(
-        &mut CometPainter::new(),
+        &mut CometCompositePainter::new(),
         &ui,
         &inputs,
         &tree,
@@ -702,7 +702,7 @@ fn paint(ui: &Ui, node: NodeKey) -> Scene {
     let (inputs, tree, root) = build(ui, node);
     let mut scene = Scene::new();
     draw(
-        &mut CometPainter::new(),
+        &mut CometCompositePainter::new(),
         ui,
         &inputs,
         &tree,

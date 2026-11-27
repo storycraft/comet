@@ -23,7 +23,7 @@ use comet_paint::style;
 use comet_paint::style::Paint;
 use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
-    painter::CometPainter,
+    painter::CometCompositePainter,
     style::{
         BoxDecorationBreak, Opacity, OutlineFill, Selectable, SelectionColor, SelectionFill,
         UserSelect,
@@ -260,7 +260,7 @@ impl Fixture {
     fn draw(&self, ui: &Ui) -> Scene {
         let mut scene = Scene::new();
         let (layers, root) = self.layers(ui);
-        CometPainter::new().draw(
+        CometCompositePainter::new().draw(
             ui,
             &self.inputs,
             &self.fragments,
@@ -1402,7 +1402,7 @@ impl Fixture {
     fn draw_scaled(&self, ui: &Ui, scale_factor: f64) -> Scene {
         let mut scene = Scene::new();
         let (layers, root) = self.layers(ui);
-        CometPainter::new().draw(
+        CometCompositePainter::new().draw(
             ui,
             &self.inputs,
             &self.fragments,
@@ -2141,7 +2141,7 @@ fn layers_painted_alone_scroll_with_their_ancestors() {
     let (layers, _) = f.layers(&ui);
     let layer = layers.layer_of(f.box_of(rows[1])).unwrap();
     let mut scene = Scene::new();
-    CometPainter::new().draw(
+    CometCompositePainter::new().draw(
         &ui,
         &f.inputs,
         &f.fragments,

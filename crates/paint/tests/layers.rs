@@ -20,7 +20,7 @@ use comet_paint::style::Paint;
 use comet_paint::style::ScrollTop;
 use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
-    painter::CometPainter,
+    painter::CometCompositePainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
     selection::rects::SelectionRects,
     style::{
@@ -219,7 +219,7 @@ impl Fixture {
 
     fn draw(&self, ui: &Ui) -> Scene {
         let mut scene = Scene::new();
-        CometPainter::new().draw(
+        CometCompositePainter::new().draw(
             ui,
             &self.inputs,
             &self.fragments,

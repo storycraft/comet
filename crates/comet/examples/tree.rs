@@ -15,7 +15,7 @@ use comet_layout::{
 };
 use comet_paint::{
     layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
-    painter::CometPainter,
+    painter::CometCompositePainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
     selection::rects::SelectionRects,
 };
@@ -103,7 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    let mut renderer = CometPainter::new();
+    let mut renderer = CometCompositePainter::new();
     let mut image_renderer = VelloCpuImageRenderer::new(WIDTH, HEIGHT);
     let mut data = vec![0_u8; (WIDTH * HEIGHT * 4) as usize];
     image_renderer.render(

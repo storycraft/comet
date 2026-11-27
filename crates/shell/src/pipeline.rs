@@ -22,7 +22,7 @@ use comet_layout::{
 use comet_paint::{
     hit::PaintHitTester,
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
-    painter::CometPainter,
+    painter::CometCompositePainter,
     prepaint::{builder::PrepaintTreeBuilder, fragment::BoxRole, tree::PrepaintTree},
     selection::{Selection, rects::SelectionRects},
 };
@@ -161,7 +161,7 @@ pub struct UiBuilders {
     pub prepaint: PrepaintTreeBuilder,
     pub layers: PaintLayerBuilder,
     pub hit_tester: PaintHitTester,
-    pub painter: CometPainter,
+    pub painter: CometCompositePainter,
     pub ax: AxTreeBuilder,
 }
 
