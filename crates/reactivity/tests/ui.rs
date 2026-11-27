@@ -18,7 +18,7 @@ use comet_layout::{
     },
 };
 use comet_layout_flex::style::Gap;
-use comet_paint::style::TextColor;
+use comet_paint::style::Fill;
 use comet_reactivity::{
     cx::UiCx,
     prelude::{FlexStyled, Styled},
@@ -159,7 +159,7 @@ async fn bindings_write_changes_and_mark_flags() {
                 .children(|cx| {
                     *text.insert(
                         cx.text("text")
-                            .style_with(move || TextColor(paint(red.get())))
+                            .style_with(move || Fill(paint(red.get())))
                             .build(),
                     )
                 })
@@ -173,10 +173,7 @@ async fn bindings_write_changes_and_mark_flags() {
         settle().await;
         {
             let mut tree = tree.borrow_mut();
-            assert_eq!(
-                *tree.ui.prop::<TextColor>(text).unwrap(),
-                TextColor(paint(255))
-            );
+            assert_eq!(*tree.ui.prop::<Fill>(text).unwrap(), Fill(paint(255)));
             assert_eq!(flags(&tree, text), PropHint::RENDER);
             assert!(flags(&tree, text).layout().is_empty());
             tree.take_changes().for_each(drop);

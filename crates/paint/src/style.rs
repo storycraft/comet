@@ -2,7 +2,7 @@ use anyrender::{Paint, filters::FilterEffect};
 use comet_layout::style::geometry::{AutoValue, Point, Rect, StyleUnit};
 use comet_tree::style::define_style_props;
 use kurbo::Affine;
-use peniko::{BlendMode, Color};
+use peniko::BlendMode;
 
 define_style_props!(
     // Box draw styles
@@ -13,9 +13,13 @@ define_style_props!(
     #[derive(Debug, Clone, PartialEq)]
     pub OutlineFill: Paint;
 
+    /// Width of the outline. Percentages resolve against the parent's
+    /// outline width.
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub OutlineWidth: StyleUnit;
 
+    /// Distance between the outline and the border box. Percentages resolve
+    /// against the parent's outline offset.
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub OutlineOffset: StyleUnit;
 
@@ -46,8 +50,10 @@ define_style_props!(
     pub ScrollTop: f64 = 0.0;
 
     // Text draw styles
+    /// Color of the text of a node and its descendants. Auto follows the
+    /// parent's text color, black at the root.
     #[derive(Debug, Clone, PartialEq)]
-    pub TextColor: Paint = Paint::Solid(Color::BLACK);
+    pub TextColor: AutoValue<Paint> = AutoValue::Auto;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub ZIndex: AutoValue<i32> = AutoValue::Auto;

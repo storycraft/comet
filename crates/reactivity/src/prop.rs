@@ -170,8 +170,10 @@ impl ReactiveProp for bx::Overflow {
     }
 }
 
-// Resolved by the pre-paint step.
+// Resolved by the pre-paint step. Text colors and outlines are inherited, so
+// children whose resolved values change are resolved again too.
 reactive_props!(PRE_PAINT =>
+    paint::TextColor,
     paint::BorderRadius,
     paint::OutlineWidth,
     paint::OutlineOffset,
@@ -212,7 +214,6 @@ reactive_props!(REPAINT =>
     paint::Fill,
     paint::BorderFill,
     paint::OutlineFill,
-    paint::TextColor,
 );
 
 // Read by the accessibility build only.

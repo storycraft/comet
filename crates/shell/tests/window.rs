@@ -350,8 +350,8 @@ fn wheel_does_not_pass_to_outer_container_at_the_end() {
         let inner = inner.clone();
         move |cx: &UiCx| {
             scroll_box(cx).children(|cx| {
-                let key = scroll_box(cx)
-                    .children(|cx| cx.div().size(size(px(100), px(300))).build());
+                let key =
+                    scroll_box(cx).children(|cx| cx.div().size(size(px(100), px(300))).build());
                 inner.set(Some(key));
                 vec![key, cx.div().size(size(px(100), px(300))).build()]
             })

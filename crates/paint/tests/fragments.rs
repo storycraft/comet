@@ -184,7 +184,7 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
     let root_node = ui.create(
         Node::Box,
         (
-            TextColor(Paint::Solid(blue)),
+            TextColor(AutoValue::Value(Paint::Solid(blue))),
             bx::Padding(LayoutRect::new_axis(StyleUnit::Px(7.0), StyleUnit::Px(9.0))),
         ),
     );
@@ -292,7 +292,10 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
 fn paints_atomic_inline_subtree_border_and_text_override_without_double_offsets() {
     let mut ui = Ui::new();
     let red = Color::from_rgb8(180, 20, 20);
-    let root_node = ui.create(Node::Box, (TextColor(Paint::Solid(Color::BLACK)),));
+    let root_node = ui.create(
+        Node::Box,
+        (TextColor(AutoValue::Value(Paint::Solid(Color::BLACK))),),
+    );
     let before = ui.create(Node::Text, (Text("prefix ".into()),));
     let atomic = ui.create(
         Node::Box,
@@ -306,7 +309,7 @@ fn paints_atomic_inline_subtree_border_and_text_override_without_double_offsets(
             bx::Border(LayoutRect::new_all(StyleUnit::Px(2.0))),
             BorderFill(Paint::Solid(Color::BLACK)),
             Fill(Paint::Solid(Color::WHITE)),
-            TextColor(Paint::Solid(red)),
+            TextColor(AutoValue::Value(Paint::Solid(red))),
         ),
     );
     let text = ui.create(Node::Text, (Text("atom".into()),));

@@ -8,7 +8,7 @@ use core::f64::consts::TAU;
 
 use anyrender::Paint;
 use comet::{prelude::*, winit::window::WindowAttributes};
-use comet_layout::style::geometry::Point;
+use comet_layout::style::geometry::{AutoValue, Point};
 use comet_tree::node::NodeKey;
 use kurbo::Affine;
 use peniko::Color;
@@ -39,7 +39,7 @@ fn content(cx: &UiCx) -> NodeKey {
         .size(size(vw(100), auto()))
         .min_size(size(auto(), vh(100)))
         .fill(Paint::Solid(Color::from_rgb8(239, 242, 247)))
-        .text_color(Paint::Solid(Color::from_rgb8(36, 46, 63)))
+        .text_color(AutoValue::Value(Paint::Solid(Color::from_rgb8(36, 46, 63))))
         .children(|cx| [counter(cx), spinner(cx)])
 }
 

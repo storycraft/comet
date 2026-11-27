@@ -1,6 +1,7 @@
 use core::f64::consts::TAU;
 
 use comet::prelude::*;
+use comet_layout::style::geometry::AutoValue;
 use comet_tree::node::NodeKey;
 use kurbo::Affine;
 use peniko::Color;
@@ -125,7 +126,7 @@ fn caption(cx: &UiCx, label: &str) -> NodeKey {
     cx.div()
         .font_size(px(12))
         .font_weight(parley::FontWeight::SEMI_BOLD)
-        .text_color(solid(MUTED))
+        .text_color(AutoValue::Value(solid(MUTED)))
         .padding(sides(px(8), px(0), px(6), px(0)))
         .children(|cx| cx.text(label).build())
 }

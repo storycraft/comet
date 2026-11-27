@@ -530,11 +530,17 @@ fn fragment_boxes_resolve_their_border_radii() {
 #[test]
 fn text_color_is_inherited_through_the_ui() {
     let mut ui = Ui::new();
-    let root = ui.create(Node::Box, (TextColor(Paint::Solid(BLUE)),));
+    let root = ui.create(
+        Node::Box,
+        (TextColor(AutoValue::Value(Paint::Solid(BLUE))),),
+    );
     text(&mut ui, root, "blue ");
     let span = ui.create(
         Node::Box,
-        (bx::DisplayOuter::Inline, TextColor(Paint::Solid(RED))),
+        (
+            bx::DisplayOuter::Inline,
+            TextColor(AutoValue::Value(Paint::Solid(RED))),
+        ),
     );
     ui.append(root, span);
     text(&mut ui, span, "red ");
@@ -546,11 +552,14 @@ fn text_color_is_inherited_through_the_ui() {
     // A text node's own color applies to its glyph runs, but not to its
     // siblings.
     let own = text(&mut ui, span, "blue ");
-    ui.set_props(own, (TextColor(Paint::Solid(BLUE)),));
+    ui.set_props(own, (TextColor(AutoValue::Value(Paint::Solid(BLUE))),));
     text(&mut ui, span, "red again ");
     let green = ui.create(
         Node::Box,
-        (bx::DisplayOuter::Inline, TextColor(Paint::Solid(GREEN))),
+        (
+            bx::DisplayOuter::Inline,
+            TextColor(AutoValue::Value(Paint::Solid(GREEN))),
+        ),
     );
     ui.append(span, green);
     text(&mut ui, green, "green");
@@ -651,7 +660,7 @@ fn overflow_clips_contents_to_the_fragment_box() {
         Node::Box,
         (
             fixed(10.0, 4.0),
-            TextColor(Paint::Solid(GREEN)),
+            TextColor(AutoValue::Value(Paint::Solid(GREEN))),
             Fill(Paint::Solid(GREEN)),
         ),
     );
@@ -860,29 +869,168 @@ fn resolving_follows_the_layout() {
 }
 
 #[test]
-fn text_color_changes_paint_without_resolving() {
+fn text_color_defaults_to_black() {
     let mut ui = Ui::new();
-    let root = ui.create(Node::Box, (TextColor(Paint::Solid(BLUE)),));
-    text(&mut ui, root, "blue");
-    let colored = ui.create(Node::Box, (TextColor(Paint::Solid(RED)),));
-    let block = ui.create(Node::Box, ());
-    ui.append(root, colored);
-    ui.append(colored, block);
-    text(&mut ui, block, "text");
+    let root = ui.create(Node::Box, ());
+    let label = text(&mut ui, root, "black");
 
     let mut f = Fixture::default();
     f.build(&ui, root);
 
+    assert_eq!(f.data(root).text_color, Paint::Solid(Color::BLACK));
+    assert_eq!(f.data(label).text_color, Paint::Solid(Color::BLACK));
+    assert_eq!(f.text_colors(&ui), [Color::BLACK]);
+}
+
+#[test]
+fn text_color_changes_resolve_the_subtree() {
+    let mut ui = Ui::new();
+    let root = ui.create(
+        Node::Box,
+        (TextColor(AutoValue::Value(Paint::Solid(BLUE))),),
+    );
+    text(&mut ui, root, "blue");
+    let colored = ui.create(
+        Node::Box,
+        (
+            TextColor(AutoValue::Value(Paint::Solid(RED))),
+            BorderRadius(LayoutRect::new_all(StyleUnit::Px(2.0))),
+        ),
+    );
+    let block = ui.create(Node::Box, ());
+    ui.append(root, colored);
+    ui.append(colored, block);
+    let nested = text(&mut ui, block, "text");
+
+    let mut f = Fixture::default();
+    let fragment_root = f.build(&ui, root);
+
+    assert_eq!(f.text_colors(&ui), [BLUE, RED]);
+    assert_eq!(f.data(nested).text_color, Paint::Solid(RED));
+
+    // Painting reads the resolved color, so an unmarked change does not
+    // show.
+    ui.set_props(colored, (TextColor(AutoValue::Value(Paint::Solid(GREEN))),));
     assert_eq!(f.text_colors(&ui), [BLUE, RED]);
 
-    // Text colors are looked up while painting, inherited by the nested
-    // text, so the change shows without resolving the pre-paint tree.
-    ui.set_props(colored, (TextColor(Paint::Solid(GREEN)),));
+    // Resolving the marked item resolves its descendants, which inherit the
+    // new color. Box data stays as it was: it does not inherit.
+    let block_data = f.boxed(block).clone();
+    f.mark(colored);
+    f.resolve(&ui, fragment_root).unwrap();
+    f.clear_flags();
+    assert_eq!(f.data(block).text_color, Paint::Solid(GREEN));
+    assert_eq!(f.data(nested).text_color, Paint::Solid(GREEN));
+    assert_eq!(f.boxed(block), &block_data);
     assert_eq!(f.text_colors(&ui), [BLUE, GREEN]);
+    f.assert_matches_full_resolve(&ui, fragment_root);
 
     // Without a color of its own, the box inherits again.
     ui.remove_prop::<TextColor>(colored);
+    f.mark(colored);
+    f.resolve(&ui, fragment_root).unwrap();
+    f.clear_flags();
+    assert_eq!(f.data(nested).text_color, Paint::Solid(BLUE));
     assert_eq!(f.text_colors(&ui), [BLUE]);
+    f.assert_matches_full_resolve(&ui, fragment_root);
+}
+
+#[test]
+fn unchanged_inherited_values_stop_resolving_the_subtree() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let parent = ui.create(Node::Box, (OutlineWidth(StyleUnit::Px(4.0)),));
+    // Sets its own color and outline, so the parent's changes stop here.
+    let own = ui.create(
+        Node::Box,
+        (
+            TextColor(AutoValue::Value(Paint::Solid(RED))),
+            OutlineWidth(StyleUnit::Px(1.0)),
+        ),
+    );
+    ui.append(root, parent);
+    ui.append(parent, own);
+    let nested = text(&mut ui, own, "red");
+
+    let mut f = Fixture::default();
+    let fragment_root = f.build(&ui, root);
+
+    // A change the descendants would not see if they were resolved: change
+    // the props of the nested text without marking it.
+    ui.set_props(nested, (TextColor(AutoValue::Value(Paint::Solid(GREEN))),));
+    ui.set_props(
+        parent,
+        (
+            OutlineWidth(StyleUnit::Px(8.0)),
+            TextColor(AutoValue::Value(Paint::Solid(BLUE))),
+        ),
+    );
+    f.mark(parent);
+    f.resolve(&ui, fragment_root).unwrap();
+    f.clear_flags();
+
+    assert_eq!(f.data(parent).outline_width, 8.0);
+    // `own` is resolved again, to the same inherited values, so its text
+    // child is not.
+    assert_eq!(f.data(own).text_color, Paint::Solid(RED));
+    assert_eq!(f.data(nested).text_color, Paint::Solid(RED));
+}
+
+#[test]
+fn outline_percentages_resolve_against_the_parent() {
+    let mut ui = Ui::new();
+    let root = ui.create(
+        Node::Box,
+        (
+            OutlineWidth(StyleUnit::Px(8.0)),
+            OutlineOffset(StyleUnit::Px(-4.0)),
+        ),
+    );
+    let half = ui.create(
+        Node::Box,
+        (
+            fixed(10.0, 10.0),
+            OutlineWidth(StyleUnit::Percent(0.5)),
+            OutlineOffset(StyleUnit::Percent(0.5)),
+        ),
+    );
+    let quarter = ui.create(
+        Node::Box,
+        (
+            fixed(10.0, 10.0),
+            OutlineWidth(StyleUnit::Percent(0.5)),
+            OutlineOffset(StyleUnit::Percent(2.0)),
+        ),
+    );
+    // Sets none, so its children's percentages resolve against 0.
+    let unset = ui.create(Node::Box, ());
+    let under_unset = ui.create(
+        Node::Box,
+        (fixed(10.0, 10.0), OutlineWidth(StyleUnit::Percent(0.5))),
+    );
+    ui.append(root, half);
+    ui.append(half, quarter);
+    ui.append(root, unset);
+    ui.append(unset, under_unset);
+
+    let mut f = Fixture::default();
+    let fragment_root = f.build(&ui, root);
+
+    assert_eq!(f.data(half).outline_width, 4.0);
+    assert_eq!(f.data(half).outline_offset, -2.0);
+    assert_eq!(f.data(quarter).outline_width, 2.0);
+    assert_eq!(f.data(quarter).outline_offset, -4.0);
+    assert_eq!(f.data(under_unset).outline_width, 0.0);
+
+    // Changing the root resolves the percentages below it again.
+    ui.set_props(root, (OutlineWidth(StyleUnit::Px(16.0)),));
+    f.mark(root);
+    f.resolve(&ui, fragment_root).unwrap();
+    f.clear_flags();
+
+    assert_eq!(f.data(half).outline_width, 8.0);
+    assert_eq!(f.data(quarter).outline_width, 4.0);
+    f.assert_matches_full_resolve(&ui, fragment_root);
 }
 
 #[test]
@@ -1331,6 +1479,12 @@ impl Fixture {
                 "{key:?}: {data:?} != {expected:?}"
             );
             assert_eq!(self.prepaint.get(source), full.get(source), "{source:?}");
+        }
+
+        // Text items place no box, but have data too.
+        let root_item = self.fragments.boxes[root].source;
+        for key in self.inputs.items.descendants(root_item) {
+            assert_eq!(self.prepaint.get(key), full.get(key), "{key:?}");
         }
     }
 }

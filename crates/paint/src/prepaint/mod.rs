@@ -2,23 +2,26 @@
 //!
 //! A [`PrepaintTree`](tree::PrepaintTree) holds the [`FragmentData`] of every
 //! box fragment, such as its border radius, and the [`LayoutInputData`] of
-//! every layout input item. Transforms and scroll offsets are resolved into
-//! the [paint layers](crate::layer) instead, which do not read pre-paint
-//! data. Inline items placing no
-//! box, such as lines and glyph runs, have no data: they paint at their
-//! location in the box owning them. Data only depends on the box or item
-//! itself, and box data on its item, so any box can be resolved again on its
-//! own: mark its item
+//! every layout input item, text items included. Transforms and scroll
+//! offsets are resolved into the [paint layers](crate::layer) instead, which
+//! do not read pre-paint data. Inline items placing no box, such as lines and
+//! glyph runs, have no data: they paint at their location in the box owning
+//! them.
+//!
+//! Box data only depends on the box and its item's props, so a box is
+//! resolved again on its own. Item data also inherits from the parent item,
+//! such as text colors and percentage outlines, so an item resolved to new
+//! inherited values resolves its children again too, down to the items whose
+//! values stay the same. To resolve an item again, mark it
 //! [`DirtyFlags::NEED_PRE_PAINT`] with
 //! [`DirtyMap::mark`](comet_layout::dirty_map::DirtyMap::mark)
 //! and resolve from the root.
-//! Inherited paint styles, such as text colors, are looked up while painting
-//! instead.
 
 pub mod builder;
 pub mod fragment;
 pub mod tree;
 
+use anyrender::Paint;
 #[cfg(doc)]
 use comet_layout::dirty_map::DirtyFlags;
 use comet_layout::fragment::{BoxFragment, BoxFragmentType};
@@ -36,14 +39,34 @@ pub struct LayoutInputData {
 
     /// Width of the outline drawn around the item's fragments, resolved from
     /// its [`OutlineWidth`](crate::style::OutlineWidth) with its font size.
-    /// Percentages resolve to 0. At least 0, and 0 if the item sets none.
+    /// Percentages resolve against the parent item's outline width, 0 for
+    /// the root. At least 0, and 0 if the item sets none.
     pub outline_width: f64,
 
     /// Distance between the outline and the border box, outwards, resolved
     /// from its [`OutlineOffset`](crate::style::OutlineOffset) with its font
     /// size. Negative offsets draw the outline inside the box. Percentages
-    /// resolve to 0, and so does an item setting none.
+    /// resolve against the parent item's outline offset, 0 for the root.
+    /// 0 if the item sets none.
     pub outline_offset: f64,
+
+    /// Color the item's glyph runs paint with: its
+    /// [`TextColor`](crate::style::TextColor), or the parent item's text
+    /// color when [auto](comet_layout::style::geometry::AutoValue::Auto).
+    /// Black for the root. Inherited along the input item tree, not the
+    /// fragment tree, so a block inside an inline span inherits from the
+    /// span.
+    pub text_color: Paint,
+}
+
+impl LayoutInputData {
+    /// Whether `self` and `other` pass the same values down to the children
+    /// of their item: those the children resolve with.
+    pub fn inherits_same(&self, other: &Self) -> bool {
+        self.text_color == other.text_color
+            && self.outline_width == other.outline_width
+            && self.outline_offset == other.outline_offset
+    }
 }
 
 /// Paint data of a box fragment.

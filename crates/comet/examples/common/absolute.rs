@@ -45,7 +45,7 @@ fn stage(cx: &UiCx) -> impl IntoView + use<> {
                     Color::from_rgb8(229, 72, 77),
                     sides(px(-8), px(-8), auto(), auto()),
                 )
-                .text_color(solid(Color::WHITE))
+                .text_color(AutoValue::Value(solid(Color::WHITE)))
                 .border_radius(all(px(10)))
                 .children(|cx| cx.text("3").build()),
             ]

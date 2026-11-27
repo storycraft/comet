@@ -1,14 +1,16 @@
+use anyrender::Paint;
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{BoxFragment, BoxFragmentKey, tree::FragmentTree},
     input::{LayoutInputKey, tree::LayoutInputTree},
     style::{
         bx::Overflow,
-        geometry::{Rect, StyleUnit, UnitResolveContext},
+        geometry::{AutoValue, Rect, StyleUnit, UnitResolveContext},
     },
 };
 use comet_tree::ui::{Props, Ui};
 use kurbo::{RoundedRectRadii, Size};
+use peniko::Color;
 use taffy::Overflow as OverflowMode;
 
 use crate::{
@@ -17,7 +19,7 @@ use crate::{
         fragment::{BoxRole, boxes_of, paint_props},
         tree::PrepaintTree,
     },
-    style::{BorderRadius, OutlineOffset, OutlineWidth},
+    style::{BorderRadius, OutlineOffset, OutlineWidth, TextColor},
 };
 
 /// Builds a [`PrepaintTree`] for a fragment tree. Keep it to reuse its
@@ -26,8 +28,11 @@ use crate::{
 pub struct PrepaintTreeBuilder {
     /// Boxes to visit.
     pending: Vec<BoxFragmentKey>,
-    /// Layout input items to resolve.
-    items: Vec<LayoutInputKey>,
+    /// Layout input items to visit, and whether to resolve them whatever
+    /// their flags, as their parent's inherited values changed.
+    items: Vec<(LayoutInputKey, bool)>,
+    /// Items whose paint values use `vw` or `vh`, with their depth.
+    dependents: Vec<(usize, LayoutInputKey)>,
     /// Boxes to resolve.
     changed: Vec<BoxFragmentKey>,
 }
@@ -46,39 +51,47 @@ impl PrepaintTreeBuilder {
         Self::default()
     }
 
-    /// Builds into `tree` the box fragments that need it, and their layout
-    /// input items:
-    /// - boxes under `root` of items whose [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags) in `dirty` have
-    ///   [`DirtyFlags::NEED_PRE_PAINT`]: those the fragment builder created,
-    ///   moved or resized, those whose font size the input builder resolved
-    ///   to a new value, and those marked with it, such as after their paint
-    ///   styles changed. Other layout changes,
-    ///   [`DirtyFlags::NEED_FULL_LAYOUT`] and
-    ///   [`DirtyFlags::NEED_BOX_LAYOUT`], reach pre-paint only through the
-    ///   boxes they create, move or resize,
-    /// - boxes under `root` without data in `tree`.
+    /// Builds into `tree` the layout input items and box fragments that need
+    /// it.
     ///
-    /// Inline items placing no box, such as lines and glyph runs, get no
-    /// data, and are skipped.
+    /// Items are visited along the input tree, from the item of `root`. An
+    /// item is resolved when:
+    /// - its [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags)
+    ///   in `dirty` have [`DirtyFlags::NEED_PRE_PAINT`]: those whose font size
+    ///   the input builder resolved to a new value, those whose boxes the
+    ///   fragment builder created, moved or resized, and those marked with it,
+    ///   such as after their paint styles changed,
+    /// - it has no data in `tree`,
+    /// - its parent was resolved to new inherited values, such as a new
+    ///   [text color](LayoutInputData::text_color), or its parent's child
+    ///   list changed ([`DirtyFlags::NEED_CHILDREN`]).
     ///
-    /// Boxes are visited from `root`, going into the children of a box only
-    /// when its item's
-    /// [`DirtyEntry::flags`](comet_layout::dirty_map::DirtyEntry::flags) or
+    /// The children of an item are visited when it is resolved to new
+    /// inherited values, or when its flags or
     /// [`DirtyEntry::child_bits`](comet_layout::dirty_map::DirtyEntry::child_bits)
-    /// have [`DirtyFlags::NEED_PRE_PAINT`], or when it has no data in `tree`.
+    /// have [`DirtyFlags::NEED_PRE_PAINT`] or [`DirtyFlags::NEED_CHILDREN`].
+    /// Text items, which place no box, are resolved too, for their text color.
+    ///
+    /// Box fragments are resolved when their item is flagged
+    /// [`DirtyFlags::NEED_PRE_PAINT`] or when they have no data in `tree`.
+    /// Boxes are visited from `root`, going into the children of a box only
+    /// when its item's flags or child bits have
+    /// [`DirtyFlags::NEED_PRE_PAINT`], or when it has no data in `tree`.
     /// Anonymous boxes carry the item of the box owning them, and inline part
     /// boxes the item of their inline element, inside it, so the former
-    /// reaches them. A [cleared](PrepaintTree::clear) `tree` resolves every
-    /// box.
+    /// reaches them. Box data only depends on the box and its item's props,
+    /// so changes of a parent never resolve its child boxes. Inline items
+    /// placing no box, such as lines and glyph runs, get no box data. A
+    /// [cleared](PrepaintTree::clear) `tree` resolves every item and box.
     ///
-    /// Data only depends on the box or item itself, so ancestors are not
-    /// resolved. `dirty` is only read: the layer build reads it too, so call
+    /// `dirty` is only read: the layer build reads it too, so call
     /// [`DirtyMap::clear`] after building layers.
     ///
     /// Changes builds cannot see, such as paint styles, must be marked.
     ///
     /// With `viewport_changed`, every item whose paint values, or those of
-    /// its boxes, use `vw` or `vh` is resolved again with all of its boxes.
+    /// its boxes, use `vw` or `vh` is resolved again with all of its boxes,
+    /// and its descendants when its inherited values change.
     /// Pass it when the viewport in `units` differs from the last successful
     /// call. The root font size is not tracked: resolve into a new or
     /// [cleared](PrepaintTree::clear) tree when it changes.
@@ -91,7 +104,7 @@ impl PrepaintTreeBuilder {
     /// such as when its source node was deleted after `inputs` and
     /// `fragments` were built. Rebuild them, then resolve again. Data resolved
     /// before the failure stays in `tree`, so `tree` may be partly updated,
-    /// but the next call resolves the same boxes again.
+    /// but the next call resolves the same items and boxes again.
     #[allow(clippy::too_many_arguments)]
     pub fn build(
         &mut self,
@@ -113,11 +126,45 @@ impl PrepaintTreeBuilder {
         let Self {
             pending,
             items,
+            dependents,
             changed,
         } = self;
         pending.clear();
         items.clear();
+        dependents.clear();
         changed.clear();
+
+        let root_item = fragments.get(root)?.source;
+        inputs.items.get(root_item)?;
+
+        // Paint values using `vw` or `vh`, resolved first, ancestors before
+        // their descendants, so the walk below inherits their new values.
+        // Their keys are kept, so a failed call resolves them again;
+        // resolving an item removes it once it no longer uses them.
+        if viewport_changed {
+            tree.viewport_dependents
+                .retain(|key, _| inputs.items.get(key).is_some());
+
+            dependents.extend(tree.viewport_dependents.keys().map(|key| {
+                let depth = std::iter::successors(inputs.items.parent(key), |&key| {
+                    inputs.items.parent(key)
+                })
+                .count();
+
+                (depth, key)
+            }));
+            dependents.sort_unstable();
+
+            for &(_, key) in dependents.iter() {
+                items.push((key, true));
+                sources.resolve_items(dirty, tree, items)?;
+                changed.extend(boxes_of(fragments, inputs, key));
+            }
+        }
+
+        items.push((root_item, false));
+        sources.resolve_items(dirty, tree, items)?;
+
         pending.push(root);
 
         while let Some(key) = pending.pop() {
@@ -128,7 +175,6 @@ impl PrepaintTreeBuilder {
 
             if entry.flags.contains(DirtyFlags::NEED_PRE_PAINT) || missing {
                 changed.push(key);
-                items.push(fragment.source);
             }
 
             // Anonymous boxes carry the item of the box owning them, so the
@@ -138,38 +184,8 @@ impl PrepaintTreeBuilder {
             }
         }
 
-        // Paint values using `vw` or `vh`. Their keys are kept, so a failed
-        // call resolves them again; resolving an item removes it once it no
-        // longer uses them.
-        if viewport_changed {
-            tree.viewport_dependents
-                .retain(|key, _| inputs.items.get(key).is_some());
-
-            for key in tree.viewport_dependents.keys() {
-                items.push(key);
-                changed.extend(boxes_of(fragments, inputs, key));
-            }
-        }
-
         changed.sort_unstable();
         changed.dedup();
-
-        // Items with several fragments to resolve are resolved once.
-        items.sort_unstable();
-        items.dedup();
-
-        for &key in items.iter() {
-            let data = sources.resolve_item(key)?;
-            tree.layout_mapping.insert(key, data);
-
-            // Props alone decide it, and resolving an item reads them again.
-            let props = paint_props(ui, inputs, key)?;
-            if depends_viewport(props) {
-                tree.viewport_dependents.insert(key, ());
-            } else {
-                tree.viewport_dependents.remove(key);
-            }
-        }
 
         for &key in changed.iter() {
             let data = sources.resolve_fragment(key)?;
@@ -238,18 +254,90 @@ impl Sources<'_> {
         ))
     }
 
-    /// Resolve the data of one item from the UI.
-    fn resolve_item(&self, key: LayoutInputKey) -> Option<LayoutInputData> {
-        let item = &self.inputs.items[key];
+    /// Visit the items in `pending`, resolving those that need it into
+    /// `tree`, then their children as [`PrepaintTreeBuilder::build`]
+    /// describes. Parents are resolved before their children. Empties
+    /// `pending`.
+    fn resolve_items(
+        &self,
+        dirty: &DirtyMap,
+        tree: &mut PrepaintTree,
+        pending: &mut Vec<(LayoutInputKey, bool)>,
+    ) -> Option<()> {
+        let visit = DirtyFlags::NEED_PRE_PAINT | DirtyFlags::NEED_CHILDREN;
+
+        while let Some((key, force)) = pending.pop() {
+            let entry = dirty.entry(key);
+            let old = tree.layout_mapping.get(key);
+            let mut inherited_changed = false;
+
+            if force || old.is_none() || entry.flags.contains(DirtyFlags::NEED_PRE_PAINT) {
+                let parent = self
+                    .inputs
+                    .items
+                    .parent(key)
+                    .and_then(|parent| tree.layout_mapping.get(parent));
+                let data = self.resolve_item(key, parent)?;
+                inherited_changed = old.is_none_or(|old| !old.inherits_same(&data));
+
+                tree.layout_mapping.insert(key, data);
+
+                // Props alone decide it, and resolving an item reads them
+                // again.
+                let props = paint_props(self.ui, self.inputs, key)?;
+                if depends_viewport(props) {
+                    tree.viewport_dependents.insert(key, ());
+                } else {
+                    tree.viewport_dependents.remove(key);
+                }
+            }
+
+            // Children moved in may have inherited from another parent.
+            let force_children =
+                inherited_changed || entry.flags.contains(DirtyFlags::NEED_CHILDREN);
+
+            if force_children || (entry.flags | entry.child_bits).intersects(visit) {
+                pending.extend(
+                    self.inputs
+                        .items
+                        .children(key)
+                        .map(|child| (child, force_children)),
+                );
+            }
+        }
+
+        Some(())
+    }
+
+    /// Resolve the data of one item from the UI, inheriting from `parent`,
+    /// the data of its parent item, if any.
+    fn resolve_item(
+        &self,
+        key: LayoutInputKey,
+        parent: Option<&LayoutInputData>,
+    ) -> Option<LayoutInputData> {
+        let item = self.inputs.items.get(key)?;
         let props = paint_props(self.ui, self.inputs, key)?;
         let Overflow(overflow) = props.get_or_default();
 
         let mut units = self.units.clone();
         units.font_size = item.text_style.span.font_size as f64;
 
-        // Outline lengths have no percentage basis.
-        let outline =
-            |value: Option<StyleUnit>| value.map_or(0.0, |value| value.resolve(&units, 0.0));
+        // Outline percentages resolve against the parent's resolved value.
+        let outline = |value: Option<StyleUnit>, basis: f64| {
+            value.map_or(0.0, |value| value.resolve(&units, basis))
+        };
+        let (parent_width, parent_offset) = parent.map_or((0.0, 0.0), |parent| {
+            (parent.outline_width, parent.outline_offset)
+        });
+
+        let TextColor(text_color) = props.get_cloned().unwrap_or_default();
+        let text_color = match text_color {
+            AutoValue::Value(color) => color,
+            AutoValue::Auto => parent.map_or(Paint::Solid(Color::BLACK), |parent| {
+                parent.text_color.clone()
+            }),
+        };
 
         // As in CSS and Taffy, a box scrolling or hiding its overflow on one
         // axis clips both, while `clip` only clips its own axis. Layout
@@ -261,8 +349,16 @@ impl Sources<'_> {
                 scroll || overflow.x != OverflowMode::Visible,
                 scroll || overflow.y != OverflowMode::Visible,
             ),
-            outline_width: outline(props.get_cloned().map(|OutlineWidth(width)| width)).max(0.0),
-            outline_offset: outline(props.get_cloned().map(|OutlineOffset(offset)| offset)),
+            outline_width: outline(
+                props.get_cloned().map(|OutlineWidth(width)| width),
+                parent_width,
+            )
+            .max(0.0),
+            outline_offset: outline(
+                props.get_cloned().map(|OutlineOffset(offset)| offset),
+                parent_offset,
+            ),
+            text_color,
         })
     }
 }

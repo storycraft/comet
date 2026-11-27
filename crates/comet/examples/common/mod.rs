@@ -69,7 +69,7 @@ pub fn button(
         }))
         .padding(axis(px(10), px(18)))
         .border_radius(all(px(8)))
-        .text_color(solid(Color::WHITE))
+        .text_color(AutoValue::Value(solid(Color::WHITE)))
         .font_weight(parley::FontWeight::SEMI_BOLD)
         .fill(Signal::derive(move || {
             solid(if hovered.get() {
@@ -116,7 +116,7 @@ pub fn sample_ui(cx: &UiCx) -> NodeKey {
     cx.div()
         .role(Role::Main)
         .fill(solid(BACKGROUND))
-        .text_color(solid(Color::from_rgb8(36, 46, 63)))
+        .text_color(AutoValue::Value(solid(Color::from_rgb8(36, 46, 63))))
         .font_size(px(16))
         .padding(all(px(24)))
         .min_size(size(auto(), vh(100)))
@@ -214,7 +214,7 @@ fn rich_text_sample(cx: &UiCx) -> NodeKey {
                 cx.text("color and scale")
                     .font_size(em(1.35))
                     .font_weight(parley::FontWeight::SEMI_BOLD)
-                    .text_color(solid(Color::from_rgb8(96, 65, 177)))
+                    .text_color(AutoValue::Value(solid(Color::from_rgb8(96, 65, 177))))
                     .build(),
                 cx.text(" share one paragraph. An ").build(),
                 badge(cx, "inline block", Color::from_rgb8(255, 222, 161)),
@@ -225,7 +225,7 @@ fn rich_text_sample(cx: &UiCx) -> NodeKey {
                 cx.div()
                     .display_outer(DisplayOuter::Inline)
                     .font_weight(parley::FontWeight::BOLD)
-                    .text_color(solid(Color::from_rgb8(127, 74, 32)))
+                    .text_color(AutoValue::Value(solid(Color::from_rgb8(127, 74, 32))))
                     .fill(solid(Color::from_rgb8(255, 233, 193)))
                     .children(|cx| {
                         [
@@ -271,11 +271,11 @@ fn typography_sample(cx: &UiCx) -> NodeKey {
                         [
                             cx.text("let ")
                                 .font_weight(parley::FontWeight::BOLD)
-                                .text_color(solid(Color::from_rgb8(96, 65, 177)))
+                                .text_color(AutoValue::Value(solid(Color::from_rgb8(96, 65, 177))))
                                 .build(),
                             cx.text("message = ").build(),
                             cx.text("\"Hello, Comet!\"")
-                                .text_color(solid(Color::from_rgb8(31, 111, 87)))
+                                .text_color(AutoValue::Value(solid(Color::from_rgb8(31, 111, 87))))
                                 .build(),
                             cx.text(";").build(),
                         ]
@@ -313,7 +313,7 @@ fn panel<V: IntoView>(
                 .role(Role::Heading)
                 .font_size(px(14))
                 .font_weight(parley::FontWeight::SEMI_BOLD)
-                .text_color(solid(MUTED))
+                .text_color(AutoValue::Value(solid(MUTED)))
                 .padding(sides(px(0), px(0), px(12), px(0)))
                 .children(|cx| cx.text(label).build());
 

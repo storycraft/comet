@@ -91,7 +91,7 @@ pub trait Styled: Sized {
         word_spacing: bx::WordSpacing => StyleUnit;
         letter_spacing: bx::LetterSpacing => StyleUnit;
         text_align: bx::TextAlign => parley::Alignment;
-        text_color: paint::TextColor => Paint;
+        text_color: paint::TextColor => AutoValue<Paint>;
 
         // Paint
         fill: paint::Fill => Paint;

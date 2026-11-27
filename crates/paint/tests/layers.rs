@@ -1897,7 +1897,7 @@ fn inline_element_layers_paint_every_piece_with_its_items() {
             bx::DisplayOuter::Inline,
             Opacity(0.5),
             Fill(Paint::Solid(GREEN)),
-            TextColor(Paint::Solid(RED)),
+            TextColor(AutoValue::Value(Paint::Solid(RED))),
         ),
     );
     let wrapped = ui.create(Node::Text, (Text("one two three four five six".into()),));
@@ -1945,7 +1945,7 @@ fn inline_element_layers_paint_above_the_content_around_them() {
             bx::DisplayOuter::Inline,
             z(1),
             Fill(Paint::Solid(GREEN)),
-            TextColor(Paint::Solid(RED)),
+            TextColor(AutoValue::Value(Paint::Solid(RED))),
         ),
     );
     let inside = ui.create(Node::Text, (Text("inside".into()),));

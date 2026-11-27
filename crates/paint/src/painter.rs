@@ -3,7 +3,6 @@
 use std::sync::Arc;
 
 use anyrender::AntiAliasing;
-use anyrender::Paint;
 use anyrender::PaintScene;
 use bytemuck::TransparentWrapper;
 use comet_layout::{
@@ -11,13 +10,12 @@ use comet_layout::{
         BoxFragment, BoxFragmentKey, FragmentGeometry, FragmentRef, inline::InlineItem,
         inline::InlineItemKind, tree::FragmentTree,
     },
-    input::{LayoutInputKey, tree::LayoutInputTree},
+    input::tree::LayoutInputTree,
 };
 use comet_tree::ui::Ui;
 use kurbo::{Affine, Insets, Point, Rect, RoundedRect, RoundedRectRadii, Stroke, Vec2};
 use parley::PositionedLayoutItem;
 use peniko::BlendMode;
-use slotmap::SecondaryMap;
 
 use crate::{
     layer::{
@@ -29,7 +27,7 @@ use crate::{
         fragment::{BoxRole, for_each_paint_child_on_lines, paint_props, piece_of_part},
         tree::PrepaintTree,
     },
-    style::{BorderFill, Fill, OutlineFill, TextColor},
+    style::{BorderFill, Fill, OutlineFill},
 };
 
 /// Paints final fragments in the order of their [`PaintLayerTree`], with the
@@ -42,11 +40,6 @@ pub struct CometPainter {
     /// Ancestors of a child layer's owner, up to a box of its parent layer
     /// with known transforms, innermost first.
     chain: Vec<BoxFragmentKey>,
-    /// Text color of each item looked up while painting, cleared on every
-    /// paint.
-    text_colors: SecondaryMap<LayoutInputKey, Paint>,
-    /// Items looked up for a text color, innermost first.
-    items: Vec<LayoutInputKey>,
 }
 
 /// A step of painting the fragments of a layer.
@@ -336,7 +329,6 @@ impl CometPainter {
         };
 
         self.pending.clear();
-        self.text_colors.clear();
         self.draw_layer(sources, root, parent, None, scene);
     }
 
@@ -738,55 +730,10 @@ impl CometPainter {
         self.pending[start..].reverse();
     }
 
-    /// The text color of an item: the [`TextColor`] of the nearest item
-    /// among it and its ancestors setting one, or the default. A text item
-    /// paints no box, but its own color still applies to its glyph runs,
-    /// otherwise they take the color of its nearest ancestor setting one.
-    /// Inherited along the input item
-    /// tree, not the fragment tree, so a block inside an inline span inherits
-    /// from the span.
-    ///
-    /// Looked up from the UI and kept until the next paint, along with the
-    /// items on the way, so each item is looked up at most once per paint.
-    fn text_color(&mut self, sources: Sources<'_>, key: LayoutInputKey) -> &Paint {
-        if !self.text_colors.contains_key(key) {
-            let items = &sources.inputs.items;
-            let mut next = Some(key);
-
-            self.items.clear();
-
-            let color = loop {
-                let Some(key) = next else {
-                    break TextColor::default().0;
-                };
-
-                if let Some(color) = self.text_colors.get(key) {
-                    break color.clone();
-                }
-
-                self.items.push(key);
-
-                let own = paint_props(sources.ui, sources.inputs, key)
-                    .and_then(|props| props.get_cloned());
-
-                if let Some(TextColor(color)) = own {
-                    break color;
-                }
-
-                next = items.parent(key);
-            };
-
-            for &key in &self.items {
-                self.text_colors.insert(key, color.clone());
-            }
-        }
-
-        &self.text_colors[key]
-    }
-
     /// Paint the glyph run `item` of the inline layout of `owner`, the run
     /// `run` of its line `line`, in the coordinates of the contents of `owner`,
-    /// which `parent` maps to the scene.
+    /// which `parent` maps to the scene. `None` if nothing was drawn: the run
+    /// is missing, out of view, or its item has no resolved text color.
     #[allow(clippy::too_many_arguments)]
     fn draw_glyph_run(
         &mut self,
@@ -797,15 +744,12 @@ impl CometPainter {
         parent: Transforms,
         clip: Option<Rect>,
         scene: &mut impl PaintScene,
-    ) {
-        let Some(inline) = sources.tree.inline_layout(owner) else {
-            return;
-        };
-        let Some(line) = inline.layout.get(line) else {
-            return;
-        };
-        let Some(PositionedLayoutItem::GlyphRun(glyph_run)) = line.items().nth(run) else {
-            return;
+    ) -> Option<()> {
+        let inline = sources.tree.inline_layout(owner)?;
+        let PositionedLayoutItem::GlyphRun(glyph_run) =
+            inline.layout.get(line)?.items().nth(run)?
+        else {
+            return None;
         };
 
         let font_run = glyph_run.run();
@@ -817,19 +761,18 @@ impl CometPainter {
         let overhang = font_run.font_size() as f64;
 
         if !sources.visible(parent.transform, rect.inflate(overhang, overhang), clip) {
-            return;
+            return None;
         }
 
         // The brush of the run's style is the text item it was shaped from.
         // Runs without one belong to the owner.
-        let Some(key) = glyph_run
+        let key = glyph_run
             .style()
             .brush
-            .or_else(|| sources.tree.get(owner).map(|owner| owner.source))
-        else {
-            return;
-        };
-        let text_color = self.text_color(sources, key);
+            .or_else(|| sources.tree.get(owner).map(|owner| owner.source))?;
+
+        // Resolved by the pre-paint step. Runs of items it missed are skipped.
+        let text_color = &sources.prepaint.get(key)?.text_color;
 
         // Parley's coordinates wrap the raw `i16` bits Anyrender takes.
         let normalized_coords: &[i16] =
@@ -865,6 +808,7 @@ impl CometPainter {
             // TODO:: add aa control
             AntiAliasing::Enabled,
         );
+        Some(())
     }
 }
 

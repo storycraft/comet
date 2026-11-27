@@ -233,7 +233,7 @@ fn nested_transforms(cx: &UiCx) -> [NodeKey; 3] {
     let nested = card(cx, "rotated parent", Color::from_rgb8(236, 228, 255))
         .size(size(px(260), auto()))
         .margin(axis(px(18), px(16)))
-        .text_color(solid(Color::from_rgb8(96, 65, 177)))
+        .text_color(AutoValue::Value(solid(Color::from_rgb8(96, 65, 177))))
         .transform(Affine::rotate((-4f64).to_radians()))
         .children(|cx| {
             card(cx, "translated child", Color::from_rgb8(212, 198, 250))
@@ -272,7 +272,7 @@ fn caption(cx: &UiCx, label: &str) -> NodeKey {
     cx.div()
         .font_size(px(12))
         .font_weight(parley::FontWeight::SEMI_BOLD)
-        .text_color(solid(MUTED))
+        .text_color(AutoValue::Value(solid(MUTED)))
         .padding(sides(px(8), px(0), px(4), px(0)))
         .children(|cx| cx.text(label).build())
 }
