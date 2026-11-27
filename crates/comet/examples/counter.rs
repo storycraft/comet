@@ -8,14 +8,12 @@ use core::f64::consts::TAU;
 
 use anyrender::Paint;
 use comet::{prelude::*, winit::window::WindowAttributes};
-use comet_layout::style::{
-    geometry::Point,
-    taffy::{Overflow, Position},
-};
-use comet_layout_flex::style::taffy::{AlignItems, FlexDirection, JustifyContent};
+use comet_layout::style::geometry::Point;
 use comet_tree::node::NodeKey;
 use kurbo::Affine;
 use peniko::Color;
+use taffy::{AlignItems, FlexDirection, JustifyContent};
+use taffy::{Overflow, Position};
 
 use crate::common::button;
 

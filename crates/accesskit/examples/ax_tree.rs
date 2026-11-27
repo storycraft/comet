@@ -4,10 +4,10 @@
 
 use accesskit::{NodeId, Role as AxRole, TreeId, TreeInfo, TreeUpdate};
 use accesskit_consumer::{NodeRef, Tree, common_filter};
-use comet_accesskit::{AxTree, AxTreeBuilder, node_id, style::Role};
+use comet_accesskit::{builder::AxTreeBuilder, node_id, style::Role, tree::AxTree};
 use comet_layout::{
     dirty_map::DirtyMap,
-    fragment::{FragmentTree, FragmentTreeBuilder},
+    fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,

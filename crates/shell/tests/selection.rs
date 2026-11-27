@@ -3,21 +3,22 @@
 use std::{cell::RefCell, rc::Rc};
 
 use comet_layout::style::{geometry::AutoValue, unit::*};
-use comet_reactivity::{Styled, UiCx};
+use comet_reactivity::{cx::UiCx, style::Styled};
 use comet_shell::{
-    Selection, TextPosition, Window,
+    selection::{Selection, TextPosition},
     style::InputStyled,
-    ui_events::{
-        keyboard::{Code, Key, KeyState, KeyboardEvent, Modifiers, NamedKey},
-        pointer::{
-            PointerButton, PointerButtonEvent, PointerEvent, PointerId, PointerInfo, PointerState,
-            PointerType, PointerUpdate,
-        },
-    },
+    window::Window,
 };
 use comet_tree::node::NodeKey;
 use dpi::{PhysicalPosition, PhysicalSize};
 use reactive_graph::traits::{GetUntracked, Set};
+use ui_events::{
+    keyboard::{Code, Key, KeyState, KeyboardEvent, Modifiers, NamedKey},
+    pointer::{
+        PointerButton, PointerButtonEvent, PointerEvent, PointerId, PointerInfo, PointerState,
+        PointerType, PointerUpdate,
+    },
+};
 
 const MOUSE: PointerInfo = PointerInfo {
     pointer_id: Some(PointerId::PRIMARY),
@@ -850,8 +851,9 @@ fn selected_text_breaks_between_runs_of_block_boxes() {
 
 #[test]
 fn selection_follows_the_scroll_of_the_box_holding_the_text() {
-    use comet_layout::style::{geometry::Point as StylePoint, taffy::Overflow};
+    use comet_layout::style::geometry::Point as StylePoint;
     use comet_paint::style::ScrollTop;
+    use taffy::Overflow;
 
     const TEXT: &str = "alpha beta gamma delta epsilon zeta eta theta iota kappa";
     // A paragraph scrolling its wrapped text.
@@ -916,7 +918,7 @@ fn selection_follows_the_scroll_of_the_box_holding_the_text() {
 
 #[test]
 fn selected_text_reads_boxes_out_of_flow_once_after_the_text() {
-    use comet_layout::style::taffy::Position;
+    use taffy::Position;
 
     // "Hello [inside] world" with "inside" in a positioned box taken out
     // of the flow, then a paragraph "after".

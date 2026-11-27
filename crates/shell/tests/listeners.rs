@@ -8,22 +8,23 @@ use std::{
 };
 
 use comet_layout::style::unit::*;
-use comet_reactivity::{Styled, UiCx};
+use comet_reactivity::{cx::UiCx, style::Styled};
 use comet_shell::{
-    Handler, Phase, Window, WindowListener, on_frame, on_next_frame, on_window_key,
-    on_window_pointer,
+    event::Handler,
+    listeners::{Phase, WindowListener, on_frame, on_next_frame, on_window_key, on_window_pointer},
     style::{Focusable, OnKeyDown, OnPointerDown},
-    ui_events::{
-        keyboard::{Code, Key, KeyState, KeyboardEvent, Modifiers, NamedKey},
-        pointer::{
-            PointerButton, PointerButtonEvent, PointerEvent, PointerId, PointerInfo, PointerState,
-            PointerType,
-        },
-    },
+    window::Window,
 };
 use comet_tree::node::NodeKey;
 use dpi::{PhysicalPosition, PhysicalSize};
 use reactive_graph::owner::Owner;
+use ui_events::{
+    keyboard::{Code, Key, KeyState, KeyboardEvent, Modifiers, NamedKey},
+    pointer::{
+        PointerButton, PointerButtonEvent, PointerEvent, PointerId, PointerInfo, PointerState,
+        PointerType,
+    },
+};
 
 type Log = Rc<RefCell<Vec<String>>>;
 

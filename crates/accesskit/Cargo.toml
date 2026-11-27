@@ -19,4 +19,5 @@ parley = "0.13.0"
 slotmap = "1.1.1"
 
 [dev-dependencies]
+taffy = { version = "0.15.1", default-features = false, features = ["std"] }
 accesskit_consumer = "0.39.2"

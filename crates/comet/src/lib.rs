@@ -1,7 +1,7 @@
 //! Reactive UI in a winit window.
 //!
 //! Build the UI with [`comet_reactivity`] components and show it with
-//! [`run`]. The window itself is a [`comet_shell::Window`]: this crate feeds
+//! [`run`]. The window itself is a [`comet_shell::window::Window`]: this crate feeds
 //! it winit events, translated with `ui-events-winit`, and draws its frames
 //! with vello.
 //!
@@ -17,13 +17,11 @@ use std::sync::Arc;
 use accesskit_winit::{Adapter, WindowEvent as AccessKitEvent};
 use anyrender::WindowRenderer;
 use anyrender_vello_gpu::VelloGpuWindowRenderer;
-use comet_reactivity::UiCx;
-use comet_shell::{
-    Window,
-    ui_events::{keyboard::KeyboardEvent, pointer::PointerEvent},
-};
+use comet_reactivity::cx::UiCx;
+use comet_shell::window::Window;
 use comet_tree::node::NodeKey;
 use reactive_graph::{effect::RenderEffect, traits::Get};
+use ui_events::{keyboard::KeyboardEvent, pointer::PointerEvent};
 use ui_events_winit::{WindowEventReducer, WindowEventTranslation};
 use winit::{
     application::ApplicationHandler,
@@ -34,12 +32,15 @@ use winit::{
 
 pub use accesskit;
 pub use comet_reactivity as reactivity;
-pub use comet_reactivity::IntoView;
+pub use comet_reactivity::view::IntoView;
 pub use comet_shell as shell;
 pub use comet_shell::{
-    UiRoot, on_frame, on_frame_while, on_next_frame, on_window_key, on_window_pointer, use_window,
+    listeners::{on_frame, on_frame_while, on_next_frame, on_window_key, on_window_pointer},
+    runtime::UiRoot,
+    window::state::use_window,
 };
 pub use reactive_graph;
+pub use ui_events;
 pub use winit;
 
 /// Build the UI with the `root` component and show it in a window opened with

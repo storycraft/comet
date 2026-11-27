@@ -835,9 +835,12 @@ dependencies = [
  "comet-tree",
  "image",
  "kurbo",
+ "parley",
  "peniko",
  "reactive_graph",
  "softbuffer_window_renderer",
+ "taffy",
+ "ui-events",
  "ui-events-winit",
  "winit",
 ]
@@ -856,6 +859,7 @@ dependencies = [
  "kurbo",
  "parley",
  "slotmap",
+ "taffy",
 ]
 
 [[package]]
@@ -896,6 +900,7 @@ dependencies = [
  "parley",
  "peniko",
  "slotmap",
+ "taffy",
 ]
 
 [[package]]
@@ -912,9 +917,11 @@ dependencies = [
  "comet-paint",
  "comet-tree",
  "kurbo",
+ "parley",
  "peniko",
  "reactive_graph",
  "rustc-hash 2.1.3",
+ "taffy",
  "tokio",
 ]
 
@@ -936,6 +943,7 @@ dependencies = [
  "parley",
  "peniko",
  "reactive_graph",
+ "taffy",
  "ui-events",
 ]
 

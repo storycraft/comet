@@ -6,7 +6,8 @@ use comet_tree::{
 use crate::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{
-        BoxFragmentKey, BoxFragmentType, FragmentTree, FragmentTreeBuilder, NodeLayoutBits,
+        BoxFragmentKey, BoxFragmentType, NodeLayoutBits, builder::FragmentTreeBuilder,
+        tree::FragmentTree,
     },
     input::{
         LayoutInputKey,

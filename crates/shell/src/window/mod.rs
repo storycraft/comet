@@ -9,8 +9,8 @@ mod highlight;
 mod keyboard;
 mod pointer;
 mod selection;
-mod state;
-mod text;
+pub mod state;
+pub mod text;
 mod text_order;
 mod viewport;
 
@@ -19,7 +19,7 @@ use std::time::Instant;
 
 use accesskit::{Action, ActionRequest, TreeUpdate};
 use comet_layout::style::geometry::AutoValue;
-use comet_reactivity::UiCx;
+use comet_reactivity::cx::UiCx;
 use comet_tree::{node::NodeKey, style::StyleProp};
 use dpi::PhysicalSize;
 use kurbo::Size;
@@ -27,24 +27,17 @@ use reactive_graph::{
     owner::{Owner, provide_context},
     traits::{GetUntracked, Notify},
 };
+use ui_events::{keyboard::KeyboardEvent, pointer::PointerEvent};
 
 use self::{
     focus::FocusState,
     pointer::PointerState,
     selection::SelectionState,
-    state::{StateWriters, update},
+    state::{StateWriters, WindowState, update},
     viewport::Viewport,
 };
-pub use self::{
-    state::{WindowState, use_window},
-    text::SelectedText,
-};
 use crate::{
-    cursor::CursorIcon,
-    event::{KeyboardEvent, PointerEvent},
-    listeners::Listeners,
-    pipeline::Pipeline,
-    runtime::UiRoot,
+    cursor::CursorIcon, listeners::Listeners, pipeline::Pipeline, runtime::UiRoot,
     selection::Selection,
 };
 

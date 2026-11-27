@@ -19,9 +19,11 @@ use crate::{
     dirty_map::DirtyMap,
     fragment::{
         BoxFragment, BoxFragmentKey, BoxFragmentLink, BoxFragmentType, ChildLayoutType,
-        FragmentGeometry, InlineItem, InlineItemKind, InlineLink,
-        inline::{collect::InlineBuildContext, input::InlinePrelayout},
-        inline_box_source,
+        FragmentGeometry,
+        inline::{
+            InlineItem, InlineItemKind, InlineLink, collect::InlineBuildContext, inline_box_source,
+            input::InlinePrelayout,
+        },
     },
     input::{LayoutInputKey, LayoutInputKind, tree::LayoutInputTree},
     style::geometry::{Point, Size},

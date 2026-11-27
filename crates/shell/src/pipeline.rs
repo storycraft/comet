@@ -5,10 +5,10 @@
 //! and drive their own steps from them.
 
 use accesskit::{NodeId, TreeId, TreeInfo, TreeUpdate};
-use comet_accesskit::{AxKey, AxTree, ax_key, builder::AxTreeBuilder, node_id};
+use comet_accesskit::{AxKey, ax_key, builder::AxTreeBuilder, node_id, tree::AxTree};
 use comet_layout::{
     dirty_map::DirtyMap,
-    fragment::{BoxFragmentKey, FragmentRef, FragmentTree, builder::FragmentTreeBuilder},
+    fragment::{BoxFragmentKey, FragmentRef, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
@@ -25,7 +25,7 @@ use comet_paint::{
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, fragment::BoxRole, tree::PrepaintTree},
 };
-use comet_reactivity::{PropHint, UiTree};
+use comet_reactivity::{prop::PropHint, tree::UiTree};
 use comet_tree::{node::NodeKey, ui::Ui};
 use kurbo::{Affine, Point, Vec2};
 

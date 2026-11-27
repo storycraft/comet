@@ -6,10 +6,11 @@ use bitflags::bitflags;
 use comet_tree::ui::Props;
 
 use super::LayoutInputKey;
+use parley::Alignment;
+
 use crate::style::{
     bx,
     geometry::{StyleUnit, UnitResolveContext},
-    parley::Alignment,
 };
 
 /// Parley style of a text span. Its brush is set while shaping to the item

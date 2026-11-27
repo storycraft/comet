@@ -8,8 +8,8 @@ use anyrender::PaintScene;
 use bytemuck::TransparentWrapper;
 use comet_layout::{
     fragment::{
-        BoxFragment, BoxFragmentKey, FragmentGeometry, FragmentRef, FragmentTree, InlineItem,
-        InlineItemKind,
+        BoxFragment, BoxFragmentKey, FragmentGeometry, FragmentRef, inline::InlineItem,
+        inline::InlineItemKind, tree::FragmentTree,
     },
     input::{LayoutInputKey, tree::LayoutInputTree},
 };

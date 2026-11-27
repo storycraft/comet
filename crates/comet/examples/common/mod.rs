@@ -9,18 +9,18 @@ use std::rc::Rc;
 use anyrender::Paint;
 use comet::{
     prelude::*,
-    shell::event::{Key, NamedKey},
+    ui_events::keyboard::{Key, NamedKey},
 };
 use comet_layout::style::{
     bx::{DisplayInner, DisplayOuter},
     geometry::{AutoValue, Point},
-    parley::{self, Alignment},
-    taffy::Overflow,
 };
-use comet_layout_flex::style::taffy::FlexWrap;
-use comet_shell::CursorIcon;
+use comet_shell::cursor::CursorIcon;
 use comet_tree::node::NodeKey;
+use parley::Alignment;
 use peniko::Color;
+use taffy::FlexWrap;
+use taffy::Overflow;
 
 pub const BACKGROUND: Color = Color::from_rgb8(239, 242, 247);
 /// Color of captions and headings.

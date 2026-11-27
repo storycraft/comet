@@ -1,9 +1,9 @@
 use comet::prelude::*;
-use comet_layout::style::{geometry::AutoValue, parley};
-use comet_layout_flex::style::taffy::{AlignItems, FlexWrap, JustifyContent};
-use comet_reactivity::NodeBuild;
+use comet_layout::style::geometry::AutoValue;
+use comet_reactivity::cx::NodeBuild;
 use comet_tree::node::NodeKey;
 use peniko::Color;
+use taffy::{AlignItems, FlexWrap, JustifyContent};
 
 use super::{MUTED, panel, solid};
 

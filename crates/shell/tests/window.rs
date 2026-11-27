@@ -3,23 +3,21 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use comet_layout::style::{geometry::Point as StylePoint, taffy::Overflow, unit::*};
-use comet_reactivity::{Styled, UiCx};
-use comet_shell::{
-    Window,
-    style::InputStyled,
-    ui_events::{
-        ScrollDelta,
-        keyboard::{Code, Key, KeyState, KeyboardEvent, Modifiers, NamedKey},
-        pointer::{
-            PointerButton, PointerButtonEvent, PointerEvent, PointerId, PointerInfo,
-            PointerScrollEvent, PointerState, PointerType, PointerUpdate,
-        },
-    },
-};
+use comet_layout::style::{geometry::Point as StylePoint, unit::*};
+use comet_reactivity::{cx::UiCx, style::Styled};
+use comet_shell::{style::InputStyled, window::Window};
 use comet_tree::node::NodeKey;
 use dpi::{PhysicalPosition, PhysicalSize};
 use reactive_graph::traits::{GetUntracked, Set};
+use taffy::Overflow;
+use ui_events::{
+    ScrollDelta,
+    keyboard::{Code, Key, KeyState, KeyboardEvent, Modifiers, NamedKey},
+    pointer::{
+        PointerButton, PointerButtonEvent, PointerEvent, PointerId, PointerInfo,
+        PointerScrollEvent, PointerState, PointerType, PointerUpdate,
+    },
+};
 
 type Log = Rc<RefCell<Vec<String>>>;
 
@@ -374,7 +372,7 @@ fn row(cx: &UiCx, rows: &RefCell<Vec<NodeKey>>) -> NodeKey {
 }
 
 /// A 100×100 container scrolling both ways.
-fn scroll_box(cx: &UiCx) -> comet_reactivity::NodeBuild<'_> {
+fn scroll_box(cx: &UiCx) -> comet_reactivity::cx::NodeBuild<'_> {
     cx.div()
         .size(size(px(100), px(100)))
         .overflow(StylePoint::new(Overflow::Scroll, Overflow::Scroll))

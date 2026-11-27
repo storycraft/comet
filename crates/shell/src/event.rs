@@ -16,12 +16,6 @@ use reactive_graph::{
 };
 use ui_events::pointer::PointerButton;
 
-pub use ui_events::{
-    ScrollDelta,
-    keyboard::{Key, KeyState, KeyboardEvent, Modifiers, NamedKey},
-    pointer::{PointerButtonEvent, PointerEvent, PointerInfo, PointerScrollEvent, PointerUpdate},
-};
-
 type HandlerFn<E> = dyn FnMut(&mut EventCx, &E);
 
 struct HandlerInner<E: 'static> {

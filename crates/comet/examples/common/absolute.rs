@@ -1,12 +1,9 @@
 use comet::prelude::*;
-use comet_layout::style::{
-    geometry::{AutoValue, Rect, StyleUnit},
-    parley,
-    taffy::Position,
-};
-use comet_reactivity::NodeBuild;
+use comet_layout::style::geometry::{AutoValue, Rect, StyleUnit};
+use comet_reactivity::cx::NodeBuild;
 use comet_tree::node::NodeKey;
 use peniko::Color;
+use taffy::Position;
 
 use super::{panel, solid};
 

@@ -1,6 +1,6 @@
 //! Extracting the selected text.
 
-use comet_layout::{fragment::InlineLayout, input::LayoutInputKey};
+use comet_layout::{fragment::inline::InlineLayout, input::LayoutInputKey};
 
 use super::{
     Window,

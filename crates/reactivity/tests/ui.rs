@@ -5,7 +5,7 @@ use anyrender::Paint;
 use comet_accesskit::style::Role;
 use comet_layout::{
     dirty_map::DirtyMap,
-    fragment::{FragmentTree, FragmentTreeBuilder},
+    fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
@@ -14,13 +14,16 @@ use comet_layout::{
         LayoutConstraint,
         bx::{DisplayInner, DisplayOuter, FontSize, MinSize, Padding},
         geometry::{AutoValue, Rect, Size, StyleUnit},
+        unit::{auto, axis, percent, px, vh},
     },
 };
 use comet_layout_flex::style::Gap;
 use comet_paint::style::TextColor;
 use comet_reactivity::{
-    PropHint, UiCx, UiTree,
-    prelude::{FlexStyled, Styled, auto, axis, percent, px, vh},
+    cx::UiCx,
+    prelude::{FlexStyled, Styled},
+    prop::{PropHint, ReactiveProp},
+    tree::UiTree,
 };
 use comet_tree::node::{Node, NodeKey, Text};
 use peniko::Color;
@@ -259,7 +262,7 @@ async fn helpers_bind_values_and_signals() {
                 .gap(gap)
                 .font_size(size)
                 .padding(axis(px(2), percent(50)))
-                .min_size(comet_reactivity::prelude::size(auto(), vh(100)))
+                .min_size(comet_layout::style::unit::size(auto(), vh(100)))
                 .build()
         });
 
@@ -462,7 +465,7 @@ fn paint(red: u8) -> Paint {
 
 #[tokio::test]
 async fn moving_in_or_out_of_flow_lays_out_the_flow_again() {
-    use comet_layout::style::{bx::Position, taffy};
+    use comet_layout::style::bx::Position;
 
     run(async || {
         let tree = shared();
@@ -518,7 +521,7 @@ async fn moving_in_or_out_of_flow_lays_out_the_flow_again() {
 
 #[test]
 fn position_hints_compare_flow_with_the_default_when_missing() {
-    use comet_layout::style::{bx::Position, taffy};
+    use comet_layout::style::bx::Position;
 
     let mut tree = UiTree::new();
     let relative = tree.ui.create(Node::Box, ());
@@ -552,9 +555,8 @@ fn transform_changes_only_resolve_layers() {
 
 #[test]
 fn hints_are_symmetric() {
-    use comet_layout::style::{bx::Position, taffy};
+    use comet_layout::style::bx::Position;
     use comet_paint::style::Transform;
-    use comet_reactivity::ReactiveProp;
 
     let positions = [
         Position(taffy::Position::Relative),
@@ -581,8 +583,7 @@ fn hints_are_symmetric() {
 
 #[test]
 fn overflow_changes_layers_only_when_scrolling_starts_or_stops() {
-    use comet_layout::style::{bx::Overflow, geometry::Point, taffy};
-    use comet_reactivity::ReactiveProp;
+    use comet_layout::style::{bx::Overflow, geometry::Point};
 
     let overflow = |x, y| Overflow(Point::new(x, y));
     let visible = overflow(taffy::Overflow::Visible, taffy::Overflow::Visible);

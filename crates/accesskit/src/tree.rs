@@ -15,7 +15,7 @@ use crate::{AxFlags, AxKey, AxNode, AxNodeKind, node_id};
 /// their keys are their [`NodeId`]s, so they keep their ids as long as their
 /// items exist. Text run nodes are reused in order when the text is laid out
 /// again. Built and updated by an
-/// [`AxTreeBuilder`](crate::AxTreeBuilder).
+/// [`AxTreeBuilder`](crate::builder::AxTreeBuilder).
 #[derive(Debug, Default)]
 pub struct AxTree {
     pub(crate) nodes: SlotTree<AxKey, AxNode>,

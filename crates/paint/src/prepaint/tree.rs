@@ -3,7 +3,7 @@ use std::ops::Index;
 #[cfg(doc)]
 use comet_layout::dirty_map::DirtyFlags;
 use comet_layout::{
-    fragment::{BoxFragmentKey, FragmentTree},
+    fragment::{BoxFragmentKey, tree::FragmentTree},
     input::LayoutInputKey,
 };
 use kurbo::{Point, Shape};

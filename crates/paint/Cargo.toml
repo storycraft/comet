@@ -18,3 +18,8 @@ kurbo = "0.13.1"
 anyrender = "0.15.0"
 slotmap = "1.1.1"
 bitflags = "2.13.2"
+
+[dependencies.taffy]
+version = "0.15.1"
+default-features = false
+features = ["std"]

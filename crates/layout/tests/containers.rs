@@ -7,7 +7,8 @@ use comet_layout::{
     container::{ContainerContext, ContainerLayout},
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{
-        BoxFragmentKey, ChildLayoutType, FragmentTree, FragmentTreeBuilder, NodeLayoutBits,
+        BoxFragmentKey, ChildLayoutType, NodeLayoutBits, builder::FragmentTreeBuilder,
+        tree::FragmentTree,
     },
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},

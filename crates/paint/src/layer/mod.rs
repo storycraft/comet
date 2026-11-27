@@ -104,7 +104,7 @@ pub struct PaintLayerItem {
     ///
     /// A scroll container never splits, so it generates a single box
     /// fragment the offset applies to. The range is its
-    /// [scroll range](comet_layout::fragment::FragmentTree::scroll_range),
+    /// [scroll range](comet_layout::fragment::tree::FragmentTree::scroll_range),
     /// which follows its overflow. The fragment builder marks the items
     /// whose fragments changed with
     /// [`DirtyFlags::NEED_LAYER`](comet_layout::dirty_map::DirtyFlags::NEED_LAYER),

@@ -8,9 +8,12 @@ use comet_tree::{
 use crate::{
     dirty_map::DirtyMap,
     fragment::{
-        BoxFragmentType, InlineLayout, OffsetEntry,
-        inline::collect::{FlowItem, InlineBuildContext, InlineContentBuilder, split_runs},
-        inline_box_source,
+        BoxFragmentType,
+        inline::{
+            InlineLayout, OffsetEntry,
+            collect::{FlowItem, InlineBuildContext, InlineContentBuilder, split_runs},
+            inline_box_source,
+        },
     },
     input::{
         LayoutInputKey,

@@ -16,9 +16,9 @@ use reactive_graph::{
 };
 
 use crate::{
-    IntoView,
     prop::{PropHint, ReactiveProp},
     tree::UiTree,
+    view::IntoView,
 };
 
 /// Context for building nodes in a shared [`UiTree`].

@@ -1,7 +1,7 @@
 use anyrender::{Glyph, Paint, Scene, recording::RenderCommand};
 use comet_layout::{
     dirty_map::DirtyMap,
-    fragment::{BoxFragmentKey, FragmentTree, FragmentTreeBuilder},
+    fragment::{BoxFragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,
@@ -9,7 +9,6 @@ use comet_layout::{
     style::{
         LayoutConstraint, bx,
         geometry::{AutoValue, Rect as LayoutRect, Size, StyleUnit, UnitResolveContext},
-        taffy::Position,
     },
 };
 use comet_paint::{
@@ -24,6 +23,7 @@ use comet_tree::{
 };
 use kurbo::{BezPath, PathEl, Point, Rect, Shape};
 use peniko::Color;
+use taffy::Position;
 
 fn fills(scene: &Scene) -> Vec<(Rect, Color)> {
     scene

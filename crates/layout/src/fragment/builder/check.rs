@@ -2,8 +2,8 @@
 
 use super::classify::ChildKind;
 use crate::fragment::{
-    BoxFragmentKey, BoxFragmentLink, BoxFragmentType, FragmentTree,
-    inline::collect::InlineBuildContext,
+    BoxFragmentKey, BoxFragmentLink, BoxFragmentType, inline::collect::InlineBuildContext,
+    tree::FragmentTree,
 };
 
 /// Check the boxes of `root` once laid out:

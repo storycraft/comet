@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyrender::filters::FilterEffect;
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment::{BoxFragment, BoxFragmentKey, FragmentGeometry, FragmentRef, FragmentTree},
+    fragment::{BoxFragment, BoxFragmentKey, FragmentGeometry, FragmentRef, tree::FragmentTree},
     input::{LayoutInputKey, tree::LayoutInputTree},
     style::{
         bx::Overflow,

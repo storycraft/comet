@@ -7,7 +7,7 @@ use std::sync::Arc;
 use comet_tree::node::NodeKey;
 use slotmap::new_key_type;
 
-pub use text::{SpanStyle, TextStyle, TextStyleBits};
+use text::TextStyle;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutInputItem {

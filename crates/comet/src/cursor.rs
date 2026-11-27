@@ -1,6 +1,6 @@
 //! Showing the window's mouse cursor with winit.
 
-use comet_shell::CursorIcon;
+use comet_shell::cursor::CursorIcon;
 use winit::window::{CursorIcon as Icon, Window};
 
 /// Show `cursor` over `win`, or hide the cursor with `None`.

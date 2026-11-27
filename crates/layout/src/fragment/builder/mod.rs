@@ -30,8 +30,9 @@ use rustc_hash::FxHashMap;
 use slotmap::SecondaryMap;
 
 use super::{
-    BoxFragmentKey, FragmentTree,
+    BoxFragmentKey,
     inline::collect::{FlowItem, InlineBuildContext, InlineContentBuilder},
+    tree::FragmentTree,
 };
 use crate::{
     dirty_map::{DirtyFlags, DirtyMap},

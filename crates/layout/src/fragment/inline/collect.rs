@@ -21,7 +21,7 @@ use super::{
 };
 use crate::{
     fragment::{BoxFragmentType, NodeLayoutBits, builder::classify},
-    input::{LayoutInputKey, SpanStyle, tree::LayoutInputTree},
+    input::{LayoutInputKey, text::SpanStyle, tree::LayoutInputTree},
     style::LayoutConstraint,
     taffy::style::{self, Style},
 };

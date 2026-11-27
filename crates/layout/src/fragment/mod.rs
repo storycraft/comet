@@ -2,7 +2,7 @@
 //!
 //! Only boxes are tree nodes. Each inline formatting context is held by the
 //! box establishing it as one [`InlineLayout`]: its text, Parley layout and a
-//! flat, preorder list of [`InlineItem`]s for lines, inline element pieces and
+//! flat, preorder list of [`InlineItem`](inline::InlineItem)s for lines, inline element pieces and
 //! glyph runs. Block level boxes inside inline content split it into runs:
 //! the box establishing it lays them out with the block algorithm, each run
 //! in an anonymous box with an inline layout of its own. The run boxes are
@@ -19,12 +19,7 @@ mod tests;
 use bitflags::bitflags;
 use slotmap::new_key_type;
 
-pub use builder::FragmentTreeBuilder;
-pub use inline::{
-    InlineItem, InlineItemKind, InlineLayout, InlineLink, OffsetEntry, inline_box_id,
-    inline_box_source,
-};
-pub use tree::FragmentTree;
+use inline::InlineLayout;
 
 use crate::{
     input::LayoutInputKey,
@@ -192,7 +187,7 @@ pub struct BoxFragmentLink {
 #[derive(Debug)]
 pub struct BoxFragment {
     /// Item generating the box. An anonymous box, one that is not the box
-    /// of its source in its [`FragmentTree`], belongs to the item it was
+    /// of its source in its [`FragmentTree`](tree::FragmentTree), belongs to the item it was
     /// generated for, such as the box whose content it wraps.
     pub source: LayoutInputKey,
     pub box_type: BoxFragmentType,
@@ -258,7 +253,7 @@ impl BoxFragment {
     }
 }
 
-/// A fragment of a [`FragmentTree`]: a box, or an item of the inline layout
+/// A fragment of a [`FragmentTree`](tree::FragmentTree): a box, or an item of the inline layout
 /// of a box.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FragmentRef {

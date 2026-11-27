@@ -1,10 +1,9 @@
 //! Keyboard input.
 
+use ui_events::keyboard::{Key, KeyState, KeyboardEvent, Modifiers, NamedKey};
+
 use super::Window;
-use crate::{
-    event::{Key, KeyState, KeyboardEvent, Modifiers, NamedKey},
-    style::{OnKeyDown, OnKeyUp},
-};
+use crate::style::{OnKeyDown, OnKeyUp};
 
 impl Window {
     /// See [`Window::keyboard_event`].

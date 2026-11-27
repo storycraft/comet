@@ -4,7 +4,7 @@ pub use crate::container::{ContainerContext, ContainerLayout};
 pub use crate::dirty_map::{DirtyEntry, DirtyFlags, DirtyMap};
 pub use crate::fragment::{
     BoxFragment, BoxFragmentKey, BoxFragmentType, ChildLayoutType, FragmentGeometry, FragmentRef,
-    FragmentTree, FragmentTreeBuilder, InlineLayout, NodeLayoutBits,
+    NodeLayoutBits, builder::FragmentTreeBuilder, inline::InlineLayout, tree::FragmentTree,
 };
 pub use crate::input::{
     ChildLayout, LayoutInputItem, LayoutInputKey, LayoutInputKind,

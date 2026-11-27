@@ -2,8 +2,7 @@
 
 use dpi::PhysicalSize;
 use kurbo::{Rect, Size, Vec2};
-
-use crate::event::ScrollDelta;
+use ui_events::ScrollDelta;
 
 /// Distance scrolled by one line of a mouse wheel, in logical units.
 const WHEEL_LINE: f64 = 40.0;

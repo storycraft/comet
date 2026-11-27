@@ -25,9 +25,12 @@ winit = { version = "0.30.12", features = ["rwh_06"] }
 
 accesskit = "0.25.2"
 accesskit_winit = "0.34.2"
+ui-events = "0.3.0"
 ui-events-winit = "0.3.0"
 
 [dev-dependencies]
+parley = "0.13.0"
+taffy = { version = "0.15.1", default-features = false, features = ["std"] }
 image = "0.25.8"
 anyrender_vello_cpu = { version = "0.19.0", features = ["filters"] }
 softbuffer_window_renderer = "0.10.0"

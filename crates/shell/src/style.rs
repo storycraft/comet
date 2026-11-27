@@ -17,15 +17,20 @@
 use core::cell::RefCell;
 
 use comet_layout::style::geometry::AutoValue;
-use comet_reactivity::{PropHint, ReactiveProp, Styled};
+use comet_reactivity::{
+    prop::{PropHint, ReactiveProp},
+    style::Styled,
+};
 use comet_tree::style::define_style_props;
-
-use crate::cursor::CursorIcon;
 use reactive_graph::wrappers::read::Signal;
+use ui_events::{
+    keyboard::KeyboardEvent,
+    pointer::{PointerButtonEvent, PointerInfo, PointerScrollEvent, PointerUpdate},
+};
 
-use crate::event::{
-    ClickEvent, EventCx, FocusEvent, Handler, KeyboardEvent, PointerButtonEvent, PointerInfo,
-    PointerScrollEvent, PointerUpdate,
+use crate::{
+    cursor::CursorIcon,
+    event::{ClickEvent, EventCx, FocusEvent, Handler},
 };
 
 define_style_props!(

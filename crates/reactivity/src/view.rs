@@ -8,7 +8,7 @@ use comet_tree::node::NodeKey;
 /// a `Vec`, an `Option` or an iterator. [`NodeBuild::children`] appends the
 /// nodes of the view its closure returns to the node being built.
 ///
-/// [`NodeBuild::children`]: crate::NodeBuild::children
+/// [`NodeBuild::children`]: crate::cx::NodeBuild::children
 pub trait IntoView: IntoIterator<Item = NodeKey> {}
 
 impl<T> IntoView for T where T: IntoIterator<Item = NodeKey> {}

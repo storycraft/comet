@@ -21,8 +21,9 @@ use reactive_graph::{
     traits::{Dispose, Get, IsDisposed, UpdateValue, WithValue},
     wrappers::read::Signal,
 };
+use ui_events::{keyboard::KeyboardEvent, pointer::PointerEvent};
 
-use crate::event::{EventCx, KeyboardEvent, PointerEvent};
+use crate::event::EventCx;
 
 /// When an input listener runs, relative to the handlers of the nodes the
 /// event is dispatched to.

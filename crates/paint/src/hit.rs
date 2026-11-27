@@ -9,11 +9,11 @@
 //!
 //! Boxes are hit by [`PrepaintTree::hit_local`], following their rounded
 //! border boxes. Glyph runs are hit by
-//! [`InlineLayout::hit_local`](comet_layout::fragment::InlineLayout::hit_local),
+//! [`InlineLayout::hit_local`](comet_layout::fragment::inline::InlineLayout::hit_local),
 //! and pieces of inline elements by the inline part boxes decorating them,
 //! returned as the items of the pieces.
 
-use comet_layout::fragment::{BoxFragmentKey, FragmentRef, FragmentTree};
+use comet_layout::fragment::{BoxFragmentKey, FragmentRef, tree::FragmentTree};
 use kurbo::{Point, Vec2};
 
 use crate::{

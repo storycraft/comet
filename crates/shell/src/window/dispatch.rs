@@ -2,10 +2,11 @@
 
 use comet_tree::node::NodeKey;
 use kurbo::Point;
+use ui_events::{keyboard::KeyboardEvent, pointer::PointerEvent};
 
 use super::Window;
 use crate::{
-    event::{ClickEvent, EventCx, KeyboardEvent, PointerEvent, Request},
+    event::{ClickEvent, EventCx, Request},
     listeners::{Phase, WindowListener},
     style::{HandlerProp, OnClick, OnPointerMove},
 };

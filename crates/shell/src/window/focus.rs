@@ -2,12 +2,13 @@
 
 use comet_layout::{
     fragment::{BoxFragmentKey, FragmentRef},
-    style::{bx::Overflow, taffy::Overflow as OverflowKind},
+    style::bx::Overflow,
 };
 use comet_paint::style::{ScrollLeft, ScrollTop};
 use comet_tree::{node::NodeKey, ui::Ui};
 use kurbo::{Rect, Vec2};
 use reactive_graph::traits::GetUntracked;
+use taffy::Overflow as OverflowKind;
 
 use super::{Window, state::update_rw};
 use crate::{

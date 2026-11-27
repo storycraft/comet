@@ -15,7 +15,6 @@ use anyrender::Paint;
 use comet_layout::style::{
     bx,
     geometry::{AutoValue, Point, Rect, Size, StyleUnit},
-    parley, taffy,
 };
 use comet_layout_flex::{flex, style as flex_style};
 use comet_paint::style as paint;
@@ -124,17 +123,17 @@ pub trait FlexStyled: Styled {
     }
 
     style_helpers! {
-        flex_direction: flex_style::FlexDirection => flex_style::taffy::FlexDirection;
-        flex_wrap: flex_style::FlexWrap => flex_style::taffy::FlexWrap;
+        flex_direction: flex_style::FlexDirection => taffy::FlexDirection;
+        flex_wrap: flex_style::FlexWrap => taffy::FlexWrap;
         flex_line_count: flex_style::FlexLineCount => u16;
         gap: flex_style::Gap => Size<StyleUnit>;
-        align_items: flex_style::AlignItems => flex_style::taffy::AlignItems;
-        align_content: flex_style::AlignContent => flex_style::taffy::AlignContent;
-        justify_content: flex_style::JustifyContent => flex_style::taffy::JustifyContent;
+        align_items: flex_style::AlignItems => taffy::AlignItems;
+        align_content: flex_style::AlignContent => taffy::AlignContent;
+        justify_content: flex_style::JustifyContent => taffy::JustifyContent;
         flex_grow: flex_style::FlexGrow => f32;
         flex_shrink: flex_style::FlexShrink => f32;
         flex_basis: flex_style::FlexBasis => AutoValue<StyleUnit>;
-        align_self: flex_style::AlignSelf => Option<flex_style::taffy::AlignSelf>;
+        align_self: flex_style::AlignSelf => Option<taffy::AlignSelf>;
     }
 }
 

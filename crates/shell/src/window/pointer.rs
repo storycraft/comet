@@ -1,16 +1,21 @@
 //! Pointer input: hit testing, hover, the cursor, clicks and wheel
 //! scrolling.
 
-use comet_layout::style::{bx::Overflow, taffy::Overflow as OverflowKind};
+use comet_layout::style::bx::Overflow;
 use comet_paint::style::{ScrollLeft, ScrollTop};
 use comet_tree::node::{Node, NodeKey};
 use kurbo::Point;
-use ui_events::pointer::PointerButton;
+use taffy::Overflow as OverflowKind;
+use ui_events::{
+    ScrollDelta,
+    keyboard::Modifiers,
+    pointer::{PointerButton, PointerEvent, PointerInfo},
+};
 
 use super::{Window, state::update};
 use crate::{
     cursor::CursorIcon,
-    event::{ClickEvent, Modifiers, PointerEvent, PointerInfo, ScrollDelta},
+    event::ClickEvent,
     pipeline::Hit,
     style::{
         Cursor, Focusable, OnClick, OnPointerDown, OnPointerEnter, OnPointerLeave, OnPointerMove,

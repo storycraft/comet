@@ -5,6 +5,10 @@
 //! and is kept up to date by an [`AxTreeBuilder`], which records the nodes
 //! that changed. Take their nodes for
 //! an [`accesskit::TreeUpdate`] with [`AxTree::take_update`].
+//!
+//! [`AxTree`]: tree::AxTree
+//! [`AxTree::take_update`]: tree::AxTree::take_update
+//! [`AxTreeBuilder`]: builder::AxTreeBuilder
 
 pub mod builder;
 pub mod style;
@@ -14,9 +18,6 @@ use accesskit::NodeId;
 use bitflags::bitflags;
 use comet_layout::input::LayoutInputKey;
 use slotmap::{Key, KeyData, new_key_type};
-
-pub use builder::AxTreeBuilder;
-pub use tree::AxTree;
 
 bitflags! {
     /// Accessibility changes of a layout input item, set with
@@ -37,7 +38,7 @@ new_key_type! {
     pub struct AxKey;
 }
 
-/// What a node of an [`AxTree`] stands for.
+/// What a node of an [`AxTree`](tree::AxTree) stands for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AxNodeKind {
     /// A layout input item.
@@ -47,7 +48,7 @@ pub enum AxNodeKind {
     TextRun,
 }
 
-/// One node of an [`AxTree`].
+/// One node of an [`AxTree`](tree::AxTree).
 #[derive(Debug, Clone, PartialEq)]
 pub struct AxNode {
     /// The node last resolved.

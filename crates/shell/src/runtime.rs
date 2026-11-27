@@ -4,7 +4,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use any_spawner::{CustomExecutor, Executor, PinnedFuture, PinnedLocalFuture};
-use comet_reactivity::{UiCx, UiTree};
+use comet_reactivity::{cx::UiCx, tree::UiTree};
 use comet_tree::node::NodeKey;
 use futures::{
     executor::{LocalPool, LocalSpawner},
@@ -28,7 +28,7 @@ impl UiRoot {
     ///
     /// Sets up the executor of the current thread first, unless one is set up
     /// already. Bindings re-run on it when [`poll`](Self::poll) is called,
-    /// which [`Window::poll`](crate::Window::poll) does for you.
+    /// which [`Window::poll`](crate::window::Window::poll) does for you.
     pub fn new(component: impl FnOnce(&UiCx) -> NodeKey) -> Self {
         init_executor();
 

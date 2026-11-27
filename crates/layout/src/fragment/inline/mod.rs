@@ -149,7 +149,7 @@ impl InlineLayout {
 
     /// For a run of inline content split by block level boxes, the block
     /// level box it follows. The inline elements holding it are split by it,
-    /// see [`FragmentTree::is_split_before`](crate::fragment::FragmentTree::is_split_before).
+    /// see [`FragmentTree::is_split_before`](crate::fragment::tree::FragmentTree::is_split_before).
     pub fn run_start(&self) -> Option<LayoutInputKey> {
         self.run_start
     }

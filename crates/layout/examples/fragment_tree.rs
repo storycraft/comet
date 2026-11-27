@@ -2,7 +2,10 @@ mod common;
 
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment::{BoxFragmentKey, FragmentTree, FragmentTreeBuilder, InlineItemKind, InlineLayout},
+    fragment::{
+        BoxFragmentKey, builder::FragmentTreeBuilder, inline::InlineItemKind, inline::InlineLayout,
+        tree::FragmentTree,
+    },
     input::{
         builder::{BuildRequest, LayoutInputTreeBuilder},
         tree::LayoutInputTree,

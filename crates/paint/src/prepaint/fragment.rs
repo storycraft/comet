@@ -15,8 +15,8 @@
 
 use comet_layout::{
     fragment::{
-        BoxFragment, BoxFragmentKey, BoxFragmentType, FragmentRef, FragmentTree, InlineItem,
-        InlineLayout,
+        BoxFragment, BoxFragmentKey, BoxFragmentType, FragmentRef, inline::InlineItem,
+        inline::InlineLayout, tree::FragmentTree,
     },
     input::{LayoutInputKey, tree::LayoutInputTree},
 };

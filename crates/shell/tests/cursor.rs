@@ -3,18 +3,15 @@
 use std::{cell::RefCell, rc::Rc};
 
 use comet_layout::style::{geometry::AutoValue, unit::*};
-use comet_reactivity::{Styled, UiCx};
-use comet_shell::{
-    CursorIcon, Window,
-    style::InputStyled,
-    ui_events::pointer::{
-        PointerEvent, PointerId, PointerInfo, PointerState, PointerType, PointerUpdate,
-    },
-};
+use comet_reactivity::{cx::UiCx, style::Styled};
+use comet_shell::{cursor::CursorIcon, style::InputStyled, window::Window};
 use dpi::{PhysicalPosition, PhysicalSize};
 use reactive_graph::{
     signal::{WriteSignal, signal},
     traits::{GetUntracked, Set},
+};
+use ui_events::pointer::{
+    PointerEvent, PointerId, PointerInfo, PointerState, PointerType, PointerUpdate,
 };
 
 /// Sets the cursor of the box bound to a signal, once the window is built.
@@ -41,7 +38,7 @@ fn hover(window: &mut Window, x: f64, y: f64) -> Option<CursorIcon> {
 }
 
 /// A box filling a 40 high row.
-fn row(cx: &UiCx) -> comet_reactivity::NodeBuild<'_> {
+fn row(cx: &UiCx) -> comet_reactivity::cx::NodeBuild<'_> {
     cx.div().size(size(px(400), px(40)))
 }
 
@@ -75,19 +72,19 @@ fn window() -> (Window, Setter) {
                 // so it places its absolute children.
                 .size(size(px(400), px(80)))
                 .padding(sides(px(40), px(0), px(0), px(0)))
-                .position(comet_layout::style::taffy::Position::Relative)
+                .position(taffy::Position::Relative)
                 .cursor(AutoValue::Value(Some(CursorIcon::Pointer)))
                 .children(|cx| {
                     let inherit = cx
                         .div()
                         .size(size(px(200), px(40)))
-                        .position(comet_layout::style::taffy::Position::Absolute)
+                        .position(taffy::Position::Absolute)
                         .cursor(AutoValue::Auto)
                         .build();
                     let crosshair = cx
                         .div()
                         .size(size(px(200), px(40)))
-                        .position(comet_layout::style::taffy::Position::Absolute)
+                        .position(taffy::Position::Absolute)
                         .inset(sides(px(0), auto(), auto(), px(200)))
                         .cursor(AutoValue::Value(Some(CursorIcon::Crosshair)))
                         .build();

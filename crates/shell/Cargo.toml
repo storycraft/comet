@@ -24,3 +24,4 @@ ui-events = { version = "0.3.0", features = ["kurbo"] }
 any_spawner = "0.3.0"
 futures = { version = "0.3", default-features = false, features = ["std", "executor"] }
 reactive_graph = { version = "0.2.16", features = ["effects"] }
+taffy = { version = "0.15.1", default-features = false, features = ["std"] }

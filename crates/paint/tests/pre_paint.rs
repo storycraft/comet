@@ -2,7 +2,10 @@ use anyrender::Paint;
 use anyrender::{Scene, recording::RenderCommand};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    fragment::{BoxFragmentKey, BoxFragmentType, FragmentRef, FragmentTree, FragmentTreeBuilder},
+    fragment::{
+        BoxFragmentKey, BoxFragmentType, FragmentRef, builder::FragmentTreeBuilder,
+        tree::FragmentTree,
+    },
     input::{
         LayoutInputKey,
         builder::{BuildRequest, LayoutInputTreeBuilder},
@@ -14,7 +17,6 @@ use comet_layout::{
             AutoValue, Point as LayoutPoint, Rect as LayoutRect, Size, StyleUnit,
             UnitResolveContext,
         },
-        taffy::Overflow,
     },
 };
 use comet_paint::{
@@ -41,6 +43,7 @@ use comet_tree::{
 use kurbo::{Affine, Point, RoundedRectRadii, Vec2};
 use kurbo::{Rect, Shape};
 use peniko::Color;
+use taffy::Overflow;
 
 const VIEWPORT: Size<f64> = Size::new(120.0, 400.0);
 const SCENE_VIEWPORT: Rect = Rect::new(0.0, 0.0, 120.0, 400.0);
