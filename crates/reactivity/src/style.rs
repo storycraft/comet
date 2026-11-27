@@ -7,7 +7,7 @@
 //! ```ignore
 //! cx.div()
 //!     .padding(all(px(8)))
-//!     .fill(Signal::derive(move || if hovered.get() { dark } else { light }))
+//!     .background(Signal::derive(move || if hovered.get() { dark } else { light }))
 //!     .build()
 //! ```
 
@@ -95,12 +95,12 @@ pub trait Styled: Sized {
         /// Let a press select the text of the node and its descendants, or
         /// not, or keep whether the node above does with [`AutoValue::Auto`].
         selectable: paint::Selectable => AutoValue<paint::UserSelect>;
-        text_color: paint::TextColor => AutoValue<Paint>;
+        color: paint::Color => AutoValue<Paint>;
         selection_color: paint::SelectionColor => AutoValue<Paint>;
         selection_fill: paint::SelectionFill => AutoValue<Paint>;
 
         // Paint
-        fill: paint::Fill => Paint;
+        background: paint::Background => Paint;
         border_fill: paint::BorderFill => Paint;
         outline_fill: paint::OutlineFill => Paint;
         anti_aliasing: paint::AntiAliasing => bool;

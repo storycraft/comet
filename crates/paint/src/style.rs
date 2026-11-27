@@ -6,8 +6,9 @@ use peniko::BlendMode;
 
 define_style_props!(
     // Box draw styles
+    /// Paint filling the border box of a node, behind its border.
     #[derive(Debug, Clone, PartialEq)]
-    pub Fill: Paint;
+    pub Background: Paint;
     #[derive(Debug, Clone, PartialEq)]
     pub BorderFill: Paint;
     #[derive(Debug, Clone, PartialEq)]
@@ -65,11 +66,13 @@ define_style_props!(
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub Selectable: AutoValue<UserSelect> = AutoValue::Auto;
 
-    // Text draw styles
-    /// Color of the text of a node and its descendants. Auto follows the
-    /// parent's text color, black at the root.
+    // Content draw styles
+    /// Primary color of the content of a node and its descendants, like
+    /// `currentColor`: its text is drawn with it. Auto follows the parent's
+    /// color, black at the root. Resolved into
+    /// [`LayoutInputData::color`](crate::prepaint::LayoutInputData::color).
     #[derive(Debug, Clone, PartialEq)]
-    pub TextColor: AutoValue<Paint> = AutoValue::Auto;
+    pub Color: AutoValue<Paint> = AutoValue::Auto;
 
     /// Color of the selected text of a node and its descendants. Auto
     /// follows the parent's selection color, a deep navy at the root.

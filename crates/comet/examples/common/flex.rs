@@ -68,7 +68,7 @@ fn label(cx: &UiCx, value: &str) -> NodeKey {
     cx.div()
         .font_size(px(11))
         .font_weight(parley::FontWeight::SEMI_BOLD)
-        .text_color(AutoValue::Value(solid(MUTED)))
+        .color(AutoValue::Value(solid(MUTED)))
         .padding(sides(px(10), px(0), px(6), px(0)))
         .children(|cx| cx.text(value).build())
 }
@@ -76,7 +76,7 @@ fn label(cx: &UiCx, value: &str) -> NodeKey {
 /// A tile, left open for more styles and its caption.
 fn tile(cx: &UiCx, color: Color) -> NodeBuild<'_> {
     cx.div()
-        .fill(solid(color))
+        .background(solid(color))
         .border_radius(all(px(6)))
         .padding(axis(px(8), px(10)))
         .font_size(px(13))

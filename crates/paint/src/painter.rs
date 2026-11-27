@@ -30,7 +30,7 @@ use crate::{
         tree::PrepaintTree,
     },
     selection::rects::SelectionRects,
-    style::{self, BorderFill, BoxDecorationBreak, Fill, OutlineFill},
+    style::{self, Background, BorderFill, BoxDecorationBreak, OutlineFill},
 };
 
 /// Paints final fragments in the order of their [`PaintLayerTree`], with the
@@ -845,7 +845,7 @@ impl CometPainter {
             )
         };
 
-        draw(scene, &data.text_color);
+        draw(scene, &data.color);
 
         // Selected glyphs are drawn again over themselves, in the selection
         // color, clipped to the selection area.
@@ -1115,7 +1115,7 @@ fn draw_box(
         data.border_radii(fragment, decoration_break)
     });
 
-    if let Some(fill) = props.get::<Fill>() {
+    if let Some(fill) = props.get::<Background>() {
         scene.fill(
             peniko::Fill::NonZero,
             transform,

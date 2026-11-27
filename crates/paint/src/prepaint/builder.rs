@@ -20,8 +20,8 @@ use crate::{
         tree::PrepaintTree,
     },
     style::{
-        BorderRadius, OutlineOffset, OutlineWidth, Selectable, SelectionColor, SelectionFill,
-        TextColor, UserSelect,
+        self, BorderRadius, OutlineOffset, OutlineWidth, Selectable, SelectionColor, SelectionFill,
+        UserSelect,
     },
 };
 
@@ -66,7 +66,7 @@ impl PrepaintTreeBuilder {
     ///   such as after their paint styles changed,
     /// - it has no data in `tree`,
     /// - its parent was resolved to new inherited values, such as a new
-    ///   [text color](LayoutInputData::text_color), or its parent's child
+    ///   [color](LayoutInputData::color), or its parent's child
     ///   list changed ([`DirtyFlags::NEED_CHILDREN`]).
     ///
     /// The children of an item are visited when it is resolved to new
@@ -334,12 +334,12 @@ impl Sources<'_> {
             (parent.outline_width, parent.outline_offset)
         });
 
-        let TextColor(text_color) = props.get_cloned().unwrap_or_default();
-        let text_color = match text_color {
+        let style::Color(color) = props.get_cloned().unwrap_or_default();
+        let color = match color {
             AutoValue::Value(color) => color,
-            AutoValue::Auto => parent.map_or(Paint::Solid(Color::BLACK), |parent| {
-                parent.text_color.clone()
-            }),
+            AutoValue::Auto => {
+                parent.map_or(Paint::Solid(Color::BLACK), |parent| parent.color.clone())
+            }
         };
 
         let SelectionColor(selection_color) = props.get_cloned().unwrap_or_default();
@@ -389,7 +389,7 @@ impl Sources<'_> {
                 parent_offset,
             ),
             box_decoration_break,
-            text_color,
+            color,
             selectable,
             selection_container,
             selection_color,

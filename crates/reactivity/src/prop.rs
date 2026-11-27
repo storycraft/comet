@@ -175,7 +175,7 @@ impl ReactiveProp for bx::Overflow {
 reactive_props!(PRE_PAINT =>
     paint::BoxDecorationBreak,
     paint::Selectable,
-    paint::TextColor,
+    paint::Color,
     paint::SelectionColor,
     paint::SelectionFill,
     paint::BorderRadius,
@@ -215,7 +215,7 @@ reactive_props!(LAYER =>
 
 // Read by the painter every frame.
 reactive_props!(REPAINT =>
-    paint::Fill,
+    paint::Background,
     paint::BorderFill,
     paint::OutlineFill,
     paint::AntiAliasing,

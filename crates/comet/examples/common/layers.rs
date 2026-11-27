@@ -105,7 +105,7 @@ fn z_index(cx: &UiCx) -> [NodeKey; 2] {
     let row = row(cx)
         .gap(size(px(0), px(0)))
         .z_index(AutoValue::Value(0))
-        .fill(solid(Color::WHITE))
+        .background(solid(Color::WHITE))
         .border_radius(all(px(10)))
         .children(|cx| {
             [
@@ -184,7 +184,7 @@ fn mix_blend(cx: &UiCx) -> [NodeKey; 2] {
     // The row anchors the stripe running behind the cards.
     let row = row(cx)
         .position(Position::Relative)
-        .fill(solid(Color::from_rgb8(255, 196, 120)))
+        .background(solid(Color::from_rgb8(255, 196, 120)))
         .border_radius(all(px(10)))
         .children(|cx| {
             // A stripe running behind every card, so each mode shows on two
@@ -194,7 +194,7 @@ fn mix_blend(cx: &UiCx) -> [NodeKey; 2] {
                 .position(Position::Absolute)
                 .inset(sides(px(28), px(0), auto(), px(0)))
                 .size(size(auto(), px(18)))
-                .fill(solid(Color::from_rgb8(52, 84, 209)))
+                .background(solid(Color::from_rgb8(52, 84, 209)))
                 .build();
 
             let blended = [
@@ -233,7 +233,7 @@ fn nested_transforms(cx: &UiCx) -> [NodeKey; 3] {
     let nested = card(cx, "rotated parent", Color::from_rgb8(236, 228, 255))
         .size(size(px(260), auto()))
         .margin(axis(px(18), px(16)))
-        .text_color(AutoValue::Value(solid(Color::from_rgb8(96, 65, 177))))
+        .color(AutoValue::Value(solid(Color::from_rgb8(96, 65, 177))))
         .transform(Affine::rotate((-4f64).to_radians()))
         .children(|cx| {
             card(cx, "translated child", Color::from_rgb8(212, 198, 250))
@@ -250,7 +250,7 @@ fn nested_transforms(cx: &UiCx) -> [NodeKey; 3] {
         .size(size(auto(), px(64)))
         .overflow(point(Overflow::Hidden, Overflow::Hidden))
         .padding(all(px(10)))
-        .fill(solid(Color::WHITE))
+        .background(solid(Color::WHITE))
         .border_radius(all(px(10)))
         .children(|cx| {
             card(
@@ -272,7 +272,7 @@ fn caption(cx: &UiCx, label: &str) -> NodeKey {
     cx.div()
         .font_size(px(12))
         .font_weight(parley::FontWeight::SEMI_BOLD)
-        .text_color(AutoValue::Value(solid(MUTED)))
+        .color(AutoValue::Value(solid(MUTED)))
         .padding(sides(px(8), px(0), px(4), px(0)))
         .children(|cx| cx.text(label).build())
 }
@@ -292,7 +292,7 @@ fn card<'a>(cx: &'a UiCx, label: &str, color: Color) -> Card<'a> {
             .div()
             .size(size(px(110), auto()))
             .padding(axis(px(10), px(12)))
-            .fill(solid(color))
+            .background(solid(color))
             .border_radius(all(px(8)))
             .font_size(px(14))
             .font_weight(parley::FontWeight::SEMI_BOLD),
@@ -338,6 +338,6 @@ impl Styled for Card<'_> {
 fn chip(cx: &UiCx, color: Color) -> NodeBuild<'_> {
     cx.div()
         .size(size(px(28), px(20)))
-        .fill(solid(color))
+        .background(solid(color))
         .border_radius(all(px(4)))
 }

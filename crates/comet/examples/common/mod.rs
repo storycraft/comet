@@ -71,9 +71,9 @@ pub fn button(
         }))
         .padding(axis(px(10), px(18)))
         .border_radius(all(px(8)))
-        .text_color(AutoValue::Value(solid(Color::WHITE)))
+        .color(AutoValue::Value(solid(Color::WHITE)))
         .font_weight(parley::FontWeight::SEMI_BOLD)
-        .fill(Signal::derive(move || {
+        .background(Signal::derive(move || {
             solid(if hovered.get() {
                 Color::from_rgb8(66, 98, 220)
             } else {
@@ -117,8 +117,8 @@ pub fn button(
 pub fn sample_ui(cx: &UiCx) -> NodeKey {
     cx.div()
         .role(Role::Main)
-        .fill(solid(BACKGROUND))
-        .text_color(AutoValue::Value(solid(Color::from_rgb8(36, 46, 63))))
+        .background(solid(BACKGROUND))
+        .color(AutoValue::Value(solid(Color::from_rgb8(36, 46, 63))))
         .font_size(px(16))
         .padding(all(px(24)))
         .min_size(size(auto(), vh(100)))
@@ -164,7 +164,7 @@ fn block_inline_sample(cx: &UiCx) -> NodeKey {
             cx.text("Inline content starts here, ").build(),
             cx.div()
                 .display_outer(DisplayOuter::Inline)
-                .fill(solid(Color::from_rgb8(224, 233, 255)))
+                .background(solid(Color::from_rgb8(224, 233, 255)))
                 .border_radius(all(px(6)))
                 .children(|cx| {
                     [
@@ -176,7 +176,7 @@ fn block_inline_sample(cx: &UiCx) -> NodeKey {
                         // inline flow.
                         cx.div()
                             .padding(all(px(12)))
-                            .fill(solid(Color::from_rgb8(222, 242, 233)))
+                            .background(solid(Color::from_rgb8(222, 242, 233)))
                             .border_radius(all(px(8)))
                             .text_align(Alignment::Center)
                             .children(|cx| {
@@ -216,12 +216,12 @@ fn decoration_break(cx: &UiCx, decoration: BoxDecorationBreak) -> NodeKey {
                 cx.div()
                     .display_outer(DisplayOuter::Inline)
                     .font_weight(parley::FontWeight::SEMI_BOLD)
-                    .text_color(AutoValue::Value(solid(MUTED)))
+                    .color(AutoValue::Value(solid(MUTED)))
                     .children(|cx| cx.text(label).build()),
                 cx.div()
                     .display_outer(DisplayOuter::Inline)
                     .box_decoration_break(decoration)
-                    .fill(solid(color))
+                    .background(solid(color))
                     .border_radius(all(px(10)))
                     .children(|cx| {
                         cx.text(
@@ -252,7 +252,7 @@ fn rich_text_sample(cx: &UiCx) -> NodeKey {
                 cx.text("color and scale")
                     .font_size(em(1.35))
                     .font_weight(parley::FontWeight::SEMI_BOLD)
-                    .text_color(AutoValue::Value(solid(Color::from_rgb8(96, 65, 177))))
+                    .color(AutoValue::Value(solid(Color::from_rgb8(96, 65, 177))))
                     .build(),
                 cx.text(" share one paragraph. An ").build(),
                 badge(cx, "inline block", Color::from_rgb8(255, 222, 161)),
@@ -263,8 +263,8 @@ fn rich_text_sample(cx: &UiCx) -> NodeKey {
                 cx.div()
                     .display_outer(DisplayOuter::Inline)
                     .font_weight(parley::FontWeight::BOLD)
-                    .text_color(AutoValue::Value(solid(Color::from_rgb8(127, 74, 32))))
-                    .fill(solid(Color::from_rgb8(255, 233, 193)))
+                    .color(AutoValue::Value(solid(Color::from_rgb8(127, 74, 32))))
+                    .background(solid(Color::from_rgb8(255, 233, 193)))
                     .children(|cx| {
                         [
                             cx.text("Nested styles ").build(),
@@ -304,16 +304,16 @@ fn typography_sample(cx: &UiCx) -> NodeKey {
                     .font(parley::FontFamily::from("monospace"))
                     .font_size(px(14))
                     .padding(axis(px(8), px(10)))
-                    .fill(solid(Color::from_rgb8(227, 220, 241)))
+                    .background(solid(Color::from_rgb8(227, 220, 241)))
                     .children(|cx| {
                         [
                             cx.text("let ")
                                 .font_weight(parley::FontWeight::BOLD)
-                                .text_color(AutoValue::Value(solid(Color::from_rgb8(96, 65, 177))))
+                                .color(AutoValue::Value(solid(Color::from_rgb8(96, 65, 177))))
                                 .build(),
                             cx.text("message = ").build(),
                             cx.text("\"Hello, Comet!\"")
-                                .text_color(AutoValue::Value(solid(Color::from_rgb8(31, 111, 87))))
+                                .color(AutoValue::Value(solid(Color::from_rgb8(31, 111, 87))))
                                 .build(),
                             cx.text(";").build(),
                         ]
@@ -339,7 +339,7 @@ fn panel<V: IntoView>(
 ) -> NodeKey {
     cx.div()
         .role(Role::Section)
-        .fill(solid(color))
+        .background(solid(color))
         .border_radius(all(px(12)))
         .padding(all(px(16)))
         .flex_basis(AutoValue::from(px(420.0)))
@@ -351,7 +351,7 @@ fn panel<V: IntoView>(
                 .role(Role::Heading)
                 .font_size(px(14))
                 .font_weight(parley::FontWeight::SEMI_BOLD)
-                .text_color(AutoValue::Value(solid(MUTED)))
+                .color(AutoValue::Value(solid(MUTED)))
                 .padding(sides(px(0), px(0), px(12), px(0)))
                 .children(|cx| cx.text(label).build());
 
@@ -363,7 +363,7 @@ fn badge(cx: &UiCx, label: &str, color: Color) -> NodeKey {
     cx.div()
         .display_outer(DisplayOuter::Inline)
         .display_inner(DisplayInner::FlowRoot)
-        .fill(solid(color))
+        .background(solid(color))
         .border_radius(all(px(6)))
         .padding(axis(px(2), px(6)))
         .children(|cx| [cx.text("✨ ").build(), cx.text(label).build()])

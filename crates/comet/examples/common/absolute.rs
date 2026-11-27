@@ -20,7 +20,7 @@ pub(super) fn showcase(cx: &UiCx) -> NodeKey {
                 .min_size(size(auto(), px(210)))
                 // Room above and below the flow for the corner tags.
                 .padding(axis(px(44), px(14)))
-                .fill(solid(Color::WHITE))
+                .background(solid(Color::WHITE))
                 .border_radius(all(px(10)))
                 .children(stage)
         },
@@ -45,7 +45,7 @@ fn stage(cx: &UiCx) -> impl IntoView + use<> {
                     Color::from_rgb8(229, 72, 77),
                     sides(px(-8), px(-8), auto(), auto()),
                 )
-                .text_color(AutoValue::Value(solid(Color::WHITE)))
+                .color(AutoValue::Value(solid(Color::WHITE)))
                 .border_radius(all(px(10)))
                 .children(|cx| cx.text("3").build()),
             ]
@@ -88,7 +88,7 @@ fn card(cx: &UiCx, color: Color) -> NodeBuild<'_> {
         .size(size(percent(50), auto()))
         .padding(all(px(10)))
         .margin(sides(px(12), px(0), px(0), px(0)))
-        .fill(solid(color))
+        .background(solid(color))
         .border_radius(all(px(8)))
         .font_weight(parley::FontWeight::SEMI_BOLD)
 }
@@ -98,7 +98,7 @@ fn tag(cx: &UiCx, color: Color, inset: Rect<AutoValue<StyleUnit>>) -> NodeBuild<
         .position(Position::Absolute)
         .inset(inset)
         .padding(axis(px(3), px(8)))
-        .fill(solid(color))
+        .background(solid(color))
         .border_radius(all(px(6)))
         .font_size(px(12))
         .font_weight(parley::FontWeight::SEMI_BOLD)

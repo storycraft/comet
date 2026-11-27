@@ -20,6 +20,7 @@ use comet_layout::{
     },
 };
 use comet_paint::selection::{Affinity, Selection, TextPosition, rects::SelectionRects};
+use comet_paint::style;
 use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
@@ -36,8 +37,8 @@ use comet_paint::{
         tree::PrepaintTree,
     },
     style::{
-        BorderRadius, Fill, OutlineOffset, OutlineWidth, ScrollLeft, ScrollTop, TextColor,
-        Transform, TransformOrigin,
+        Background, BorderRadius, OutlineOffset, OutlineWidth, ScrollLeft, ScrollTop, Transform,
+        TransformOrigin,
     },
 };
 use comet_tree::{
@@ -566,14 +567,14 @@ fn text_color_is_inherited_through_the_ui() {
     let mut ui = Ui::new();
     let root = ui.create(
         Node::Box,
-        (TextColor(AutoValue::Value(Paint::Solid(BLUE))),),
+        (style::Color(AutoValue::Value(Paint::Solid(BLUE))),),
     );
     text(&mut ui, root, "blue ");
     let span = ui.create(
         Node::Box,
         (
             bx::DisplayOuter::Inline,
-            TextColor(AutoValue::Value(Paint::Solid(RED))),
+            style::Color(AutoValue::Value(Paint::Solid(RED))),
         ),
     );
     ui.append(root, span);
@@ -586,13 +587,13 @@ fn text_color_is_inherited_through_the_ui() {
     // A text node's own color applies to its glyph runs, but not to its
     // siblings.
     let own = text(&mut ui, span, "blue ");
-    ui.set_props(own, (TextColor(AutoValue::Value(Paint::Solid(BLUE))),));
+    ui.set_props(own, (style::Color(AutoValue::Value(Paint::Solid(BLUE))),));
     text(&mut ui, span, "red again ");
     let green = ui.create(
         Node::Box,
         (
             bx::DisplayOuter::Inline,
-            TextColor(AutoValue::Value(Paint::Solid(GREEN))),
+            style::Color(AutoValue::Value(Paint::Solid(GREEN))),
         ),
     );
     ui.append(span, green);
@@ -623,7 +624,7 @@ fn transforms_multiply_around_their_origins() {
         (
             fixed(20.0, 10.0),
             Transform(Affine::translate((5.0, 0.0))),
-            Fill(Paint::Solid(RED)),
+            Background(Paint::Solid(RED)),
         ),
     );
     let corner = ui.create(
@@ -687,15 +688,15 @@ fn overflow_clips_contents_to_the_fragment_box() {
             fixed(50.0, 30.0),
             bx::Border(LayoutRect::new_all(StyleUnit::Px(2.0))),
             hidden(),
-            Fill(Paint::Solid(RED)),
+            Background(Paint::Solid(RED)),
         ),
     );
     let colored = ui.create(
         Node::Box,
         (
             fixed(10.0, 4.0),
-            TextColor(AutoValue::Value(Paint::Solid(GREEN))),
-            Fill(Paint::Solid(GREEN)),
+            style::Color(AutoValue::Value(Paint::Solid(GREEN))),
+            Background(Paint::Solid(GREEN)),
         ),
     );
     // Clips horizontally only, inside the clipper.
@@ -709,7 +710,10 @@ fn overflow_clips_contents_to_the_fragment_box() {
     ui.append(root, clipper);
     ui.append(clipper, colored);
     ui.append(clipper, column);
-    let tall = ui.create(Node::Box, (fixed(40.0, 100.0), Fill(Paint::Solid(BLUE))));
+    let tall = ui.create(
+        Node::Box,
+        (fixed(40.0, 100.0), Background(Paint::Solid(BLUE))),
+    );
     ui.append(column, tall);
 
     let mut f = Fixture::default();
@@ -763,7 +767,10 @@ fn clips_follow_the_transform_of_their_item() {
         Node::Box,
         (fixed(40.0, 20.0), hidden(), Transform(Affine::rotate(0.3))),
     );
-    let content = ui.create(Node::Box, (fixed(40.0, 20.0), Fill(Paint::Solid(RED))));
+    let content = ui.create(
+        Node::Box,
+        (fixed(40.0, 20.0), Background(Paint::Solid(RED))),
+    );
     ui.append(root, clipper);
     ui.append(clipper, content);
 
@@ -801,7 +808,10 @@ fn clips_round_with_the_border_radius_on_both_axes() {
         ),
     );
     for parent in [rounded, column] {
-        let content = ui.create(Node::Box, (fixed(40.0, 20.0), Fill(Paint::Solid(RED))));
+        let content = ui.create(
+            Node::Box,
+            (fixed(40.0, 20.0), Background(Paint::Solid(RED))),
+        );
         ui.append(root, parent);
         ui.append(parent, content);
     }
@@ -832,10 +842,16 @@ fn content_outside_its_clip_is_not_painted() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let clipper = ui.create(Node::Box, (fixed(50.0, 20.0), hidden()));
-    let inside = ui.create(Node::Box, (fixed(50.0, 20.0), Fill(Paint::Solid(RED))));
+    let inside = ui.create(
+        Node::Box,
+        (fixed(50.0, 20.0), Background(Paint::Solid(RED))),
+    );
     // Boxes touching the clip edge are painted, so leave a gap.
     let gap = ui.create(Node::Box, (fixed(50.0, 5.0),));
-    let outside = ui.create(Node::Box, (fixed(50.0, 20.0), Fill(Paint::Solid(BLUE))));
+    let outside = ui.create(
+        Node::Box,
+        (fixed(50.0, 20.0), Background(Paint::Solid(BLUE))),
+    );
     ui.append(root, clipper);
     ui.append(clipper, inside);
     ui.append(clipper, gap);
@@ -911,8 +927,8 @@ fn text_color_defaults_to_black() {
     let mut f = Fixture::default();
     f.build(&ui, root);
 
-    assert_eq!(f.data(root).text_color, Paint::Solid(Color::BLACK));
-    assert_eq!(f.data(label).text_color, Paint::Solid(Color::BLACK));
+    assert_eq!(f.data(root).color, Paint::Solid(Color::BLACK));
+    assert_eq!(f.data(label).color, Paint::Solid(Color::BLACK));
     assert_eq!(f.text_colors(&ui), [Color::BLACK]);
 }
 
@@ -921,13 +937,13 @@ fn text_color_changes_resolve_the_subtree() {
     let mut ui = Ui::new();
     let root = ui.create(
         Node::Box,
-        (TextColor(AutoValue::Value(Paint::Solid(BLUE))),),
+        (style::Color(AutoValue::Value(Paint::Solid(BLUE))),),
     );
     text(&mut ui, root, "blue");
     let colored = ui.create(
         Node::Box,
         (
-            TextColor(AutoValue::Value(Paint::Solid(RED))),
+            style::Color(AutoValue::Value(Paint::Solid(RED))),
             BorderRadius(LayoutRect::new_all(StyleUnit::Px(2.0))),
         ),
     );
@@ -940,11 +956,14 @@ fn text_color_changes_resolve_the_subtree() {
     let fragment_root = f.build(&ui, root);
 
     assert_eq!(f.text_colors(&ui), [BLUE, RED]);
-    assert_eq!(f.data(nested).text_color, Paint::Solid(RED));
+    assert_eq!(f.data(nested).color, Paint::Solid(RED));
 
     // Painting reads the resolved color, so an unmarked change does not
     // show.
-    ui.set_props(colored, (TextColor(AutoValue::Value(Paint::Solid(GREEN))),));
+    ui.set_props(
+        colored,
+        (style::Color(AutoValue::Value(Paint::Solid(GREEN))),),
+    );
     assert_eq!(f.text_colors(&ui), [BLUE, RED]);
 
     // Resolving the marked item resolves its descendants, which inherit the
@@ -953,18 +972,18 @@ fn text_color_changes_resolve_the_subtree() {
     f.mark(colored);
     f.resolve(&ui, fragment_root).unwrap();
     f.clear_flags();
-    assert_eq!(f.data(block).text_color, Paint::Solid(GREEN));
-    assert_eq!(f.data(nested).text_color, Paint::Solid(GREEN));
+    assert_eq!(f.data(block).color, Paint::Solid(GREEN));
+    assert_eq!(f.data(nested).color, Paint::Solid(GREEN));
     assert_eq!(f.boxed(block), &block_data);
     assert_eq!(f.text_colors(&ui), [BLUE, GREEN]);
     f.assert_matches_full_resolve(&ui, fragment_root);
 
     // Without a color of its own, the box inherits again.
-    ui.remove_prop::<TextColor>(colored);
+    ui.remove_prop::<style::Color>(colored);
     f.mark(colored);
     f.resolve(&ui, fragment_root).unwrap();
     f.clear_flags();
-    assert_eq!(f.data(nested).text_color, Paint::Solid(BLUE));
+    assert_eq!(f.data(nested).color, Paint::Solid(BLUE));
     assert_eq!(f.text_colors(&ui), [BLUE]);
     f.assert_matches_full_resolve(&ui, fragment_root);
 }
@@ -978,7 +997,7 @@ fn unchanged_inherited_values_stop_resolving_the_subtree() {
     let own = ui.create(
         Node::Box,
         (
-            TextColor(AutoValue::Value(Paint::Solid(RED))),
+            style::Color(AutoValue::Value(Paint::Solid(RED))),
             OutlineWidth(StyleUnit::Px(1.0)),
         ),
     );
@@ -991,12 +1010,15 @@ fn unchanged_inherited_values_stop_resolving_the_subtree() {
 
     // A change the descendants would not see if they were resolved: change
     // the props of the nested text without marking it.
-    ui.set_props(nested, (TextColor(AutoValue::Value(Paint::Solid(GREEN))),));
+    ui.set_props(
+        nested,
+        (style::Color(AutoValue::Value(Paint::Solid(GREEN))),),
+    );
     ui.set_props(
         parent,
         (
             OutlineWidth(StyleUnit::Px(8.0)),
-            TextColor(AutoValue::Value(Paint::Solid(BLUE))),
+            style::Color(AutoValue::Value(Paint::Solid(BLUE))),
         ),
     );
     f.mark(parent);
@@ -1006,8 +1028,8 @@ fn unchanged_inherited_values_stop_resolving_the_subtree() {
     assert_eq!(f.data(parent).outline_width, 8.0);
     // `own` is resolved again, to the same inherited values, so its text
     // child is not.
-    assert_eq!(f.data(own).text_color, Paint::Solid(RED));
-    assert_eq!(f.data(nested).text_color, Paint::Solid(RED));
+    assert_eq!(f.data(own).color, Paint::Solid(RED));
+    assert_eq!(f.data(nested).color, Paint::Solid(RED));
 }
 
 #[test]
@@ -1134,7 +1156,10 @@ fn collapsed_fragments_have_no_inverse_transform() {
             Transform(Affine::scale_non_uniform(0.0, 1.0)),
         ),
     );
-    let content = ui.create(Node::Box, (fixed(40.0, 20.0), Fill(Paint::Solid(RED))));
+    let content = ui.create(
+        Node::Box,
+        (fixed(40.0, 20.0), Background(Paint::Solid(RED))),
+    );
     ui.append(root, collapsed);
     ui.append(collapsed, content);
 
@@ -1421,7 +1446,10 @@ fn paints_logical_layouts_at_the_display_scale_factor() {
         Node::Box,
         (bx::Padding(LayoutRect::new_all(StyleUnit::Px(5.0))),),
     );
-    let block = ui.create(Node::Box, (fixed(40.0, 20.0), Fill(Paint::Solid(RED))));
+    let block = ui.create(
+        Node::Box,
+        (fixed(40.0, 20.0), Background(Paint::Solid(RED))),
+    );
     ui.append(root, block);
     text(&mut ui, root, "scaled text");
 
@@ -1465,7 +1493,10 @@ fn paints_logical_layouts_at_the_display_scale_factor() {
 #[test]
 fn invalid_scale_factors_paint_nothing() {
     let mut ui = Ui::new();
-    let root = ui.create(Node::Box, (fixed(40.0, 20.0), Fill(Paint::Solid(RED))));
+    let root = ui.create(
+        Node::Box,
+        (fixed(40.0, 20.0), Background(Paint::Solid(RED))),
+    );
 
     let mut f = Fixture::default();
     f.build(&ui, root);
@@ -1990,7 +2021,7 @@ fn scroll_fixture(
             fixed(50.0, 30.0),
             bx::Border(LayoutRect::new_all(StyleUnit::Px(2.0))),
             hidden(),
-            Fill(Paint::Solid(RED)),
+            Background(Paint::Solid(RED)),
             scroll.0,
             scroll.1,
         ),
@@ -1999,7 +2030,10 @@ fn scroll_fixture(
     ui.append(root, scroller);
 
     let rows = [GREEN, BLUE, RED].map(|color| {
-        let row = ui.create(Node::Box, (fixed(40.0, 20.0), Fill(Paint::Solid(color))));
+        let row = ui.create(
+            Node::Box,
+            (fixed(40.0, 20.0), Background(Paint::Solid(color))),
+        );
         ui.append(scroller, row);
         row
     });
@@ -2304,7 +2338,7 @@ fn selection_backgrounds_paint_behind_the_selected_glyphs() {
     let root = ui.create(
         Node::Box,
         (
-            TextColor(AutoValue::Value(Paint::Solid(BLUE))),
+            style::Color(AutoValue::Value(Paint::Solid(BLUE))),
             SelectionFill(AutoValue::Value(Paint::Solid(GREEN))),
         ),
     );

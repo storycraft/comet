@@ -38,8 +38,8 @@ fn content(cx: &UiCx) -> NodeKey {
         .flex()
         .size(size(vw(100), auto()))
         .min_size(size(auto(), vh(100)))
-        .fill(Paint::Solid(Color::from_rgb8(239, 242, 247)))
-        .text_color(AutoValue::Value(Paint::Solid(Color::from_rgb8(36, 46, 63))))
+        .background(Paint::Solid(Color::from_rgb8(239, 242, 247)))
+        .color(AutoValue::Value(Paint::Solid(Color::from_rgb8(36, 46, 63))))
         .children(|cx| [counter(cx), spinner(cx)])
 }
 
@@ -96,7 +96,7 @@ fn spinner(cx: &UiCx) -> NodeKey {
                 .inset(sides(percent(50), auto(), auto(), percent(50)))
                 .size(size(px(SPINNER_SIZE), px(SPINNER_SIZE)))
                 .border_radius(all(px(24)))
-                .fill(Paint::Solid(Color::from_rgb8(240, 128, 96)))
+                .background(Paint::Solid(Color::from_rgb8(240, 128, 96)))
                 .transform(transform)
                 .build()
         })

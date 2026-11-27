@@ -62,13 +62,13 @@ pub struct LayoutInputData {
     /// inherited. See [`FragmentData::border_radii`].
     pub box_decoration_break: BoxDecorationBreak,
 
-    /// Color the item's glyph runs paint with: its
-    /// [`TextColor`](crate::style::TextColor), or the parent item's text
-    /// color when [auto](comet_layout::style::geometry::AutoValue::Auto).
-    /// Black for the root. Inherited along the input item tree, not the
-    /// fragment tree, so a block inside an inline span inherits from the
-    /// span.
-    pub text_color: Paint,
+    /// Primary color of the item's content, like `currentColor`, which its
+    /// glyph runs paint with: its [`Color`](crate::style::Color), or the
+    /// parent item's color when
+    /// [auto](comet_layout::style::geometry::AutoValue::Auto). Black for the
+    /// root. Inherited along the input item tree, not the fragment tree, so a
+    /// block inside an inline span inherits from the span.
+    pub color: Paint,
 
     /// Whether the item's text can be selected: not when its
     /// [`Selectable`](crate::style::Selectable) is
@@ -108,7 +108,7 @@ impl LayoutInputData {
     /// Whether `self` and `other` pass the same values down to the children
     /// of their item: those the children resolve with.
     pub fn inherits_same(&self, other: &Self) -> bool {
-        self.text_color == other.text_color
+        self.color == other.color
             && self.selectable == other.selectable
             && self.selection_container == other.selection_container
             && self.selection_color == other.selection_color

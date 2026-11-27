@@ -11,12 +11,13 @@ use comet_layout::{
         geometry::{AutoValue, Rect as LayoutRect, Size, StyleUnit, UnitResolveContext},
     },
 };
+use comet_paint::style;
 use comet_paint::{
     layer::{builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
     selection::rects::SelectionRects,
-    style::{AntiAliasing, BorderFill, BorderRadius, Fill, TextColor},
+    style::{AntiAliasing, Background, BorderFill, BorderRadius},
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
@@ -194,13 +195,13 @@ fn paints_wrapped_inline_backgrounds_and_glyphs_once_with_inherited_color() {
     let root_node = ui.create(
         Node::Box,
         (
-            TextColor(AutoValue::Value(Paint::Solid(blue))),
+            style::Color(AutoValue::Value(Paint::Solid(blue))),
             bx::Padding(LayoutRect::new_axis(StyleUnit::Px(7.0), StyleUnit::Px(9.0))),
         ),
     );
     let span = ui.create(
         Node::Box,
-        (bx::DisplayOuter::Inline, Fill(Paint::Solid(yellow))),
+        (bx::DisplayOuter::Inline, Background(Paint::Solid(yellow))),
     );
     let text = ui.create(
         Node::Text,
@@ -304,7 +305,7 @@ fn paints_atomic_inline_subtree_border_and_text_override_without_double_offsets(
     let red = Color::from_rgb8(180, 20, 20);
     let root_node = ui.create(
         Node::Box,
-        (TextColor(AutoValue::Value(Paint::Solid(Color::BLACK))),),
+        (style::Color(AutoValue::Value(Paint::Solid(Color::BLACK))),),
     );
     let before = ui.create(Node::Text, (Text("prefix ".into()),));
     let atomic = ui.create(
@@ -318,8 +319,8 @@ fn paints_atomic_inline_subtree_border_and_text_override_without_double_offsets(
             )),
             bx::Border(LayoutRect::new_all(StyleUnit::Px(2.0))),
             BorderFill(Paint::Solid(Color::BLACK)),
-            Fill(Paint::Solid(Color::WHITE)),
-            TextColor(AutoValue::Value(Paint::Solid(red))),
+            Background(Paint::Solid(Color::WHITE)),
+            style::Color(AutoValue::Value(Paint::Solid(red))),
         ),
     );
     let text = ui.create(Node::Text, (Text("atom".into()),));
@@ -376,7 +377,7 @@ fn text_nodes_paint_no_background_of_their_own() {
     let mut ui = Ui::new();
     let node = ui.create(
         Node::Text,
-        (Text("text".into()), Fill(Paint::Solid(Color::WHITE))),
+        (Text("text".into()), Background(Paint::Solid(Color::WHITE))),
     );
 
     let (inputs, tree, root) = build(&ui, node);
@@ -410,7 +411,7 @@ fn rounds_background_and_border_corners() {
                 AutoValue::Value(StyleUnit::Px(60.0)),
             )),
             bx::Border(LayoutRect::new_all(StyleUnit::Px(2.0))),
-            Fill(Paint::Solid(Color::WHITE)),
+            Background(Paint::Solid(Color::WHITE)),
             BorderFill(Paint::Solid(Color::BLACK)),
             BorderRadius(LayoutRect::new_invidiual(
                 StyleUnit::Px(3.0),
@@ -472,7 +473,7 @@ fn rounds_only_outer_edges_of_wrapped_fragments() {
         ui.set_props(
             node,
             (
-                Fill(Paint::Solid(Color::WHITE)),
+                Background(Paint::Solid(Color::WHITE)),
                 BorderRadius(LayoutRect::new_all(StyleUnit::Px(3.0))),
             ),
         );
@@ -524,10 +525,10 @@ fn anonymous_run_boxes_paint_nothing_and_offset_their_lines() {
     let mut ui = Ui::new();
     let gray = Color::from_rgb8(200, 200, 200);
     let yellow = Color::from_rgb8(250, 240, 20);
-    let root_node = ui.create(Node::Box, (Fill(Paint::Solid(gray)),));
+    let root_node = ui.create(Node::Box, (Background(Paint::Solid(gray)),));
     let span = ui.create(
         Node::Box,
-        (bx::DisplayOuter::Inline, Fill(Paint::Solid(yellow))),
+        (bx::DisplayOuter::Inline, Background(Paint::Solid(yellow))),
     );
     let before = ui.create(Node::Text, (Text("before".into()),));
     let block = ui.create(
@@ -537,7 +538,7 @@ fn anonymous_run_boxes_paint_nothing_and_offset_their_lines() {
                 AutoValue::Auto,
                 AutoValue::Value(StyleUnit::Px(20.0)),
             )),
-            Fill(Paint::Solid(Color::WHITE)),
+            Background(Paint::Solid(Color::WHITE)),
         ),
     );
     let after = ui.create(Node::Text, (Text("after".into()),));
@@ -620,8 +621,8 @@ fn skips_fragments_outside_viewport_but_paints_their_overflowing_children() {
 
     let root_node = ui.create(Node::Box, ());
     // Empty box at the top edge, overflowed by its child.
-    let empty = ui.create(Node::Box, (height(0.0), Fill(Paint::Solid(red))));
-    let overflow = ui.create(Node::Box, (height(40.0), Fill(Paint::Solid(blue))));
+    let empty = ui.create(Node::Box, (height(0.0), Background(Paint::Solid(red))));
+    let overflow = ui.create(Node::Box, (height(40.0), Background(Paint::Solid(blue))));
     // Below the overflowing child.
     let below = ui.create(
         Node::Box,
@@ -633,7 +634,7 @@ fn skips_fragments_outside_viewport_but_paints_their_overflowing_children() {
                 AutoValue::Value(StyleUnit::Px(0.0)),
                 AutoValue::Value(StyleUnit::Px(0.0)),
             )),
-            Fill(Paint::Solid(green)),
+            Background(Paint::Solid(green)),
         ),
     );
 
@@ -731,14 +732,17 @@ fn paints_descendants_moved_into_view_from_a_box_below_it() {
             )),
         ),
     );
-    let offscreen = ui.create(Node::Box, (fixed(10.0, 10.0), Fill(Paint::Solid(blue))));
+    let offscreen = ui.create(
+        Node::Box,
+        (fixed(10.0, 10.0), Background(Paint::Solid(blue))),
+    );
     // Moved up into view.
     let shifted = ui.create(
         Node::Box,
         (
             fixed(10.0, 10.0),
             inset(px(-300.0), AutoValue::Auto),
-            Fill(Paint::Solid(green)),
+            Background(Paint::Solid(green)),
         ),
     );
     ui.append(root, below);
@@ -780,7 +784,7 @@ fn paints_hoisted_boxes_positioned_into_view_past_boxes_below_it() {
             bx::Position(Position::Absolute),
             inset(px(5.0), px(7.0)),
             fixed(10.0, 10.0),
-            Fill(Paint::Solid(green)),
+            Background(Paint::Solid(green)),
         ),
     );
     ui.append(root, below);
@@ -798,10 +802,10 @@ fn paints_with_the_anti_aliasing_of_each_node() {
     let mut ui = Ui::new();
     let color = Paint::Solid(Color::from_rgb8(20, 20, 200));
     let root = ui.create(Node::Box, ());
-    let smooth = ui.create(Node::Box, (fixed(10.0, 10.0), Fill(color.clone())));
+    let smooth = ui.create(Node::Box, (fixed(10.0, 10.0), Background(color.clone())));
     let aliased = ui.create(
         Node::Box,
-        (fixed(10.0, 10.0), Fill(color), AntiAliasing(false)),
+        (fixed(10.0, 10.0), Background(color), AntiAliasing(false)),
     );
     // Not inherited: the text sets its own.
     let para = ui.create(Node::Box, (AntiAliasing(false),));

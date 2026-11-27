@@ -14,14 +14,17 @@ use comet_layout::{
     },
 };
 use comet_paint::hit::{HitTestResult, PaintHitTester};
+use comet_paint::style;
+use comet_paint::style::BorderRadius;
 use comet_paint::style::ScrollTop;
-use comet_paint::style::{BorderRadius, TextColor};
 use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
     selection::rects::SelectionRects,
-    style::{BackdropFilter, Fill, Filter, MixBlend, Opacity, Transform, TransformOrigin, ZIndex},
+    style::{
+        BackdropFilter, Background, Filter, MixBlend, Opacity, Transform, TransformOrigin, ZIndex,
+    },
 };
 use comet_tree::{
     node::{Node, NodeKey, Text},
@@ -250,7 +253,7 @@ fn z(value: i32) -> ZIndex {
     ZIndex(AutoValue::Value(value))
 }
 
-/// Fill colors, layer alphas, clips and pops of a scene, in order.
+/// Background colors, layer alphas, clips and pops of a scene, in order.
 fn commands(scene: &Scene) -> Vec<String> {
     scene
         .commands
@@ -399,19 +402,22 @@ fn pieces_of_inline_elements_start_layers() {
 #[test]
 fn layers_paint_in_z_index_order_around_their_owner() {
     let mut ui = Ui::new();
-    let root = ui.create(Node::Box, (Fill(Paint::Solid(Color::WHITE)),));
+    let root = ui.create(Node::Box, (Background(Paint::Solid(Color::WHITE)),));
     let above = ui.create(
         Node::Box,
-        (fixed(10.0, 10.0), z(1), Fill(Paint::Solid(GREEN))),
+        (fixed(10.0, 10.0), z(1), Background(Paint::Solid(GREEN))),
     );
-    let flow = ui.create(Node::Box, (fixed(10.0, 10.0), Fill(Paint::Solid(BLUE))));
+    let flow = ui.create(
+        Node::Box,
+        (fixed(10.0, 10.0), Background(Paint::Solid(BLUE))),
+    );
     let below = ui.create(
         Node::Box,
-        (fixed(10.0, 10.0), z(-1), Fill(Paint::Solid(RED))),
+        (fixed(10.0, 10.0), z(-1), Background(Paint::Solid(RED))),
     );
     let also_above = ui.create(
         Node::Box,
-        (fixed(10.0, 10.0), z(1), Fill(Paint::Solid(RED))),
+        (fixed(10.0, 10.0), z(1), Background(Paint::Solid(RED))),
     );
     ui.append(root, above);
     ui.append(root, flow);
@@ -447,12 +453,23 @@ fn translucent_layers_paint_into_a_group() {
     let root = ui.create(Node::Box, ());
     let translucent = ui.create(
         Node::Box,
-        (fixed(40.0, 20.0), Opacity(0.5), Fill(Paint::Solid(RED))),
+        (
+            fixed(40.0, 20.0),
+            Opacity(0.5),
+            Background(Paint::Solid(RED)),
+        ),
     );
-    let content = ui.create(Node::Box, (fixed(10.0, 10.0), Fill(Paint::Solid(GREEN))));
+    let content = ui.create(
+        Node::Box,
+        (fixed(10.0, 10.0), Background(Paint::Solid(GREEN))),
+    );
     let transparent = ui.create(
         Node::Box,
-        (fixed(40.0, 20.0), Opacity(0.0), Fill(Paint::Solid(BLUE))),
+        (
+            fixed(40.0, 20.0),
+            Opacity(0.0),
+            Background(Paint::Solid(BLUE)),
+        ),
     );
     ui.append(root, translucent);
     ui.append(translucent, content);
@@ -488,10 +505,13 @@ fn clips_apply_to_descendants_in_other_layers() {
             fixed(10.0, 10.0),
             z(1),
             Opacity(0.5),
-            Fill(Paint::Solid(RED)),
+            Background(Paint::Solid(RED)),
         ),
     );
-    let flow = ui.create(Node::Box, (fixed(10.0, 10.0), Fill(Paint::Solid(BLUE))));
+    let flow = ui.create(
+        Node::Box,
+        (fixed(10.0, 10.0), Background(Paint::Solid(BLUE))),
+    );
     ui.append(root, clipper);
     ui.append(clipper, raised);
     ui.append(clipper, flow);
@@ -563,9 +583,16 @@ fn filters_apply_to_a_group_in_the_owner_coordinates() {
     );
     let filtered = ui.create(
         Node::Box,
-        (fixed(40.0, 20.0), Filter(blur()), Fill(Paint::Solid(RED))),
+        (
+            fixed(40.0, 20.0),
+            Filter(blur()),
+            Background(Paint::Solid(RED)),
+        ),
     );
-    let content = ui.create(Node::Box, (fixed(10.0, 10.0), Fill(Paint::Solid(GREEN))));
+    let content = ui.create(
+        Node::Box,
+        (fixed(10.0, 10.0), Background(Paint::Solid(GREEN))),
+    );
     ui.append(root, filtered);
     ui.append(filtered, content);
 
@@ -593,18 +620,21 @@ fn filters_apply_to_a_group_in_the_owner_coordinates() {
 #[test]
 fn backdrop_filters_apply_behind_the_owner_border_box() {
     let mut ui = Ui::new();
-    let root = ui.create(Node::Box, (Fill(Paint::Solid(Color::WHITE)),));
+    let root = ui.create(Node::Box, (Background(Paint::Solid(Color::WHITE)),));
     let glass = ui.create(
         Node::Box,
         (
             fixed(40.0, 20.0),
             BackdropFilter(blur()),
             BorderRadius(LayoutRect::new_all(StyleUnit::Px(4.0))),
-            Fill(Paint::Solid(BLUE)),
+            Background(Paint::Solid(BLUE)),
         ),
     );
     // Overflows the border box, unclipped by the backdrop filter.
-    let content = ui.create(Node::Box, (fixed(80.0, 10.0), Fill(Paint::Solid(GREEN))));
+    let content = ui.create(
+        Node::Box,
+        (fixed(80.0, 10.0), Background(Paint::Solid(GREEN))),
+    );
     ui.append(root, glass);
     ui.append(glass, content);
 
@@ -646,7 +676,7 @@ fn filters_of_collapsed_owners_paint_nothing() {
             Filter(blur()),
             BackdropFilter(blur()),
             Transform(Affine::scale_non_uniform(0.0, 1.0)),
-            Fill(Paint::Solid(RED)),
+            Background(Paint::Solid(RED)),
         ),
     );
     ui.append(root, collapsed);
@@ -665,7 +695,7 @@ fn mix_blend_modes_start_layers_and_blend_their_group() {
         (
             fixed(40.0, 20.0),
             MixBlend(BlendMode::from(Mix::Multiply)),
-            Fill(Paint::Solid(RED)),
+            Background(Paint::Solid(RED)),
         ),
     );
     ui.append(root, blended);
@@ -1898,8 +1928,8 @@ fn inline_element_layers_paint_every_piece_with_its_items() {
         (
             bx::DisplayOuter::Inline,
             Opacity(0.5),
-            Fill(Paint::Solid(GREEN)),
-            TextColor(AutoValue::Value(Paint::Solid(RED))),
+            Background(Paint::Solid(GREEN)),
+            style::Color(AutoValue::Value(Paint::Solid(RED))),
         ),
     );
     let wrapped = ui.create(Node::Text, (Text("one two three four five six".into()),));
@@ -1910,7 +1940,7 @@ fn inline_element_layers_paint_every_piece_with_its_items() {
             bx::DisplayOuter::Inline,
             bx::DisplayInner::FlowRoot,
             fixed(10.0, 10.0),
-            Fill(Paint::Solid(BLUE)),
+            Background(Paint::Solid(BLUE)),
         ),
     );
     ui.append(root, lead);
@@ -1946,8 +1976,8 @@ fn inline_element_layers_paint_above_the_content_around_them() {
         (
             bx::DisplayOuter::Inline,
             z(1),
-            Fill(Paint::Solid(GREEN)),
-            TextColor(AutoValue::Value(Paint::Solid(RED))),
+            Background(Paint::Solid(GREEN)),
+            style::Color(AutoValue::Value(Paint::Solid(RED))),
         ),
     );
     let inside = ui.create(Node::Text, (Text("inside".into()),));

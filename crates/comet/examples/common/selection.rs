@@ -21,7 +21,7 @@ pub(super) fn showcase(cx: &UiCx) -> NodeKey {
                 }),
                 caption(cx, "None / pressing this card selects nothing"),
                 card(cx, AutoValue::Value(UserSelect::None))
-                    .text_color(AutoValue::Value(solid(MUTED)))
+                    .color(AutoValue::Value(solid(MUTED)))
                     .children(|cx| {
                         cx.text("Labels like this one are left out of selections.")
                             .build()
@@ -55,7 +55,7 @@ pub(super) fn showcase(cx: &UiCx) -> NodeKey {
 fn card(cx: &UiCx, select: AutoValue<UserSelect>) -> NodeBuild<'_> {
     cx.div()
         .selectable(select)
-        .fill(solid(Color::WHITE))
+        .background(solid(Color::WHITE))
         .border_radius(all(px(8)))
         .padding(axis(px(10), px(12)))
 }
@@ -64,7 +64,7 @@ fn caption(cx: &UiCx, label: &str) -> NodeKey {
     cx.div()
         .font_size(px(12))
         .font_weight(parley::FontWeight::SEMI_BOLD)
-        .text_color(AutoValue::Value(solid(MUTED)))
+        .color(AutoValue::Value(solid(MUTED)))
         .padding(sides(px(10), px(0), px(6), px(0)))
         .children(|cx| cx.text(label).build())
 }

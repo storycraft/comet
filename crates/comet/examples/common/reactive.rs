@@ -56,7 +56,7 @@ fn counter(cx: &UiCx) -> impl IntoView + use<> {
         .role(Role::ProgressIndicator)
         .size(size(auto(), px(10)))
         .margin(sides(px(10), px(0), px(0), px(0)))
-        .fill(solid(Color::from_rgb8(255, 226, 204)))
+        .background(solid(Color::from_rgb8(255, 226, 204)))
         .border_radius(all(px(5)))
         .children(|cx| {
             cx.div()
@@ -64,7 +64,7 @@ fn counter(cx: &UiCx) -> impl IntoView + use<> {
                     let step = count.get() % (STEPS + 1);
                     size(percent(step as f64 * 100.0 / STEPS as f64), percent(100))
                 }))
-                .fill(solid(Color::from_rgb8(240, 128, 96)))
+                .background(solid(Color::from_rgb8(240, 128, 96)))
                 .border_radius(all(px(5)))
                 .build()
         });
@@ -106,7 +106,7 @@ fn spinner(cx: &UiCx) -> impl IntoView + use<> {
                             .inset(sides(percent(50), auto(), auto(), percent(50)))
                             .size(size(px(SPINNER_SIZE), px(SPINNER_SIZE)))
                             .border_radius(all(px(12)))
-                            .fill(solid(Color::from_rgb8(240, 128, 96)))
+                            .background(solid(Color::from_rgb8(240, 128, 96)))
                             // Move the top-left corner, at the centre, back by
                             // half the size, then spin around the square's own
                             // centre.
@@ -126,7 +126,7 @@ fn caption(cx: &UiCx, label: &str) -> NodeKey {
     cx.div()
         .font_size(px(12))
         .font_weight(parley::FontWeight::SEMI_BOLD)
-        .text_color(AutoValue::Value(solid(MUTED)))
+        .color(AutoValue::Value(solid(MUTED)))
         .padding(sides(px(8), px(0), px(6), px(0)))
         .children(|cx| cx.text(label).build())
 }
