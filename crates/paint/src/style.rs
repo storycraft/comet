@@ -118,8 +118,8 @@ pub enum UserSelect {
 /// [`LayoutInputData::box_decoration_break`](crate::prepaint::LayoutInputData::box_decoration_break).
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BoxDecorationBreak {
-    /// The fragments are painted as pieces of one box: the corners joining
-    /// another fragment are square.
+    /// The fragments are painted as pieces of one box: the sides joining
+    /// another fragment have no border, and their corners are square.
     #[default]
     Break,
     /// Each fragment is painted as a box of its own, closed on every side:

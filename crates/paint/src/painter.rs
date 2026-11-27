@@ -25,7 +25,7 @@ use crate::{
         tree::{PaintLayerTree, layer_owner},
     },
     prepaint::{
-        FragmentData, LayoutInputData,
+        FragmentData, JoinedSides, LayoutInputData,
         fragment::{BoxRole, for_each_paint_child_on_lines, paint_props, piece_of_part},
         tree::PrepaintTree,
     },
@@ -1062,6 +1062,19 @@ fn box_bounds(geometry: &FragmentGeometry, data: Option<&LayoutInputData>, rect:
     rect + Insets::uniform(width)
 }
 
+/// The area a border `width` wide stroked outside the border box `rect`
+/// paints in, cut at the sides in `joins`.
+fn border_clip(rect: Rect, width: f64, joins: JoinedSides) -> Rect {
+    let side = |joined: bool| if joined { 0.0 } else { width };
+
+    rect + Insets::new(
+        side(joins.left),
+        side(joins.top),
+        side(joins.right),
+        side(joins.bottom),
+    )
+}
+
 fn border_width(geometry: &FragmentGeometry) -> f64 {
     let border = geometry.border;
 
@@ -1113,6 +1126,23 @@ fn draw_box(
     if width > 0.0
         && let Some(fill) = props.get::<BorderFill>()
     {
+        // A broken box leaves out the border on the sides joining its other
+        // fragments: the border is stroked outside the box, so clipping at
+        // those sides cuts it there, and the sides around run on into the
+        // next fragment.
+        let joins = match decoration_break {
+            BoxDecorationBreak::Break => JoinedSides::of(fragment),
+            BoxDecorationBreak::Clone => JoinedSides::default(),
+        };
+        let clipped = !joins.is_empty();
+        if clipped {
+            scene.push_clip_layer(
+                peniko::Fill::NonZero,
+                transform,
+                &border_clip(rect, width, joins),
+            );
+        }
+
         scene.stroke(
             &Stroke::new(width),
             transform,
@@ -1121,6 +1151,10 @@ fn draw_box(
             &rect.inset(-width / 2.0).to_rounded_rect(radii),
             AntiAliasing::Enabled,
         );
+
+        if clipped {
+            scene.pop_layer();
+        }
     }
 
     if let Some(data) = data.filter(|data| data.outline_width > 0.0)
@@ -1166,4 +1200,41 @@ fn outline_path(rect: Rect, radii: RoundedRectRadii, offset: f64, width: f64) ->
         grow(radii.bottom_right),
         grow(radii.bottom_left),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn border_clips_cut_the_joined_sides() {
+        let rect = Rect::new(10.0, 20.0, 50.0, 40.0);
+
+        // Closed boxes clip nowhere inside their border.
+        assert_eq!(
+            border_clip(rect, 2.0, JoinedSides::default()),
+            Rect::new(8.0, 18.0, 52.0, 42.0)
+        );
+
+        // The middle piece of an inline element is open on both ends.
+        let middle = JoinedSides {
+            left: true,
+            right: true,
+            ..JoinedSides::default()
+        };
+        assert_eq!(
+            border_clip(rect, 2.0, middle),
+            Rect::new(10.0, 18.0, 50.0, 42.0)
+        );
+
+        // The first fragment of a box split down the page is open below.
+        let first = JoinedSides {
+            bottom: true,
+            ..JoinedSides::default()
+        };
+        assert_eq!(
+            border_clip(rect, 2.0, first),
+            Rect::new(8.0, 18.0, 52.0, 40.0)
+        );
+    }
 }

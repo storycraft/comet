@@ -171,30 +171,59 @@ impl FragmentData {
     }
 }
 
-/// `radii` of `fragment`, with the corners joining a linked fragment square.
-fn split_radii(fragment: &BoxFragment, mut radii: RoundedRectRadii) -> RoundedRectRadii {
-    // Inline part boxes continue to the right of their previous box, other
-    // boxes below it.
-    let vertical = fragment.box_type != BoxFragmentType::InlinePart;
+/// The sides of a box fragment joining a linked fragment it was split
+/// from.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct JoinedSides {
+    pub left: bool,
+    pub top: bool,
+    pub right: bool,
+    pub bottom: bool,
+}
 
-    if fragment.link.prev.is_some() {
-        radii.top_left = 0.0;
+impl JoinedSides {
+    /// The sides of `fragment` joining its linked fragments. Inline part
+    /// boxes continue to the right of their previous box, other boxes below
+    /// it.
+    pub fn of(fragment: &BoxFragment) -> Self {
+        let (prev, next) = (fragment.link.prev.is_some(), fragment.link.next.is_some());
 
-        if vertical {
-            radii.top_right = 0.0;
+        if fragment.box_type == BoxFragmentType::InlinePart {
+            Self {
+                left: prev,
+                right: next,
+                ..Self::default()
+            }
         } else {
-            radii.bottom_left = 0.0;
+            Self {
+                top: prev,
+                bottom: next,
+                ..Self::default()
+            }
         }
     }
 
-    if fragment.link.next.is_some() {
-        radii.bottom_right = 0.0;
+    /// Whether no side joins another fragment.
+    pub fn is_empty(self) -> bool {
+        self == Self::default()
+    }
+}
 
-        if vertical {
-            radii.bottom_left = 0.0;
-        } else {
-            radii.top_right = 0.0;
-        }
+/// `radii` of `fragment`, with the corners joining a linked fragment square.
+fn split_radii(fragment: &BoxFragment, mut radii: RoundedRectRadii) -> RoundedRectRadii {
+    let joins = JoinedSides::of(fragment);
+
+    if joins.left || joins.top {
+        radii.top_left = 0.0;
+    }
+    if joins.top || joins.right {
+        radii.top_right = 0.0;
+    }
+    if joins.right || joins.bottom {
+        radii.bottom_right = 0.0;
+    }
+    if joins.bottom || joins.left {
+        radii.bottom_left = 0.0;
     }
 
     radii
