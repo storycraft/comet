@@ -48,9 +48,6 @@ pub struct UiTrees {
     pub layers: PaintLayerTree,
     /// Accessibility nodes, built while accessibility is active.
     pub ax: AxTree,
-    /// External contents of the UI, drawn by content paints and content
-    /// boxes.
-    pub contents: ContentManager,
 }
 
 impl UiTrees {
@@ -271,6 +268,7 @@ impl Pipeline {
     pub fn layout(&mut self, tree: &mut UiTree, root: NodeKey, viewport: Size<f64>) -> Option<()> {
         self.take_changes(tree);
         let ui = &tree.ui;
+        let contents = &tree.contents;
         let UiTrees {
             inputs,
             dirty,
@@ -278,7 +276,6 @@ impl Pipeline {
             prepaint,
             selection,
             layers,
-            contents,
             ..
         } = &mut self.trees;
         let builders = &mut self.builders;
@@ -378,11 +375,13 @@ impl Pipeline {
         Some(())
     }
 
-    /// Paint the last layout of `tree` into `scene`, covering `physical`.
+    /// Paint the last layout of `ui` into `scene`, covering `physical`, with
+    /// the `contents` its nodes display.
     /// Does nothing until a layout succeeds.
     pub fn paint(
         &mut self,
         ui: &Ui,
+        contents: &ContentManager,
         physical: kurbo::Rect,
         scale_factor: f64,
         scene: &mut impl anyrender::PaintScene,
@@ -398,7 +397,7 @@ impl Pipeline {
             &trees.fragments,
             &trees.prepaint,
             &trees.selection,
-            &trees.contents,
+            contents,
             &trees.layers,
             layer_root,
             physical,

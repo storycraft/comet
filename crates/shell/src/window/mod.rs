@@ -260,6 +260,7 @@ impl Window {
         let tree = self.ui.tree().borrow();
         self.pipeline.paint(
             &tree.ui,
+            &tree.contents,
             self.viewport.physical_rect(),
             self.viewport.scale_factor,
             scene,

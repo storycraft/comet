@@ -1,18 +1,26 @@
+use comet_content::manager::ContentManager;
 use comet_tree::{node::NodeKey, ui::Ui};
 use rustc_hash::FxHashMap;
 
 use crate::prop::{PropHint, ReactiveProp};
 
-/// A [`Ui`] with the changes made to it since they were last taken. Shared
-/// as `Rc<RefCell<UiTree>>` between the application, which takes the
-/// changes to lay out and paint them, and reactive bindings, which write
-/// props into it.
+/// A [`Ui`] with the changes made to it since they were last taken, and the
+/// external contents its nodes display. Shared as `Rc<RefCell<UiTree>>`
+/// between the application, which takes the changes to lay out and paint
+/// them, and reactive bindings, which write props into it.
+///
+/// Components add contents to [`Self::contents`] while building, such as
+/// through [`UiCx::tree`](crate::cx::UiCx::tree), and display them by their
+/// id with `DisplayInner::Content` or a content paint.
 ///
 /// Never hold a borrow across an executor poll or `.await`: bindings run as
 /// executor tasks and borrow it mutably.
 #[derive(Default)]
 pub struct UiTree {
     pub ui: Ui,
+    /// External contents displayed by the nodes of [`Self::ui`], sizing and
+    /// drawing their boxes.
+    pub contents: ContentManager,
     /// Flags of the nodes changed since the last
     /// [`take_changes`](Self::take_changes).
     changes: FxHashMap<NodeKey, PropHint>,
