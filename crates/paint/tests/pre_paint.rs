@@ -1,4 +1,5 @@
 use anyrender::{Scene, recording::RenderCommand};
+use comet_content::manager::ContentManager;
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{
@@ -266,6 +267,7 @@ impl Fixture {
             &self.fragments,
             &self.prepaint,
             &self.selection,
+            &ContentManager::new(),
             &layers,
             root,
             SCENE_VIEWPORT,
@@ -1408,6 +1410,7 @@ impl Fixture {
             &self.fragments,
             &self.prepaint,
             &self.selection,
+            &ContentManager::new(),
             &layers,
             root,
             SCENE_VIEWPORT.scale_from_origin(scale_factor),
@@ -2147,6 +2150,7 @@ fn layers_painted_alone_scroll_with_their_ancestors() {
         &f.fragments,
         &f.prepaint,
         &f.selection,
+        &ContentManager::new(),
         &layers,
         layer,
         SCENE_VIEWPORT,

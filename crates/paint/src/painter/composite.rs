@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use anyrender::PaintScene;
+use comet_content::manager::ContentManager;
 use comet_layout::{
     fragment::{BoxFragment, BoxFragmentKey, tree::FragmentTree},
     input::tree::LayoutInputTree,
@@ -63,6 +64,13 @@ impl CometCompositePainter {
     /// with their inline part boxes. Items placing no box paint no
     /// background, border or outline.
     ///
+    /// A [content](crate::style::Paint::Content) background draws its
+    /// content from `contents` over the border box, clipped to it and rounded
+    /// with its border radius. A box displaying a content, with
+    /// `DisplayInner::Content`, draws it over its content box, clipped to it,
+    /// after its background and border and before its outline. Contents
+    /// missing from `contents` draw nothing.
+    ///
     /// Each glyph run paints the [`SelectionRects`] of its text item across
     /// it with the item's selection background, then its glyphs, then the
     /// selected glyphs again in the item's selection color.
@@ -98,6 +106,7 @@ impl CometCompositePainter {
         tree: &FragmentTree,
         prepaint: &PrepaintTree,
         selection: &SelectionRects,
+        contents: &ContentManager,
         layers: &PaintLayerTree,
         root: PaintLayerKey,
         viewport: Rect,
@@ -136,6 +145,7 @@ impl CometCompositePainter {
             tree,
             prepaint,
             selection,
+            contents,
             layers,
             viewport,
             scale_factor,

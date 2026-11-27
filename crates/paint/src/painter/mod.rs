@@ -19,6 +19,7 @@ pub use composite::CometCompositePainter;
 pub use layer::CometLayerPainter;
 
 use anyrender::PaintScene;
+use comet_content::manager::ContentManager;
 use comet_layout::{
     fragment::{BoxFragment, BoxFragmentKey, FragmentGeometry, FragmentRef, tree::FragmentTree},
     input::tree::LayoutInputTree,
@@ -147,6 +148,8 @@ struct Sources<'a> {
     prepaint: &'a PrepaintTree,
     /// Rectangles behind the selected text.
     selection: &'a SelectionRects,
+    /// Contents drawn by content paints and content boxes.
+    contents: &'a ContentManager,
     layers: &'a PaintLayerTree,
     /// The scene's viewport, in physical pixels.
     viewport: Rect,

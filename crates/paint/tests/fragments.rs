@@ -1,4 +1,5 @@
 use anyrender::{AntiAliasing as EdgeMode, Glyph, Scene, recording::RenderCommand};
+use comet_content::manager::ContentManager;
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{BoxFragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -155,6 +156,25 @@ fn draw(
     viewport: Rect,
     scene: &mut Scene,
 ) {
+    let contents = ContentManager::new();
+    draw_with(
+        painter, ui, inputs, tree, root, units, viewport, &contents, scene,
+    );
+}
+
+/// [`draw`] with `contents`.
+#[allow(clippy::too_many_arguments)]
+fn draw_with(
+    painter: &mut CometCompositePainter,
+    ui: &Ui,
+    inputs: &LayoutInputTree,
+    tree: &FragmentTree,
+    root: BoxFragmentKey,
+    units: &UnitResolveContext,
+    viewport: Rect,
+    contents: &ContentManager,
+    scene: &mut Scene,
+) {
     // Fresh trees resolve every fragment, so no flags are needed.
     let dirty = &mut DirtyMap::new();
     let mut prepaint = PrepaintTree::new();
@@ -180,6 +200,7 @@ fn draw(
         tree,
         &prepaint,
         &SelectionRects::default(),
+        contents,
         &layers,
         layer_root,
         viewport,
@@ -841,20 +862,166 @@ fn paints_with_the_anti_aliasing_of_each_node() {
     );
 }
 
+/// A content filling the box it is drawn into with its color, keeping the
+/// sizes it was drawn at.
+struct Swatch {
+    color: Color,
+    sizes: std::rc::Rc<std::cell::RefCell<Vec<kurbo::Size>>>,
+}
+
+impl comet_content::Content for Swatch {
+    fn measure(&self, _: &comet_content::MeasureInput<'_>) -> taffy::Size<f32> {
+        taffy::Size::ZERO
+    }
+
+    fn draw(&self, input: &comet_content::DrawInput<'_>, scene: &mut Scene) {
+        use anyrender::PaintScene;
+
+        self.sizes.borrow_mut().push(input.size);
+        scene.fill(
+            peniko::Fill::NonZero,
+            kurbo::Affine::IDENTITY,
+            anyrender::Paint::Solid(self.color),
+            None,
+            &Rect::from_origin_size(Point::ORIGIN, input.size),
+            EdgeMode::Enabled,
+        );
+    }
+}
+
+/// Contents holding a [`Swatch`] of `color`, its id and the sizes it was
+/// drawn at.
+fn swatch(
+    color: Color,
+) -> (
+    ContentManager,
+    comet_content::ContentId,
+    std::rc::Rc<std::cell::RefCell<Vec<kurbo::Size>>>,
+) {
+    let mut contents = ContentManager::new();
+    let sizes = std::rc::Rc::default();
+    let id = contents.insert(Swatch {
+        color,
+        sizes: std::rc::Rc::clone(&sizes),
+    });
+
+    (contents, id, sizes)
+}
+
+fn paint_with(ui: &Ui, node: NodeKey, contents: &ContentManager) -> Scene {
+    let (inputs, tree, root) = build(ui, node);
+    let mut scene = Scene::new();
+    draw_with(
+        &mut CometCompositePainter::new(),
+        ui,
+        &inputs,
+        &tree,
+        root,
+        &UNITS,
+        SCENE_VIEWPORT,
+        contents,
+        &mut scene,
+    );
+    scene
+}
+
+/// The clips, fills and pops of a scene, with their scene bounds.
+fn clipped_fills(scene: &Scene) -> Vec<String> {
+    scene
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            RenderCommand::PushClipLayer(clip) => Some(format!(
+                "clip {:?}",
+                clip.transform.transform_rect_bbox(clip.clip.bounding_box())
+            )),
+            RenderCommand::Fill(fill) => Some(format!(
+                "fill {:?} {:?}",
+                fill.transform
+                    .transform_rect_bbox(fill.shape.bounding_box()),
+                solid(&fill.brush).to_rgba8()
+            )),
+            RenderCommand::PopLayer => Some("pop".to_owned()),
+            _ => None,
+        })
+        .collect()
+}
+
 #[test]
-fn content_paints_are_not_drawn_yet() {
+fn content_backgrounds_draw_their_content_over_the_border_box() {
+    let green = Color::from_rgb8(20, 200, 20);
+    let (contents, id, sizes) = swatch(green);
     let mut ui = Ui::new();
-    let id = comet_content::ContentId::from_ffi(std::num::NonZeroU64::MIN);
+    let root = ui.create(Node::Box, ());
+    let spacer = ui.create(Node::Box, (fixed(10.0, 10.0),));
+    let boxed = ui.create(
+        Node::Box,
+        (
+            fixed(40.0, 20.0),
+            bx::Border(LayoutRect::new_all(StyleUnit::Px(2.0))),
+            Background(Paint::Content(id)),
+            // Content borders are not drawn yet.
+            BorderFill(Paint::Content(id)),
+        ),
+    );
+    ui.append(root, spacer);
+    ui.append(root, boxed);
+
+    let border_box = Rect::new(0.0, 10.0, 40.0, 30.0);
+    assert_eq!(
+        clipped_fills(&paint_with(&ui, root, &contents)),
+        [
+            format!("clip {border_box:?}"),
+            format!("fill {border_box:?} {:?}", green.to_rgba8()),
+            "pop".to_owned(),
+        ]
+    );
+    assert_eq!(*sizes.borrow(), [kurbo::Size::new(40.0, 20.0)]);
+}
+
+#[test]
+fn content_boxes_draw_their_content_over_the_content_box() {
+    let green = Color::from_rgb8(20, 200, 20);
+    let (contents, id, sizes) = swatch(green);
+    let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let content = ui.create(
         Node::Box,
         (
-            fixed(10.0, 10.0),
-            Background(Paint::Content(id)),
-            BorderFill(Paint::Content(id)),
+            bx::DisplayInner::Content(id),
+            fixed(40.0, 20.0),
+            bx::Border(LayoutRect::new_all(StyleUnit::Px(2.0))),
+            bx::Padding(LayoutRect::new_all(StyleUnit::Px(3.0))),
         ),
     );
     ui.append(root, content);
+
+    let content_box = Rect::new(5.0, 5.0, 35.0, 15.0);
+    assert_eq!(
+        clipped_fills(&paint_with(&ui, root, &contents)),
+        [
+            format!("clip {content_box:?}"),
+            format!("fill {content_box:?} {:?}", green.to_rgba8()),
+            "pop".to_owned(),
+        ]
+    );
+    assert_eq!(*sizes.borrow(), [kurbo::Size::new(30.0, 10.0)]);
+}
+
+#[test]
+fn missing_contents_draw_nothing() {
+    let (_, id, _) = swatch(Color::BLACK);
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let boxed = ui.create(
+        Node::Box,
+        (
+            bx::DisplayInner::Content(id),
+            fixed(10.0, 10.0),
+            Background(Paint::Content(id)),
+        ),
+    );
+    ui.append(root, boxed);
 
     assert!(paint(&ui, root).commands.is_empty());
 }

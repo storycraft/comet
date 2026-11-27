@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 comet-accesskit.workspace = true
+comet-content.workspace = true
 comet-layout.workspace = true
 comet-paint.workspace = true
 comet-reactivity.workspace = true

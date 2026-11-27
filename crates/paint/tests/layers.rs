@@ -1,4 +1,5 @@
 use anyrender::{Scene, recording::RenderCommand};
+use comet_content::manager::ContentManager;
 use comet_layout::style::geometry::Rect as LayoutRect;
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
@@ -225,6 +226,7 @@ impl Fixture {
             &self.fragments,
             &self.prepaint,
             &SelectionRects::default(),
+            &ContentManager::new(),
             &self.layers,
             self.root,
             SCENE_VIEWPORT,

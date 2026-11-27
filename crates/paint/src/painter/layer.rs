@@ -1,10 +1,14 @@
 //! Drawing of the fragments of a single paint layer.
 
-use anyrender::{AntiAliasing, PaintRef, PaintScene};
+use anyrender::{AntiAliasing, PaintRef, PaintScene, Scene};
 use bytemuck::TransparentWrapper;
-use comet_layout::fragment::{
-    BoxFragment, BoxFragmentKey, FragmentGeometry, FragmentRef, inline::InlineItem,
-    inline::InlineItemKind,
+use comet_content::{ContentId, DrawInput};
+use comet_layout::{
+    fragment::{
+        BoxFragment, BoxFragmentKey, FragmentGeometry, FragmentRef, inline::InlineItem,
+        inline::InlineItemKind,
+    },
+    style::bx::DisplayInner,
 };
 use comet_tree::ui::Props;
 use kurbo::{Affine, BezPath, Insets, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke, Vec2};
@@ -35,6 +39,8 @@ pub struct CometLayerPainter {
     pending: Vec<Visit>,
     /// Selection area behind the glyph run being painted.
     selection: Vec<Rect>,
+    /// Recording of the content being drawn, replayed into the scene.
+    content: Scene,
 }
 
 /// A step of painting the fragments of a layer.
@@ -78,7 +84,15 @@ impl CometLayerPainter {
         scene: &mut impl PaintScene,
     ) {
         if BoxRole::of(fragment) != BoxRole::InlinePart {
-            draw_box_fragment(sources, owner, fragment, transforms, clip, scene);
+            draw_box_fragment(
+                sources,
+                &mut self.content,
+                owner,
+                fragment,
+                transforms,
+                clip,
+                scene,
+            );
             return;
         }
 
@@ -87,7 +101,15 @@ impl CometLayerPainter {
                 .part_transforms(bases, part)
                 .zip(sources.tree.get(part))
             {
-                draw_box_fragment(sources, part, part_fragment, part_transforms, clip, scene);
+                draw_box_fragment(
+                    sources,
+                    &mut self.content,
+                    part,
+                    part_fragment,
+                    part_transforms,
+                    clip,
+                    scene,
+                );
             }
         }
     }
@@ -187,7 +209,15 @@ impl CometLayerPainter {
                     };
 
                     let transforms = parent.then(own);
-                    draw_box_fragment(sources, key, box_fragment, transforms, clip, scene);
+                    draw_box_fragment(
+                        sources,
+                        &mut self.content,
+                        key,
+                        box_fragment,
+                        transforms,
+                        clip,
+                        scene,
+                    );
 
                     // Nothing below paints in view: skip the whole subtree.
                     if !sources.visible(
@@ -239,6 +269,7 @@ impl CometLayerPainter {
                                 let transforms = parent.then(own);
                                 draw_box_fragment(
                                     sources,
+                                    &mut self.content,
                                     part,
                                     part_fragment,
                                     transforms,
@@ -454,8 +485,10 @@ fn draw_glyphs(
 /// descendants, inside the clips bounded by `clip`. Anonymous boxes paint
 /// nothing, and neither do the boxes of text items, which have no paint
 /// data.
+#[allow(clippy::too_many_arguments)]
 fn draw_box_fragment(
     sources: Sources<'_>,
+    recording: &mut Scene,
     key: BoxFragmentKey,
     fragment: &BoxFragment,
     transforms: Transforms,
@@ -473,6 +506,7 @@ fn draw_box_fragment(
     if sources.visible(transforms.transform, box_bounds(geometry, data, rect), clip) {
         draw_box(
             sources,
+            recording,
             fragment,
             data,
             sources.prepaint.fragment(key),
@@ -524,8 +558,10 @@ fn border_width(geometry: &FragmentGeometry) -> f64 {
 /// [border radii](FragmentData::border_radii) from `paint_data`, square at
 /// the joins of a split box unless it clones its decoration, and the outline with all four corners of its
 /// [border radius](FragmentData::border_radius).
+#[allow(clippy::too_many_arguments)]
 fn draw_box(
     sources: Sources<'_>,
+    recording: &mut Scene,
     fragment: &BoxFragment,
     data: Option<&LayoutInputData>,
     paint_data: Option<&FragmentData>,
@@ -544,21 +580,31 @@ fn draw_box(
         data.border_radii(fragment, decoration_break)
     });
 
-    if let Some(fill) = props.get::<Background>()
-        && let Some(paint) = scene_paint(&fill.0)
-    {
-        scene.fill(
-            peniko::Fill::NonZero,
-            transform,
-            paint,
-            None,
-            &rect.to_rounded_rect(radii),
-            anti_aliasing,
-        );
+    if let Some(fill) = props.get::<Background>() {
+        let shape = rect.to_rounded_rect(radii);
+
+        match &fill.0 {
+            Paint::Content(id) => draw_content(
+                sources, recording, *id, props, rect, &shape, transform, scene,
+            ),
+            paint => {
+                if let Some(paint) = scene_paint(paint) {
+                    scene.fill(
+                        peniko::Fill::NonZero,
+                        transform,
+                        paint,
+                        None,
+                        &shape,
+                        anti_aliasing,
+                    );
+                }
+            }
+        }
     }
 
     let width = border_width(&fragment.layout.geometry);
 
+    // TODO: draw content border fills. `scene_paint` skips them for now.
     if width > 0.0
         && let Some(fill) = props.get::<BorderFill>()
         && let Some(paint) = scene_paint(&fill.0)
@@ -594,6 +640,18 @@ fn draw_box(
         }
     }
 
+    // A box displaying a content draws it over its content box, under its
+    // outline. Only the box generated by the node displays it.
+    if BoxRole::of(fragment).is_principal()
+        && let Some(DisplayInner::Content(id)) = props.get::<DisplayInner>().as_deref()
+    {
+        let content = content_box(&fragment.layout.geometry, rect);
+
+        draw_content(
+            sources, recording, *id, props, content, &content, transform, scene,
+        );
+    }
+
     if let Some(data) = data.filter(|data| data.outline_width > 0.0)
         && let Some(fill) = props.get::<OutlineFill>()
         && let Some(paint) = scene_paint(&fill.0)
@@ -618,8 +676,8 @@ fn draw_box(
     }
 }
 
-/// The scene paint of `paint`. `None` for
-/// [content](Paint::Content) paints, which are not drawn yet.
+/// The scene paint of `paint`. `None` for [content](Paint::Content) paints,
+/// which are drawn by their content with [`draw_content`].
 fn scene_paint(paint: &Paint) -> Option<PaintRef<'_>> {
     match paint {
         Paint::Solid(color) => Some(anyrender::Paint::Solid(*color)),
@@ -627,6 +685,60 @@ fn scene_paint(paint: &Paint) -> Option<PaintRef<'_>> {
         // TODO: draw the content over the filled shape.
         Paint::Content(_) => None,
     }
+}
+
+/// Draw the content `id` from the sources' contents into `rect` of a box,
+/// in its local coordinates, which `transform` maps to the scene, clipped to
+/// `clip`. The content is recorded into `recording` at the size of `rect`,
+/// with the box's `props`, then replayed at its origin. A missing content
+/// draws nothing.
+#[allow(clippy::too_many_arguments)]
+fn draw_content(
+    sources: Sources<'_>,
+    recording: &mut Scene,
+    id: ContentId,
+    props: Props<'_>,
+    rect: Rect,
+    clip: &impl Shape,
+    transform: Affine,
+    scene: &mut impl PaintScene,
+) {
+    let Some(content) = sources.contents.get(id) else {
+        return;
+    };
+
+    recording.reset();
+    content.draw(
+        &DrawInput {
+            props,
+            size: rect.size(),
+            scale_factor: sources.scale_factor,
+        },
+        recording,
+    );
+
+    if recording.commands.is_empty() {
+        return;
+    }
+
+    scene.push_clip_layer(peniko::Fill::NonZero, transform, clip);
+    recording.replay(
+        scene,
+        transform * Affine::translate(rect.origin().to_vec2()),
+    );
+    scene.pop_layer();
+}
+
+/// The content box of a box with `geometry`, inside its border box `rect`:
+/// inset by its border and padding, at least empty.
+fn content_box(geometry: &FragmentGeometry, rect: Rect) -> Rect {
+    let (border, padding) = (geometry.border, geometry.padding);
+    let x0 = rect.x0 + border.left_top.x + padding.left_top.x;
+    let y0 = rect.y0 + border.left_top.y + padding.left_top.y;
+    let x1 = rect.x1 - border.right_bottom.x - padding.right_bottom.x;
+    let y1 = rect.y1 - border.right_bottom.y - padding.right_bottom.y;
+
+    Rect::new(x0, y0, x1.max(x0), y1.max(y0))
 }
 
 /// How a node draws the edges of its shapes and glyphs, from its

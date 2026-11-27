@@ -1,3 +1,4 @@
+use comet_content::manager::ContentManager;
 mod common;
 
 use std::{fs, io::BufWriter};
@@ -122,6 +123,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &fragments,
                 &prepaint,
                 &SelectionRects::default(),
+                &ContentManager::new(),
                 &layers,
                 layer_root,
                 kurbo::Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),

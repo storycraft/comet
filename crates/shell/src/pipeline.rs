@@ -6,6 +6,7 @@
 
 use accesskit::{NodeId, TreeId, TreeInfo, TreeUpdate};
 use comet_accesskit::{AxKey, ax_key, builder::AxTreeBuilder, node_id, tree::AxTree};
+use comet_content::manager::ContentManager;
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{BoxFragmentKey, FragmentRef, builder::FragmentTreeBuilder, tree::FragmentTree},
@@ -47,6 +48,9 @@ pub struct UiTrees {
     pub layers: PaintLayerTree,
     /// Accessibility nodes, built while accessibility is active.
     pub ax: AxTree,
+    /// External contents of the UI, drawn by content paints and content
+    /// boxes.
+    pub contents: ContentManager,
 }
 
 impl UiTrees {
@@ -389,6 +393,7 @@ impl Pipeline {
             &trees.fragments,
             &trees.prepaint,
             &trees.selection,
+            &trees.contents,
             &trees.layers,
             layer_root,
             physical,
