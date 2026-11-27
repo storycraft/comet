@@ -6,4 +6,4 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-slotmap = "1.1.1"
+slotmap = { workspace = true }

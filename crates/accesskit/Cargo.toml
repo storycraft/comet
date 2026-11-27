@@ -12,12 +12,12 @@ comet-paint = { workspace = true }
 comet-slotmap-tree = { workspace = true }
 comet-tree = { workspace = true }
 
-accesskit = "0.25.2"
-bitflags = "2.10.0"
-kurbo = "0.13.1"
-parley = "0.13.0"
-slotmap = "1.1.1"
+accesskit = { workspace = true }
+bitflags = { workspace = true }
+kurbo = { workspace = true }
+parley = { workspace = true }
+slotmap = { workspace = true }
 
 [dev-dependencies]
-taffy = { version = "0.15.1", default-features = false, features = ["std"] }
+taffy = { workspace = true }
 accesskit_consumer = "0.39.2"

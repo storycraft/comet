@@ -9,7 +9,4 @@ license.workspace = true
 comet-layout = { workspace = true }
 comet-tree = { workspace = true }
 
-[dependencies.taffy]
-version = "0.15.1"
-default-features = false
-features = ["std", "flexbox", "flexbox_balance", "content_size"]
+taffy = { workspace = true, features = ["flexbox", "flexbox_balance", "content_size"] }
