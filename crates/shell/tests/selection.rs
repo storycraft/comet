@@ -8,7 +8,7 @@ use comet_reactivity::{cx::UiCx, style::Styled};
 use comet_shell::{style::InputStyled, window::Window};
 use comet_tree::node::NodeKey;
 use dpi::{PhysicalPosition, PhysicalSize};
-use reactive_graph::traits::{GetUntracked, Set};
+use reactive_graph::traits::{Get, GetUntracked, Set, Update};
 use ui_events::{
     keyboard::{Code, Key, KeyState, KeyboardEvent, Modifiers, NamedKey},
     pointer::{
@@ -946,4 +946,56 @@ fn selected_text_reads_boxes_out_of_flow_once_after_the_text() {
         chunks(&window, at(hello, 0), at(after, "after".len())),
         ["Hello ", "world", "\n", "inside", "\n", "after"]
     );
+}
+
+#[test]
+fn text_wrapped_in_a_container_after_an_unselectable_box_is_selectable() {
+    use comet_reactivity::style::FlexStyled;
+
+    // A label after an unselectable button in a flex row, like the counter
+    // of the examples: the label is wrapped in a box of its own.
+    let text = Rc::new(RefCell::new(None));
+    let mut window = Window::new({
+        let text = text.clone();
+        move |cx: &UiCx| {
+            let (count, set_count) = reactive_graph::signal::signal(0u32);
+            let label = cx
+                .text_with(move || format!("Clicked {} times", count.get()))
+                .build();
+            *text.borrow_mut() = Some(label);
+            let button = cx
+                .div()
+                .size(size(px(100), px(30)))
+                .selectable(AutoValue::Value(false))
+                .on_click(move |_, _| set_count.update(|count| *count += 1))
+                .children(|cx| cx.text("Count up").build());
+            let row = cx.div().flex().children(|_| [button, label]);
+            cx.div().children(|_| [row])
+        }
+    });
+    open(&mut window);
+    let text = text.borrow().unwrap();
+    let whole = |len| {
+        Selection::new(
+            TextPosition::new(text, 0, Default::default()),
+            TextPosition::new(text, len, Default::default()),
+        )
+    };
+
+    // Pressing and dragging over the label selects it, and highlights it.
+    press(&mut window, 110.0, 10.0, 1, Modifiers::empty());
+    drag(&mut window, 390.0, 10.0);
+    let selection = window.selection().expect("the label is selectable");
+    assert_eq!(selection.anchor.node, text);
+    assert_eq!(selection.extent.node, text);
+    assert_eq!(window.selection_rects().len(), 1, "highlighted");
+    assert_eq!(window.selected_text(whole(15)), "Clicked 0 times");
+    release(&mut window, 390.0, 10.0);
+
+    // Clicking the button lays the label out again, still selectable.
+    press(&mut window, 10.0, 10.0, 1, Modifiers::empty());
+    release(&mut window, 10.0, 10.0);
+    window.poll();
+    assert!(window.layout(), "lays out");
+    assert_eq!(window.selected_text(whole(15)), "Clicked 1 times");
 }

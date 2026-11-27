@@ -51,7 +51,8 @@ impl FragmentTree {
     }
 
     /// The box whose inline layout holds the inline content item `item` of
-    /// `tree`: the box of its nearest ancestor generating one, if it
+    /// `tree`: the box of the item itself or its nearest ancestor generating
+    /// one, such as the box wrapping a text item in a container, if it
     /// establishes an inline formatting context, or the first run of that
     /// box holding the item, if its inline content is mixed. Runs not built
     /// yet hold nothing.
@@ -60,7 +61,7 @@ impl FragmentTree {
         tree: &LayoutInputTree,
         item: LayoutInputKey,
     ) -> Option<BoxFragmentKey> {
-        let owner = std::iter::successors(tree.items.parent(item), |&key| tree.items.parent(key))
+        let owner = std::iter::successors(Some(item), |&key| tree.items.parent(key))
             .find_map(|key| self.box_fragment(key))?;
         let layout = &self.boxes[owner].child_layout;
 
@@ -73,9 +74,8 @@ impl FragmentTree {
         }
 
         self.runs(owner).find(|&run| {
-            self.inline_layout(run).is_some_and(|inline| {
-                inline.range(item).is_some() || inline.atomics.contains_key(&item)
-            })
+            self.inline_layout(run)
+                .is_some_and(|inline| inline.range(item).is_some())
         })
     }
 
