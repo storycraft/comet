@@ -3,6 +3,7 @@
 use comet_content::{Content, DrawInput, MeasureInput};
 use comet_tree::{
     node::{Node, NodeKey},
+    style::StyleProps,
     ui::{Props, Ui},
 };
 
@@ -20,10 +21,10 @@ impl Fixture {
         Self { ui, node }
     }
 
-    /// A box node fitting its content as `fit` says.
-    pub fn fitted(fit: comet_content::style::ObjectFit) -> Self {
+    /// A box node with `props`.
+    pub fn with(props: impl StyleProps) -> Self {
         let mut ui = Ui::new();
-        let node = ui.create(Node::Box, (fit,));
+        let node = ui.create(Node::Box, props);
 
         Self { ui, node }
     }
