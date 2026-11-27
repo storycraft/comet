@@ -173,6 +173,7 @@ impl ReactiveProp for bx::Overflow {
 // Resolved by the pre-paint step. Text colors and outlines are inherited, so
 // children whose resolved values change are resolved again too.
 reactive_props!(PRE_PAINT =>
+    paint::BoxDecorationBreak,
     paint::Selectable,
     paint::TextColor,
     paint::SelectionColor,

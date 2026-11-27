@@ -30,7 +30,7 @@ use crate::{
         tree::PrepaintTree,
     },
     selection::rects::SelectionRects,
-    style::{BorderFill, Fill, OutlineFill},
+    style::{BorderFill, BoxDecorationBreak, Fill, OutlineFill},
 };
 
 /// Paints final fragments in the order of their [`PaintLayerTree`], with the
@@ -949,7 +949,12 @@ fn push_clip(
         .prepaint
         .fragment(key)
         .filter(|data| data.border_radius.is_some())
-        .map(|data| data.border_radii(fragment));
+        .map(|data| {
+            data.border_radii(
+                fragment,
+                sources.prepaint.box_decoration_break(fragment.source),
+            )
+        });
 
     match radii.filter(|_| axes == (true, true)) {
         Some(radii) => scene.push_clip_layer(
@@ -990,7 +995,12 @@ fn draw_backdrop(
     let border = sources
         .prepaint
         .fragment(key)
-        .map_or(rect.to_rounded_rect(0.0), |data| data.border_rect(fragment));
+        .map_or(rect.to_rounded_rect(0.0), |data| {
+            data.border_rect(
+                fragment,
+                sources.prepaint.box_decoration_break(fragment.source),
+            )
+        });
 
     scene.push_layer(
         peniko::Fill::NonZero,
@@ -1066,7 +1076,7 @@ fn border_width(geometry: &FragmentGeometry) -> f64 {
 /// Paint the background, border and outline of a box's border box `rect`.
 /// The background and border are rounded with the box's
 /// [border radii](FragmentData::border_radii) from `paint_data`, square at
-/// the joins of a split box, and the outline with all four corners of its
+/// the joins of a split box unless it clones its decoration, and the outline with all four corners of its
 /// [border radius](FragmentData::border_radius).
 fn draw_box(
     sources: Sources<'_>,
@@ -1080,8 +1090,11 @@ fn draw_box(
     let Some(props) = paint_props(sources.ui, sources.inputs, fragment.source) else {
         return;
     };
+    let decoration_break = data.map_or_else(BoxDecorationBreak::default, |data| {
+        data.box_decoration_break
+    });
     let radii = paint_data.map_or(RoundedRectRadii::from(0.0), |data| {
-        data.border_radii(fragment)
+        data.border_radii(fragment, decoration_break)
     });
 
     if let Some(fill) = props.get::<Fill>() {

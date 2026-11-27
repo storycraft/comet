@@ -367,6 +367,8 @@ impl Sources<'_> {
                 }),
         };
 
+        let box_decoration_break = props.get_cloned().unwrap_or_default();
+
         // As in CSS and Taffy, a box scrolling or hiding its overflow on one
         // axis clips both, while `clip` only clips its own axis. Layout
         // overflow stops at the same clips.
@@ -386,6 +388,7 @@ impl Sources<'_> {
                 props.get_cloned().map(|OutlineOffset(offset)| offset),
                 parent_offset,
             ),
+            box_decoration_break,
             text_color,
             selectable,
             selection_container,

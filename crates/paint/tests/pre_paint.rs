@@ -23,7 +23,10 @@ use comet_paint::selection::{Affinity, Selection, TextPosition, rects::Selection
 use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
-    style::{Opacity, OutlineFill, Selectable, SelectionColor, SelectionFill, UserSelect},
+    style::{
+        BoxDecorationBreak, Opacity, OutlineFill, Selectable, SelectionColor, SelectionFill,
+        UserSelect,
+    },
 };
 use comet_paint::{
     prepaint::{
@@ -178,7 +181,12 @@ impl Fixture {
         let data = self.prepaint.fragment(key)?;
         data.border_radius?;
 
-        Some(data.border_radii(&self.fragments.boxes[key]))
+        let fragment = &self.fragments.boxes[key];
+
+        Some(data.border_radii(
+            fragment,
+            self.prepaint.box_decoration_break(fragment.source),
+        ))
     }
 
     fn fragment(&self, key: BoxFragmentKey) -> &FragmentData {
@@ -2444,4 +2452,68 @@ fn contain_makes_the_nearest_selection_container() {
     assert_eq!(container(&f, locked_text), None);
     assert_eq!(container(&f, nested_text), Some(f.item(nested)));
     f.assert_matches_full_resolve(&ui, fragment_root);
+}
+
+#[test]
+fn cloned_decorations_round_every_corner_of_split_fragments() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let span = ui.create(
+        Node::Box,
+        (
+            bx::DisplayOuter::Inline,
+            BorderRadius(LayoutRect::new_all(StyleUnit::Px(6.0))),
+            BoxDecorationBreak::Clone,
+        ),
+    );
+    ui.append(root, span);
+    text(
+        &mut ui,
+        span,
+        "one two three four five six seven eight nine ten",
+    );
+
+    let mut f = Fixture::default();
+    let fragment_root = f.build(&ui, root);
+    let fragments: Vec<_> = f.fragments.inline_boxes(&f.inputs, f.item(span)).collect();
+    assert!(fragments.len() > 1);
+
+    assert_eq!(f.data(span).box_decoration_break, BoxDecorationBreak::Clone);
+    assert_eq!(
+        f.prepaint.box_decoration_break(f.item(span)),
+        BoxDecorationBreak::Clone
+    );
+    // Not inherited: the text inside breaks by default.
+    let label = ui.children(span).next().unwrap();
+    assert_eq!(
+        f.data(label).box_decoration_break,
+        BoxDecorationBreak::Break
+    );
+
+    // Each fragment is closed: all four corners are rounded, joins too.
+    for &fragment in &fragments {
+        assert_eq!(f.border_radii(fragment), Some(RoundedRectRadii::from(6.0)));
+    }
+
+    // Hit testing follows: the joined corner of the first fragment is round.
+    let first = fragments[0];
+    let width = f.fragments.boxes[first].layout.geometry.size.width;
+    assert!(
+        !f.prepaint
+            .hit_local(&f.fragments, first, Point::new(width - 0.5, 0.5))
+    );
+
+    // Back to breaking, the joins are square again.
+    ui.remove_prop::<BoxDecorationBreak>(span);
+    f.mark(span);
+    f.resolve(&ui, fragment_root).unwrap();
+    f.clear_flags();
+    assert_eq!(
+        f.border_radii(fragments[0]),
+        Some(RoundedRectRadii::new(6.0, 0.0, 0.0, 6.0))
+    );
+    assert!(
+        f.prepaint
+            .hit_local(&f.fragments, first, Point::new(width - 0.5, 0.5))
+    );
 }

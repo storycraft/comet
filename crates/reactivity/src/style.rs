@@ -73,6 +73,7 @@ pub trait Styled: Sized {
         border_dash_pattern: bx::BorderDashPattern => kurbo::Dashes;
         border_dash_offset: bx::BorderDashOffset => StyleUnit;
         border_radius: paint::BorderRadius => Rect<StyleUnit>;
+        box_decoration_break: paint::BoxDecorationBreak => paint::BoxDecorationBreak;
 
         // Text
         font: bx::Font => parley::FontFamily<'static>;

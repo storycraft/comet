@@ -31,6 +31,8 @@ use comet_layout::{
 use kurbo::{Point, Rect, RoundedRect, RoundedRectRadii};
 use peniko::Color;
 
+use crate::style::BoxDecorationBreak;
+
 /// Paint data of a layout input item, shared by all fragments it generates.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutInputData {
@@ -53,6 +55,12 @@ pub struct LayoutInputData {
     /// resolve against the parent item's outline offset, 0 for the root.
     /// 0 if the item sets none.
     pub outline_offset: f64,
+
+    /// How the item's split fragments paint their background, border and
+    /// border radius: its
+    /// [`BoxDecorationBreak`], not
+    /// inherited. See [`FragmentData::border_radii`].
+    pub box_decoration_break: BoxDecorationBreak,
 
     /// Color the item's glyph runs paint with: its
     /// [`TextColor`](crate::style::TextColor), or the parent item's text
@@ -118,8 +126,8 @@ pub struct FragmentData {
     /// against the fragment's own size: percentages resolve against its
     /// smaller side. All four corners are resolved, also for split
     /// fragments, such as for outlines. Backgrounds, borders, clips and hit
-    /// testing square the corners joining a linked fragment, see
-    /// [`Self::border_radii`].
+    /// testing square the corners joining a linked fragment, unless its item
+    /// clones its decoration, see [`Self::border_radii`].
     ///
     /// `None` for [anonymous](BoxFragmentType::Anonymous) boxes, which paint
     /// nothing, and items setting no radius.
@@ -128,25 +136,38 @@ pub struct FragmentData {
 
 impl FragmentData {
     /// Corner radii of the border of `fragment`, the box this data was
-    /// resolved for: its [border radius](Self::border_radius), with the
-    /// corners joining a linked box square. Inline part boxes continue to the
-    /// right of their previous box, other boxes below it. Square if it has no
-    /// border radius.
-    pub fn border_radii(&self, fragment: &BoxFragment) -> RoundedRectRadii {
-        self.border_radius
-            .map_or(RoundedRectRadii::from(0.0), |radii| {
-                split_radii(fragment, radii)
-            })
+    /// resolved for, painted with `decoration_break`, its item's
+    /// [`LayoutInputData::box_decoration_break`]: its
+    /// [border radius](Self::border_radius), with the corners joining a
+    /// linked box square when it breaks. Inline part boxes continue to the
+    /// right of their previous box, other boxes below it. A box cloning its
+    /// decoration keeps all four corners. Square if it has no border radius.
+    pub fn border_radii(
+        &self,
+        fragment: &BoxFragment,
+        decoration_break: BoxDecorationBreak,
+    ) -> RoundedRectRadii {
+        self.border_radius.map_or(
+            RoundedRectRadii::from(0.0),
+            |radii| match decoration_break {
+                BoxDecorationBreak::Break => split_radii(fragment, radii),
+                BoxDecorationBreak::Clone => radii,
+            },
+        )
     }
 
     /// The border box of `fragment`, the box this data was resolved for, in
     /// its local coordinates, rounded with its
-    /// [border radii](Self::border_radii).
-    pub fn border_rect(&self, fragment: &BoxFragment) -> RoundedRect {
+    /// [border radii](Self::border_radii) for `decoration_break`.
+    pub fn border_rect(
+        &self,
+        fragment: &BoxFragment,
+        decoration_break: BoxDecorationBreak,
+    ) -> RoundedRect {
         let size = fragment.layout.geometry.size;
 
         Rect::from_origin_size(Point::ORIGIN, (size.width, size.height))
-            .to_rounded_rect(self.border_radii(fragment))
+            .to_rounded_rect(self.border_radii(fragment, decoration_break))
     }
 }
 

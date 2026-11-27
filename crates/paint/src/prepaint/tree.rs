@@ -9,7 +9,10 @@ use comet_layout::{
 use kurbo::{Point, Shape};
 use slotmap::{SecondaryMap, SparseSecondaryMap};
 
-use crate::prepaint::{FragmentData, LayoutInputData};
+use crate::{
+    prepaint::{FragmentData, LayoutInputData},
+    style::BoxDecorationBreak,
+};
 
 /// Paint data of the box fragments of a fragment tree, such as their
 /// transforms relative to their parents, and of the layout input items they
@@ -46,6 +49,14 @@ impl PrepaintTree {
     /// The paint data a layout input item was resolved to.
     pub fn get(&self, key: LayoutInputKey) -> Option<&LayoutInputData> {
         self.layout_mapping.get(key)
+    }
+
+    /// How the split fragments of an item paint their decoration, as
+    /// resolved into its [`LayoutInputData::box_decoration_break`]. The
+    /// default for items without data.
+    pub fn box_decoration_break(&self, key: LayoutInputKey) -> BoxDecorationBreak {
+        self.get(key)
+            .map_or_default(|data| data.box_decoration_break)
     }
 
     /// Whether the text of an item can be selected, as resolved into its
@@ -87,7 +98,8 @@ impl PrepaintTree {
             return false;
         };
 
-        data.border_rect(fragment).contains(point)
+        data.border_rect(fragment, self.box_decoration_break(fragment.source))
+            .contains(point)
     }
 }
 
