@@ -26,71 +26,63 @@ pub struct SelectedRange {
     pub breaks: bool,
 }
 
-/// The selected part of each inline layout under `root` that `selection`
-/// covers, in tree order. The U+FFFC character of an inline box holding
-/// other inline layouts is never selected: its text is selected on its own,
-/// so a selection ending in the box stops before or after it in the text
-/// around it. Empty if the selection is collapsed or an end is not laid out
-/// under `root`.
-///
-/// `inputs` is the input tree `fragments` were built from, from the UI of
-/// `ui`.
-pub fn selected_ranges(
-    ui: &Ui,
-    inputs: &LayoutInputTree,
-    fragments: &FragmentTree,
-    root: BoxFragmentKey,
-    selection: Selection,
-) -> SelectedRanges {
-    ranges_between(ui, inputs, fragments, root, selection).unwrap_or_default()
-}
-
-fn ranges_between(
-    ui: &Ui,
-    inputs: &LayoutInputTree,
-    fragments: &FragmentTree,
-    root: BoxFragmentKey,
-    selection: Selection,
-) -> Option<SelectedRanges> {
-    if selection.is_collapsed() {
-        return None;
-    }
-    fragments.get(root)?;
-    let end = |position: TextPosition| -> Option<End> {
-        let (owner, index) = layout_position(ui, inputs, fragments, position)?;
-        Some((owner, index, position.affinity.into()))
-    };
-    let (anchor, extent) = (end(selection.anchor)?, end(selection.extent)?);
-
-    let order = TextOrder::new(fragments, root);
-    let anchor = (order.key(anchor)?, anchor.2);
-    let extent = (order.key(extent)?, extent.2);
-    let (start, last) = if anchor.0 <= extent.0 {
-        (anchor, extent)
-    } else {
-        (extent, anchor)
-    };
-
-    Some(SelectedRanges {
-        next: start.0.0,
-        start,
-        last,
-        order,
-    })
-}
-
-/// The iterator of [`selected_ranges`].
-#[derive(Default)]
+/// The selected part of each inline layout under a box, in tree order:
+/// see [`SelectedRanges::new`].
 pub struct SelectedRanges {
     order: TextOrder,
     /// The segment and index of the start of the selection, with its
     /// affinity.
     start: ((usize, usize), Affinity),
     /// The segment and index of the end of the selection, with its
-    /// affinity. Without a selection, the order has no segments.
+    /// affinity.
     last: ((usize, usize), Affinity),
     /// The next segment to visit.
     next: usize,
+}
+
+impl SelectedRanges {
+    /// The selected part of each inline layout under `root` that
+    /// `selection` covers, in tree order. The U+FFFC character of an inline
+    /// box holding other inline layouts is never selected: its text is
+    /// selected on its own, so a selection ending in the box stops before
+    /// or after it in the text around it. `None` if the selection is
+    /// collapsed or an end is not laid out under `root`.
+    ///
+    /// `inputs` is the input tree `fragments` were built from, from the UI
+    /// of `ui`.
+    pub fn new(
+        ui: &Ui,
+        inputs: &LayoutInputTree,
+        fragments: &FragmentTree,
+        root: BoxFragmentKey,
+        selection: Selection,
+    ) -> Option<Self> {
+        if selection.is_collapsed() {
+            return None;
+        }
+        fragments.get(root)?;
+        let end = |position: TextPosition| -> Option<End> {
+            let (owner, index) = layout_position(ui, inputs, fragments, position)?;
+            Some((owner, index, position.affinity.into()))
+        };
+        let (anchor, extent) = (end(selection.anchor)?, end(selection.extent)?);
+
+        let order = TextOrder::new(fragments, root);
+        let anchor = (order.key(anchor)?, anchor.2);
+        let extent = (order.key(extent)?, extent.2);
+        let (start, last) = if anchor.0 <= extent.0 {
+            (anchor, extent)
+        } else {
+            (extent, anchor)
+        };
+
+        Some(Self {
+            next: start.0.0,
+            start,
+            last,
+            order,
+        })
+    }
 }
 
 impl Iterator for SelectedRanges {

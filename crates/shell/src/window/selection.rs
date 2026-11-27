@@ -135,7 +135,7 @@ impl Window {
     ) -> Option<TextPosition> {
         let tree = self.ui.tree().borrow();
 
-        selection::position_at(&tree.ui, &self.pipeline.trees.inputs, inline, cursor, side)
+        TextPosition::from_cursor(&tree.ui, &self.pipeline.trees.inputs, inline, cursor, side)
     }
 
     /// The box owning the inline layout holding `position`, and the index of

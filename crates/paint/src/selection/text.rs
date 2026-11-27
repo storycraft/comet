@@ -13,39 +13,12 @@ use crate::{
     prepaint::tree::PrepaintTree,
     selection::{
         Selection,
-        order::{SelectedRange, SelectedRanges, selected_ranges},
+        order::{SelectedRange, SelectedRanges},
     },
 };
 
-/// The text `selection` covers under `root`, as chunks in tree order:
-/// concatenated, they are the selected text. See [`SelectedText`].
-/// `prepaint` is resolved for `fragments`, and tells which text can be
-/// selected.
-///
-/// ```ignore
-/// let text: String =
-///     selected_text(ui, inputs, fragments, prepaint, root, selection).collect();
-/// ```
-pub fn selected_text<'a>(
-    ui: &Ui,
-    inputs: &LayoutInputTree,
-    fragments: &'a FragmentTree,
-    prepaint: &'a PrepaintTree,
-    root: BoxFragmentKey,
-    selection: Selection,
-) -> SelectedText<'a> {
-    SelectedText {
-        prepaint,
-        fragments,
-        ranges: selected_ranges(ui, inputs, fragments, root, selection),
-        current: None,
-        pending_break: false,
-        emitted: false,
-    }
-}
-
 /// The selected text under a box, as chunks in tree order, from
-/// [`selected_text`].
+/// [`SelectedText::new`].
 ///
 /// The text is as laid out, after white space processing. Each chunk is
 /// the selected part of one text node, or a `"\n"` between the text of
@@ -56,7 +29,8 @@ pub fn selected_text<'a>(
 pub struct SelectedText<'a> {
     prepaint: &'a PrepaintTree,
     fragments: &'a FragmentTree,
-    ranges: SelectedRanges,
+    /// `None` without selected text.
+    ranges: Option<SelectedRanges>,
     /// The inline layout of the range being read, with the index read up
     /// to and the end of the range.
     current: Option<(&'a InlineLayout, usize, usize)>,
@@ -68,6 +42,32 @@ pub struct SelectedText<'a> {
 }
 
 impl<'a> SelectedText<'a> {
+    /// The text `selection` covers under `root`, as chunks in tree order:
+    /// concatenated, they are the selected text. `prepaint` is resolved for
+    /// `fragments`, and tells which text can be selected.
+    ///
+    /// ```ignore
+    /// let text: String =
+    ///     SelectedText::new(ui, inputs, fragments, prepaint, root, selection).collect();
+    /// ```
+    pub fn new(
+        ui: &Ui,
+        inputs: &LayoutInputTree,
+        fragments: &'a FragmentTree,
+        prepaint: &'a PrepaintTree,
+        root: BoxFragmentKey,
+        selection: Selection,
+    ) -> Self {
+        Self {
+            prepaint,
+            fragments,
+            ranges: SelectedRanges::new(ui, inputs, fragments, root, selection),
+            current: None,
+            pending_break: false,
+            emitted: false,
+        }
+    }
+
     /// Start reading `range`.
     fn enter(&mut self, range: SelectedRange) {
         let inline = self.fragments.inline_layout(range.owner);
@@ -109,7 +109,7 @@ impl<'a> Iterator for SelectedText<'a> {
     fn next(&mut self) -> Option<&'a str> {
         loop {
             let Some((inline, from, to)) = self.current else {
-                let range = self.ranges.next()?;
+                let range = self.ranges.as_mut()?.next()?;
                 self.enter(range);
                 continue;
             };

@@ -73,6 +73,28 @@ impl TextPosition {
             affinity,
         }
     }
+
+    /// The position in the text of the text node at `cursor` in `inline`.
+    /// At the boundary of two text nodes, `side` picks the one before or
+    /// after it, or by default the affinity of `cursor`. `None` if no text
+    /// node is there.
+    ///
+    /// `inputs` is the input tree `inline` was built from, from the UI of
+    /// `ui`.
+    pub fn from_cursor(
+        ui: &Ui,
+        inputs: &LayoutInputTree,
+        inline: &InlineLayout,
+        cursor: parley::Cursor,
+        side: Option<parley::Affinity>,
+    ) -> Option<Self> {
+        let item = inline.item_at(cursor.index(), side.unwrap_or(cursor.affinity()))?;
+        let node = inputs.items.get(item)?.node;
+        let text = ui.prop::<Text>(node)?;
+        let index = inline.source_index(item, &text.0, cursor.index())?;
+
+        Some(Self::new(node, index, cursor.affinity().into()))
+    }
 }
 
 /// A selected range of text, from where it started to where it ends.
@@ -125,22 +147,4 @@ pub fn layout_position(
         .layout_index(item, &text.0, position.index)?;
 
     Some((owner, index))
-}
-
-/// The position in the text of the text node at `cursor` in `inline`. At
-/// the boundary of two text nodes, `side` picks the one before or after it,
-/// or by default the affinity of `cursor`.
-pub fn position_at(
-    ui: &Ui,
-    inputs: &LayoutInputTree,
-    inline: &InlineLayout,
-    cursor: parley::Cursor,
-    side: Option<parley::Affinity>,
-) -> Option<TextPosition> {
-    let item = inline.item_at(cursor.index(), side.unwrap_or(cursor.affinity()))?;
-    let node = inputs.items.get(item)?.node;
-    let text = ui.prop::<Text>(node)?;
-    let index = inline.source_index(item, &text.0, cursor.index())?;
-
-    Some(TextPosition::new(node, index, cursor.affinity().into()))
 }

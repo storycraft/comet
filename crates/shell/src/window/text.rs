@@ -1,9 +1,6 @@
 //! Extracting the selected text.
 
-use comet_paint::selection::{
-    Selection,
-    text::{SelectedText, selected_text},
-};
+use comet_paint::selection::{Selection, text::SelectedText};
 
 use super::Window;
 
@@ -26,7 +23,7 @@ impl Window {
         let tree = self.ui.tree().borrow();
         let root = trees.box_fragment(self.ui.root()).unwrap_or_default();
 
-        f(selected_text(
+        f(SelectedText::new(
             &tree.ui,
             &trees.inputs,
             &trees.fragments,

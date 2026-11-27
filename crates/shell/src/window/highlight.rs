@@ -1,7 +1,7 @@
 //! Geometry of the text selection, which the painter fills behind the
 //! selected glyphs.
 
-use comet_paint::selection::order::{LayoutEnd, selected_ranges};
+use comet_paint::selection::order::{LayoutEnd, SelectedRanges};
 use kurbo::{Affine, Rect};
 use parley::Cursor;
 
@@ -32,8 +32,13 @@ impl Window {
             return;
         };
         let tree = self.ui.tree().borrow();
+        let Some(ranges) =
+            SelectedRanges::new(&tree.ui, &trees.inputs, &trees.fragments, root, selection)
+        else {
+            return;
+        };
 
-        for range in selected_ranges(&tree.ui, &trees.inputs, &trees.fragments, root, selection) {
+        for range in ranges {
             let owner = range.owner;
             let (Some(inline), Some(to_scene)) = (
                 trees.fragments.inline_layout(owner),

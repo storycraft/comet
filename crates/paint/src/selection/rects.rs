@@ -12,7 +12,7 @@ use slotmap::SparseSecondaryMap;
 
 use crate::{
     prepaint::tree::PrepaintTree,
-    selection::{Selection, order::selected_ranges, text::next_text_item},
+    selection::{Selection, order::SelectedRanges, text::next_text_item},
 };
 
 /// The selection of one text item.
@@ -97,12 +97,14 @@ impl SelectionRects {
         selection: Option<Selection>,
     ) {
         self.clear();
-        let Some(selection) = selection else {
+        let Some(ranges) = selection
+            .and_then(|selection| SelectedRanges::new(ui, inputs, fragments, root, selection))
+        else {
             return;
         };
         let Self { rects, items } = self;
 
-        for range in selected_ranges(ui, inputs, fragments, root, selection) {
+        for range in ranges {
             let Some(inline) = fragments.inline_layout(range.owner) else {
                 continue;
             };
