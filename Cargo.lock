@@ -886,6 +886,7 @@ dependencies = [
  "anyrender",
  "comet-content",
  "comet-geometry",
+ "comet-reactivity",
  "comet-tree",
  "kurbo",
  "peniko",

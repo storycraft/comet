@@ -37,6 +37,24 @@ impl ImageExtend {
     }
 }
 
+// Read by contents when they draw, so changes only paint again.
+#[cfg(feature = "reactivity")]
+const _: () = {
+    use comet_reactivity::prop::{PropHint, ReactiveProp};
+
+    impl ReactiveProp for ImageRendering {
+        fn hint(&self, _: Option<&Self>) -> PropHint {
+            PropHint::RENDER
+        }
+    }
+
+    impl ReactiveProp for ImageExtend {
+        fn hint(&self, _: Option<&Self>) -> PropHint {
+            PropHint::RENDER
+        }
+    }
+};
+
 /// The sampler drawing an image with the quality of `rendering` and the
 /// extends of `extend`, opaque.
 pub(crate) fn sampler(rendering: ImageRendering, extend: ImageExtend) -> ImageSampler {

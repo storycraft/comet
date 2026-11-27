@@ -106,3 +106,18 @@ fn image_styles_set_the_sampler_and_tile_the_box() {
     // Tiles start where the image is placed.
     assert_eq!(fill.brush_transform, Some(Affine::translate((10.0, 15.0))));
 }
+
+#[cfg(feature = "reactivity")]
+#[test]
+fn image_style_changes_only_paint_again() {
+    use comet_reactivity::prop::{PropHint, ReactiveProp};
+
+    assert_eq!(
+        ImageRendering(ImageQuality::Low).hint(None),
+        PropHint::RENDER
+    );
+    assert_eq!(
+        ImageExtend::both(Extend::Repeat).hint(Some(&ImageExtend::default())),
+        PropHint::RENDER
+    );
+}
