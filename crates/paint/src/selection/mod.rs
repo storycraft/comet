@@ -5,8 +5,23 @@
 //! are built again, and whatever inline layout holds the text. A selection
 //! runs from its anchor, where it started, to its extent, where it ends, in
 //! either order.
+//!
+//! The [`order`] and [`text`] modules find the selected parts of the inline
+//! layouts of a fragment tree, and the selected text. Whether text can be
+//! selected is resolved by the pre-paint step, see
+//! [`LayoutInputData::selectable`](crate::prepaint::LayoutInputData::selectable).
 
-use comet_tree::node::NodeKey;
+pub mod order;
+pub mod text;
+
+use comet_layout::{
+    fragment::{BoxFragmentKey, inline::InlineLayout, tree::FragmentTree},
+    input::tree::LayoutInputTree,
+};
+use comet_tree::{
+    node::{NodeKey, Text},
+    ui::Ui,
+};
 
 /// Which side of a position the caret belongs to, where it is ambiguous,
 /// such as at a soft line break.
@@ -42,8 +57,8 @@ impl From<Affinity> for parley::Affinity {
 pub struct TextPosition {
     /// The text node.
     pub node: NodeKey,
-    /// Byte offset into the [`Text`](comet_tree::node::Text) of `node`, as
-    /// written, before white space processing.
+    /// Byte offset into the [`Text`] of `node`, as written, before white
+    /// space processing.
     pub index: usize,
     pub affinity: Affinity,
 }
@@ -86,4 +101,44 @@ impl Selection {
     pub fn is_collapsed(&self) -> bool {
         self.anchor.node == self.extent.node && self.anchor.index == self.extent.index
     }
+}
+
+/// The box owning the inline layout holding `position`, and the index of
+/// `position` in its text. Text in the runs of a box split by blocks is
+/// held by its run box.
+///
+/// `inputs` is the input tree `fragments` were built from, from the UI of
+/// `ui`.
+pub fn layout_position(
+    ui: &Ui,
+    inputs: &LayoutInputTree,
+    fragments: &FragmentTree,
+    position: TextPosition,
+) -> Option<(BoxFragmentKey, usize)> {
+    let item = inputs.item_for_node(position.node)?;
+    let owner = fragments.inline_owner(inputs, item)?;
+    let text = ui.prop::<Text>(position.node)?;
+    let index = fragments
+        .inline_layout(owner)?
+        .layout_index(item, &text.0, position.index)?;
+
+    Some((owner, index))
+}
+
+/// The position in the text of the text node at `cursor` in `inline`. At
+/// the boundary of two text nodes, `side` picks the one before or after it,
+/// or by default the affinity of `cursor`.
+pub fn position_at(
+    ui: &Ui,
+    inputs: &LayoutInputTree,
+    inline: &InlineLayout,
+    cursor: parley::Cursor,
+    side: Option<parley::Affinity>,
+) -> Option<TextPosition> {
+    let item = inline.item_at(cursor.index(), side.unwrap_or(cursor.affinity()))?;
+    let node = inputs.items.get(item)?.node;
+    let text = ui.prop::<Text>(node)?;
+    let index = inline.source_index(item, &text.0, cursor.index())?;
+
+    Some(TextPosition::new(node, index, cursor.affinity().into()))
 }

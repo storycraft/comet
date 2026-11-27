@@ -49,11 +49,30 @@ define_style_props!(
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub ScrollTop: f64 = 0.0;
 
+    // Text selection
+    /// Whether pressing the text of the node and its descendants selects
+    /// it, or [`AutoValue::Auto`] to keep whether the parent does. Text is
+    /// selectable at the root. Resolved into
+    /// [`LayoutInputData::selectable`](crate::prepaint::LayoutInputData::selectable).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub Selectable: AutoValue<bool> = AutoValue::Auto;
+
     // Text draw styles
     /// Color of the text of a node and its descendants. Auto follows the
     /// parent's text color, black at the root.
     #[derive(Debug, Clone, PartialEq)]
     pub TextColor: AutoValue<Paint> = AutoValue::Auto;
+
+    /// Color of the selected text of a node and its descendants. Auto
+    /// follows the parent's selection color, black at the root.
+    #[derive(Debug, Clone, PartialEq)]
+    pub SelectionColor: AutoValue<Paint> = AutoValue::Auto;
+
+    /// Fill behind the selected text of a node and its descendants. Auto
+    /// follows the parent's selection fill, a semi transparent blue at the
+    /// root.
+    #[derive(Debug, Clone, PartialEq)]
+    pub SelectionFill: AutoValue<Paint> = AutoValue::Auto;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub ZIndex: AutoValue<i32> = AutoValue::Auto;

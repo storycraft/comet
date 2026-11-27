@@ -19,14 +19,15 @@ use comet_layout::{
         },
     },
 };
+use comet_paint::selection::{Affinity, Selection, TextPosition};
 use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
-    style::{Opacity, OutlineFill},
+    style::{Opacity, OutlineFill, Selectable, SelectionColor, SelectionFill},
 };
 use comet_paint::{
     prepaint::{
-        FragmentData, LayoutInputData,
+        DEFAULT_SELECTION_BACKGROUND, DEFAULT_SELECTION_COLOR, FragmentData, LayoutInputData,
         builder::PrepaintTreeBuilder,
         fragment::{for_each_paint_child, paint_parent},
         tree::PrepaintTree,
@@ -262,6 +263,28 @@ impl Fixture {
 
         scene
     }
+}
+
+impl Fixture {
+    /// Resolve the selection areas for `selection`.
+    fn select(&mut self, ui: &Ui, selection: Option<Selection>) {
+        self.resolver.build_selection(
+            ui,
+            &self.inputs,
+            &self.fragments,
+            &mut self.prepaint,
+            self.root.unwrap(),
+            selection,
+        );
+    }
+}
+
+/// A selection from `anchor` to `extent`, both downstream.
+fn selection(anchor: (NodeKey, usize), extent: (NodeKey, usize)) -> Selection {
+    Selection::new(
+        TextPosition::new(anchor.0, anchor.1, Affinity::Downstream),
+        TextPosition::new(extent.0, extent.1, Affinity::Downstream),
+    )
 }
 
 fn solid(paint: &Paint) -> Color {
@@ -2161,4 +2184,192 @@ fn paint_parents_follow_the_inline_elements_holding_content() {
     for key in [outer_part, inner_part, atomic_box] {
         assert!(f.prepaint.fragment(key).is_some());
     }
+}
+
+#[test]
+fn selection_paints_inherit_from_the_parent() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let colored = ui.create(
+        Node::Box,
+        (
+            SelectionColor(AutoValue::Value(Paint::Solid(RED))),
+            SelectionFill(AutoValue::Value(Paint::Solid(GREEN))),
+        ),
+    );
+    ui.append(root, colored);
+    let nested = text(&mut ui, colored, "text");
+
+    let mut f = Fixture::default();
+    let fragment_root = f.build(&ui, root);
+
+    // Black on blue at the root.
+    assert_eq!(
+        f.data(root).selection_color,
+        Paint::Solid(DEFAULT_SELECTION_COLOR)
+    );
+    assert_eq!(
+        f.data(root).selection_background,
+        Paint::Solid(DEFAULT_SELECTION_BACKGROUND)
+    );
+    assert_eq!(f.data(nested).selection_color, Paint::Solid(RED));
+    assert_eq!(f.data(nested).selection_background, Paint::Solid(GREEN));
+
+    // Back to auto, the subtree inherits the root's again.
+    ui.remove_prop::<SelectionColor>(colored);
+    ui.remove_prop::<SelectionFill>(colored);
+    f.mark(colored);
+    f.resolve(&ui, fragment_root).unwrap();
+    f.clear_flags();
+    assert_eq!(
+        f.data(nested).selection_color,
+        Paint::Solid(DEFAULT_SELECTION_COLOR)
+    );
+    assert_eq!(
+        f.data(nested).selection_background,
+        Paint::Solid(DEFAULT_SELECTION_BACKGROUND)
+    );
+}
+
+#[test]
+fn selection_areas_cover_the_selected_text_items() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let first = text(&mut ui, root, "hello ");
+    let span = ui.create(
+        Node::Box,
+        (
+            bx::DisplayOuter::Inline,
+            Selectable(AutoValue::Value(false)),
+        ),
+    );
+    ui.append(root, span);
+    let skipped = text(&mut ui, span, "skip ");
+    let last = text(&mut ui, root, "world");
+    let unselected = text(&mut ui, root, " more");
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+    let area = |f: &Fixture, node| f.prepaint.selection_area(f.item(node)).to_vec();
+
+    f.select(&ui, Some(selection((first, 0), (last, 5))));
+    // Each selected text item has its own area, side by side on the line.
+    let (first_area, last_area) = (area(&f, first), area(&f, last));
+    assert_eq!(first_area.len(), 1);
+    assert_eq!(last_area.len(), 1);
+    assert!(first_area[0].x1 <= last_area[0].x0);
+    // Unselectable text is left out, and so is text after the extent.
+    assert!(area(&f, skipped).is_empty());
+    assert!(area(&f, unselected).is_empty());
+
+    // A part of a text item selects only that part.
+    f.select(&ui, Some(selection((last, 1), (last, 3))));
+    let part = area(&f, last);
+    assert_eq!(part.len(), 1);
+    assert!(part[0].width() < last_area[0].width());
+    assert!(area(&f, first).is_empty());
+
+    // Clearing the selection clears every area.
+    f.select(&ui, None);
+    assert!(area(&f, last).is_empty());
+}
+
+#[test]
+fn selection_backgrounds_paint_behind_the_selected_glyphs() {
+    let mut ui = Ui::new();
+    let root = ui.create(
+        Node::Box,
+        (
+            TextColor(AutoValue::Value(Paint::Solid(BLUE))),
+            SelectionFill(AutoValue::Value(Paint::Solid(GREEN))),
+        ),
+    );
+    let label = text(&mut ui, root, "hello world");
+
+    let mut f = Fixture::default();
+    f.build(&ui, root);
+
+    let commands = |f: &Fixture, ui: &Ui| -> Vec<String> {
+        f.draw(ui)
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                RenderCommand::Fill(fill) => Some(format!("fill {:?}", solid(&fill.brush))),
+                RenderCommand::GlyphRun(run) => Some(format!("glyphs {:?}", solid(&run.brush))),
+                RenderCommand::PushClipLayer(_) => Some("clip".into()),
+                RenderCommand::PopLayer => Some("pop".into()),
+                _ => None,
+            })
+            .collect()
+    };
+    let glyphs_of = |color: Color| format!("glyphs {color:?}");
+    let fill_of = |color: Color| format!("fill {color:?}");
+
+    // Without a selection, only the glyphs paint.
+    assert_eq!(commands(&f, &ui), [glyphs_of(BLUE)]);
+
+    // The fill goes behind the glyphs, and the selected glyphs paint again
+    // over them in the selection color, black by default, clipped to the
+    // selection.
+    f.select(&ui, Some(selection((label, 0), (label, 5))));
+    let selected = |color: Color| {
+        vec![
+            fill_of(GREEN),
+            glyphs_of(BLUE),
+            "clip".into(),
+            glyphs_of(color),
+            "pop".into(),
+        ]
+    };
+    assert_eq!(commands(&f, &ui), selected(DEFAULT_SELECTION_COLOR));
+
+    ui.set_props(root, (SelectionColor(AutoValue::Value(Paint::Solid(RED))),));
+    f.mark(root);
+    let fragment_root = f.root.unwrap();
+    f.resolve(&ui, fragment_root).unwrap();
+    f.clear_flags();
+    assert_eq!(commands(&f, &ui), selected(RED));
+}
+
+#[test]
+fn selectable_is_inherited_through_the_input_tree() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let free = text(&mut ui, root, "free ");
+    let locked = ui.create(
+        Node::Box,
+        (
+            bx::DisplayOuter::Inline,
+            Selectable(AutoValue::Value(false)),
+        ),
+    );
+    ui.append(root, locked);
+    let nested = text(&mut ui, locked, "locked ");
+    // Selectable again inside the unselectable span.
+    let reopened = ui.create(
+        Node::Box,
+        (bx::DisplayOuter::Inline, Selectable(AutoValue::Value(true))),
+    );
+    ui.append(locked, reopened);
+    let inner = text(&mut ui, reopened, "inner");
+
+    let mut f = Fixture::default();
+    let fragment_root = f.build(&ui, root);
+
+    // Selectable at the root.
+    assert!(f.data(root).selectable);
+    assert!(f.data(free).selectable);
+    assert!(!f.data(nested).selectable);
+    assert!(f.data(inner).selectable);
+    assert!(f.prepaint.is_selectable(f.item(free)));
+    assert!(!f.prepaint.is_selectable(f.item(nested)));
+
+    // Back to auto, the span's text follows the root again.
+    ui.remove_prop::<Selectable>(locked);
+    f.mark(locked);
+    f.resolve(&ui, fragment_root).unwrap();
+    f.clear_flags();
+    assert!(f.data(nested).selectable);
+    assert!(f.data(inner).selectable);
+    f.assert_matches_full_resolve(&ui, fragment_root);
 }

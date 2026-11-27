@@ -9,7 +9,9 @@ use reactive_graph::{
     traits::{GetUntracked, Set},
 };
 
-use crate::{cursor::CursorIcon, selection::Selection};
+use comet_paint::selection::Selection;
+
+use crate::cursor::CursorIcon;
 
 /// Window state as signals, for components to follow. Provided as context
 /// to the window's components: see [`use_window`].

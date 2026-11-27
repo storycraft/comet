@@ -3,12 +3,9 @@
 use std::{cell::RefCell, rc::Rc};
 
 use comet_layout::style::{geometry::AutoValue, unit::*};
+use comet_paint::selection::{Selection, TextPosition};
 use comet_reactivity::{cx::UiCx, style::Styled};
-use comet_shell::{
-    selection::{Selection, TextPosition},
-    style::InputStyled,
-    window::Window,
-};
+use comet_shell::{style::InputStyled, window::Window};
 use comet_tree::node::NodeKey;
 use dpi::{PhysicalPosition, PhysicalSize};
 use reactive_graph::traits::{GetUntracked, Set};
@@ -741,10 +738,9 @@ fn presses_outside_of_text_select_in_the_nearest_text() {
 
 /// The chunks of the text `anchor` to `extent` select in `window`.
 fn chunks(window: &Window, anchor: TextPosition, extent: TextPosition) -> Vec<String> {
-    window
-        .selected_text(Selection::new(anchor, extent))
-        .map(str::to_owned)
-        .collect()
+    window.with_selected_text(Selection::new(anchor, extent), |text| {
+        text.map(str::to_owned).collect()
+    })
 }
 
 #[test]
@@ -776,7 +772,7 @@ fn selected_text_is_extracted_in_tree_order() {
     // The current selection, made with the pointer.
     press(&mut window, 1.0, 40.0, 1, Modifiers::empty());
     drag(&mut window, 390.0, 70.0);
-    let text: String = window.selected_text(window.selection().unwrap()).collect();
+    let text = window.selected_text(window.selection().unwrap());
     assert_eq!(text, format!("{FIRST}\n{SECOND}"));
 }
 
@@ -839,12 +835,10 @@ fn selected_text_breaks_between_runs_of_block_boxes() {
     });
     open(&mut window);
     let (first, second) = nodes.borrow().unwrap();
-    let text: String = window
-        .selected_text(Selection::new(
-            TextPosition::new(first, 0, Default::default()),
-            TextPosition::new(second, SECOND.len(), Default::default()),
-        ))
-        .collect();
+    let text = window.selected_text(Selection::new(
+        TextPosition::new(first, 0, Default::default()),
+        TextPosition::new(second, SECOND.len(), Default::default()),
+    ));
 
     assert_eq!(text, format!("{FIRST}\n{SECOND}"));
 }

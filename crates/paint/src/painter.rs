@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use anyrender::AntiAliasing;
 use anyrender::PaintScene;
+use anyrender::{AntiAliasing, Paint};
 use bytemuck::TransparentWrapper;
 use comet_layout::{
     fragment::{
@@ -13,7 +13,9 @@ use comet_layout::{
     input::tree::LayoutInputTree,
 };
 use comet_tree::ui::Ui;
-use kurbo::{Affine, Insets, Point, Rect, RoundedRect, RoundedRectRadii, Stroke, Vec2};
+use kurbo::{
+    Affine, BezPath, Insets, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke, Vec2,
+};
 use parley::PositionedLayoutItem;
 use peniko::BlendMode;
 
@@ -40,6 +42,8 @@ pub struct CometPainter {
     /// Ancestors of a child layer's owner, up to a box of its parent layer
     /// with known transforms, innermost first.
     chain: Vec<BoxFragmentKey>,
+    /// Selection area behind the glyph run being painted.
+    selection: Vec<Rect>,
 }
 
 /// A step of painting the fragments of a layer.
@@ -772,7 +776,7 @@ impl CometPainter {
             .or_else(|| sources.tree.get(owner).map(|owner| owner.source))?;
 
         // Resolved by the pre-paint step. Runs of items it missed are skipped.
-        let text_color = &sources.prepaint.get(key)?.text_color;
+        let data = sources.prepaint.get(key)?;
 
         // Parley's coordinates wrap the raw `i16` bits Anyrender takes.
         let normalized_coords: &[i16] =
@@ -783,33 +787,96 @@ impl CometPainter {
         let origin = inline.origin();
         let (offset_x, offset_y) = (origin.x as f32, origin.y as f32);
 
+        // The selection area of the item behind this run: its rectangles
+        // across the run, from the top to the bottom of their lines.
+        self.selection.clear();
+        self.selection.extend(
+            sources
+                .prepaint
+                .selection_area(key)
+                .iter()
+                .map(|area| *area + origin)
+                .filter(|area| area.y0 < rect.y1 && area.y1 > rect.y0)
+                .map(|area| Rect::new(area.x0.max(rect.x0), area.y0, area.x1.min(rect.x1), area.y1))
+                .filter(|area| area.x0 < area.x1),
+        );
+
+        for area in &self.selection {
+            scene.fill(
+                peniko::Fill::NonZero,
+                parent.transform,
+                &data.selection_background,
+                None,
+                area,
+                AntiAliasing::Enabled,
+            );
+        }
+
         // Glyphs are shaped at their logical size but drawn at their physical
         // font size, so they are hinted for the display's pixels. Their positions
         // scale with them, and the display scale is taken out of the transform.
         let scale_factor = sources.scale_factor;
         let scale = scale_factor as f32;
+        let draw = |scene: &mut _, paint| {
+            draw_glyphs(
+                scene,
+                font_run.font(),
+                font_run.font_size() * scale,
+                normalized_coords,
+                paint,
+                parent.transform * Affine::scale(scale_factor.recip()),
+                glyph_run.positioned_glyphs().map(|glyph| anyrender::Glyph {
+                    id: glyph.id,
+                    x: (offset_x + glyph.x) * scale,
+                    y: (offset_y + glyph.y) * scale,
+                }),
+            )
+        };
 
-        scene.draw_glyphs(
-            font_run.font(),
-            font_run.font_size() * scale,
-            true,
-            normalized_coords,
-            Vec2::ZERO,
-            peniko::StyleRef::Fill(peniko::Fill::NonZero),
-            text_color,
-            1.0,
-            parent.transform * Affine::scale(scale_factor.recip()),
-            None,
-            glyph_run.positioned_glyphs().map(|glyph| anyrender::Glyph {
-                id: glyph.id,
-                x: (offset_x + glyph.x) * scale,
-                y: (offset_y + glyph.y) * scale,
-            }),
-            // TODO:: add aa control
-            AntiAliasing::Enabled,
-        );
+        draw(scene, &data.text_color);
+
+        // Selected glyphs are drawn again over themselves, in the selection
+        // color, clipped to the selection area.
+        if !self.selection.is_empty() {
+            let mut shape = BezPath::new();
+            for area in &self.selection {
+                shape.extend(area.path_elements(0.1));
+            }
+
+            scene.push_clip_layer(peniko::Fill::NonZero, parent.transform, &shape);
+            draw(scene, &data.selection_color);
+            scene.pop_layer();
+        }
+
         Some(())
     }
+}
+
+/// Draw `glyphs` of `font` filled with `paint`, with `transform`.
+fn draw_glyphs(
+    scene: &mut impl PaintScene,
+    font: &peniko::FontData,
+    font_size: f32,
+    normalized_coords: &[i16],
+    paint: &Paint,
+    transform: Affine,
+    glyphs: impl Iterator<Item = anyrender::Glyph> + Clone,
+) {
+    scene.draw_glyphs(
+        font,
+        font_size,
+        true,
+        normalized_coords,
+        Vec2::ZERO,
+        peniko::StyleRef::Fill(peniko::Fill::NonZero),
+        paint,
+        1.0,
+        transform,
+        None,
+        glyphs,
+        // TODO:: add aa control
+        AntiAliasing::Enabled,
+    );
 }
 
 /// Paint the background, border and outline of a box, without its

@@ -1,19 +1,21 @@
 //! The selected text of each inline layout, in tree order.
 
-use comet_layout::fragment::{BoxFragmentKey, BoxFragmentType, inline::inline_box_source};
+use comet_tree::ui::Ui;
 use parley::{Affinity, InlineBoxKind};
 
-use super::Window;
-use crate::{
-    pipeline::UiTrees,
-    selection::{Selection, TextPosition},
+use comet_layout::{
+    fragment::{BoxFragmentKey, BoxFragmentType, inline::inline_box_source, tree::FragmentTree},
+    input::tree::LayoutInputTree,
 };
 
+use crate::selection::{Selection, TextPosition, layout_position};
+
 /// A position in the text of an inline layout, as parley takes it.
-pub(super) type LayoutEnd = (usize, Affinity);
+pub type LayoutEnd = (usize, Affinity);
 
 /// The selected part of the text of one inline layout.
-pub(super) struct SelectedRange {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelectedRange {
     /// The box owning the inline layout.
     pub owner: BoxFragmentKey,
     pub start: LayoutEnd,
@@ -24,50 +26,62 @@ pub(super) struct SelectedRange {
     pub breaks: bool,
 }
 
-impl Window {
-    /// The selected part of each inline layout that `selection` covers, in
-    /// tree order, from the last layout. The U+FFFC character of an inline
-    /// box holding other inline layouts is never selected: its text is
-    /// selected on its own, so a selection ending in the box stops before
-    /// or after it in the text around it. Empty if the selection is
-    /// collapsed or an end is not laid out.
-    pub(super) fn selected_ranges(&self, selection: Selection) -> SelectedRanges {
-        self.ranges_between(selection).unwrap_or_default()
-    }
-
-    fn ranges_between(&self, selection: Selection) -> Option<SelectedRanges> {
-        if selection.is_collapsed() {
-            return None;
-        }
-        let trees = &self.pipeline.trees;
-        let root = trees.box_fragment(self.ui.root())?;
-        let end = |position: TextPosition| -> Option<End> {
-            let (owner, index) = self.layout_position(position)?;
-            Some((owner, index, position.affinity.into()))
-        };
-        let (anchor, extent) = (end(selection.anchor)?, end(selection.extent)?);
-
-        let order = TextOrder::new(trees, root);
-        let anchor = (order.key(anchor)?, anchor.2);
-        let extent = (order.key(extent)?, extent.2);
-        let (start, last) = if anchor.0 <= extent.0 {
-            (anchor, extent)
-        } else {
-            (extent, anchor)
-        };
-
-        Some(SelectedRanges {
-            next: start.0.0,
-            start,
-            last,
-            order,
-        })
-    }
+/// The selected part of each inline layout under `root` that `selection`
+/// covers, in tree order. The U+FFFC character of an inline box holding
+/// other inline layouts is never selected: its text is selected on its own,
+/// so a selection ending in the box stops before or after it in the text
+/// around it. Empty if the selection is collapsed or an end is not laid out
+/// under `root`.
+///
+/// `inputs` is the input tree `fragments` were built from, from the UI of
+/// `ui`.
+pub fn selected_ranges(
+    ui: &Ui,
+    inputs: &LayoutInputTree,
+    fragments: &FragmentTree,
+    root: BoxFragmentKey,
+    selection: Selection,
+) -> SelectedRanges {
+    ranges_between(ui, inputs, fragments, root, selection).unwrap_or_default()
 }
 
-/// The iterator of [`Window::selected_ranges`].
+fn ranges_between(
+    ui: &Ui,
+    inputs: &LayoutInputTree,
+    fragments: &FragmentTree,
+    root: BoxFragmentKey,
+    selection: Selection,
+) -> Option<SelectedRanges> {
+    if selection.is_collapsed() {
+        return None;
+    }
+    fragments.get(root)?;
+    let end = |position: TextPosition| -> Option<End> {
+        let (owner, index) = layout_position(ui, inputs, fragments, position)?;
+        Some((owner, index, position.affinity.into()))
+    };
+    let (anchor, extent) = (end(selection.anchor)?, end(selection.extent)?);
+
+    let order = TextOrder::new(fragments, root);
+    let anchor = (order.key(anchor)?, anchor.2);
+    let extent = (order.key(extent)?, extent.2);
+    let (start, last) = if anchor.0 <= extent.0 {
+        (anchor, extent)
+    } else {
+        (extent, anchor)
+    };
+
+    Some(SelectedRanges {
+        next: start.0.0,
+        start,
+        last,
+        order,
+    })
+}
+
+/// The iterator of [`selected_ranges`].
 #[derive(Default)]
-pub(super) struct SelectedRanges {
+pub struct SelectedRanges {
     order: TextOrder,
     /// The segment and index of the start of the selection, with its
     /// affinity.
@@ -144,14 +158,13 @@ struct TextOrder {
 }
 
 impl TextOrder {
-    fn new(trees: &UiTrees, root: BoxFragmentKey) -> Self {
+    fn new(fragments: &FragmentTree, root: BoxFragmentKey) -> Self {
         let mut order = Self::default();
-        order.visit(trees, root);
+        order.visit(fragments, root);
         order
     }
 
-    fn visit(&mut self, trees: &UiTrees, fragment: BoxFragmentKey) {
-        let fragments = &trees.fragments;
+    fn visit(&mut self, fragments: &FragmentTree, fragment: BoxFragmentKey) {
         let Some(inline) = fragments.inline_layout(fragment) else {
             // The run boxes and blocks of a box split by blocks are its
             // children in flow order. Inline part boxes hold no text.
@@ -160,7 +173,7 @@ impl TextOrder {
                     .get(child)
                     .is_some_and(|child| child.box_type != BoxFragmentType::InlinePart)
                 {
-                    self.visit(trees, child);
+                    self.visit(fragments, child);
                 }
             }
             return;
@@ -196,7 +209,7 @@ impl TextOrder {
                 breaks,
             });
             self.inline_start = true;
-            self.visit(trees, child);
+            self.visit(fragments, child);
             self.inline_start = false;
             start = index + '\u{FFFC}'.len_utf8();
             breaks = false;
@@ -218,7 +231,7 @@ impl TextOrder {
                     BoxFragmentType::OutOfFlow | BoxFragmentType::Floating
                 )
             }) {
-                self.visit(trees, child);
+                self.visit(fragments, child);
             }
         }
     }

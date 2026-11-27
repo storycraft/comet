@@ -26,6 +26,7 @@ use anyrender::Paint;
 use comet_layout::dirty_map::DirtyFlags;
 use comet_layout::fragment::{BoxFragment, BoxFragmentType};
 use kurbo::{Point, Rect, RoundedRect, RoundedRectRadii};
+use peniko::Color;
 
 /// Paint data of a layout input item, shared by all fragments it generates.
 #[derive(Debug, Clone, PartialEq)]
@@ -57,13 +58,41 @@ pub struct LayoutInputData {
     /// fragment tree, so a block inside an inline span inherits from the
     /// span.
     pub text_color: Paint,
+
+    /// Whether the item's text can be selected: its
+    /// [`Selectable`](crate::style::Selectable), or the parent item's when
+    /// auto. `true` at the root.
+    pub selectable: bool,
+
+    /// Color the item's selected glyphs paint with: its
+    /// [`SelectionColor`](crate::style::SelectionColor), or the parent
+    /// item's when auto. [`DEFAULT_SELECTION_COLOR`] at the root.
+    pub selection_color: Paint,
+
+    /// Fill painted behind the item's selected glyphs, its
+    /// [selection area](tree::PrepaintTree::selection_area): its
+    /// [`SelectionFill`](crate::style::SelectionFill), or the parent item's
+    /// when auto. [`DEFAULT_SELECTION_BACKGROUND`] at the root.
+    pub selection_background: Paint,
 }
+
+/// The [selection color](LayoutInputData::selection_color) of the root:
+/// black, which reads well on the light, semi transparent
+/// [selection background](DEFAULT_SELECTION_BACKGROUND).
+pub const DEFAULT_SELECTION_COLOR: Color = Color::BLACK;
+
+/// The [selection background](LayoutInputData::selection_background) of the
+/// root: semi transparent blue.
+pub const DEFAULT_SELECTION_BACKGROUND: Color = Color::from_rgba8(0, 120, 255, 96);
 
 impl LayoutInputData {
     /// Whether `self` and `other` pass the same values down to the children
     /// of their item: those the children resolve with.
     pub fn inherits_same(&self, other: &Self) -> bool {
         self.text_color == other.text_color
+            && self.selectable == other.selectable
+            && self.selection_color == other.selection_color
+            && self.selection_background == other.selection_background
             && self.outline_width == other.outline_width
             && self.outline_offset == other.outline_offset
     }

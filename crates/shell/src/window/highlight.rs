@@ -1,15 +1,11 @@
-//! A temporary highlight of the text selection: semi transparent rectangles
-//! drawn over everything painted, without clipping.
+//! Geometry of the text selection, which the painter fills behind the
+//! selected glyphs.
 
-use anyrender::{AntiAliasing, Paint, PaintScene};
+use comet_paint::selection::order::{LayoutEnd, selected_ranges};
 use kurbo::{Affine, Rect};
 use parley::Cursor;
-use peniko::{Color, Fill};
 
-use super::{Window, text_order::LayoutEnd};
-
-/// Semi transparent blue.
-const HIGHLIGHT: Color = Color::from_rgba8(0, 120, 255, 96);
+use super::Window;
 
 impl Window {
     /// The bounding boxes of the highlight of the selected text, from the
@@ -24,24 +20,6 @@ impl Window {
         rects
     }
 
-    /// Fill the highlight of the selected text over `scene`, in physical
-    /// pixels.
-    pub(super) fn paint_selection(&self, scene: &mut impl PaintScene) {
-        let scale = Affine::scale(self.viewport.scale_factor);
-        let paint = Paint::Solid(HIGHLIGHT);
-
-        self.for_each_selection_rect(|transform, rect| {
-            scene.fill(
-                Fill::NonZero,
-                scale * transform,
-                &paint,
-                None,
-                &rect,
-                AntiAliasing::Enabled,
-            );
-        });
-    }
-
     /// Call `f` with each rectangle of the highlight, in the coordinates of
     /// its inline layout, and the transform from them to logical scene
     /// coordinates.
@@ -50,8 +28,12 @@ impl Window {
             return;
         };
         let trees = &self.pipeline.trees;
+        let Some(root) = trees.box_fragment(self.ui.root()) else {
+            return;
+        };
+        let tree = self.ui.tree().borrow();
 
-        for range in self.selected_ranges(selection) {
+        for range in selected_ranges(&tree.ui, &trees.inputs, &trees.fragments, root, selection) {
             let owner = range.owner;
             let (Some(inline), Some(to_scene)) = (
                 trees.fragments.inline_layout(owner),

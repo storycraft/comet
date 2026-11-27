@@ -3,16 +3,13 @@
 use core::cmp::Ordering;
 
 use comet_layout::fragment::{BoxFragmentKey, FragmentRef, inline::InlineLayout};
-use comet_tree::node::Text;
+use comet_paint::selection::{self, Selection, TextPosition};
+use comet_tree::node::NodeKey;
 use kurbo::Point;
 use parley::Affinity::{Downstream, Upstream};
 use reactive_graph::traits::GetUntracked;
 
 use super::{Window, state::update_rw};
-use crate::{
-    selection::{Selection, TextPosition},
-    style::Selectable,
-};
 
 /// The text selection.
 #[derive(Default)]
@@ -26,7 +23,10 @@ impl Window {
     /// Set the selection, following it with
     /// [`WindowState::selection`](super::WindowState::selection).
     pub(super) fn set_selection(&mut self, selection: Option<Selection>) {
+        // The selection is painted with the layout.
+        self.redraw |= self.selection.current != selection;
         self.selection.current = selection;
+        self.pipeline.set_selection(selection);
         update_rw(self.state.selection, selection);
 
         if selection.is_none() {
@@ -133,13 +133,9 @@ impl Window {
         cursor: parley::Cursor,
         side: Option<parley::Affinity>,
     ) -> Option<TextPosition> {
-        let item = inline.item_at(cursor.index(), side.unwrap_or(cursor.affinity()))?;
-        let node = self.pipeline.trees.node(item)?;
         let tree = self.ui.tree().borrow();
-        let text = tree.ui.prop::<Text>(node)?;
-        let index = inline.source_index(item, &text.0, cursor.index())?;
 
-        Some(TextPosition::new(node, index, cursor.affinity().into()))
+        selection::position_at(&tree.ui, &self.pipeline.trees.inputs, inline, cursor, side)
     }
 
     /// The box owning the inline layout holding `position`, and the index of
@@ -150,17 +146,9 @@ impl Window {
         position: TextPosition,
     ) -> Option<(BoxFragmentKey, usize)> {
         let trees = &self.pipeline.trees;
-        let item = trees.inputs.item_for_node(position.node)?;
-        let owner = trees.fragments.inline_owner(&trees.inputs, item)?;
         let tree = self.ui.tree().borrow();
-        let text = tree.ui.prop::<Text>(position.node)?;
-        let index =
-            trees
-                .fragments
-                .inline_layout(owner)?
-                .layout_index(item, &text.0, position.index)?;
 
-        Some((owner, index))
+        selection::layout_position(&tree.ui, &trees.inputs, &trees.fragments, position)
     }
 
     /// The box owning the selectable text under the pointer, with the
@@ -172,16 +160,13 @@ impl Window {
     /// under the pointer: run boxes are only on the path to the text they
     /// hold. Outside of any text, the
     /// [nearest text](Self::nearest_text) holds it. The first
-    /// [`Selectable`] other than `Auto` from
+    /// [`Selectable`](comet_paint::style::Selectable) other than `Auto` from
     /// the node hit up the tree decides whether it can be selected there,
     /// so an unselectable span in selectable text is not selected. Text is
     /// selectable when no node decides.
     fn text_at(&self) -> Option<(BoxFragmentKey, Point)> {
         let leaf = self.pointer.path.last().map(|hit| hit.node);
-        if !self
-            .inherited::<Selectable, _>(leaf, |prop| prop.0)
-            .unwrap_or(true)
-        {
+        if leaf.is_some_and(|leaf| !self.selectable(leaf)) {
             return None;
         }
 
@@ -231,10 +216,7 @@ impl Window {
                 .filter_map(|owner| {
                     let inline = fragments.inline_layout(owner)?;
                     let node = trees.node(fragments.get(owner)?.source)?;
-                    if !self
-                        .inherited::<Selectable, _>(Some(node), |prop| prop.0)
-                        .unwrap_or(true)
-                    {
+                    if !self.selectable(node) {
                         return None;
                     }
 
@@ -278,6 +260,17 @@ impl Window {
             let origin = trees.fragments.inline_layout(run)?.origin();
             Some((run, local + trees.scroll(run) - origin))
         })
+    }
+
+    /// Whether the text of `node` can be selected, as resolved by the last
+    /// layout. Nodes not laid out cannot be.
+    fn selectable(&self, node: NodeKey) -> bool {
+        let trees = &self.pipeline.trees;
+
+        trees
+            .inputs
+            .item_for_node(node)
+            .is_some_and(|item| trees.prepaint.is_selectable(item))
     }
 
     /// `position` in the coordinates of the inline layout owned by `owner`.

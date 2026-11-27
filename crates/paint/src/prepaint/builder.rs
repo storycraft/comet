@@ -15,11 +15,15 @@ use taffy::Overflow as OverflowMode;
 
 use crate::{
     prepaint::{
-        FragmentData, LayoutInputData,
+        DEFAULT_SELECTION_BACKGROUND, DEFAULT_SELECTION_COLOR, FragmentData, LayoutInputData,
         fragment::{BoxRole, boxes_of, paint_props},
         tree::PrepaintTree,
     },
-    style::{BorderRadius, OutlineOffset, OutlineWidth, TextColor},
+    selection::{Selection, order::selected_ranges, text::next_text_item},
+    style::{
+        BorderRadius, OutlineOffset, OutlineWidth, Selectable, SelectionColor, SelectionFill,
+        TextColor,
+    },
 };
 
 /// Builds a [`PrepaintTree`] for a fragment tree. Keep it to reuse its
@@ -196,6 +200,82 @@ impl PrepaintTreeBuilder {
     }
 }
 
+impl PrepaintTreeBuilder {
+    /// Resolve the [selection areas](PrepaintTree::selection_area) of the
+    /// text items under `root` for `selection`, replacing those of the last
+    /// call. Each selected text item that can be
+    /// [selected](LayoutInputData::selectable) gets the rectangles
+    /// parley highlights for its selected text. Without a selection, or
+    /// with a collapsed one, no item has any.
+    ///
+    /// Areas follow the inline layouts, so resolve them after every layout
+    /// while text is selected, and once more when the selection is cleared.
+    /// `inputs` is the input tree `fragments` were built from, and `tree`
+    /// belongs to them.
+    pub fn build_selection(
+        &mut self,
+        ui: &Ui,
+        inputs: &LayoutInputTree,
+        fragments: &FragmentTree,
+        tree: &mut PrepaintTree,
+        root: BoxFragmentKey,
+        selection: Option<Selection>,
+    ) {
+        let PrepaintTree {
+            selection_areas: areas,
+            layout_mapping: items,
+            ..
+        } = tree;
+        // Keep the buffers of the items selected again.
+        for area in areas.values_mut() {
+            area.clear();
+        }
+
+        if let Some(selection) = selection {
+            for range in selected_ranges(ui, inputs, fragments, root, selection) {
+                let Some(inline) = fragments.inline_layout(range.owner) else {
+                    continue;
+                };
+                let layout = &inline.layout;
+                let mut from = range.start.0;
+
+                while let Some((item, text)) = next_text_item(inline, from, range.end.0) {
+                    let start = if text.start <= range.start.0 {
+                        range.start
+                    } else {
+                        (text.start, parley::Affinity::Downstream)
+                    };
+                    let end = if text.end >= range.end.0 {
+                        range.end
+                    } else {
+                        (text.end, parley::Affinity::Upstream)
+                    };
+                    from = end.0;
+
+                    if !items.get(item).is_some_and(|data| data.selectable) {
+                        continue;
+                    }
+
+                    let Some(area) = areas.entry(item).map(|entry| entry.or_default()) else {
+                        continue;
+                    };
+                    // Indices past the text, such as of text edited since,
+                    // end it.
+                    let cursor = |(index, affinity)| {
+                        parley::Cursor::from_byte_index(layout, index, affinity)
+                    };
+                    parley::Selection::new(cursor(start), cursor(end))
+                        .geometry_with(layout, |rect, _| {
+                            area.push(kurbo::Rect::new(rect.x0, rect.y0, rect.x1, rect.y1))
+                        });
+                }
+            }
+        }
+
+        areas.retain(|_, area| !area.is_empty());
+    }
+}
+
 /// Whether a paint value resolved from `props`, for an item or its
 /// fragments, uses `vw` or `vh`.
 fn depends_viewport(props: Props<'_>) -> bool {
@@ -339,6 +419,27 @@ impl Sources<'_> {
             }),
         };
 
+        let SelectionColor(selection_color) = props.get_cloned().unwrap_or_default();
+        let selection_color = match selection_color {
+            AutoValue::Value(color) => color,
+            AutoValue::Auto => parent.map_or(Paint::Solid(DEFAULT_SELECTION_COLOR), |parent| {
+                parent.selection_color.clone()
+            }),
+        };
+        let Selectable(selectable) = props.get_cloned().unwrap_or_default();
+        let selectable = match selectable {
+            AutoValue::Value(selectable) => selectable,
+            AutoValue::Auto => parent.is_none_or(|parent| parent.selectable),
+        };
+        let SelectionFill(selection_background) = props.get_cloned().unwrap_or_default();
+        let selection_background = match selection_background {
+            AutoValue::Value(fill) => fill,
+            AutoValue::Auto => parent
+                .map_or(Paint::Solid(DEFAULT_SELECTION_BACKGROUND), |parent| {
+                    parent.selection_background.clone()
+                }),
+        };
+
         // As in CSS and Taffy, a box scrolling or hiding its overflow on one
         // axis clips both, while `clip` only clips its own axis. Layout
         // overflow stops at the same clips.
@@ -359,6 +460,9 @@ impl Sources<'_> {
                 parent_offset,
             ),
             text_color,
+            selectable,
+            selection_color,
+            selection_background,
         })
     }
 }

@@ -11,7 +11,6 @@ mod pointer;
 mod selection;
 pub mod state;
 pub mod text;
-mod text_order;
 mod viewport;
 
 use core::iter::successors;
@@ -36,10 +35,9 @@ use self::{
     state::{StateWriters, WindowState, update},
     viewport::Viewport,
 };
-use crate::{
-    cursor::CursorIcon, listeners::Listeners, pipeline::Pipeline, runtime::UiRoot,
-    selection::Selection,
-};
+use comet_paint::selection::Selection;
+
+use crate::{cursor::CursorIcon, listeners::Listeners, pipeline::Pipeline, runtime::UiRoot};
 
 /// A window showing a UI built with [`comet_reactivity`], independent of the
 /// platform.
@@ -257,19 +255,15 @@ impl Window {
     }
 
     /// Paint the last layout into `scene`, in physical pixels, with the
-    /// selected text highlighted over it.
+    /// selected text highlighted behind its glyphs.
     pub fn paint(&mut self, scene: &mut impl anyrender::PaintScene) {
-        {
-            let tree = self.ui.tree().borrow();
-            self.pipeline.paint(
-                &tree.ui,
-                self.viewport.physical_rect(),
-                self.viewport.scale_factor,
-                scene,
-            );
-        }
-
-        self.paint_selection(scene);
+        let tree = self.ui.tree().borrow();
+        self.pipeline.paint(
+            &tree.ui,
+            self.viewport.physical_rect(),
+            self.viewport.scale_factor,
+            scene,
+        );
     }
 
     // Accessibility.

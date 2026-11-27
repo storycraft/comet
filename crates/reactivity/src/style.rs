@@ -91,7 +91,12 @@ pub trait Styled: Sized {
         word_spacing: bx::WordSpacing => StyleUnit;
         letter_spacing: bx::LetterSpacing => StyleUnit;
         text_align: bx::TextAlign => parley::Alignment;
+        /// Let a press select the text of the node and its descendants, or
+        /// not, or keep whether the node above does with [`AutoValue::Auto`].
+        selectable: paint::Selectable => AutoValue<bool>;
         text_color: paint::TextColor => AutoValue<Paint>;
+        selection_color: paint::SelectionColor => AutoValue<Paint>;
+        selection_fill: paint::SelectionFill => AutoValue<Paint>;
 
         // Paint
         fill: paint::Fill => Paint;

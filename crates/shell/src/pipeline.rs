@@ -24,6 +24,7 @@ use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
     prepaint::{builder::PrepaintTreeBuilder, fragment::BoxRole, tree::PrepaintTree},
+    selection::Selection,
 };
 use comet_reactivity::{prop::PropHint, tree::UiTree};
 use comet_tree::{node::NodeKey, ui::Ui};
@@ -196,6 +197,8 @@ pub struct Pipeline {
     /// Logical viewport the layer tree was last built with, kept when a
     /// build fails, so the next one resolves viewport units again.
     layer_viewport: Option<Size<f64>>,
+    /// Text selection painted with the layout.
+    selection: Option<Selection>,
     a11y: Accessibility,
 }
 
@@ -225,6 +228,17 @@ impl Pipeline {
     /// Logical viewport of the last successful layout.
     pub fn viewport(&self) -> Option<Size<f64>> {
         self.viewport
+    }
+
+    /// The text selection painted with the layout.
+    pub fn selection(&self) -> Option<Selection> {
+        self.selection
+    }
+
+    /// Set the text selection painted with the layout, from the next
+    /// layout on.
+    pub fn set_selection(&mut self, selection: Option<Selection>) {
+        self.selection = selection;
     }
 
     /// Take the changes recorded in `tree`, to be consumed by the next
@@ -305,6 +319,19 @@ impl Pipeline {
             &constraint.units,
             fragment_root,
         );
+
+        // Selection areas follow the inline layouts, so they are resolved
+        // with every layout.
+        if resolved.is_some() {
+            builders.prepaint.build_selection(
+                ui,
+                inputs,
+                fragments,
+                prepaint,
+                fragment_root,
+                self.selection,
+            );
+        }
 
         // Layers keep their keys, so building from the root again only places
         // the layers whose fragments gained, lost or reordered a layer. They
