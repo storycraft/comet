@@ -563,7 +563,7 @@ fn fragment_boxes_resolve_their_border_radii() {
 }
 
 #[test]
-fn text_color_is_inherited_through_the_ui() {
+fn color_is_inherited_through_the_ui() {
     let mut ui = Ui::new();
     let root = ui.create(
         Node::Box,
@@ -919,7 +919,7 @@ fn resolving_follows_the_layout() {
 }
 
 #[test]
-fn text_color_defaults_to_black() {
+fn color_defaults_to_black() {
     let mut ui = Ui::new();
     let root = ui.create(Node::Box, ());
     let label = text(&mut ui, root, "black");
@@ -933,7 +933,7 @@ fn text_color_defaults_to_black() {
 }
 
 #[test]
-fn text_color_changes_resolve_the_subtree() {
+fn color_changes_resolve_the_subtree() {
     let mut ui = Ui::new();
     let root = ui.create(
         Node::Box,
