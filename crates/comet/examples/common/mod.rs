@@ -3,6 +3,7 @@ mod flex;
 mod layers;
 mod reactive;
 mod scroll;
+mod selection;
 
 use std::rc::Rc;
 
@@ -15,6 +16,7 @@ use comet_layout::style::{
     bx::{DisplayInner, DisplayOuter},
     geometry::{AutoValue, Point},
 };
+use comet_paint::style::UserSelect;
 use comet_shell::cursor::CursorIcon;
 use comet_tree::node::NodeKey;
 use parley::Alignment;
@@ -57,7 +59,7 @@ pub fn button(
         .focusable(true)
         .cursor(AutoValue::Value(Some(CursorIcon::Pointer)))
         // Pressing the label clicks, without selecting it.
-        .selectable(AutoValue::Value(false))
+        .selectable(AutoValue::Value(UserSelect::None))
         .outline_width(px(2))
         .outline_offset(px(2))
         .outline_fill(Signal::derive(move || {
@@ -148,6 +150,7 @@ pub fn sample_ui(cx: &UiCx) -> NodeKey {
                         effects,
                         reactive::showcase(cx),
                         scroll::showcase(cx),
+                        selection::showcase(cx),
                     ]
                 });
 

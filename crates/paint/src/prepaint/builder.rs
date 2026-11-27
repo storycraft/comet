@@ -21,7 +21,7 @@ use crate::{
     },
     style::{
         BorderRadius, OutlineOffset, OutlineWidth, Selectable, SelectionColor, SelectionFill,
-        TextColor,
+        TextColor, UserSelect,
     },
 };
 
@@ -349,10 +349,14 @@ impl Sources<'_> {
                 parent.selection_color.clone()
             }),
         };
-        let Selectable(selectable) = props.get_cloned().unwrap_or_default();
-        let selectable = match selectable {
-            AutoValue::Value(selectable) => selectable,
-            AutoValue::Auto => parent.is_none_or(|parent| parent.selectable),
+        // A container holds its descendants, whether they are selectable.
+        let container = parent.and_then(|parent| parent.selection_container);
+        let Selectable(select) = props.get_cloned().unwrap_or_default();
+        let (selectable, selection_container) = match select {
+            AutoValue::Auto => (parent.is_none_or(|parent| parent.selectable), container),
+            AutoValue::Value(UserSelect::None) => (false, container),
+            AutoValue::Value(UserSelect::Text) => (true, container),
+            AutoValue::Value(UserSelect::Contain) => (true, Some(key)),
         };
         let SelectionFill(selection_background) = props.get_cloned().unwrap_or_default();
         let selection_background = match selection_background {
@@ -384,6 +388,7 @@ impl Sources<'_> {
             ),
             text_color,
             selectable,
+            selection_container,
             selection_color,
             selection_background,
         })

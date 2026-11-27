@@ -54,6 +54,12 @@ impl PrepaintTree {
         self.get(key).is_some_and(|data| data.selectable)
     }
 
+    /// The item a selection starting in the text of an item must end in, as
+    /// resolved into its [`LayoutInputData::selection_container`].
+    pub fn selection_container(&self, key: LayoutInputKey) -> Option<LayoutInputKey> {
+        self.get(key)?.selection_container
+    }
+
     /// Whether the paint values of an item, or of its fragments, were
     /// resolved with `vw` or `vh` lengths.
     pub fn depends_viewport(&self, key: LayoutInputKey) -> bool {

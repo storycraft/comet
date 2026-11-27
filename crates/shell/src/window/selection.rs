@@ -1,10 +1,13 @@
 //! Selecting text with a pointer.
 
-use core::cmp::Ordering;
+use core::{cmp::Ordering, iter::successors};
 
-use comet_layout::fragment::{BoxFragmentKey, FragmentRef, inline::InlineLayout};
-use comet_paint::selection::{self, Selection, TextPosition};
-use comet_tree::node::NodeKey;
+use comet_layout::{
+    fragment::{BoxFragmentKey, FragmentRef, inline::InlineLayout},
+    input::{LayoutInputKey, tree::LayoutInputTree},
+};
+use comet_paint::selection::{self, Affinity, Selection, TextPosition};
+use comet_tree::node::{NodeKey, Text};
 use kurbo::Point;
 use parley::Affinity::{Downstream, Upstream};
 use reactive_graph::traits::GetUntracked;
@@ -17,6 +20,10 @@ pub(super) struct SelectionState {
     pub current: Option<Selection>,
     /// Whether a pointer drag extends the selection.
     pub selecting: bool,
+    /// The node the selection must stay in: the
+    /// [selection container](comet_paint::prepaint::LayoutInputData::selection_container)
+    /// of the text it started in.
+    pub container: Option<NodeKey>,
 }
 
 impl Window {
@@ -31,6 +38,7 @@ impl Window {
 
         if selection.is_none() {
             self.selection.selecting = false;
+            self.selection.container = None;
         }
     }
 
@@ -40,6 +48,9 @@ impl Window {
         let wanted = self.state.selection.get_untracked();
         if wanted != self.selection.current {
             self.set_selection(wanted);
+            // Set from outside: it stays in the container of its anchor.
+            self.selection.container =
+                wanted.and_then(|selection| self.container_of(selection.anchor.node));
         }
 
         if self.selection.current.is_some_and(|selection| {
@@ -65,6 +76,8 @@ impl Window {
         let (x, y) = (point.x as f32, point.y as f32);
         let current = self.selection.current.filter(|_| extend);
 
+        // The position pressed, whose container a new selection stays in.
+        let mut pressed = None;
         let selection = self.with_inline_layout(owner, |inline| {
             let layout = &inline.layout;
             match current {
@@ -73,6 +86,8 @@ impl Window {
                     self.position_at(inline, parley::Cursor::from_point(layout, x, y), None)?,
                 )),
                 None => {
+                    pressed =
+                        self.position_at(inline, parley::Cursor::from_point(layout, x, y), None);
                     let selection = match count {
                         0 | 1 => parley::Selection::from_point(layout, x, y),
                         2 => parley::Selection::word_from_point(layout, x, y),
@@ -94,10 +109,30 @@ impl Window {
             }
         });
 
-        if let Some(selection) = selection.flatten() {
-            self.set_selection(Some(selection));
-            self.selection.selecting = true;
-        }
+        let Some(selection) = selection.flatten() else {
+            return;
+        };
+        let container = match current {
+            Some(_) => self.selection.container,
+            None => pressed.and_then(|position| self.container_of(position.node)),
+        };
+        // A word or line selected around the pressed text may reach past its
+        // container, or into another one: both ends are kept from the
+        // pressed text.
+        let from = match current {
+            Some(current) => current.anchor,
+            None => pressed.unwrap_or(selection.anchor),
+        };
+        let (Some(anchor), Some(extent)) = (
+            self.contain(selection.anchor, container, from),
+            self.contain(selection.extent, container, from),
+        ) else {
+            return;
+        };
+
+        self.set_selection(Some(Selection::new(anchor, extent)));
+        self.selection.selecting = true;
+        self.selection.container = container;
     }
 
     /// Move the extent of the selection to `position`: into the selectable
@@ -119,8 +154,101 @@ impl Window {
             let cursor = parley::Cursor::from_point(&inline.layout, point.x as f32, point.y as f32);
             self.position_at(inline, cursor, None)
         });
-        if let Some(extent) = extent.flatten() {
+        if let Some(extent) = extent
+            .flatten()
+            .and_then(|extent| self.contain(extent, self.selection.container, current.anchor))
+        {
             self.set_selection(Some(Selection::new(current.anchor, extent)));
+        }
+    }
+
+    /// The node a selection starting in the text of `node` must stay in, as
+    /// resolved by the last layout. `None` if it may go anywhere.
+    fn container_of(&self, node: NodeKey) -> Option<NodeKey> {
+        let trees = &self.pipeline.trees;
+        let container = trees
+            .prepaint
+            .selection_container(trees.inputs.item_for_node(node)?)?;
+
+        Some(trees.inputs.items.get(container)?.node)
+    }
+
+    /// `position`, an end of a selection held by `container` and running
+    /// from `from`, moved where the selection may end:
+    /// - out of `container`, to its edge: the end of its last selectable
+    ///   text when after it, the start of its first when before;
+    /// - into another container inside it, one set to
+    ///   [`UserSelect::Contain`](comet_paint::style::UserSelect::Contain),
+    ///   past the outermost one: to the end of its last selectable text when
+    ///   the selection runs forward from `from`, the start of its first when
+    ///   backward. As with an editable element on the web, a container is
+    ///   selected whole from outside of it, or not at all.
+    ///
+    /// `None` if `position`, `from` or a container is not laid out, or the
+    /// container moved to holds no selectable text.
+    fn contain(
+        &self,
+        position: TextPosition,
+        container: Option<NodeKey>,
+        from: TextPosition,
+    ) -> Option<TextPosition> {
+        let trees = &self.pipeline.trees;
+        let inputs = &trees.inputs;
+        let root = match container {
+            Some(container) => Some(inputs.item_for_node(container)?),
+            None => None,
+        };
+        let item = inputs.item_for_node(position.node)?;
+
+        if let Some(root) = root
+            && !successors(Some(item), |&key| inputs.items.parent(key)).any(|key| key == root)
+        {
+            return self.text_edge(root, follows(inputs, item, root)?);
+        }
+
+        // The outermost container holding `position` inside the selection's.
+        let mut outer = None;
+        let mut next = trees.prepaint.selection_container(item);
+        while let Some(key) = next.filter(|&key| Some(key) != root) {
+            outer = Some(key);
+            next = inputs
+                .items
+                .parent(key)
+                .and_then(|parent| trees.prepaint.selection_container(parent));
+        }
+        let Some(outer) = outer else {
+            return Some(position);
+        };
+
+        let from_item = inputs.item_for_node(from.node)?;
+        let forward = tree_order(inputs, item, from_item)?
+            .then(position.index.cmp(&from.index))
+            .is_gt();
+
+        self.text_edge(outer, forward)
+    }
+
+    /// The start of the first selectable text under the item `root`, or the
+    /// end of its last with `end`, in tree order.
+    fn text_edge(&self, root: LayoutInputKey, end: bool) -> Option<TextPosition> {
+        let trees = &self.pipeline.trees;
+        let inputs = &trees.inputs;
+        let tree = self.ui.tree().borrow();
+        let mut texts = inputs
+            .items
+            .descendants(root)
+            .filter(|&key| trees.prepaint.is_selectable(key))
+            .filter_map(|key| {
+                let node = inputs.items[key].node;
+                Some((node, tree.ui.prop::<Text>(node)?.0.len()))
+            });
+
+        if end {
+            let (node, len) = texts.last()?;
+            Some(TextPosition::new(node, len, Affinity::Upstream))
+        } else {
+            let (node, _) = texts.next()?;
+            Some(TextPosition::new(node, 0, Affinity::Downstream))
         }
     }
 
@@ -292,4 +420,67 @@ impl Window {
     ) -> Option<R> {
         Some(f(self.pipeline.trees.fragments.inline_layout(owner)?))
     }
+}
+
+/// Whether the item `item` of `inputs` comes after the subtree of `root` in
+/// tree order, `item` being outside of it. `None` if they are not in the
+/// same tree.
+fn follows(inputs: &LayoutInputTree, item: LayoutInputKey, root: LayoutInputKey) -> Option<bool> {
+    let items = &inputs.items;
+    let root_path: Vec<_> = successors(Some(root), |&key| items.parent(key)).collect();
+    let mut item_child = None;
+
+    for key in successors(Some(item), |&key| items.parent(key)) {
+        if let Some(index) = root_path.iter().position(|&ancestor| ancestor == key) {
+            // `item` holds the root, so starts before it.
+            let Some(item_child) = item_child else {
+                return Some(false);
+            };
+            let root_child = root_path[..index].last().copied()?;
+            let first = items
+                .children(key)
+                .find(|&child| child == item_child || child == root_child)?;
+
+            return Some(first == root_child);
+        }
+        item_child = Some(key);
+    }
+
+    None
+}
+
+/// The order of the items `a` and `b` of `inputs` in the tree, in preorder:
+/// an item comes before its descendants. `None` if they are not in the same
+/// tree.
+fn tree_order(inputs: &LayoutInputTree, a: LayoutInputKey, b: LayoutInputKey) -> Option<Ordering> {
+    let items = &inputs.items;
+    let b_path: Vec<_> = successors(Some(b), |&key| items.parent(key)).collect();
+    let mut a_child = None;
+
+    for key in successors(Some(a), |&key| items.parent(key)) {
+        if let Some(index) = b_path.iter().position(|&ancestor| ancestor == key) {
+            let b_child = b_path[..index].last().copied();
+
+            return Some(match (a_child, b_child) {
+                (None, None) => Ordering::Equal,
+                // An ancestor comes before its descendants.
+                (None, Some(_)) => Ordering::Less,
+                (Some(_), None) => Ordering::Greater,
+                (Some(a_child), Some(b_child)) => {
+                    let first = items
+                        .children(key)
+                        .find(|&child| child == a_child || child == b_child)?;
+
+                    if first == a_child {
+                        Ordering::Less
+                    } else {
+                        Ordering::Greater
+                    }
+                }
+            });
+        }
+        a_child = Some(key);
+    }
+
+    None
 }

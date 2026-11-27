@@ -23,7 +23,7 @@ use comet_paint::selection::{Affinity, Selection, TextPosition, rects::Selection
 use comet_paint::{
     layer::{PaintLayerKey, builder::PaintLayerBuilder, tree::PaintLayerTree},
     painter::CometPainter,
-    style::{Opacity, OutlineFill, Selectable, SelectionColor, SelectionFill},
+    style::{Opacity, OutlineFill, Selectable, SelectionColor, SelectionFill, UserSelect},
 };
 use comet_paint::{
     prepaint::{
@@ -2245,7 +2245,7 @@ fn selection_areas_cover_the_selected_text_items() {
         Node::Box,
         (
             bx::DisplayOuter::Inline,
-            Selectable(AutoValue::Value(false)),
+            Selectable(AutoValue::Value(UserSelect::None)),
         ),
     );
     ui.append(root, span);
@@ -2356,7 +2356,7 @@ fn selectable_is_inherited_through_the_input_tree() {
         Node::Box,
         (
             bx::DisplayOuter::Inline,
-            Selectable(AutoValue::Value(false)),
+            Selectable(AutoValue::Value(UserSelect::None)),
         ),
     );
     ui.append(root, locked);
@@ -2364,7 +2364,10 @@ fn selectable_is_inherited_through_the_input_tree() {
     // Selectable again inside the unselectable span.
     let reopened = ui.create(
         Node::Box,
-        (bx::DisplayOuter::Inline, Selectable(AutoValue::Value(true))),
+        (
+            bx::DisplayOuter::Inline,
+            Selectable(AutoValue::Value(UserSelect::Text)),
+        ),
     );
     ui.append(locked, reopened);
     let inner = text(&mut ui, reopened, "inner");
@@ -2387,5 +2390,58 @@ fn selectable_is_inherited_through_the_input_tree() {
     f.clear_flags();
     assert!(f.data(nested).selectable);
     assert!(f.data(inner).selectable);
+    f.assert_matches_full_resolve(&ui, fragment_root);
+}
+
+#[test]
+fn contain_makes_the_nearest_selection_container() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let free = text(&mut ui, root, "free");
+    let card = ui.create(
+        Node::Box,
+        (Selectable(AutoValue::Value(UserSelect::Contain)),),
+    );
+    ui.append(root, card);
+    let inside = text(&mut ui, card, "inside ");
+    // Unselectable and selectable descendants stay in the container.
+    let locked = ui.create(
+        Node::Box,
+        (
+            bx::DisplayOuter::Inline,
+            Selectable(AutoValue::Value(UserSelect::None)),
+        ),
+    );
+    ui.append(card, locked);
+    let locked_text = text(&mut ui, locked, "locked");
+    // A nested container is the nearest one for its text.
+    let nested = ui.create(
+        Node::Box,
+        (Selectable(AutoValue::Value(UserSelect::Contain)),),
+    );
+    ui.append(card, nested);
+    let nested_text = text(&mut ui, nested, "nested");
+
+    let mut f = Fixture::default();
+    let fragment_root = f.build(&ui, root);
+    let container = |f: &Fixture, node| f.prepaint.selection_container(f.item(node));
+
+    assert_eq!(container(&f, root), None);
+    assert_eq!(container(&f, free), None);
+    assert_eq!(container(&f, card), Some(f.item(card)));
+    assert!(f.data(inside).selectable);
+    assert_eq!(container(&f, inside), Some(f.item(card)));
+    assert!(!f.data(locked_text).selectable);
+    assert_eq!(container(&f, locked_text), Some(f.item(card)));
+    assert_eq!(container(&f, nested_text), Some(f.item(nested)));
+
+    // Back to plain text, the card's descendants have no container.
+    ui.set_props(card, (Selectable(AutoValue::Value(UserSelect::Text)),));
+    f.mark(card);
+    f.resolve(&ui, fragment_root).unwrap();
+    f.clear_flags();
+    assert_eq!(container(&f, inside), None);
+    assert_eq!(container(&f, locked_text), None);
+    assert_eq!(container(&f, nested_text), Some(f.item(nested)));
     f.assert_matches_full_resolve(&ui, fragment_root);
 }

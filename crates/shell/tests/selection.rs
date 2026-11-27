@@ -3,7 +3,10 @@
 use std::{cell::RefCell, rc::Rc};
 
 use comet_layout::style::{geometry::AutoValue, unit::*};
-use comet_paint::selection::{Selection, TextPosition};
+use comet_paint::{
+    selection::{Affinity, Selection, TextPosition},
+    style::UserSelect,
+};
 use comet_reactivity::{cx::UiCx, style::Styled};
 use comet_shell::{style::InputStyled, window::Window};
 use comet_tree::node::NodeKey;
@@ -105,7 +108,7 @@ fn window() -> (Window, Rc<RefCell<Nodes>>) {
             let plain = cx
                 .div()
                 .size(size(px(400), px(30)))
-                .selectable(AutoValue::Value(false))
+                .selectable(AutoValue::Value(UserSelect::None))
                 .children(|cx| cx.text("Not selectable").build());
             let after = focusable(cx);
             *nodes = Nodes {
@@ -358,7 +361,7 @@ fn unselectable_spans_in_selectable_text_are_not_selected() {
                     selectable,
                     cx.div()
                         .display_outer(comet_layout::style::bx::DisplayOuter::Inline)
-                        .selectable(AutoValue::Value(false))
+                        .selectable(AutoValue::Value(UserSelect::None))
                         .children(|cx| cx.text("not selectable").build()),
                 ]
             });
@@ -396,10 +399,10 @@ fn auto_keeps_whether_the_node_above_is_selectable() {
             let key = cx
                 .div()
                 .size(size(px(400), px(30)))
-                .selectable(AutoValue::Value(false))
+                .selectable(AutoValue::Value(UserSelect::None))
                 .children(|cx| {
                     [
-                        span(cx, "Selectable", AutoValue::Value(true)),
+                        span(cx, "Selectable", AutoValue::Value(UserSelect::Text)),
                         span(cx, " not selectable", AutoValue::Auto),
                     ]
                 });
@@ -794,7 +797,7 @@ fn selected_text_is_chunked_by_text_node_without_unselectable_text() {
             let span = cx
                 .div()
                 .display_outer(DisplayOuter::Inline)
-                .selectable(AutoValue::Value(false))
+                .selectable(AutoValue::Value(UserSelect::None))
                 .children(|cx| cx.text("two ").build());
             let inline_box = cx
                 .div()
@@ -966,7 +969,7 @@ fn text_wrapped_in_a_container_after_an_unselectable_box_is_selectable() {
             let button = cx
                 .div()
                 .size(size(px(100), px(30)))
-                .selectable(AutoValue::Value(false))
+                .selectable(AutoValue::Value(UserSelect::None))
                 .on_click(move |_, _| set_count.update(|count| *count += 1))
                 .children(|cx| cx.text("Count up").build());
             let row = cx.div().flex().children(|_| [button, label]);
@@ -998,4 +1001,91 @@ fn text_wrapped_in_a_container_after_an_unselectable_box_is_selectable() {
     window.poll();
     assert!(window.layout(), "lays out");
     assert_eq!(window.selected_text(whole(15)), "Clicked 1 times");
+}
+
+#[test]
+fn selections_starting_in_a_contain_node_stay_in_it() {
+    // Three paragraphs, 30 high each; the middle one contains its selection.
+    let nodes = Rc::new(RefCell::new(Vec::new()));
+    let mut window = Window::new({
+        let nodes = nodes.clone();
+        move |cx: &UiCx| {
+            let paragraph = |cx: &UiCx, value: &'static str, select| {
+                let text = cx.text(value).build();
+                let node = cx
+                    .div()
+                    .size(size(px(400), px(30)))
+                    .selectable(select)
+                    .children(|_| text);
+                (node, text)
+            };
+            let (top, top_text) = paragraph(cx, "Top text", AutoValue::Auto);
+            let (card, card_text) =
+                paragraph(cx, "Card text", AutoValue::Value(UserSelect::Contain));
+            let (bottom, bottom_text) = paragraph(cx, "Bottom text", AutoValue::Auto);
+            *nodes.borrow_mut() = vec![top_text, card_text, bottom_text];
+            cx.div().children(|_| [top, card, bottom])
+        }
+    });
+    open(&mut window);
+    let [top, card, bottom] = <[NodeKey; 3]>::try_from(nodes.borrow().clone()).unwrap();
+
+    // Dragging down out of the card stops at the end of its text.
+    press(&mut window, 1.0, 40.0, 1, Modifiers::empty());
+    drag(&mut window, 50.0, 70.0);
+    let selection = window.selection().unwrap();
+    assert_eq!(ends(selection), [(card, 0), (card, "Card text".len())]);
+    assert_eq!(window.selected_text(selection), "Card text");
+    release(&mut window, 50.0, 70.0);
+
+    // Dragging up out of it stops at its start.
+    press(&mut window, 60.0, 40.0, 1, Modifiers::empty());
+    drag(&mut window, 1.0, 10.0);
+    let selection = window.selection().unwrap();
+    assert_eq!(selection.anchor.node, card);
+    assert_eq!(
+        selection.extent,
+        TextPosition::new(card, 0, Default::default())
+    );
+    release(&mut window, 1.0, 10.0);
+
+    // A selection starting outside the card may run through it.
+    press(&mut window, 1.0, 10.0, 1, Modifiers::empty());
+    drag(&mut window, 50.0, 70.0);
+    let selection = window.selection().unwrap();
+    assert_eq!(selection.anchor.node, top);
+    assert_eq!(selection.extent.node, bottom);
+    assert!(window.selected_text(selection).contains("Card text"));
+    release(&mut window, 50.0, 70.0);
+
+    // Dragging from above into the middle of the card selects all of it.
+    press(&mut window, 1.0, 10.0, 1, Modifiers::empty());
+    drag(&mut window, 40.0, 40.0);
+    let selection = window.selection().unwrap();
+    assert_eq!(
+        selection.extent,
+        TextPosition::new(card, "Card text".len(), Affinity::Upstream),
+        "the card is selected whole"
+    );
+    assert_eq!(
+        window.selected_text(selection),
+        "Top text
+Card text"
+    );
+    release(&mut window, 40.0, 40.0);
+
+    // Dragging from below into it selects all of it too, from its start.
+    press(&mut window, 80.0, 70.0, 1, Modifiers::empty());
+    drag(&mut window, 40.0, 40.0);
+    let selection = window.selection().unwrap();
+    assert_eq!(selection.anchor.node, bottom);
+    assert_eq!(
+        selection.extent,
+        TextPosition::new(card, 0, Affinity::Downstream),
+        "the card is selected whole"
+    );
+    assert!(window.selected_text(selection).starts_with(
+        "Card text
+"
+    ));
 }

@@ -50,12 +50,14 @@ define_style_props!(
     pub ScrollTop: f64 = 0.0;
 
     // Text selection
-    /// Whether pressing the text of the node and its descendants selects
-    /// it, or [`AutoValue::Auto`] to keep whether the parent does. Text is
-    /// selectable at the root. Resolved into
-    /// [`LayoutInputData::selectable`](crate::prepaint::LayoutInputData::selectable).
+    /// How the text of the node and its descendants can be selected, or
+    /// [`AutoValue::Auto`] to select as the parent does. Text is selectable
+    /// at the root. Resolved into
+    /// [`LayoutInputData::selectable`](crate::prepaint::LayoutInputData::selectable)
+    /// and
+    /// [`LayoutInputData::selection_container`](crate::prepaint::LayoutInputData::selection_container).
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub Selectable: AutoValue<bool> = AutoValue::Auto;
+    pub Selectable: AutoValue<UserSelect> = AutoValue::Auto;
 
     // Text draw styles
     /// Color of the text of a node and its descendants. Auto follows the
@@ -94,3 +96,18 @@ define_style_props!(
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub MixBlend: BlendMode;
 );
+
+/// How the text of a node and its descendants can be selected, set with
+/// [`Selectable`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UserSelect {
+    /// The text cannot be selected at all: pressing it selects nothing.
+    None,
+    /// The text can be selected.
+    Text,
+    /// The text can be selected, like [`Self::Text`], but a selection
+    /// starting in the node's subtree ends in it too, and, like an editable
+    /// element on the web, a selection from outside selects it whole or not
+    /// at all.
+    Contain,
+}

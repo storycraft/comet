@@ -24,7 +24,10 @@ pub mod tree;
 use anyrender::Paint;
 #[cfg(doc)]
 use comet_layout::dirty_map::DirtyFlags;
-use comet_layout::fragment::{BoxFragment, BoxFragmentType};
+use comet_layout::{
+    fragment::{BoxFragment, BoxFragmentType},
+    input::LayoutInputKey,
+};
 use kurbo::{Point, Rect, RoundedRect, RoundedRectRadii};
 use peniko::Color;
 
@@ -59,10 +62,17 @@ pub struct LayoutInputData {
     /// span.
     pub text_color: Paint,
 
-    /// Whether the item's text can be selected: its
-    /// [`Selectable`](crate::style::Selectable), or the parent item's when
-    /// auto. `true` at the root.
+    /// Whether the item's text can be selected: not when its
+    /// [`Selectable`](crate::style::Selectable) is
+    /// [`None`](crate::style::UserSelect::None), yes when it is `Text` or
+    /// `Contain`, else as the parent item. `true` at the root.
     pub selectable: bool,
+
+    /// The item a selection starting in the item's text must end in: the
+    /// nearest of the item and its ancestors whose
+    /// [`Selectable`](crate::style::Selectable) is
+    /// [`Contain`](crate::style::UserSelect::Contain). `None` if no item is.
+    pub selection_container: Option<LayoutInputKey>,
 
     /// Color the item's selected glyphs paint with: its
     /// [`SelectionColor`](crate::style::SelectionColor), or the parent
@@ -92,6 +102,7 @@ impl LayoutInputData {
     pub fn inherits_same(&self, other: &Self) -> bool {
         self.text_color == other.text_color
             && self.selectable == other.selectable
+            && self.selection_container == other.selection_container
             && self.selection_color == other.selection_color
             && self.selection_background == other.selection_background
             && self.outline_width == other.outline_width
