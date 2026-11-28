@@ -842,6 +842,7 @@ dependencies = [
  "comet-accesskit",
  "comet-content",
  "comet-content-image",
+ "comet-content-svg",
  "comet-geometry",
  "comet-layout",
  "comet-layout-flex",

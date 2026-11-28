@@ -32,6 +32,7 @@ ui-events-winit = "0.3.0"
 
 [dev-dependencies]
 comet-content-image = { workspace = true }
+comet-content-svg = { workspace = true }
 parley = { workspace = true }
 taffy = { workspace = true }
 image = "0.25.8"

@@ -121,7 +121,7 @@ pub(super) fn showcase(cx: &UiCx) -> NodeKey {
 }
 
 /// A row of boxes aligned to its top, so they keep their own heights.
-fn row<V: IntoView>(cx: &UiCx, children: impl FnOnce(&UiCx) -> V) -> NodeKey {
+pub(super) fn row<V: IntoView>(cx: &UiCx, children: impl FnOnce(&UiCx) -> V) -> NodeKey {
     cx.div()
         .flex()
         .flex_wrap(FlexWrap::Wrap)
@@ -136,7 +136,7 @@ fn fit(cx: &UiCx, content: ContentId, object_fit: ObjectFit, label: &str) -> Nod
 }
 
 /// `image` in a white box, 96 x 56 unless it sets a size, over `label`.
-fn tile(cx: &UiCx, image: NodeBuild<'_>, label: &str) -> NodeKey {
+pub(super) fn tile(cx: &UiCx, image: NodeBuild<'_>, label: &str) -> NodeKey {
     let image = image
         .size(size(px(96), px(56)))
         .background(solid(Color::WHITE))
@@ -147,11 +147,11 @@ fn tile(cx: &UiCx, image: NodeBuild<'_>, label: &str) -> NodeKey {
 }
 
 /// A box displaying `content`.
-fn image(cx: &UiCx, content: ContentId) -> NodeBuild<'_> {
+pub(super) fn image(cx: &UiCx, content: ContentId) -> NodeBuild<'_> {
     cx.div().display_inner(DisplayInner::Content(content))
 }
 
-fn caption(cx: &UiCx, label: &str) -> NodeKey {
+pub(super) fn caption(cx: &UiCx, label: &str) -> NodeKey {
     cx.div()
         .font_size(px(12))
         .font_weight(parley::FontWeight::SEMI_BOLD)

@@ -5,6 +5,7 @@ mod layers;
 mod reactive;
 mod scroll;
 mod selection;
+mod svg;
 
 use std::rc::Rc;
 
@@ -151,6 +152,7 @@ pub fn sample_ui(cx: &UiCx) -> NodeKey {
                         scroll::showcase(cx),
                         selection::showcase(cx),
                         image::showcase(cx),
+                        svg::showcase(cx),
                     ]
                 });
 
