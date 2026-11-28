@@ -1,6 +1,7 @@
 //! Image contents for comet: raster images drawn by replaced boxes, see
 //! [`comet_content`].
 
+pub mod prelude;
 pub mod style;
 
 use anyrender::{AntiAliasing, Paint, PaintScene, Scene};
@@ -76,8 +77,3 @@ fn extended(rect: Rect, size: kurbo::Size, extend: ImageExtend) -> Rect {
 
     Rect::new(x0, y0, x1, y1)
 }
-
-#[cfg(test)]
-mod fixture;
-#[cfg(test)]
-mod tests;

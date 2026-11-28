@@ -1,13 +1,18 @@
+//! Measuring and drawing image contents with their style props.
+
+mod fixture;
+
 use anyrender::{Paint, recording::RenderCommand};
 use comet_content::{Content, manager::ContentManager, style::ObjectFit};
 use kurbo::{Affine, Shape};
 use peniko::{Blob, Extend, ImageAlphaType, ImageData, ImageFormat, ImageQuality};
 
-use crate::{
+use comet_content_image::{
     ImageContent,
-    fixture::{Fixture, size},
     style::{ImageExtend, ImageRendering},
 };
+
+use crate::fixture::{Fixture, size};
 
 fn image(width: u32, height: u32) -> ImageData {
     ImageData {
