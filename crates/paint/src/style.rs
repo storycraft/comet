@@ -86,6 +86,12 @@ define_style_props!(
     #[derive(Debug, Clone, PartialEq)]
     pub SelectionFill: AutoValue<Paint> = AutoValue::Auto;
 
+    /// Whether the box always starts a paint layer of its own, painting it
+    /// and its contents apart, even without other layer styles. Defaults to
+    /// false.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub Layer: bool = false;
+
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub ZIndex: AutoValue<i32> = AutoValue::Auto;
 

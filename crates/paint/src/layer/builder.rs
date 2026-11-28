@@ -20,7 +20,7 @@ use crate::{
         BoxRole, for_each_paint_child, paint_parent, paint_props, part_of_piece, piece_of_part,
     },
     style::{
-        BackdropFilter, Filter, MixBlend, Opacity, ScrollLeft, ScrollTop, Transform,
+        BackdropFilter, Filter, Layer, MixBlend, Opacity, ScrollLeft, ScrollTop, Transform,
         TransformOrigin, ZIndex,
     },
 };
@@ -72,9 +72,10 @@ impl PaintLayerBuilder {
     /// fragment of `root`. The root box always starts the root layer, with
     /// z index 0, whatever its styles.
     ///
-    /// A principal box starts a layer when its item sets a [`Transform`], an
-    /// [`Opacity`], a [`Filter`], a [`BackdropFilter`] or a [`MixBlend`],
-    /// whatever its value, a [`ZIndex`] other than auto, or an [`Overflow`]
+    /// A principal box starts a layer when its item sets [`Layer`] to true,
+    /// a [`Transform`], an [`Opacity`], a [`Filter`], a [`BackdropFilter`]
+    /// or a [`MixBlend`], whatever its value, a [`ZIndex`] other than auto,
+    /// or an [`Overflow`]
     /// scrolling or hiding its overflow on an axis, making it a scroll
     /// container. So does an inline element setting one of them other than a
     /// [`Transform`] or an [`Overflow`], which inline elements ignore: its
@@ -644,9 +645,9 @@ impl Sources<'_> {
 }
 
 /// The z index of the layer a fragment with `props` starts, or `None` if it
-/// paints in the layer of its paint parent. Setting a layer style starts a
-/// layer, whatever its value, though a [`Transform`] only for `principal`
-/// boxes. So does being a scroll container, for `principal` boxes only. An
+/// paints in the layer of its paint parent. A true [`Layer`] starts a
+/// layer, and so does setting another layer style, whatever its value,
+/// though a [`Transform`] only for `principal` boxes. So does being a scroll container, for `principal` boxes only. An
 /// auto z index counts as 0.
 fn stacking(props: Props<'_>, principal: bool) -> Option<i32> {
     if let AutoValue::Value(z_index) = props.get_or_default::<ZIndex>().0 {
@@ -654,6 +655,7 @@ fn stacking(props: Props<'_>, principal: bool) -> Option<i32> {
     }
 
     let starts = principal && (props.get::<Transform>().is_some() || scrolls(props))
+        || props.get_or_default::<Layer>().0
         || props.get::<Opacity>().is_some()
         || props.get::<Filter>().is_some()
         || props.get::<BackdropFilter>().is_some()

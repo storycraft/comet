@@ -23,7 +23,8 @@ use comet_paint::{
     prepaint::{builder::PrepaintTreeBuilder, tree::PrepaintTree},
     selection::rects::SelectionRects,
     style::{
-        BackdropFilter, Background, Filter, MixBlend, Opacity, Transform, TransformOrigin, ZIndex,
+        BackdropFilter, Background, Filter, Layer, MixBlend, Opacity, Transform, TransformOrigin,
+        ZIndex,
     },
 };
 use comet_tree::{
@@ -345,6 +346,29 @@ fn transforms_opacity_and_z_indices_start_layers() {
             f.layer_of(zero)
         ]
     );
+}
+
+#[test]
+fn true_layers_always_start_layers() {
+    let mut ui = Ui::new();
+    let root = ui.create(Node::Box, ());
+    let layered = ui.create(Node::Box, (fixed(40.0, 20.0), Layer(true)));
+    let shared = ui.create(Node::Box, (fixed(40.0, 20.0), Layer(false)));
+    ui.append(root, layered);
+    ui.append(root, shared);
+
+    let mut f = Fixture::build(&ui, root);
+
+    assert_eq!(f.children(f.root), [f.layer_of(layered)]);
+    assert_eq!(f.layers.layers[f.layer_of(layered)].z_index, 0);
+    assert_eq!(f.layers.layer_of(f.box_of(shared)), None);
+
+    // Turning it off paints the box in its parent's layer again.
+    ui.set_props(layered, (Layer(false),));
+    f.update(&ui, layered);
+
+    assert_eq!(f.layers.layer_of(f.box_of(layered)), None);
+    assert!(f.children(f.root).is_empty());
 }
 
 #[test]

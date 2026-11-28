@@ -204,6 +204,7 @@ impl ReactiveProp for bx::Position {
 // Resolved by the layer build, which also decides stacking. Transforms and
 // scroll offsets are resolved into the layers their boxes start.
 reactive_props!(LAYER =>
+    paint::Layer,
     paint::Transform,
     paint::TransformOrigin,
     paint::ScrollLeft,

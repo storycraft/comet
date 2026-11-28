@@ -106,6 +106,7 @@ pub trait Styled: Sized {
         outline_offset: paint::OutlineOffset => StyleUnit;
         transform: paint::Transform => kurbo::Affine;
         transform_origin: paint::TransformOrigin => Point<StyleUnit>;
+        layer: paint::Layer => bool;
         z_index: paint::ZIndex => AutoValue<i32>;
         opacity: paint::Opacity => f64;
         filter: paint::Filter => Vec<anyrender::filters::FilterEffect>;
