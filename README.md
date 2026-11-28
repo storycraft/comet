@@ -34,7 +34,7 @@ Composed with multiple prop types, including unresolved styles and other data.
 
 - Custom contents(image, video, external texture render) can be defined via `Content` trait.
 - It can size itself when used as content display.
-- It can draw itself when used as both content display and background paint.
+- It can draw itself when used in content display or background paint.
 
 ### Reactivity
 
