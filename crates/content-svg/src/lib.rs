@@ -1,0 +1,75 @@
+//! SVG contents for comet: vector images drawn by replaced boxes, see
+//! [`comet_content`]. SVG data is parsed into a [`usvg::Tree`] and drawn
+//! with [`anyrender_svg`].
+
+pub use usvg;
+
+use anyrender::Scene;
+use kurbo::Affine;
+
+use comet_content::{Content, DrawInput, MeasureInput, fit_transform, style::ObjectStyle};
+
+/// A parsed SVG, sized and placed in its box by the
+/// [content styles](comet_content::style) of the box's node. Its natural
+/// size is the size of the SVG in logical units: SVG user units are CSS
+/// pixels, so it is drawn as large on every display, scaled rather than
+/// rasterized.
+#[derive(Debug, Clone)]
+pub struct SvgContent {
+    pub tree: usvg::Tree,
+}
+
+impl SvgContent {
+    pub fn new(tree: usvg::Tree) -> Self {
+        Self { tree }
+    }
+
+    /// Parse SVG `data`, gzip compressed or not, with `options`. Text needs
+    /// fonts loaded into the options' font database.
+    pub fn from_data(data: &[u8], options: &usvg::Options<'_>) -> Result<Self, usvg::Error> {
+        usvg::Tree::from_data(data, options).map(Self::new)
+    }
+
+    /// Parse SVG `text` with `options`.
+    pub fn from_str(text: &str, options: &usvg::Options<'_>) -> Result<Self, usvg::Error> {
+        usvg::Tree::from_str(text, options).map(Self::new)
+    }
+
+    /// Size of the SVG in user units, logical units in the box.
+    fn size(&self) -> kurbo::Size {
+        let size = self.tree.size();
+
+        kurbo::Size::new(f64::from(size.width()), f64::from(size.height()))
+    }
+
+    /// Size of the SVG in physical pixels on a display of `scale_factor`,
+    /// as the [content styles](ObjectStyle) measure it.
+    fn physical_size(&self, scale_factor: f64) -> kurbo::Size {
+        let size = self.size();
+
+        // Kept logical where the styles keep physical sizes as they are.
+        if scale_factor > 0.0 && scale_factor.is_finite() {
+            size * scale_factor
+        } else {
+            size
+        }
+    }
+}
+
+impl Content for SvgContent {
+    fn measure(&self, input: &MeasureInput<'_>) -> taffy::Size<f32> {
+        ObjectStyle::of(input.props).measure(self.physical_size(input.scale_factor), input)
+    }
+
+    fn draw(&self, input: &DrawInput<'_>, scene: &mut Scene) {
+        let rect =
+            ObjectStyle::of(input.props).place(self.physical_size(input.scale_factor), input);
+        let transform =
+            Affine::translate(rect.origin().to_vec2()) * fit_transform(self.size(), rect.size());
+
+        anyrender_svg::render_svg_tree(scene, &self.tree, transform);
+    }
+}
+
+#[cfg(test)]
+mod tests;

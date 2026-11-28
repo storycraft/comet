@@ -1,0 +1,33 @@
+[package]
+name = "comet-content-svg"
+description = "SVG content for comet"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+
+[features]
+default = ["text", "raster-images", "svgz"]
+# Parse gzip compressed SVG data.
+svgz = ["usvg/svgz"]
+# Parse and draw `<text>`, with the system fonts loaded into the parse options.
+text = ["usvg/text", "usvg/system-fonts", "usvg/memmap-fonts", "anyrender_svg/text"]
+# Draw PNG, JPEG, GIF and WebP `<image>`s.
+raster-images = [
+    "anyrender_svg/image_format_png",
+    "anyrender_svg/image_format_jpeg",
+    "anyrender_svg/image_format_gif",
+    "anyrender_svg/image_format_webp",
+]
+
+[dependencies]
+anyrender = { workspace = true }
+anyrender_svg = { workspace = true }
+comet-content = { workspace = true }
+kurbo = { workspace = true }
+taffy = { workspace = true }
+usvg = { workspace = true }
+
+[dev-dependencies]
+comet-geometry = { workspace = true }
+comet-tree = { workspace = true }
