@@ -48,7 +48,7 @@ pub(super) fn showcase(cx: &UiCx) -> NodeKey {
                         // A custom ratio sizes the box and stretches the image.
                         image(cx, cat)
                             .object_fit(ObjectFit::Fill)
-                            .content_aspect_ratio(AutoValue::Value(Size::new(2.0, 1.0)))
+                            .aspect_ratio(AutoValue::Value(Size::new(2.0, 1.0)))
                             .size(size(px(144), auto()))
                             .build(),
                     ]

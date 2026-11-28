@@ -54,7 +54,7 @@ pub trait Styled: Sized {
         size: bx::Size => Size<AutoValue<StyleUnit>>;
         min_size: bx::MinSize => Size<AutoValue<StyleUnit>>;
         max_size: bx::MaxSize => Size<AutoValue<StyleUnit>>;
-        aspect_ratio: bx::AspectRatio => f32;
+        aspect_ratio: bx::AspectRatio => AutoValue<Size<f64>>;
         overflow: bx::Overflow => Point<taffy::Overflow>;
         box_sizing: bx::BoxSizing => taffy::BoxSizing;
 
@@ -118,10 +118,6 @@ pub trait Styled: Sized {
         object_fit: content::ObjectFit => content::ObjectFit;
         object_anchor: content::ObjectAnchor => Point<StyleUnit>;
         object_position: content::ObjectPosition => Point<StyleUnit>;
-        /// The aspect ratio of the content a box displays, see
-        /// [`content::AspectRatio`]. Not the box's own
-        /// [`aspect_ratio`](Self::aspect_ratio).
-        content_aspect_ratio: content::AspectRatio => AutoValue<Size<f64>>;
 
         // Accessibility.
         role: comet_accesskit::style::Role => accesskit::Role;

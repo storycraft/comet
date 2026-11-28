@@ -140,7 +140,6 @@ reactive_props!(BOX =>
     bx::BorderDashPattern,
     bx::BorderDashOffset,
     content::ObjectFit,
-    content::AspectRatio,
     flex::FlexDirection,
     flex::FlexWrap,
     flex::FlexLineCount,

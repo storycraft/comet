@@ -16,8 +16,8 @@ use crate::{DrawInput, MeasureInput};
 /// [`None`](Self::None).
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ObjectFit {
-    /// Drawn at its own size, following its [`AspectRatio`], whatever the
-    /// box size.
+    /// Drawn at its own size, following its
+    /// [aspect ratio](ObjectStyle::aspect_ratio), whatever the box size.
     #[default]
     None,
     /// Scaled to cover the whole box, keeping its aspect ratio. Parts past
@@ -44,12 +44,6 @@ define_style_props!(
     /// to the centre.
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub ObjectPosition: Point<StyleUnit> = Point::new(StyleUnit::Percent(0.5), StyleUnit::Percent(0.5));
-
-    /// Aspect ratio a content is measured and drawn with, as a width and a
-    /// height, or [`AutoValue::Auto`] to follow the content's own. Defaults
-    /// to auto.
-    #[derive(Debug, Clone, Copy, PartialEq)]
-    pub AspectRatio: AutoValue<Size<f64>> = AutoValue::Auto;
 );
 
 /// The content style props of a node, measuring and placing a content of a
@@ -59,6 +53,9 @@ pub struct ObjectStyle {
     pub fit: ObjectFit,
     pub anchor: Point<StyleUnit>,
     pub position: Point<StyleUnit>,
+    /// Aspect ratio the content is measured and drawn with, as a width and a
+    /// height, or [`AutoValue::Auto`] to follow the content's own: the
+    /// aspect ratio of the box, a layout style prop.
     pub aspect_ratio: AutoValue<Size<f64>>,
 }
 
@@ -68,27 +65,28 @@ impl Default for ObjectStyle {
             fit: ObjectFit::default(),
             anchor: ObjectAnchor::default().0,
             position: ObjectPosition::default().0,
-            aspect_ratio: AspectRatio::default().0,
+            aspect_ratio: AutoValue::Auto,
         }
     }
 }
 
 impl ObjectStyle {
     /// The content style props set on a node, with the defaults of the
-    /// others.
-    pub fn of(props: Props<'_>) -> Self {
+    /// others, and the node's `aspect_ratio`, which the layout style props
+    /// hold.
+    pub fn of(props: Props<'_>, aspect_ratio: AutoValue<Size<f64>>) -> Self {
         Self {
             fit: props.get_or_default(),
             anchor: props.get_or_default::<ObjectAnchor>().0,
             position: props.get_or_default::<ObjectPosition>().0,
-            aspect_ratio: props.get_or_default::<AspectRatio>().0,
+            aspect_ratio,
         }
     }
 
     /// The size before fitting, in logical units, of a content `physical` in
     /// size on a display of `scale_factor`: its
     /// [logical size](logical_size), with the height following the
-    /// [`AspectRatio`] when it sets one.
+    /// [aspect ratio](Self::aspect_ratio) when it sets one.
     pub fn intrinsic_size(&self, physical: kurbo::Size, scale_factor: f64) -> kurbo::Size {
         let natural = logical_size(physical, scale_factor);
 
@@ -209,7 +207,7 @@ impl ObjectStyle {
     }
 
     /// Width over height of a content `natural` in size: the
-    /// [`AspectRatio`], or its natural one when auto. `None` when either is
+    /// [aspect ratio](Self::aspect_ratio), or its natural one when auto. `None` when either is
     /// empty.
     fn ratio(&self, natural: kurbo::Size) -> Option<f64> {
         let (width, height) = match self.aspect_ratio {

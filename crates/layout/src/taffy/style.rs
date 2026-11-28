@@ -6,7 +6,7 @@ use crate::style::{
     LayoutConstraint,
     bx::{self, DisplayInner},
 };
-use comet_geometry::{AutoValue, StyleUnit};
+use comet_geometry::{self as geometry, AutoValue, StyleUnit};
 
 /// Box style adapter shared by layout algorithms.
 ///
@@ -82,7 +82,7 @@ pub fn resolve_tracked(
         }),
         aspect_ratio: props
             .and_then(Props::get_cloned)
-            .map(|bx::AspectRatio(ratio)| ratio),
+            .and_then(|bx::AspectRatio(ratio)| aspect_ratio(ratio)),
         margin: conv::to_rect(value!(Margin), |v| {
             conv::length_auto(tracked_auto(v, track), cx)
         }),
@@ -186,3 +186,13 @@ impl BlockContainerStyle for Style {}
 impl BlockItemStyle for Style {}
 
 impl OofItemStyle for Style {}
+
+/// Width over height of `ratio`, if set and neither is empty.
+fn aspect_ratio(ratio: AutoValue<geometry::Size<f64>>) -> Option<f32> {
+    match ratio {
+        AutoValue::Value(ratio) if ratio.width > 0.0 && ratio.height > 0.0 => {
+            Some((ratio.width / ratio.height) as f32)
+        }
+        _ => None,
+    }
+}

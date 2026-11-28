@@ -9,6 +9,8 @@ use kurbo::{Affine, Rect};
 use peniko::{Extend, Fill, ImageBrush, ImageData};
 
 use comet_content::{Content, DrawInput, MeasureInput, fit_transform, style::ObjectStyle};
+use comet_layout::style::bx::AspectRatio;
+use comet_tree::ui::Props;
 
 use crate::style::{ImageExtend, ImageRendering};
 
@@ -35,11 +37,11 @@ impl ImageContent {
 
 impl Content for ImageContent {
     fn measure(&self, input: &MeasureInput<'_>) -> taffy::Size<f32> {
-        ObjectStyle::of(input.props).measure(self.pixel_size(), input)
+        object_style(input.props).measure(self.pixel_size(), input)
     }
 
     fn draw(&self, input: &DrawInput<'_>, scene: &mut Scene) {
-        let rect = ObjectStyle::of(input.props).place(self.pixel_size(), input);
+        let rect = object_style(input.props).place(self.pixel_size(), input);
         let extend: ImageExtend = input.props.get_or_default();
         let brush = ImageBrush {
             image: &self.image,
@@ -76,4 +78,9 @@ fn extended(rect: Rect, size: kurbo::Size, extend: ImageExtend) -> Rect {
     };
 
     Rect::new(x0, y0, x1, y1)
+}
+
+/// The content styles of a box of `props`, with its aspect ratio.
+fn object_style(props: Props<'_>) -> ObjectStyle {
+    ObjectStyle::of(props, props.get_or_default::<AspectRatio>().0)
 }

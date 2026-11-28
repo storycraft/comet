@@ -61,8 +61,12 @@ define_style_props!(
     pub MinSize: geometry::Size<AutoValue<StyleUnit>> = geometry::Size::default();
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub MaxSize: geometry::Size<AutoValue<StyleUnit>> = geometry::Size::default();
+    /// Aspect ratio of the box, as a width and a height, or
+    /// [`AutoValue::Auto`] for none of its own. A box displaying a content
+    /// also measures and draws the content with it, and follows the
+    /// content's own when auto. Defaults to auto.
     #[derive(Debug, Clone, Copy, PartialEq)]
-    pub AspectRatio: f32;
+    pub AspectRatio: AutoValue<geometry::Size<f64>> = AutoValue::Auto;
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub Overflow: Point<taffy::Overflow> = Point::default();
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]

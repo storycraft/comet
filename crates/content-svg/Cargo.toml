@@ -22,10 +22,11 @@ raster-images = [
 anyrender = { workspace = true }
 anyrender_svg = { workspace = true }
 comet-content = { workspace = true }
+comet-layout = { workspace = true }
+comet-tree = { workspace = true }
 kurbo = { workspace = true }
 taffy = { workspace = true }
 usvg = { workspace = true }
 
 [dev-dependencies]
 comet-geometry = { workspace = true }
-comet-tree = { workspace = true }
