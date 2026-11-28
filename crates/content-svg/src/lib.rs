@@ -13,7 +13,7 @@ use comet_content::{Content, DrawInput, MeasureInput, fit_transform, style::Obje
 /// [content styles](comet_content::style) of the box's node. Its natural
 /// size is the size of the SVG in logical units: SVG user units are CSS
 /// pixels, so it is drawn as large on every display, scaled rather than
-/// rasterized.
+/// rasterized. `<text>` is not drawn yet.
 #[derive(Debug, Clone)]
 pub struct SvgContent {
     pub tree: usvg::Tree,
@@ -22,17 +22,6 @@ pub struct SvgContent {
 impl SvgContent {
     pub fn new(tree: usvg::Tree) -> Self {
         Self { tree }
-    }
-
-    /// Parse SVG `data`, gzip compressed or not, with `options`. Text needs
-    /// fonts loaded into the options' font database.
-    pub fn from_data(data: &[u8], options: &usvg::Options<'_>) -> Result<Self, usvg::Error> {
-        usvg::Tree::from_data(data, options).map(Self::new)
-    }
-
-    /// Parse SVG `text` with `options`.
-    pub fn from_str(text: &str, options: &usvg::Options<'_>) -> Result<Self, usvg::Error> {
-        usvg::Tree::from_str(text, options).map(Self::new)
     }
 
     /// Size of the SVG in user units, logical units in the box.
@@ -70,6 +59,3 @@ impl Content for SvgContent {
         anyrender_svg::render_svg_tree(scene, &self.tree, transform);
     }
 }
-
-#[cfg(test)]
-mod tests;

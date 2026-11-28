@@ -1,13 +1,12 @@
 use anyrender::{Scene, recording::RenderCommand};
 use comet_content::{Content, DrawInput, MeasureInput, style::ObjectFit};
+use comet_content_svg::SvgContent;
 use comet_tree::{
     node::{Node, NodeKey},
     style::StyleProps,
     ui::{Props, Ui},
 };
 use kurbo::Affine;
-
-use crate::SvgContent;
 
 /// A box node with props, on a display of a scale factor.
 struct Fixture {
@@ -70,13 +69,15 @@ impl Fixture {
 
 /// A 40 x 20 SVG of one rectangle.
 fn rect() -> SvgContent {
-    SvgContent::from_str(
+    let tree = usvg::Tree::from_str(
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">
             <rect width="40" height="20" fill="red"/>
         </svg>"#,
         &usvg::Options::default(),
     )
-    .unwrap()
+    .unwrap();
+
+    SvgContent::new(tree)
 }
 
 fn size(width: f32, height: f32) -> taffy::Size<f32> {
@@ -108,9 +109,4 @@ fn svgs_are_drawn_where_they_are_placed() {
         Fixture::new((ObjectFit::Fill,), 2.0).fill_transforms(&content, 80.0, 80.0),
         [Affine::scale_non_uniform(2.0, 4.0)]
     );
-}
-
-#[test]
-fn invalid_data_is_an_error() {
-    assert!(SvgContent::from_data(b"not an svg", &usvg::Options::default()).is_err());
 }

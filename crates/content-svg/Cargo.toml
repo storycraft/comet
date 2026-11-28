@@ -7,11 +7,9 @@ authors = { workspace = true }
 license = { workspace = true }
 
 [features]
-default = ["text", "raster-images", "svgz"]
+default = ["raster-images", "svgz"]
 # Parse gzip compressed SVG data.
 svgz = ["usvg/svgz"]
-# Parse and draw `<text>`, with the system fonts loaded into the parse options.
-text = ["usvg/text", "usvg/system-fonts", "usvg/memmap-fonts", "anyrender_svg/text"]
 # Draw PNG, JPEG, GIF and WebP `<image>`s.
 raster-images = [
     "anyrender_svg/image_format_png",
