@@ -59,7 +59,10 @@ impl AxTreeBuilder {
     pub fn new() -> Self {
         Self::default()
     }
+}
 
+#[bon::bon]
+impl AxTreeBuilder {
     /// Build into `tree` the nodes of the items under the layout input item
     /// `root` that need it, adding the nodes that changed to the tree's
     /// [changed](AxTree::changed) list, sent and cleared by
@@ -118,8 +121,8 @@ impl AxTreeBuilder {
     /// resolved before the failure stay in `tree`, without their flags
     /// cleared, so the next build resolves them again; build from a
     /// [cleared](AxTree::clear) tree to send a complete tree again.
-    #[allow(clippy::too_many_arguments)]
-    pub fn build(
+    #[builder(finish_fn = build)]
+    pub fn prepare(
         &mut self,
         ui: &Ui,
         inputs: &LayoutInputTree,

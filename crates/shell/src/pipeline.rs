@@ -306,7 +306,14 @@ impl Pipeline {
             inputs.invalidate_viewport(dirty, key);
         }
         let request = BuildRequest::new(root, ROOT_FONT_SIZE, viewport);
-        let input_root = builders.inputs.build(ui, inputs, dirty, request)?;
+        let input_root = builders
+            .inputs
+            .prepare()
+            .ui(ui)
+            .tree(inputs)
+            .dirty(dirty)
+            .request(request)
+            .build()?;
         self.input_viewport = Some(viewport);
 
         // Contents measure with the scale factor, so a new one lays them
@@ -315,16 +322,19 @@ impl Pipeline {
             || previous_scale_factor.is_some_and(|previous| previous != scale_factor);
         let constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE, scale_factor)
             .with_viewport_changed(viewport_changed);
-        let Some(fragment_root) = builders.fragments.build(
-            ui,
-            inputs,
-            contents,
-            &mut self.fonts,
-            dirty,
-            input_root,
-            fragments,
-            &constraint,
-        ) else {
+        let Some(fragment_root) = builders
+            .fragments
+            .prepare()
+            .ui(ui)
+            .tree(inputs)
+            .contents(contents)
+            .fonts(&mut self.fonts)
+            .dirty(dirty)
+            .root(input_root)
+            .fragments(fragments)
+            .constraint(&constraint)
+            .build()
+        else {
             dirty.clear(inputs, input_root);
             return None;
         };
@@ -347,14 +357,15 @@ impl Pipeline {
         // Selection rects follow the inline layouts, so they are built with
         // every layout.
         if resolved.is_some() {
-            selection.build(
-                ui,
-                inputs,
-                fragments,
-                prepaint,
-                fragment_root,
-                self.selection,
-            );
+            selection
+                .prepare()
+                .ui(ui)
+                .inputs(inputs)
+                .fragments(fragments)
+                .prepaint(prepaint)
+                .root(fragment_root)
+                .maybe_selection(self.selection)
+                .build();
         }
 
         // Layers keep their keys, so building from the root again only places
@@ -365,16 +376,18 @@ impl Pipeline {
             .layer_viewport
             .is_some_and(|previous| previous != viewport);
         let layer_root = resolved.and_then(|()| {
-            builders.layers.build(
-                ui,
-                inputs,
-                dirty,
-                &*fragments,
-                &constraint.units,
-                layers,
-                input_root,
-                layer_viewport_changed,
-            )
+            builders
+                .layers
+                .prepare()
+                .ui(ui)
+                .inputs(inputs)
+                .dirty(dirty)
+                .fragments(&*fragments)
+                .units(&constraint.units)
+                .tree(layers)
+                .root(input_root)
+                .viewport_changed(layer_viewport_changed)
+                .build()
         });
         if layer_root.is_some() {
             self.layer_viewport = Some(viewport);
@@ -483,16 +496,18 @@ fn resolve_prepaint(
 ) -> Option<()> {
     let viewport_changed = last_viewport.is_some_and(|previous| previous != units.viewport);
 
-    builders.prepaint.build(
-        ui,
-        inputs,
-        dirty,
-        fragments,
-        units,
-        prepaint,
-        root,
-        viewport_changed,
-    )?;
+    builders
+        .prepaint
+        .prepare()
+        .ui(ui)
+        .inputs(inputs)
+        .dirty(dirty)
+        .fragments(fragments)
+        .units(units)
+        .tree(prepaint)
+        .root(root)
+        .viewport_changed(viewport_changed)
+        .build()?;
     *last_viewport = Some(units.viewport);
 
     Some(())
@@ -527,16 +542,19 @@ impl Pipeline {
             trees.ax.mark_node(&trees.inputs, node);
         }
 
-        a11y.root = self.builders.ax.build(
-            ui,
-            &trees.inputs,
-            &trees.dirty,
-            &trees.fragments,
-            &trees.prepaint,
-            &trees.layers,
-            &mut trees.ax,
-            root,
-        );
+        a11y.root = self
+            .builders
+            .ax
+            .prepare()
+            .ui(ui)
+            .inputs(&trees.inputs)
+            .dirty(&trees.dirty)
+            .fragments(&trees.fragments)
+            .prepaint(&trees.prepaint)
+            .layers(&trees.layers)
+            .tree(&mut trees.ax)
+            .root(root)
+            .build();
 
         if a11y.root.is_none() {
             trees.ax.clear();

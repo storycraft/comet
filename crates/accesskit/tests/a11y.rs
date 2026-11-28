@@ -74,50 +74,62 @@ impl Harness {
         } = self;
         let input_root = self
             .input_builder
-            .build(ui, inputs, dirty, BuildRequest::new(root, 16.0, VIEWPORT))
+            .prepare()
+            .ui(ui)
+            .tree(inputs)
+            .dirty(dirty)
+            .request(BuildRequest::new(root, 16.0, VIEWPORT))
+            .build()
             .expect("input tree");
         let constraint = LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0);
         let fragment_root = self
             .fragment_builder
-            .build(
-                ui,
-                inputs,
-                &ContentManager::new(),
-                &mut self.fonts,
-                dirty,
-                input_root,
-                fragments,
-                &constraint,
-            )
+            .prepare()
+            .ui(ui)
+            .tree(inputs)
+            .contents(&ContentManager::new())
+            .fonts(&mut self.fonts)
+            .dirty(dirty)
+            .root(input_root)
+            .fragments(fragments)
+            .constraint(&constraint)
+            .build()
             .expect("fragment tree");
         self.prepaint_builder
-            .build(
-                ui,
-                inputs,
-                dirty,
-                fragments,
-                &constraint.units,
-                prepaint,
-                fragment_root,
-                false,
-            )
+            .prepare()
+            .ui(ui)
+            .inputs(inputs)
+            .dirty(dirty)
+            .fragments(fragments)
+            .units(&constraint.units)
+            .tree(prepaint)
+            .root(fragment_root)
+            .viewport_changed(false)
+            .build()
             .expect("pre-paint tree");
         self.layer_builder
-            .build(
-                ui,
-                inputs,
-                dirty,
-                fragments,
-                &constraint.units,
-                layers,
-                input_root,
-                false,
-            )
+            .prepare()
+            .ui(ui)
+            .inputs(inputs)
+            .dirty(dirty)
+            .fragments(fragments)
+            .units(&constraint.units)
+            .tree(layers)
+            .root(input_root)
+            .viewport_changed(false)
+            .build()
             .expect("paint layers");
         self.a11y_builder
-            .build(
-                ui, inputs, dirty, fragments, prepaint, layers, a11y, input_root,
-            )
+            .prepare()
+            .ui(ui)
+            .inputs(inputs)
+            .dirty(dirty)
+            .fragments(fragments)
+            .prepaint(prepaint)
+            .layers(layers)
+            .tree(a11y)
+            .root(input_root)
+            .build()
             .expect("accessibility tree");
         dirty.clear(inputs, input_root);
         self.input_root = Some(input_root);
@@ -183,16 +195,16 @@ impl Harness {
     fn assert_consistent(&self) {
         let mut fresh = AxTree::new();
         AxTreeBuilder::new()
-            .build(
-                &self.ui,
-                &self.inputs,
-                &DirtyMap::new(),
-                &self.fragments,
-                &self.prepaint,
-                &self.layers,
-                &mut fresh,
-                self.input_root.unwrap(),
-            )
+            .prepare()
+            .ui(&self.ui)
+            .inputs(&self.inputs)
+            .dirty(&DirtyMap::new())
+            .fragments(&self.fragments)
+            .prepaint(&self.prepaint)
+            .layers(&self.layers)
+            .tree(&mut fresh)
+            .root(self.input_root.unwrap())
+            .build()
             .expect("full build");
 
         let mut pending = vec![(

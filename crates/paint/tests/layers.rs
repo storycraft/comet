@@ -61,54 +61,54 @@ impl Fixture {
         let mut inputs = LayoutInputTree::new();
         let mut dirty = DirtyMap::new();
         let input_root = LayoutInputTreeBuilder::new()
-            .build(
-                ui,
-                &mut inputs,
-                &mut dirty,
-                BuildRequest::new(node, 16.0, VIEWPORT),
-            )
+            .prepare()
+            .ui(ui)
+            .tree(&mut inputs)
+            .dirty(&mut dirty)
+            .request(BuildRequest::new(node, 16.0, VIEWPORT))
+            .build()
             .unwrap();
         let mut fragments = FragmentTree::new();
         let root = FragmentTreeBuilder::new()
-            .build(
-                ui,
-                &inputs,
-                &ContentManager::new(),
-                &mut parley::FontContext::new(),
-                &mut dirty,
-                input_root,
-                &mut fragments,
-                &LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0),
-            )
+            .prepare()
+            .ui(ui)
+            .tree(&inputs)
+            .contents(&ContentManager::new())
+            .fonts(&mut parley::FontContext::new())
+            .dirty(&mut dirty)
+            .root(input_root)
+            .fragments(&mut fragments)
+            .constraint(&LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0))
+            .build()
             .unwrap();
 
         let mut prepaint = PrepaintTree::new();
         PrepaintTreeBuilder::new()
-            .build(
-                ui,
-                &inputs,
-                &dirty,
-                &fragments,
-                &UNITS,
-                &mut prepaint,
-                root,
-                false,
-            )
+            .prepare()
+            .ui(ui)
+            .inputs(&inputs)
+            .dirty(&dirty)
+            .fragments(&fragments)
+            .units(&UNITS)
+            .tree(&mut prepaint)
+            .root(root)
+            .viewport_changed(false)
+            .build()
             .unwrap();
 
         let mut layers = PaintLayerTree::new();
         let mut builder = PaintLayerBuilder::new();
         let root = builder
-            .build(
-                ui,
-                &inputs,
-                &dirty,
-                &fragments,
-                &UNITS,
-                &mut layers,
-                input_root,
-                false,
-            )
+            .prepare()
+            .ui(ui)
+            .inputs(&inputs)
+            .dirty(&dirty)
+            .fragments(&fragments)
+            .units(&UNITS)
+            .tree(&mut layers)
+            .root(input_root)
+            .viewport_changed(false)
+            .build()
             .unwrap();
         dirty.clear(&inputs, input_root);
 
@@ -134,30 +134,30 @@ impl Fixture {
             DirtyFlags::NEED_PRE_PAINT | DirtyFlags::NEED_LAYER,
         );
         PrepaintTreeBuilder::new()
-            .build(
-                ui,
-                &self.inputs,
-                &self.dirty,
-                &self.fragments,
-                &UNITS,
-                &mut self.prepaint,
-                fragment_root,
-                false,
-            )
+            .prepare()
+            .ui(ui)
+            .inputs(&self.inputs)
+            .dirty(&self.dirty)
+            .fragments(&self.fragments)
+            .units(&UNITS)
+            .tree(&mut self.prepaint)
+            .root(fragment_root)
+            .viewport_changed(false)
+            .build()
             .unwrap();
         let input_root = self.input_root();
         self.root = self
             .builder
-            .build(
-                ui,
-                &self.inputs,
-                &self.dirty,
-                &self.fragments,
-                &UNITS,
-                &mut self.layers,
-                input_root,
-                false,
-            )
+            .prepare()
+            .ui(ui)
+            .inputs(&self.inputs)
+            .dirty(&self.dirty)
+            .fragments(&self.fragments)
+            .units(&UNITS)
+            .tree(&mut self.layers)
+            .root(input_root)
+            .viewport_changed(false)
+            .build()
             .unwrap();
         self.dirty.clear(&self.inputs, input_root);
     }
@@ -1001,16 +1001,16 @@ fn building_again_keeps_layer_keys() {
     let input_root = f.input_root();
     f.root = f
         .builder
-        .build(
-            &ui,
-            &f.inputs,
-            &f.dirty,
-            &f.fragments,
-            &UNITS,
-            &mut f.layers,
-            input_root,
-            false,
-        )
+        .prepare()
+        .ui(&ui)
+        .inputs(&f.inputs)
+        .dirty(&f.dirty)
+        .fragments(&f.fragments)
+        .units(&UNITS)
+        .tree(&mut f.layers)
+        .root(input_root)
+        .viewport_changed(false)
+        .build()
         .unwrap();
 
     assert_eq!(f.root, root_layer);
@@ -1094,45 +1094,45 @@ fn updates_match_full_builds() {
         f.dirty.mark(&f.inputs, item, DirtyFlags::NEED_LAYER);
     }
     PrepaintTreeBuilder::new()
-        .build(
-            &ui,
-            &f.inputs,
-            &f.dirty,
-            &f.fragments,
-            &UNITS,
-            &mut f.prepaint,
-            fragment_root,
-            false,
-        )
+        .prepare()
+        .ui(&ui)
+        .inputs(&f.inputs)
+        .dirty(&f.dirty)
+        .fragments(&f.fragments)
+        .units(&UNITS)
+        .tree(&mut f.prepaint)
+        .root(fragment_root)
+        .viewport_changed(false)
+        .build()
         .unwrap();
     let input_root = f.input_root();
     f.root = f
         .builder
-        .build(
-            &ui,
-            &f.inputs,
-            &f.dirty,
-            &f.fragments,
-            &UNITS,
-            &mut f.layers,
-            input_root,
-            false,
-        )
+        .prepare()
+        .ui(&ui)
+        .inputs(&f.inputs)
+        .dirty(&f.dirty)
+        .fragments(&f.fragments)
+        .units(&UNITS)
+        .tree(&mut f.layers)
+        .root(input_root)
+        .viewport_changed(false)
+        .build()
         .unwrap();
     f.dirty.clear(&f.inputs, input_root);
 
     let mut full = PaintLayerTree::new();
     let full_root = PaintLayerBuilder::new()
-        .build(
-            &ui,
-            &f.inputs,
-            &f.dirty,
-            &f.fragments,
-            &UNITS,
-            &mut full,
-            input_root,
-            false,
-        )
+        .prepare()
+        .ui(&ui)
+        .inputs(&f.inputs)
+        .dirty(&f.dirty)
+        .fragments(&f.fragments)
+        .units(&UNITS)
+        .tree(&mut full)
+        .root(input_root)
+        .viewport_changed(false)
+        .build()
         .unwrap();
 
     assert_eq!(shape(&f.layers, f.root), shape(&full, full_root));
@@ -1199,16 +1199,16 @@ fn hit_testers_can_be_reused() {
     // Nor into hits on rebuilt layers.
     let input_root = f.input_root();
     f.root = PaintLayerBuilder::new()
-        .build(
-            &ui,
-            &f.inputs,
-            &f.dirty,
-            &f.fragments,
-            &UNITS,
-            &mut f.layers,
-            input_root,
-            false,
-        )
+        .prepare()
+        .ui(&ui)
+        .inputs(&f.inputs)
+        .dirty(&f.dirty)
+        .fragments(&f.fragments)
+        .units(&UNITS)
+        .tree(&mut f.layers)
+        .root(input_root)
+        .viewport_changed(false)
+        .build()
         .unwrap();
     assert_eq!(hit(&f, 60.0, 10.0), Some(f.box_ref(moved)));
 }
@@ -1277,51 +1277,51 @@ impl Pipeline {
     fn run(&mut self, ui: &Ui, node: NodeKey) -> PaintLayerKey {
         let input_root = self
             .input_builder
-            .build(
-                ui,
-                &mut self.inputs,
-                &mut self.dirty,
-                BuildRequest::new(node, 16.0, VIEWPORT),
-            )
+            .prepare()
+            .ui(ui)
+            .tree(&mut self.inputs)
+            .dirty(&mut self.dirty)
+            .request(BuildRequest::new(node, 16.0, VIEWPORT))
+            .build()
             .unwrap();
         let root = self
             .fragment_builder
-            .build(
-                ui,
-                &self.inputs,
-                &ContentManager::new(),
-                &mut self.fonts,
-                &mut self.dirty,
-                input_root,
-                &mut self.fragments,
-                &LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0),
-            )
+            .prepare()
+            .ui(ui)
+            .tree(&self.inputs)
+            .contents(&ContentManager::new())
+            .fonts(&mut self.fonts)
+            .dirty(&mut self.dirty)
+            .root(input_root)
+            .fragments(&mut self.fragments)
+            .constraint(&LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0))
+            .build()
             .unwrap();
         self.resolver
-            .build(
-                ui,
-                &self.inputs,
-                &self.dirty,
-                &self.fragments,
-                &UNITS,
-                &mut self.prepaint,
-                root,
-                false,
-            )
+            .prepare()
+            .ui(ui)
+            .inputs(&self.inputs)
+            .dirty(&self.dirty)
+            .fragments(&self.fragments)
+            .units(&UNITS)
+            .tree(&mut self.prepaint)
+            .root(root)
+            .viewport_changed(false)
+            .build()
             .unwrap();
 
         let layer = self
             .builder
-            .build(
-                ui,
-                &self.inputs,
-                &self.dirty,
-                &self.fragments,
-                &UNITS,
-                &mut self.layers,
-                input_root,
-                false,
-            )
+            .prepare()
+            .ui(ui)
+            .inputs(&self.inputs)
+            .dirty(&self.dirty)
+            .fragments(&self.fragments)
+            .units(&UNITS)
+            .tree(&mut self.layers)
+            .root(input_root)
+            .viewport_changed(false)
+            .build()
             .unwrap();
         self.dirty.clear(&self.inputs, input_root);
 
@@ -1346,16 +1346,16 @@ impl Pipeline {
         let input_root = self.fragments.boxes[self.layers.layers[root].owner].source;
         let mut full = PaintLayerTree::new();
         let full_root = PaintLayerBuilder::new()
-            .build(
-                ui,
-                &self.inputs,
-                &self.dirty,
-                &self.fragments,
-                &UNITS,
-                &mut full,
-                input_root,
-                false,
-            )
+            .prepare()
+            .ui(ui)
+            .inputs(&self.inputs)
+            .dirty(&self.dirty)
+            .fragments(&self.fragments)
+            .units(&UNITS)
+            .tree(&mut full)
+            .root(input_root)
+            .viewport_changed(false)
+            .build()
             .unwrap();
 
         shape(&full, full_root)
@@ -2098,16 +2098,16 @@ fn rebuild(f: &mut Fixture, ui: &Ui, units: &UnitResolveContext, viewport_change
     let input_root = f.input_root();
     f.root = f
         .builder
-        .build(
-            ui,
-            &f.inputs,
-            &f.dirty,
-            &f.fragments,
-            units,
-            &mut f.layers,
-            input_root,
-            viewport_changed,
-        )
+        .prepare()
+        .ui(ui)
+        .inputs(&f.inputs)
+        .dirty(&f.dirty)
+        .fragments(&f.fragments)
+        .units(units)
+        .tree(&mut f.layers)
+        .root(input_root)
+        .viewport_changed(viewport_changed)
+        .build()
         .unwrap();
     f.dirty.clear(&f.inputs, input_root);
 }

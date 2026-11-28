@@ -53,25 +53,25 @@ impl Layout {
     fn build(&mut self, ui: &Ui, root: NodeKey) -> BoxFragmentKey {
         let key = self
             .input_builder
-            .build(
-                ui,
-                &mut self.inputs,
-                &mut self.dirty,
-                BuildRequest::new(root, 16.0, VIEWPORT),
-            )
+            .prepare()
+            .ui(ui)
+            .tree(&mut self.inputs)
+            .dirty(&mut self.dirty)
+            .request(BuildRequest::new(root, 16.0, VIEWPORT))
+            .build()
             .unwrap();
         let fragment = self
             .builder
-            .build(
-                ui,
-                &self.inputs,
-                &ContentManager::new(),
-                &mut self.fonts,
-                &mut self.dirty,
-                key,
-                &mut self.fragments,
-                &LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0),
-            )
+            .prepare()
+            .ui(ui)
+            .tree(&self.inputs)
+            .contents(&ContentManager::new())
+            .fonts(&mut self.fonts)
+            .dirty(&mut self.dirty)
+            .root(key)
+            .fragments(&mut self.fragments)
+            .constraint(&LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0))
+            .build()
             .unwrap();
         self.dirty.clear(&self.inputs, key);
 
@@ -562,26 +562,28 @@ fn viewport_gaps_follow_viewport_changes() {
         let viewport = Size::new(width, 600.0);
         let key = layout
             .input_builder
-            .build(
-                &ui,
-                &mut layout.inputs,
-                &mut layout.dirty,
-                BuildRequest::new(root, 16.0, viewport),
-            )
+            .prepare()
+            .ui(&ui)
+            .tree(&mut layout.inputs)
+            .dirty(&mut layout.dirty)
+            .request(BuildRequest::new(root, 16.0, viewport))
+            .build()
             .unwrap();
         let fragment = layout
             .builder
-            .build(
-                &ui,
-                &layout.inputs,
-                &ContentManager::new(),
-                &mut layout.fonts,
-                &mut layout.dirty,
-                key,
-                &mut layout.fragments,
+            .prepare()
+            .ui(&ui)
+            .tree(&layout.inputs)
+            .contents(&ContentManager::new())
+            .fonts(&mut layout.fonts)
+            .dirty(&mut layout.dirty)
+            .root(key)
+            .fragments(&mut layout.fragments)
+            .constraint(
                 &LayoutConstraint::new_root(viewport, 16.0, 1.0)
                     .with_viewport_changed(viewport_changed),
             )
+            .build()
             .unwrap();
         layout.dirty.clear(&layout.inputs, key);
 

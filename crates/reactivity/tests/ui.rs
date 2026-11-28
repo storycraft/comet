@@ -83,19 +83,24 @@ impl Layout {
 
         let ui = &tree.ui;
         let input_root = LayoutInputTreeBuilder::new()
-            .build(ui, inputs, dirty, BuildRequest::new(root, 16.0, viewport))
+            .prepare()
+            .ui(ui)
+            .tree(inputs)
+            .dirty(dirty)
+            .request(BuildRequest::new(root, 16.0, viewport))
+            .build()
             .expect("input tree");
         FragmentTreeBuilder::new()
-            .build(
-                ui,
-                inputs,
-                &ContentManager::new(),
-                &mut parley::FontContext::new(),
-                dirty,
-                input_root,
-                fragments,
-                &LayoutConstraint::new_root(viewport, 16.0, 1.0),
-            )
+            .prepare()
+            .ui(ui)
+            .tree(inputs)
+            .contents(&ContentManager::new())
+            .fonts(&mut parley::FontContext::new())
+            .dirty(dirty)
+            .root(input_root)
+            .fragments(fragments)
+            .constraint(&LayoutConstraint::new_root(viewport, 16.0, 1.0))
+            .build()
             .expect("fragment tree");
         dirty.clear(inputs, input_root);
     }

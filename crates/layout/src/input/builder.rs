@@ -16,7 +16,7 @@ use crate::{
 };
 use comet_geometry::{Size, UnitResolveContext};
 
-/// What [`LayoutInputTreeBuilder::build`] builds.
+/// What [`LayoutInputTreeBuilder::prepare`] builds.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BuildRequest {
     /// Source node to build. Its existing item in the tree is updated; without
@@ -52,103 +52,6 @@ pub struct LayoutInputTreeBuilder {
 impl LayoutInputTreeBuilder {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// Build a new tree for `request.source` when the node has no item, or
-    /// update its existing item with the source changes marked in `dirty`
-    /// with [`DirtyMap::mark`]. Only subtrees whose
-    /// [`DirtyEntry::child_bits`] have [`DirtyFlags::NEED_CHILDREN`]
-    /// are visited. For each visited item, by its [`DirtyEntry::flags`]:
-    ///
-    /// - [`DirtyFlags::NEED_FULL_LAYOUT`] resolves the item again, including
-    ///   its text style. When its text style or child layout changed, every
-    ///   child is marked with it, so the style propagates down until items
-    ///   resolve as before,
-    /// - [`DirtyFlags::NEED_CHILDREN`], which the former includes, reconciles
-    ///   its children with the source children, deleting the stale ones and
-    ///   marking the item [`DirtyFlags::NEED_FULL_LAYOUT`] when any is gone.
-    ///   The whole subtree of each new child is built at once, every item
-    ///   marked [`DirtyFlags::NEED_FULL_LAYOUT`], and attached.
-    ///
-    /// Items whose text styles depend on the viewport are not resolved again
-    /// when it changes; invalidate them with
-    /// [`LayoutInputTree::invalidate_viewport`] first. Box styles are not
-    /// resolved here, so the fragment builder handles boxes depending on the
-    /// viewport.
-    ///
-    /// Keys are reused, and unmarked source changes are not seen. To insert a
-    /// new node under an existing item, mark its parent
-    /// [`DirtyFlags::NEED_CHILDREN`].
-    ///
-    /// Returns the item generated for `source`. Returns `None` and deletes its item
-    /// if `source` is not in the UI, marking its parent
-    /// [`DirtyFlags::NEED_FULL_LAYOUT`]. Also returns `None` without changes when
-    /// `source` has a UI parent but its item has no parent item, since the tree
-    /// no longer mirrors the UI. Build from the UI root first.
-    ///
-    /// Flags are left in `dirty` for later steps, and cleared with
-    /// [`DirtyMap::clear`] once consumed. Use `item_for_node`
-    /// for child results.
-    ///
-    /// The root font size of an existing tree is not tracked:
-    /// [clear](LayoutInputTree::clear) the tree after it changes.
-    pub fn build(
-        &mut self,
-        ui: &Ui,
-        tree: &mut LayoutInputTree,
-        dirty: &mut DirtyMap,
-        request: BuildRequest,
-    ) -> Option<LayoutInputKey> {
-        let BuildRequest {
-            source,
-            root_font_size,
-            viewport,
-        } = request;
-        let target = tree.item_for_node(source);
-
-        let Some(props) = ui.props(source) else {
-            if let Some(key) = target {
-                delete_child(tree, dirty, key);
-            }
-
-            return None;
-        };
-
-        // A source with a UI parent always has a parent item, so the tree
-        // does not mirror the UI.
-        if target.and_then(|key| tree.items.parent(key)).is_none() && props.parent().is_some() {
-            return None;
-        }
-
-        let cx = UnitResolveContext {
-            root_font_size,
-            font_size: root_font_size,
-            viewport,
-        };
-
-        // Without an item, the source is built like a new child.
-        let Some(key) = target else {
-            let style = Arc::new(root_text_style(root_font_size));
-
-            let key = self.build_subtree(ui, tree, dirty, source, &style, &cx)?;
-            dirty.mark(tree, key, DirtyFlags::NEED_FULL_LAYOUT);
-
-            return Some(key);
-        };
-
-        // Nothing under a clean item changed.
-        if !needs_visit(dirty.entry(key)) {
-            return Some(key);
-        }
-
-        self.pending.clear();
-        self.pending.push(key);
-
-        while let Some(key) = self.pending.pop() {
-            self.visit(ui, tree, dirty, key, &cx);
-        }
-
-        Some(key)
     }
 
     /// Resolve the item and reconcile its children as its flags require,
@@ -368,6 +271,107 @@ impl LayoutInputTreeBuilder {
         }
 
         Some(root)
+    }
+}
+
+#[bon::bon]
+impl LayoutInputTreeBuilder {
+    /// Build a new tree for `request.source` when the node has no item, or
+    /// update its existing item with the source changes marked in `dirty`
+    /// with [`DirtyMap::mark`]. Only subtrees whose
+    /// [`DirtyEntry::child_bits`] have [`DirtyFlags::NEED_CHILDREN`]
+    /// are visited. For each visited item, by its [`DirtyEntry::flags`]:
+    ///
+    /// - [`DirtyFlags::NEED_FULL_LAYOUT`] resolves the item again, including
+    ///   its text style. When its text style or child layout changed, every
+    ///   child is marked with it, so the style propagates down until items
+    ///   resolve as before,
+    /// - [`DirtyFlags::NEED_CHILDREN`], which the former includes, reconciles
+    ///   its children with the source children, deleting the stale ones and
+    ///   marking the item [`DirtyFlags::NEED_FULL_LAYOUT`] when any is gone.
+    ///   The whole subtree of each new child is built at once, every item
+    ///   marked [`DirtyFlags::NEED_FULL_LAYOUT`], and attached.
+    ///
+    /// Items whose text styles depend on the viewport are not resolved again
+    /// when it changes; invalidate them with
+    /// [`LayoutInputTree::invalidate_viewport`] first. Box styles are not
+    /// resolved here, so the fragment builder handles boxes depending on the
+    /// viewport.
+    ///
+    /// Keys are reused, and unmarked source changes are not seen. To insert a
+    /// new node under an existing item, mark its parent
+    /// [`DirtyFlags::NEED_CHILDREN`].
+    ///
+    /// Returns the item generated for `source`. Returns `None` and deletes its item
+    /// if `source` is not in the UI, marking its parent
+    /// [`DirtyFlags::NEED_FULL_LAYOUT`]. Also returns `None` without changes when
+    /// `source` has a UI parent but its item has no parent item, since the tree
+    /// no longer mirrors the UI. Build from the UI root first.
+    ///
+    /// Flags are left in `dirty` for later steps, and cleared with
+    /// [`DirtyMap::clear`] once consumed. Use `item_for_node`
+    /// for child results.
+    ///
+    /// The root font size of an existing tree is not tracked:
+    /// [clear](LayoutInputTree::clear) the tree after it changes.
+    #[builder(finish_fn = build)]
+    pub fn prepare(
+        &mut self,
+        ui: &Ui,
+        tree: &mut LayoutInputTree,
+        dirty: &mut DirtyMap,
+        request: BuildRequest,
+    ) -> Option<LayoutInputKey> {
+        let BuildRequest {
+            source,
+            root_font_size,
+            viewport,
+        } = request;
+        let target = tree.item_for_node(source);
+
+        let Some(props) = ui.props(source) else {
+            if let Some(key) = target {
+                delete_child(tree, dirty, key);
+            }
+
+            return None;
+        };
+
+        // A source with a UI parent always has a parent item, so the tree
+        // does not mirror the UI.
+        if target.and_then(|key| tree.items.parent(key)).is_none() && props.parent().is_some() {
+            return None;
+        }
+
+        let cx = UnitResolveContext {
+            root_font_size,
+            font_size: root_font_size,
+            viewport,
+        };
+
+        // Without an item, the source is built like a new child.
+        let Some(key) = target else {
+            let style = Arc::new(root_text_style(root_font_size));
+
+            let key = self.build_subtree(ui, tree, dirty, source, &style, &cx)?;
+            dirty.mark(tree, key, DirtyFlags::NEED_FULL_LAYOUT);
+
+            return Some(key);
+        };
+
+        // Nothing under a clean item changed.
+        if !needs_visit(dirty.entry(key)) {
+            return Some(key);
+        }
+
+        self.pending.clear();
+        self.pending.push(key);
+
+        while let Some(key) = self.pending.pop() {
+            self.visit(ui, tree, dirty, key, &cx);
+        }
+
+        Some(key)
     }
 }
 

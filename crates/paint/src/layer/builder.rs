@@ -67,80 +67,6 @@ impl PaintLayerBuilder {
         Self::default()
     }
 
-    /// Build the layers of the fragments generated under the layout input
-    /// item `root` into `tree`, and return the root layer, owned by the box
-    /// fragment of `root`. The root box always starts the root layer, with
-    /// z index 0, whatever its styles.
-    ///
-    /// A principal box starts a layer when its item sets [`Layer`] to true,
-    /// a [`Transform`], an [`Opacity`], a [`Filter`], a [`BackdropFilter`]
-    /// or a [`MixBlend`], whatever its value, a [`ZIndex`] other than auto,
-    /// or an [`Overflow`]
-    /// scrolling or hiding its overflow on an axis, making it a scroll
-    /// container. So does an inline element setting one of them other than a
-    /// [`Transform`] or an [`Overflow`], which inline elements ignore: its
-    /// first inline part box owns the layer, covering every piece of the
-    /// element. An auto z index counts as 0. Each layer resolves its
-    /// transform, opacity, filters, blend mode and scroll offset from its
-    /// owner's item.
-    ///
-    /// When `tree` already holds the root layer, only the layers affected by
-    /// changes marked in `dirty` are updated. Layers whose owner still starts
-    /// one keep their keys. Items with [`DirtyFlags::NEED_LAYER`], which
-    /// [`DirtyFlags::NEED_CHILDREN`] includes, are checked for boxes gaining,
-    /// losing or reordering a layer, and the layers they own resolve their
-    /// data again. It is marked when a layer style changes, and by the
-    /// fragment builder for the items whose fragments it changed, including
-    /// every item of an inline layout it emitted again.
-    ///
-    /// `units` resolves transform origins, with the font size of each owner.
-    /// With `viewport_changed`, every layer whose owner's transform origin
-    /// uses `vw` or `vh` resolves its data again. Pass it when the viewport
-    /// in `units` differs from the last build. The root font size is not
-    /// tracked: build into a new or [cleared](PaintLayerTree::clear) tree
-    /// when it changes.
-    ///
-    /// `inputs` is the input tree `fragments` were built from. Build before
-    /// clearing `dirty`. Returns `None` if `root` has no box fragment in
-    /// `fragments`.
-    #[allow(clippy::too_many_arguments)]
-    pub fn build(
-        &mut self,
-        ui: &Ui,
-        inputs: &LayoutInputTree,
-        dirty: &DirtyMap,
-        fragments: &FragmentTree,
-        units: &UnitResolveContext,
-        tree: &mut PaintLayerTree,
-        root: LayoutInputKey,
-        viewport_changed: bool,
-    ) -> Option<PaintLayerKey> {
-        let sources = Sources {
-            ui,
-            inputs,
-            fragments,
-            units,
-        };
-        let root_fragment = fragments.box_fragment(root)?;
-        self.pass = self.pass.wrapping_add(1);
-        self.detached.clear();
-
-        let root_layer = match tree.layer_of(root_fragment) {
-            Some(layer) if tree.layers.parent(layer).is_none() => {
-                if viewport_changed {
-                    self.resolve_viewport(sources, tree);
-                }
-                self.update(sources, dirty, tree, root, layer);
-                layer
-            }
-            _ => self.build_root(sources, tree, root_fragment),
-        };
-
-        self.delete_detached(tree);
-
-        Some(root_layer)
-    }
-
     /// Build every layer under `root`, deleting the layers of other boxes,
     /// and return the root layer.
     fn build_root(
@@ -494,6 +420,83 @@ impl PaintLayerBuilder {
                 tree.by_owner.remove(item.owner);
             }
         }
+    }
+}
+
+#[bon::bon]
+impl PaintLayerBuilder {
+    /// Build the layers of the fragments generated under the layout input
+    /// item `root` into `tree`, and return the root layer, owned by the box
+    /// fragment of `root`. The root box always starts the root layer, with
+    /// z index 0, whatever its styles.
+    ///
+    /// A principal box starts a layer when its item sets [`Layer`] to true,
+    /// a [`Transform`], an [`Opacity`], a [`Filter`], a [`BackdropFilter`]
+    /// or a [`MixBlend`], whatever its value, a [`ZIndex`] other than auto,
+    /// or an [`Overflow`]
+    /// scrolling or hiding its overflow on an axis, making it a scroll
+    /// container. So does an inline element setting one of them other than a
+    /// [`Transform`] or an [`Overflow`], which inline elements ignore: its
+    /// first inline part box owns the layer, covering every piece of the
+    /// element. An auto z index counts as 0. Each layer resolves its
+    /// transform, opacity, filters, blend mode and scroll offset from its
+    /// owner's item.
+    ///
+    /// When `tree` already holds the root layer, only the layers affected by
+    /// changes marked in `dirty` are updated. Layers whose owner still starts
+    /// one keep their keys. Items with [`DirtyFlags::NEED_LAYER`], which
+    /// [`DirtyFlags::NEED_CHILDREN`] includes, are checked for boxes gaining,
+    /// losing or reordering a layer, and the layers they own resolve their
+    /// data again. It is marked when a layer style changes, and by the
+    /// fragment builder for the items whose fragments it changed, including
+    /// every item of an inline layout it emitted again.
+    ///
+    /// `units` resolves transform origins, with the font size of each owner.
+    /// With `viewport_changed`, every layer whose owner's transform origin
+    /// uses `vw` or `vh` resolves its data again. Pass it when the viewport
+    /// in `units` differs from the last build. The root font size is not
+    /// tracked: build into a new or [cleared](PaintLayerTree::clear) tree
+    /// when it changes.
+    ///
+    /// `inputs` is the input tree `fragments` were built from. Build before
+    /// clearing `dirty`. Returns `None` if `root` has no box fragment in
+    /// `fragments`.
+    #[builder(finish_fn = build)]
+    pub fn prepare(
+        &mut self,
+        ui: &Ui,
+        inputs: &LayoutInputTree,
+        dirty: &DirtyMap,
+        fragments: &FragmentTree,
+        units: &UnitResolveContext,
+        tree: &mut PaintLayerTree,
+        root: LayoutInputKey,
+        viewport_changed: bool,
+    ) -> Option<PaintLayerKey> {
+        let sources = Sources {
+            ui,
+            inputs,
+            fragments,
+            units,
+        };
+        let root_fragment = fragments.box_fragment(root)?;
+        self.pass = self.pass.wrapping_add(1);
+        self.detached.clear();
+
+        let root_layer = match tree.layer_of(root_fragment) {
+            Some(layer) if tree.layers.parent(layer).is_none() => {
+                if viewport_changed {
+                    self.resolve_viewport(sources, tree);
+                }
+                self.update(sources, dirty, tree, root, layer);
+                layer
+            }
+            _ => self.build_root(sources, tree, root_fragment),
+        };
+
+        self.delete_detached(tree);
+
+        Some(root_layer)
     }
 }
 

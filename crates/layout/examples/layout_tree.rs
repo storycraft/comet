@@ -148,12 +148,12 @@ fn build(
     root_font_size: f64,
 ) -> Result<LayoutInputKey, &'static str> {
     builder
-        .build(
-            ui,
-            tree,
-            dirty,
-            BuildRequest::new(root, root_font_size, VIEWPORT),
-        )
+        .prepare()
+        .ui(ui)
+        .tree(tree)
+        .dirty(dirty)
+        .request(BuildRequest::new(root, root_font_size, VIEWPORT))
+        .build()
         .ok_or("could not build sample UI")
 }
 

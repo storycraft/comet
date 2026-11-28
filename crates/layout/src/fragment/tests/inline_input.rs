@@ -18,12 +18,12 @@ use comet_geometry::Size;
 fn build(ui: &Ui, root: NodeKey) -> (LayoutInputTree, LayoutInputKey) {
     let mut tree = LayoutInputTree::new();
     let key = LayoutInputTreeBuilder::new()
-        .build(
-            ui,
-            &mut tree,
-            &mut DirtyMap::new(),
-            BuildRequest::new(root, 16.0, Size::new(400.0, 600.0)),
-        )
+        .prepare()
+        .ui(ui)
+        .tree(&mut tree)
+        .dirty(&mut DirtyMap::new())
+        .request(BuildRequest::new(root, 16.0, Size::new(400.0, 600.0)))
+        .build()
         .unwrap();
 
     (tree, key)

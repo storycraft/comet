@@ -25,7 +25,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut builder = LayoutInputTreeBuilder::new();
     let request = BuildRequest::new(root, 16.0, VIEWPORT);
     let input_root = builder
-        .build(ui, &mut tree, &mut dirty, request)
+        .prepare()
+        .ui(ui)
+        .tree(&mut tree)
+        .dirty(&mut dirty)
+        .request(request)
+        .build()
         .ok_or("could not build layout input tree")?;
 
     println!("Initial layout input tree:");
@@ -37,7 +42,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     dirty.mark_node(&tree, text, DirtyFlags::NEED_FULL_LAYOUT);
 
     let updated = builder
-        .build(ui, &mut tree, &mut dirty, request)
+        .prepare()
+        .ui(ui)
+        .tree(&mut tree)
+        .dirty(&mut dirty)
+        .request(request)
+        .build()
         .ok_or("could not update layout input tree")?;
     assert_eq!(input_root, updated);
 

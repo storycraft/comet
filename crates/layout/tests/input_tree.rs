@@ -27,7 +27,13 @@ fn build(
     tree: &mut LayoutInputTree,
     dirty: &mut DirtyMap,
 ) -> Option<LayoutInputKey> {
-    builder.build(ui, tree, dirty, BuildRequest::new(root, 16.0, VIEWPORT))
+    builder
+        .prepare()
+        .ui(ui)
+        .tree(tree)
+        .dirty(dirty)
+        .request(BuildRequest::new(root, 16.0, VIEWPORT))
+        .build()
 }
 
 fn shape(
@@ -317,12 +323,13 @@ fn invalidate_viewport_marks_viewport_dependent_items() {
     // An unmarked edit outside the viewport dependent subtrees is not seen.
     ui.set_props(independent, (bx::FontSize(StyleUnit::Px(30.0)),));
     let viewport = Size::new(400.0, 300.0);
-    builder.build(
-        &ui,
-        &mut tree,
-        &mut dirty,
-        BuildRequest::new(root, 16.0, viewport),
-    );
+    builder
+        .prepare()
+        .ui(&ui)
+        .tree(&mut tree)
+        .dirty(&mut dirty)
+        .request(BuildRequest::new(root, 16.0, viewport))
+        .build();
 
     let style = |node| {
         tree.items[tree.item_for_node(node).unwrap()]
@@ -787,12 +794,13 @@ fn build_resolves_only_marked_items_of_an_existing_tree() {
     // Unmarked items keep the units they were resolved with.
     let viewport = Size::new(1000.0, 600.0);
     assert_eq!(
-        builder.build(
-            &ui,
-            &mut tree,
-            &mut dirty,
-            BuildRequest::new(root, 20.0, viewport)
-        ),
+        builder
+            .prepare()
+            .ui(&ui)
+            .tree(&mut tree)
+            .dirty(&mut dirty)
+            .request(BuildRequest::new(root, 20.0, viewport))
+            .build(),
         Some(key)
     );
     assert_eq!(tree.items[child_key].text_style.span.font_size, 32.0);
@@ -801,12 +809,13 @@ fn build_resolves_only_marked_items_of_an_existing_tree() {
 
     // Marked items resolve with the request.
     dirty.mark(&tree, text_key, FULL);
-    builder.build(
-        &ui,
-        &mut tree,
-        &mut dirty,
-        BuildRequest::new(root, 16.0, viewport),
-    );
+    builder
+        .prepare()
+        .ui(&ui)
+        .tree(&mut tree)
+        .dirty(&mut dirty)
+        .request(BuildRequest::new(root, 16.0, viewport))
+        .build();
     assert_eq!(tree.items[text_key].text_style.span.letter_spacing, 10.0);
     assert_eq!(dirty.entry(text_key).flags, FULL);
     assert_eq!(dirty.entry(child_key).child_bits, FULL);
@@ -814,12 +823,13 @@ fn build_resolves_only_marked_items_of_an_existing_tree() {
     // Flags the builder does not consume are kept.
     dirty.clear(&tree, key);
     dirty.mark(&tree, text_key, DirtyFlags::NEED_BOX_LAYOUT);
-    builder.build(
-        &ui,
-        &mut tree,
-        &mut dirty,
-        BuildRequest::new(root, 16.0, viewport),
-    );
+    builder
+        .prepare()
+        .ui(&ui)
+        .tree(&mut tree)
+        .dirty(&mut dirty)
+        .request(BuildRequest::new(root, 16.0, viewport))
+        .build();
     assert_eq!(dirty.entry(text_key).flags, DirtyFlags::NEED_BOX_LAYOUT);
 }
 
@@ -838,12 +848,12 @@ fn build_builds_a_new_tree_without_a_source_item() {
     // A new root font size needs a new tree.
     tree.delete_item(key);
     let rebuilt = builder
-        .build(
-            &ui,
-            &mut tree,
-            &mut dirty,
-            BuildRequest::new(root, 20.0, VIEWPORT),
-        )
+        .prepare()
+        .ui(&ui)
+        .tree(&mut tree)
+        .dirty(&mut dirty)
+        .request(BuildRequest::new(root, 20.0, VIEWPORT))
+        .build()
         .unwrap();
 
     assert_eq!(tree.items.descendants(rebuilt).count(), 2);

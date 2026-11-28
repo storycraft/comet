@@ -117,41 +117,7 @@ impl FragmentTreeBuilder {
         Self::default()
     }
 
-    /// Update the box fragments of `root` in `fragments` with the changes
-    /// marked in `dirty` and lay them out, returning the box of `root`. Box
-    /// keys are kept for as long as their items are. Returns `None` for a
-    /// stale root; the caller deletes the box it built for it before.
-    ///
-    /// In debug builds, the boxes of `root` are checked once laid out.
-    ///
-    /// Items whose fragments changed are marked [`PAINT_CHANGED`]. Flags are
-    /// not cleared.
-    ///
-    /// Boxes whose layout is still valid are not laid out again.
-    ///
-    /// Boxes displaying a content, with `DisplayInner::Content`, are sized by
-    /// the [`Content`](comet_content::Content) of their id in `contents`, or
-    /// by their style alone when it is missing.
-    ///
-    /// Text is shaped with the fonts of `fonts`.
-    #[allow(clippy::too_many_arguments)]
-    pub fn build(
-        &mut self,
-        ui: &Ui,
-        tree: &LayoutInputTree,
-        contents: &ContentManager,
-        fonts: &mut parley::FontContext,
-        dirty: &mut DirtyMap,
-        root: LayoutInputKey,
-        fragments: &mut FragmentTree,
-        constraint: &LayoutConstraint,
-    ) -> Option<BoxFragmentKey> {
-        self.run(
-            ui, tree, contents, fonts, dirty, root, fragments, constraint, true,
-        )
-    }
-
-    /// Run the steps of [`Self::build`] before laying out: sync the box
+    /// Run the steps of [`Self::prepare`] before laying out: sync the box
     /// structure and invalidate the affected caches.
     #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
@@ -222,6 +188,43 @@ impl FragmentTreeBuilder {
         }
 
         Some(key)
+    }
+}
+
+#[bon::bon]
+impl FragmentTreeBuilder {
+    /// Update the box fragments of `root` in `fragments` with the changes
+    /// marked in `dirty` and lay them out, returning the box of `root`. Box
+    /// keys are kept for as long as their items are. Returns `None` for a
+    /// stale root; the caller deletes the box it built for it before.
+    ///
+    /// In debug builds, the boxes of `root` are checked once laid out.
+    ///
+    /// Items whose fragments changed are marked [`PAINT_CHANGED`]. Flags are
+    /// not cleared.
+    ///
+    /// Boxes whose layout is still valid are not laid out again.
+    ///
+    /// Boxes displaying a content, with `DisplayInner::Content`, are sized by
+    /// the [`Content`](comet_content::Content) of their id in `contents`, or
+    /// by their style alone when it is missing.
+    ///
+    /// Text is shaped with the fonts of `fonts`.
+    #[builder(finish_fn = build)]
+    pub fn prepare(
+        &mut self,
+        ui: &Ui,
+        tree: &LayoutInputTree,
+        contents: &ContentManager,
+        fonts: &mut parley::FontContext,
+        dirty: &mut DirtyMap,
+        root: LayoutInputKey,
+        fragments: &mut FragmentTree,
+        constraint: &LayoutConstraint,
+    ) -> Option<BoxFragmentKey> {
+        self.run(
+            ui, tree, contents, fonts, dirty, root, fragments, constraint, true,
+        )
     }
 }
 

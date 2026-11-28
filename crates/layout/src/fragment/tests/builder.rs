@@ -73,24 +73,25 @@ impl Fixture {
     fn run(&mut self, layout: bool) -> BoxFragmentKey {
         let layout_root = self
             .input
-            .build(
-                &self.ui,
-                &mut self.tree,
-                &mut self.dirty,
-                BuildRequest::new(self.root, 16.0, VIEWPORT),
-            )
+            .prepare()
+            .ui(&self.ui)
+            .tree(&mut self.tree)
+            .dirty(&mut self.dirty)
+            .request(BuildRequest::new(self.root, 16.0, VIEWPORT))
+            .build()
             .unwrap();
         let key = if layout {
-            self.builder.build(
-                &self.ui,
-                &self.tree,
-                &ContentManager::new(),
-                &mut self.fonts,
-                &mut self.dirty,
-                layout_root,
-                &mut self.fragments,
-                &self.constraint,
-            )
+            self.builder
+                .prepare()
+                .ui(&self.ui)
+                .tree(&self.tree)
+                .contents(&ContentManager::new())
+                .fonts(&mut self.fonts)
+                .dirty(&mut self.dirty)
+                .root(layout_root)
+                .fragments(&mut self.fragments)
+                .constraint(&self.constraint)
+                .build()
         } else {
             self.builder.update(
                 &self.ui,

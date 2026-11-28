@@ -40,12 +40,12 @@ impl Fixture {
     fn new(ui: Ui, root: NodeKey) -> Self {
         let mut tree = LayoutInputTree::new();
         let root = LayoutInputTreeBuilder::new()
-            .build(
-                &ui,
-                &mut tree,
-                &mut DirtyMap::new(),
-                BuildRequest::new(root, 16.0, VIEWPORT),
-            )
+            .prepare()
+            .ui(&ui)
+            .tree(&mut tree)
+            .dirty(&mut DirtyMap::new())
+            .request(BuildRequest::new(root, 16.0, VIEWPORT))
+            .build()
             .unwrap();
 
         let mut fixture = Self {

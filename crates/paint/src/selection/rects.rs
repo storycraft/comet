@@ -23,7 +23,7 @@ pub struct PaintSelectionItem {
 }
 
 /// The rectangles behind the selected text of each text item, built from a
-/// selection with [`Self::build`].
+/// selection with [`Self::prepare`].
 ///
 /// Rectangles are in the coordinates of the inline layout holding their
 /// item, those of each item stored next to each other in one vector. Few
@@ -75,7 +75,10 @@ impl SelectionRects {
         self.rects.clear();
         self.items.clear();
     }
+}
 
+#[bon::bon]
+impl SelectionRects {
     /// Replace the rectangles with those of `selection` under `root`, from
     /// scratch, keeping the buffers. Each
     /// selected text item that can be
@@ -87,7 +90,8 @@ impl SelectionRects {
     /// layout while text is selected, and once more when the selection is
     /// cleared. `inputs` is the input tree `fragments` were built from, from
     /// the UI of `ui`, and `prepaint` is resolved for them.
-    pub fn build(
+    #[builder(finish_fn = build)]
+    pub fn prepare(
         &mut self,
         ui: &Ui,
         inputs: &LayoutInputTree,

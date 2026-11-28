@@ -98,25 +98,25 @@ impl Fixture {
     fn layout(&mut self, ui: &Ui, node: NodeKey) -> BoxFragmentKey {
         let input_root = self
             .input_builder
-            .build(
-                ui,
-                &mut self.inputs,
-                &mut self.dirty,
-                BuildRequest::new(node, 16.0, VIEWPORT),
-            )
+            .prepare()
+            .ui(ui)
+            .tree(&mut self.inputs)
+            .dirty(&mut self.dirty)
+            .request(BuildRequest::new(node, 16.0, VIEWPORT))
+            .build()
             .unwrap();
         let root = self
             .builder
-            .build(
-                ui,
-                &self.inputs,
-                &ContentManager::new(),
-                &mut self.fonts,
-                &mut self.dirty,
-                input_root,
-                &mut self.fragments,
-                &LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0),
-            )
+            .prepare()
+            .ui(ui)
+            .tree(&self.inputs)
+            .contents(&ContentManager::new())
+            .fonts(&mut self.fonts)
+            .dirty(&mut self.dirty)
+            .root(input_root)
+            .fragments(&mut self.fragments)
+            .constraint(&LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0))
+            .build()
             .unwrap();
         self.input_root = Some(input_root);
         self.root = Some(root);
@@ -127,29 +127,32 @@ impl Fixture {
     /// Resolve the pre-paint tree from `key`, and build the layers of the
     /// whole fragment tree from scratch.
     fn resolve(&mut self, ui: &Ui, key: BoxFragmentKey) -> Option<()> {
-        let resolved = self.resolver.build(
-            ui,
-            &self.inputs,
-            &self.dirty,
-            &self.fragments,
-            &UNITS,
-            &mut self.prepaint,
-            key,
-            false,
-        );
+        let resolved = self
+            .resolver
+            .prepare()
+            .ui(ui)
+            .inputs(&self.inputs)
+            .dirty(&self.dirty)
+            .fragments(&self.fragments)
+            .units(&UNITS)
+            .tree(&mut self.prepaint)
+            .root(key)
+            .viewport_changed(false)
+            .build();
 
         self.layers.clear();
         if let Some(input_root) = self.input_root {
-            PaintLayerBuilder::new().build(
-                ui,
-                &self.inputs,
-                &self.dirty,
-                &self.fragments,
-                &UNITS,
-                &mut self.layers,
-                input_root,
-                false,
-            );
+            PaintLayerBuilder::new()
+                .prepare()
+                .ui(ui)
+                .inputs(&self.inputs)
+                .dirty(&self.dirty)
+                .fragments(&self.fragments)
+                .units(&UNITS)
+                .tree(&mut self.layers)
+                .root(input_root)
+                .viewport_changed(false)
+                .build();
         }
 
         resolved
@@ -243,16 +246,16 @@ impl Fixture {
     fn layers(&self, ui: &Ui) -> (PaintLayerTree, PaintLayerKey) {
         let mut layers = PaintLayerTree::new();
         let root = PaintLayerBuilder::new()
-            .build(
-                ui,
-                &self.inputs,
-                &self.dirty,
-                &self.fragments,
-                &UNITS,
-                &mut layers,
-                self.input_root.unwrap(),
-                false,
-            )
+            .prepare()
+            .ui(ui)
+            .inputs(&self.inputs)
+            .dirty(&self.dirty)
+            .fragments(&self.fragments)
+            .units(&UNITS)
+            .tree(&mut layers)
+            .root(self.input_root.unwrap())
+            .viewport_changed(false)
+            .build()
             .unwrap();
 
         (layers, root)
@@ -282,14 +285,15 @@ impl Fixture {
 impl Fixture {
     /// Build the selection rects for `selection`.
     fn select(&mut self, ui: &Ui, selection: Option<Selection>) {
-        self.selection.build(
-            ui,
-            &self.inputs,
-            &self.fragments,
-            &self.prepaint,
-            self.root.unwrap(),
-            selection,
-        );
+        self.selection
+            .prepare()
+            .ui(ui)
+            .inputs(&self.inputs)
+            .fragments(&self.fragments)
+            .prepaint(&self.prepaint)
+            .root(self.root.unwrap())
+            .maybe_selection(selection)
+            .build();
     }
 }
 
@@ -1519,16 +1523,16 @@ impl Fixture {
     fn full_resolve(&self, ui: &Ui, root: BoxFragmentKey) -> PrepaintTree {
         let mut full = PrepaintTree::new();
         PrepaintTreeBuilder::new()
-            .build(
-                ui,
-                &self.inputs,
-                &self.dirty,
-                &self.fragments,
-                &UNITS,
-                &mut full,
-                root,
-                false,
-            )
+            .prepare()
+            .ui(ui)
+            .inputs(&self.inputs)
+            .dirty(&self.dirty)
+            .fragments(&self.fragments)
+            .units(&UNITS)
+            .tree(&mut full)
+            .root(root)
+            .viewport_changed(false)
+            .build()
             .unwrap();
 
         full
@@ -1757,16 +1761,16 @@ fn viewport_changes_resolve_viewport_dependent_paint_values_again() {
     let wide = LayoutConstraint::new_root(Size::new(200.0, 400.0), 16.0, 1.0).units;
     let resolve = |f: &mut Fixture, ui: &Ui, units, viewport_changed| {
         f.resolver
-            .build(
-                ui,
-                &f.inputs,
-                &f.dirty,
-                &f.fragments,
-                units,
-                &mut f.prepaint,
-                fragment_root,
-                viewport_changed,
-            )
+            .prepare()
+            .ui(ui)
+            .inputs(&f.inputs)
+            .dirty(&f.dirty)
+            .fragments(&f.fragments)
+            .units(units)
+            .tree(&mut f.prepaint)
+            .root(fragment_root)
+            .viewport_changed(viewport_changed)
+            .build()
             .unwrap();
     };
 

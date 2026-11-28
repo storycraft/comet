@@ -50,7 +50,10 @@ impl PrepaintTreeBuilder {
     pub fn new() -> Self {
         Self::default()
     }
+}
 
+#[bon::bon]
+impl PrepaintTreeBuilder {
     /// Builds into `tree` the layout input items and box fragments that need
     /// it.
     ///
@@ -105,8 +108,8 @@ impl PrepaintTreeBuilder {
     /// `fragments` were built. Rebuild them, then resolve again. Data resolved
     /// before the failure stays in `tree`, so `tree` may be partly updated,
     /// but the next call resolves the same items and boxes again.
-    #[allow(clippy::too_many_arguments)]
-    pub fn build(
+    #[builder(finish_fn = build)]
+    pub fn prepare(
         &mut self,
         ui: &Ui,
         inputs: &LayoutInputTree,
@@ -256,7 +259,7 @@ impl Sources<'_> {
     }
 
     /// Visit the items in `pending`, resolving those that need it into
-    /// `tree`, then their children as [`PrepaintTreeBuilder::build`]
+    /// `tree`, then their children as [`PrepaintTreeBuilder::prepare`]
     /// describes. Parents are resolved before their children. Empties
     /// `pending`.
     fn resolve_items(

@@ -40,25 +40,25 @@ fn sizes(ui: &Ui, root: NodeKey, contents: &ContentManager, nodes: &[NodeKey]) -
     let mut inputs = LayoutInputTree::new();
     let mut dirty = DirtyMap::new();
     let input_root = LayoutInputTreeBuilder::new()
-        .build(
-            ui,
-            &mut inputs,
-            &mut dirty,
-            BuildRequest::new(root, 16.0, VIEWPORT),
-        )
+        .prepare()
+        .ui(ui)
+        .tree(&mut inputs)
+        .dirty(&mut dirty)
+        .request(BuildRequest::new(root, 16.0, VIEWPORT))
+        .build()
         .unwrap();
     let mut fragments = FragmentTree::new();
     FragmentTreeBuilder::new()
-        .build(
-            ui,
-            &inputs,
-            contents,
-            &mut parley::FontContext::new(),
-            &mut dirty,
-            input_root,
-            &mut fragments,
-            &LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0),
-        )
+        .prepare()
+        .ui(ui)
+        .tree(&inputs)
+        .contents(contents)
+        .fonts(&mut parley::FontContext::new())
+        .dirty(&mut dirty)
+        .root(input_root)
+        .fragments(&mut fragments)
+        .constraint(&LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0))
+        .build()
         .unwrap();
 
     nodes
@@ -167,29 +167,31 @@ fn content_boxes_are_measured_again_with_a_new_scale_factor() {
     let mut inputs = LayoutInputTree::new();
     let mut dirty = DirtyMap::new();
     let input_root = LayoutInputTreeBuilder::new()
-        .build(
-            &ui,
-            &mut inputs,
-            &mut dirty,
-            BuildRequest::new(root, 16.0, VIEWPORT),
-        )
+        .prepare()
+        .ui(&ui)
+        .tree(&mut inputs)
+        .dirty(&mut dirty)
+        .request(BuildRequest::new(root, 16.0, VIEWPORT))
+        .build()
         .unwrap();
     let mut fragments = FragmentTree::new();
     let mut builder = FragmentTreeBuilder::new();
     let mut fonts = parley::FontContext::new();
     let mut layout = |dirty: &mut DirtyMap, scale_factor: f64, viewport_changed: bool| {
         builder
-            .build(
-                &ui,
-                &inputs,
-                &contents,
-                &mut fonts,
-                dirty,
-                input_root,
-                &mut fragments,
+            .prepare()
+            .ui(&ui)
+            .tree(&inputs)
+            .contents(&contents)
+            .fonts(&mut fonts)
+            .dirty(dirty)
+            .root(input_root)
+            .fragments(&mut fragments)
+            .constraint(
                 &LayoutConstraint::new_root(VIEWPORT, 16.0, scale_factor)
                     .with_viewport_changed(viewport_changed),
             )
+            .build()
             .unwrap();
         dirty.clear(&inputs, input_root);
 

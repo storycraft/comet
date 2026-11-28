@@ -116,26 +116,26 @@ fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, BoxFragmentK
     let mut inputs = LayoutInputTree::new();
     let mut dirty = DirtyMap::new();
     let root = LayoutInputTreeBuilder::new()
-        .build(
-            ui,
-            &mut inputs,
-            &mut dirty,
-            BuildRequest::new(node, 16.0, VIEWPORT),
-        )
+        .prepare()
+        .ui(ui)
+        .tree(&mut inputs)
+        .dirty(&mut dirty)
+        .request(BuildRequest::new(node, 16.0, VIEWPORT))
+        .build()
         .unwrap();
 
     let mut fragments = FragmentTree::new();
     let fragment = FragmentTreeBuilder::new()
-        .build(
-            ui,
-            &inputs,
-            &ContentManager::new(),
-            &mut parley::FontContext::new(),
-            &mut dirty,
-            root,
-            &mut fragments,
-            &LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0),
-        )
+        .prepare()
+        .ui(ui)
+        .tree(&inputs)
+        .contents(&ContentManager::new())
+        .fonts(&mut parley::FontContext::new())
+        .dirty(&mut dirty)
+        .root(root)
+        .fragments(&mut fragments)
+        .constraint(&LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0))
+        .build()
         .unwrap();
     // Flags are dropped: `draw` resolves into fresh trees, which resolve
     // every fragment.
@@ -179,20 +179,29 @@ fn draw_with(
     let dirty = &mut DirtyMap::new();
     let mut prepaint = PrepaintTree::new();
     PrepaintTreeBuilder::new()
-        .build(ui, inputs, dirty, tree, units, &mut prepaint, root, false)
+        .prepare()
+        .ui(ui)
+        .inputs(inputs)
+        .dirty(dirty)
+        .fragments(tree)
+        .units(units)
+        .tree(&mut prepaint)
+        .root(root)
+        .viewport_changed(false)
+        .build()
         .unwrap();
     let mut layers = PaintLayerTree::new();
     let layer_root = PaintLayerBuilder::new()
-        .build(
-            ui,
-            inputs,
-            dirty,
-            tree,
-            &UNITS,
-            &mut layers,
-            tree.boxes[root].source,
-            false,
-        )
+        .prepare()
+        .ui(ui)
+        .inputs(inputs)
+        .dirty(dirty)
+        .fragments(tree)
+        .units(&UNITS)
+        .tree(&mut layers)
+        .root(tree.boxes[root].source)
+        .viewport_changed(false)
+        .build()
         .unwrap();
     painter.draw(
         ui,

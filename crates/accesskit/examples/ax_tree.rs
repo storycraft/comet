@@ -44,54 +44,61 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tree = AxTree::new();
 
     let input_root = LayoutInputTreeBuilder::new()
-        .build(
-            &ui,
-            &mut inputs,
-            &mut dirty,
-            BuildRequest::new(root, 16.0, VIEWPORT),
-        )
+        .prepare()
+        .ui(&ui)
+        .tree(&mut inputs)
+        .dirty(&mut dirty)
+        .request(BuildRequest::new(root, 16.0, VIEWPORT))
+        .build()
         .ok_or("could not build the layout input tree")?;
     let constraint = LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0);
     let fragment_root = FragmentTreeBuilder::new()
-        .build(
-            &ui,
-            &inputs,
-            &ContentManager::new(),
-            &mut parley::FontContext::new(),
-            &mut dirty,
-            input_root,
-            &mut fragments,
-            &constraint,
-        )
+        .prepare()
+        .ui(&ui)
+        .tree(&inputs)
+        .contents(&ContentManager::new())
+        .fonts(&mut parley::FontContext::new())
+        .dirty(&mut dirty)
+        .root(input_root)
+        .fragments(&mut fragments)
+        .constraint(&constraint)
+        .build()
         .ok_or("could not build the fragment tree")?;
     PrepaintTreeBuilder::new()
-        .build(
-            &ui,
-            &inputs,
-            &dirty,
-            &fragments,
-            &constraint.units,
-            &mut prepaint,
-            fragment_root,
-            false,
-        )
+        .prepare()
+        .ui(&ui)
+        .inputs(&inputs)
+        .dirty(&dirty)
+        .fragments(&fragments)
+        .units(&constraint.units)
+        .tree(&mut prepaint)
+        .root(fragment_root)
+        .viewport_changed(false)
+        .build()
         .ok_or("could not resolve the pre-paint tree")?;
     PaintLayerBuilder::new()
-        .build(
-            &ui,
-            &inputs,
-            &dirty,
-            &fragments,
-            &constraint.units,
-            &mut layers,
-            input_root,
-            false,
-        )
+        .prepare()
+        .ui(&ui)
+        .inputs(&inputs)
+        .dirty(&dirty)
+        .fragments(&fragments)
+        .units(&constraint.units)
+        .tree(&mut layers)
+        .root(input_root)
+        .viewport_changed(false)
+        .build()
         .ok_or("could not build the paint layers")?;
     let root_key = AxTreeBuilder::new()
-        .build(
-            &ui, &inputs, &dirty, &fragments, &prepaint, &layers, &mut tree, input_root,
-        )
+        .prepare()
+        .ui(&ui)
+        .inputs(&inputs)
+        .dirty(&dirty)
+        .fragments(&fragments)
+        .prepaint(&prepaint)
+        .layers(&layers)
+        .tree(&mut tree)
+        .root(input_root)
+        .build()
         .ok_or("could not build the accessibility tree")?;
 
     // The first update holds every node.

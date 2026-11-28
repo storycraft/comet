@@ -72,25 +72,27 @@ impl Trees {
         let viewport = Size::new(width, 600.0);
         let input_root = self
             .inputs
-            .build(
-                ui,
-                &mut self.tree,
-                &mut self.dirty,
-                BuildRequest::new(root, 16.0, viewport),
-            )
+            .prepare()
+            .ui(ui)
+            .tree(&mut self.tree)
+            .dirty(&mut self.dirty)
+            .request(BuildRequest::new(root, 16.0, viewport))
+            .build()
             .unwrap();
         self.builder
-            .build(
-                ui,
-                &self.tree,
-                &ContentManager::new(),
-                &mut self.fonts,
-                &mut self.dirty,
-                input_root,
-                &mut self.fragments,
+            .prepare()
+            .ui(ui)
+            .tree(&self.tree)
+            .contents(&ContentManager::new())
+            .fonts(&mut self.fonts)
+            .dirty(&mut self.dirty)
+            .root(input_root)
+            .fragments(&mut self.fragments)
+            .constraint(
                 &LayoutConstraint::new_root(viewport, 16.0, 1.0)
                     .with_viewport_changed(viewport_changed),
             )
+            .build()
             .unwrap();
         self.dirty.clear(&self.tree, input_root);
     }
