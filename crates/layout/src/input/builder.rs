@@ -16,29 +16,6 @@ use crate::{
 };
 use comet_geometry::{Size, UnitResolveContext};
 
-/// What [`LayoutInputTreeBuilder::prepare`] builds.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct BuildRequest {
-    /// Source node to build. Its existing item in the tree is updated; without
-    /// one, a new tree is built.
-    pub source: NodeKey,
-    /// Font size of the root element, used for `rem` and as the initial font size.
-    pub root_font_size: f64,
-    /// Viewport size, used for `vw` and `vh`.
-    pub viewport: Size<f64>,
-}
-
-impl BuildRequest {
-    /// Request a build of `source`.
-    pub const fn new(source: NodeKey, root_font_size: f64, viewport: Size<f64>) -> Self {
-        Self {
-            source,
-            root_font_size,
-            viewport,
-        }
-    }
-}
-
 /// Builds a [`LayoutInputTree`] that mirrors the source UI 1:1.
 #[derive(Default)]
 pub struct LayoutInputTreeBuilder {
@@ -276,7 +253,7 @@ impl LayoutInputTreeBuilder {
 
 #[bon::bon]
 impl LayoutInputTreeBuilder {
-    /// Build a new tree for `request.source` when the node has no item, or
+    /// Build a new tree for `source` when the node has no item, or
     /// update its existing item with the source changes marked in `dirty`
     /// with [`DirtyMap::mark`]. Only subtrees whose
     /// [`DirtyEntry::child_bits`] have [`DirtyFlags::NEED_CHILDREN`]
@@ -320,13 +297,15 @@ impl LayoutInputTreeBuilder {
         ui: &Ui,
         tree: &mut LayoutInputTree,
         dirty: &mut DirtyMap,
-        request: BuildRequest,
+        /// Source node to build. Its existing item in the tree is updated;
+        /// without one, a new tree is built.
+        source: NodeKey,
+        /// Font size of the root element, used for `rem` and as the initial
+        /// font size.
+        root_font_size: f64,
+        /// Viewport size, used for `vw` and `vh`.
+        viewport: Size<f64>,
     ) -> Option<LayoutInputKey> {
-        let BuildRequest {
-            source,
-            root_font_size,
-            viewport,
-        } = request;
         let target = tree.item_for_node(source);
 
         let Some(props) = ui.props(source) else {

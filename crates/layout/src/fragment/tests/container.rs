@@ -17,10 +17,7 @@ use crate::{
     container::{ContainerContext, ContainerLayout},
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{BoxFragmentType, NodeLayoutBits, builder::FragmentTreeBuilder, tree::FragmentTree},
-    input::{
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
+    input::{builder::LayoutInputTreeBuilder, tree::LayoutInputTree},
     style::{LayoutConstraint, bx},
 };
 use comet_geometry::{AutoValue, Size, StyleUnit};
@@ -76,7 +73,9 @@ impl Trees {
             .ui(ui)
             .tree(&mut self.tree)
             .dirty(&mut self.dirty)
-            .request(BuildRequest::new(root, 16.0, viewport))
+            .source(root)
+            .root_font_size(16.0)
+            .viewport(viewport)
             .build()
             .unwrap();
         self.builder

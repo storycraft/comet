@@ -10,10 +10,7 @@ use comet_layout::{
         inline::{InlineItemKind, InlineLayout},
         tree::FragmentTree,
     },
-    input::{
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
+    input::{builder::LayoutInputTreeBuilder, tree::LayoutInputTree},
     style::{
         LayoutConstraint,
         bx::{DisplayInner, DisplayOuter},
@@ -44,7 +41,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ui(&ui)
         .tree(&mut inputs)
         .dirty(&mut dirty)
-        .request(BuildRequest::new(root, ROOT_FONT_SIZE, viewport))
+        .source(root)
+        .root_font_size(ROOT_FONT_SIZE)
+        .viewport(viewport)
         .build()
         .ok_or("could not build sample UI")?;
     let fragment_root = fragment_builder
@@ -102,7 +101,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ui(&ui)
         .tree(&mut inputs)
         .dirty(&mut dirty)
-        .request(BuildRequest::new(root, ROOT_FONT_SIZE, viewport))
+        .source(root)
+        .root_font_size(ROOT_FONT_SIZE)
+        .viewport(viewport)
         .build()
         .ok_or("could not rebuild sample UI")?;
     let resized = fragment_builder
@@ -133,7 +134,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ui(&ui)
         .tree(&mut inputs)
         .dirty(&mut dirty)
-        .request(BuildRequest::new(root, ROOT_FONT_SIZE, viewport))
+        .source(root)
+        .root_font_size(ROOT_FONT_SIZE)
+        .viewport(viewport)
         .build()
         .ok_or("could not merge inline span")?;
     let merged = fragment_builder

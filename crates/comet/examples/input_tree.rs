@@ -3,11 +3,7 @@ mod common;
 use comet_geometry::Size;
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
-    input::{
-        LayoutInputKey,
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
+    input::{LayoutInputKey, builder::LayoutInputTreeBuilder, tree::LayoutInputTree},
 };
 use comet_tree::{
     node::{NodeKey, Text},
@@ -23,13 +19,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tree = LayoutInputTree::new();
     let mut dirty = DirtyMap::new();
     let mut builder = LayoutInputTreeBuilder::new();
-    let request = BuildRequest::new(root, 16.0, VIEWPORT);
     let input_root = builder
         .prepare()
         .ui(ui)
         .tree(&mut tree)
         .dirty(&mut dirty)
-        .request(request)
+        .source(root)
+        .root_font_size(16.0)
+        .viewport(VIEWPORT)
         .build()
         .ok_or("could not build layout input tree")?;
 
@@ -46,7 +43,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ui(ui)
         .tree(&mut tree)
         .dirty(&mut dirty)
-        .request(request)
+        .source(root)
+        .root_font_size(16.0)
+        .viewport(VIEWPORT)
         .build()
         .ok_or("could not update layout input tree")?;
     assert_eq!(input_root, updated);

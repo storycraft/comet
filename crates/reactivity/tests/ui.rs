@@ -10,10 +10,7 @@ use comet_geometry::{
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
-    input::{
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
+    input::{builder::LayoutInputTreeBuilder, tree::LayoutInputTree},
     style::{
         LayoutConstraint,
         bx::{DisplayInner, DisplayOuter, FontSize, MinSize, Padding},
@@ -87,7 +84,9 @@ impl Layout {
             .ui(ui)
             .tree(inputs)
             .dirty(dirty)
-            .request(BuildRequest::new(root, 16.0, viewport))
+            .source(root)
+            .root_font_size(16.0)
+            .viewport(viewport)
             .build()
             .expect("input tree");
         FragmentTreeBuilder::new()

@@ -11,10 +11,7 @@ use comet_geometry::{Rect, Size, StyleUnit};
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
-    input::{
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
+    input::{builder::LayoutInputTreeBuilder, tree::LayoutInputTree},
     style::{
         LayoutConstraint,
         bx::{DisplayOuter, Padding},
@@ -48,7 +45,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ui(&ui)
         .tree(&mut inputs)
         .dirty(&mut dirty)
-        .request(BuildRequest::new(root, 16.0, VIEWPORT))
+        .source(root)
+        .root_font_size(16.0)
+        .viewport(VIEWPORT)
         .build()
         .ok_or("could not build the layout input tree")?;
     let constraint = LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0);

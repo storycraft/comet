@@ -12,10 +12,7 @@ use comet_layout::{
         BoxFragmentKey, ChildLayoutType, NodeLayoutBits, builder::FragmentTreeBuilder,
         tree::FragmentTree,
     },
-    input::{
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
+    input::{builder::LayoutInputTreeBuilder, tree::LayoutInputTree},
     style::{
         LayoutConstraint,
         bx::{self, DisplayInner, DisplayOuter},
@@ -116,7 +113,9 @@ impl Fixture {
             .ui(ui)
             .tree(&mut self.inputs)
             .dirty(&mut self.dirty)
-            .request(BuildRequest::new(node, 16.0, viewport))
+            .source(node)
+            .root_font_size(16.0)
+            .viewport(viewport)
             .build()
             .unwrap();
         let fragment = self

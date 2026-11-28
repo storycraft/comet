@@ -9,11 +9,7 @@ use comet_layout::{
         BoxFragmentKey, BoxFragmentType, FragmentRef, builder::FragmentTreeBuilder,
         tree::FragmentTree,
     },
-    input::{
-        LayoutInputKey,
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
+    input::{LayoutInputKey, builder::LayoutInputTreeBuilder, tree::LayoutInputTree},
     style::{LayoutConstraint, bx},
 };
 use comet_paint::selection::{Affinity, Selection, TextPosition, rects::SelectionRects};
@@ -102,7 +98,9 @@ impl Fixture {
             .ui(ui)
             .tree(&mut self.inputs)
             .dirty(&mut self.dirty)
-            .request(BuildRequest::new(node, 16.0, VIEWPORT))
+            .source(node)
+            .root_font_size(16.0)
+            .viewport(VIEWPORT)
             .build()
             .unwrap();
         let root = self

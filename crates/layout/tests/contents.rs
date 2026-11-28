@@ -7,10 +7,7 @@ use comet_geometry::{AutoValue, Rect, Size, StyleUnit};
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{builder::FragmentTreeBuilder, tree::FragmentTree},
-    input::{
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
+    input::{builder::LayoutInputTreeBuilder, tree::LayoutInputTree},
     style::{
         LayoutConstraint,
         bx::{self, DisplayInner},
@@ -44,7 +41,9 @@ fn sizes(ui: &Ui, root: NodeKey, contents: &ContentManager, nodes: &[NodeKey]) -
         .ui(ui)
         .tree(&mut inputs)
         .dirty(&mut dirty)
-        .request(BuildRequest::new(root, 16.0, VIEWPORT))
+        .source(root)
+        .root_font_size(16.0)
+        .viewport(VIEWPORT)
         .build()
         .unwrap();
     let mut fragments = FragmentTree::new();
@@ -171,7 +170,9 @@ fn content_boxes_are_measured_again_with_a_new_scale_factor() {
         .ui(&ui)
         .tree(&mut inputs)
         .dirty(&mut dirty)
-        .request(BuildRequest::new(root, 16.0, VIEWPORT))
+        .source(root)
+        .root_font_size(16.0)
+        .viewport(VIEWPORT)
         .build()
         .unwrap();
     let mut fragments = FragmentTree::new();

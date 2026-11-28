@@ -7,10 +7,8 @@ use comet_geometry::{Size, StyleUnit};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     input::{
-        ChildLayout, LayoutInputKey, LayoutInputKind,
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        text::TextStyleBits,
-        tree::LayoutInputTree,
+        ChildLayout, LayoutInputKey, LayoutInputKind, builder::LayoutInputTreeBuilder,
+        text::TextStyleBits, tree::LayoutInputTree,
     },
     style::bx::{self, DisplayInner, DisplayOuter},
 };
@@ -32,7 +30,9 @@ fn build(
         .ui(ui)
         .tree(tree)
         .dirty(dirty)
-        .request(BuildRequest::new(root, 16.0, VIEWPORT))
+        .source(root)
+        .root_font_size(16.0)
+        .viewport(VIEWPORT)
         .build()
 }
 
@@ -328,7 +328,9 @@ fn invalidate_viewport_marks_viewport_dependent_items() {
         .ui(&ui)
         .tree(&mut tree)
         .dirty(&mut dirty)
-        .request(BuildRequest::new(root, 16.0, viewport))
+        .source(root)
+        .root_font_size(16.0)
+        .viewport(viewport)
         .build();
 
     let style = |node| {
@@ -799,7 +801,9 @@ fn build_resolves_only_marked_items_of_an_existing_tree() {
             .ui(&ui)
             .tree(&mut tree)
             .dirty(&mut dirty)
-            .request(BuildRequest::new(root, 20.0, viewport))
+            .source(root)
+            .root_font_size(20.0)
+            .viewport(viewport)
             .build(),
         Some(key)
     );
@@ -814,7 +818,9 @@ fn build_resolves_only_marked_items_of_an_existing_tree() {
         .ui(&ui)
         .tree(&mut tree)
         .dirty(&mut dirty)
-        .request(BuildRequest::new(root, 16.0, viewport))
+        .source(root)
+        .root_font_size(16.0)
+        .viewport(viewport)
         .build();
     assert_eq!(tree.items[text_key].text_style.span.letter_spacing, 10.0);
     assert_eq!(dirty.entry(text_key).flags, FULL);
@@ -828,7 +834,9 @@ fn build_resolves_only_marked_items_of_an_existing_tree() {
         .ui(&ui)
         .tree(&mut tree)
         .dirty(&mut dirty)
-        .request(BuildRequest::new(root, 16.0, viewport))
+        .source(root)
+        .root_font_size(16.0)
+        .viewport(viewport)
         .build();
     assert_eq!(dirty.entry(text_key).flags, DirtyFlags::NEED_BOX_LAYOUT);
 }
@@ -852,7 +860,9 @@ fn build_builds_a_new_tree_without_a_source_item() {
         .ui(&ui)
         .tree(&mut tree)
         .dirty(&mut dirty)
-        .request(BuildRequest::new(root, 20.0, VIEWPORT))
+        .source(root)
+        .root_font_size(20.0)
+        .viewport(VIEWPORT)
         .build()
         .unwrap();
 

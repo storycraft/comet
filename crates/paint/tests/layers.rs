@@ -5,11 +5,7 @@ use comet_geometry::{AutoValue, Size, StyleUnit, UnitResolveContext};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{BoxFragmentKey, FragmentRef, builder::FragmentTreeBuilder, tree::FragmentTree},
-    input::{
-        LayoutInputKey,
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
+    input::{LayoutInputKey, builder::LayoutInputTreeBuilder, tree::LayoutInputTree},
     style::{LayoutConstraint, bx},
 };
 use comet_paint::hit::{HitTestResult, PaintHitTester};
@@ -65,7 +61,9 @@ impl Fixture {
             .ui(ui)
             .tree(&mut inputs)
             .dirty(&mut dirty)
-            .request(BuildRequest::new(node, 16.0, VIEWPORT))
+            .source(node)
+            .root_font_size(16.0)
+            .viewport(VIEWPORT)
             .build()
             .unwrap();
         let mut fragments = FragmentTree::new();
@@ -1281,7 +1279,9 @@ impl Pipeline {
             .ui(ui)
             .tree(&mut self.inputs)
             .dirty(&mut self.dirty)
-            .request(BuildRequest::new(node, 16.0, VIEWPORT))
+            .source(node)
+            .root_font_size(16.0)
+            .viewport(VIEWPORT)
             .build()
             .unwrap();
         let root = self

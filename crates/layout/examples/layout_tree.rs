@@ -4,9 +4,7 @@ use comet_geometry::{Size, StyleUnit};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     input::{
-        LayoutInputKey, LayoutInputKind,
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
+        LayoutInputKey, LayoutInputKind, builder::LayoutInputTreeBuilder, tree::LayoutInputTree,
     },
     style::bx::{DisplayInner, DisplayOuter, FontSize},
 };
@@ -152,7 +150,9 @@ fn build(
         .ui(ui)
         .tree(tree)
         .dirty(dirty)
-        .request(BuildRequest::new(root, root_font_size, VIEWPORT))
+        .source(root)
+        .root_font_size(root_font_size)
+        .viewport(VIEWPORT)
         .build()
         .ok_or("could not build sample UI")
 }

@@ -4,10 +4,7 @@ use comet_geometry::{AutoValue, Rect as LayoutRect, Size, StyleUnit, UnitResolve
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{BoxFragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
-    input::{
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
+    input::{builder::LayoutInputTreeBuilder, tree::LayoutInputTree},
     style::{LayoutConstraint, bx},
 };
 use comet_paint::style;
@@ -120,7 +117,9 @@ fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, BoxFragmentK
         .ui(ui)
         .tree(&mut inputs)
         .dirty(&mut dirty)
-        .request(BuildRequest::new(node, 16.0, VIEWPORT))
+        .source(node)
+        .root_font_size(16.0)
+        .viewport(VIEWPORT)
         .build()
         .unwrap();
 

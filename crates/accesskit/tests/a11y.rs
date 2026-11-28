@@ -7,11 +7,7 @@ use comet_geometry::{AutoValue, Point, Rect, Size, StyleUnit};
 use comet_layout::{
     dirty_map::{DirtyFlags, DirtyMap},
     fragment::{BoxFragmentKey, builder::FragmentTreeBuilder, tree::FragmentTree},
-    input::{
-        LayoutInputKey,
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
+    input::{LayoutInputKey, builder::LayoutInputTreeBuilder, tree::LayoutInputTree},
     style::{
         LayoutConstraint,
         bx::{self, DisplayOuter, Padding},
@@ -78,7 +74,9 @@ impl Harness {
             .ui(ui)
             .tree(inputs)
             .dirty(dirty)
-            .request(BuildRequest::new(root, 16.0, VIEWPORT))
+            .source(root)
+            .root_font_size(16.0)
+            .viewport(VIEWPORT)
             .build()
             .expect("input tree");
         let constraint = LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0);

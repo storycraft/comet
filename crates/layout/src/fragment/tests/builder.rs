@@ -13,11 +13,7 @@ use crate::{
         BoxFragmentKey, BoxFragmentType, NodeLayoutBits, builder::FragmentTreeBuilder,
         tree::FragmentTree,
     },
-    input::{
-        LayoutInputKey,
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
+    input::{LayoutInputKey, builder::LayoutInputTreeBuilder, tree::LayoutInputTree},
     style::{LayoutConstraint, bx},
 };
 use comet_geometry::{AutoValue, Point, Rect, Size, StyleUnit};
@@ -77,7 +73,9 @@ impl Fixture {
             .ui(&self.ui)
             .tree(&mut self.tree)
             .dirty(&mut self.dirty)
-            .request(BuildRequest::new(self.root, 16.0, VIEWPORT))
+            .source(self.root)
+            .root_font_size(16.0)
+            .viewport(VIEWPORT)
             .build()
             .unwrap();
         let key = if layout {

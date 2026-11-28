@@ -6,11 +6,7 @@ use comet_tree::{
 use crate::{
     dirty_map::DirtyMap,
     fragment::inline::input::{InlinePrelayout, InputItem},
-    input::{
-        LayoutInputKey,
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
+    input::{LayoutInputKey, builder::LayoutInputTreeBuilder, tree::LayoutInputTree},
     style::bx,
 };
 use comet_geometry::Size;
@@ -22,7 +18,9 @@ fn build(ui: &Ui, root: NodeKey) -> (LayoutInputTree, LayoutInputKey) {
         .ui(ui)
         .tree(&mut tree)
         .dirty(&mut DirtyMap::new())
-        .request(BuildRequest::new(root, 16.0, Size::new(400.0, 600.0)))
+        .source(root)
+        .root_font_size(16.0)
+        .viewport(Size::new(400.0, 600.0))
         .build()
         .unwrap();
 

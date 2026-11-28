@@ -15,11 +15,7 @@ use crate::{
             inline_box_source,
         },
     },
-    input::{
-        LayoutInputKey,
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
+    input::{LayoutInputKey, builder::LayoutInputTreeBuilder, tree::LayoutInputTree},
     style::{LayoutConstraint, bx},
 };
 use comet_geometry::Size;
@@ -44,7 +40,9 @@ impl Fixture {
             .ui(&ui)
             .tree(&mut tree)
             .dirty(&mut DirtyMap::new())
-            .request(BuildRequest::new(root, 16.0, VIEWPORT))
+            .source(root)
+            .root_font_size(16.0)
+            .viewport(VIEWPORT)
             .build()
             .unwrap();
 

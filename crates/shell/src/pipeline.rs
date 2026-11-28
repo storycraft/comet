@@ -11,11 +11,7 @@ use comet_geometry::{Size, UnitResolveContext};
 use comet_layout::{
     dirty_map::DirtyMap,
     fragment::{BoxFragmentKey, FragmentRef, builder::FragmentTreeBuilder, tree::FragmentTree},
-    input::{
-        LayoutInputKey,
-        builder::{BuildRequest, LayoutInputTreeBuilder},
-        tree::LayoutInputTree,
-    },
+    input::{LayoutInputKey, builder::LayoutInputTreeBuilder, tree::LayoutInputTree},
     style::LayoutConstraint,
 };
 use comet_paint::{
@@ -305,14 +301,15 @@ impl Pipeline {
         {
             inputs.invalidate_viewport(dirty, key);
         }
-        let request = BuildRequest::new(root, ROOT_FONT_SIZE, viewport);
         let input_root = builders
             .inputs
             .prepare()
             .ui(ui)
             .tree(inputs)
             .dirty(dirty)
-            .request(request)
+            .source(root)
+            .root_font_size(ROOT_FONT_SIZE)
+            .viewport(viewport)
             .build()?;
         self.input_viewport = Some(viewport);
 
