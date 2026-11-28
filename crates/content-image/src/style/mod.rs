@@ -2,6 +2,9 @@
 //! the image, next to the [content styles](comet_content::style) sizing and
 //! placing it.
 
+#[cfg(feature = "reactivity")]
+pub mod reactive;
+
 use comet_tree::style::{StyleProp, define_style_props};
 use peniko::{Extend, ImageQuality, ImageSampler};
 
@@ -36,24 +39,6 @@ impl ImageExtend {
         }
     }
 }
-
-// Read by contents when they draw, so changes only paint again.
-#[cfg(feature = "reactivity")]
-const _: () = {
-    use comet_reactivity::prop::{PropHint, ReactiveProp};
-
-    impl ReactiveProp for ImageRendering {
-        fn hint(&self, _: Option<&Self>) -> PropHint {
-            PropHint::RENDER
-        }
-    }
-
-    impl ReactiveProp for ImageExtend {
-        fn hint(&self, _: Option<&Self>) -> PropHint {
-            PropHint::RENDER
-        }
-    }
-};
 
 /// The sampler drawing an image with the quality of `rendering` and the
 /// extends of `extend`, opaque.
