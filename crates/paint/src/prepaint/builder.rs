@@ -111,12 +111,12 @@ impl PrepaintTreeBuilder {
     #[builder(finish_fn = build)]
     pub fn prepare(
         &mut self,
+        #[builder(start_fn)] tree: &mut PrepaintTree,
         ui: &Ui,
         inputs: &LayoutInputTree,
         dirty: &DirtyMap,
         fragments: &FragmentTree,
         units: &UnitResolveContext,
-        tree: &mut PrepaintTree,
         root: BoxFragmentKey,
         viewport_changed: bool,
     ) -> Option<()> {

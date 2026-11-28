@@ -109,10 +109,8 @@ impl Fixture {
         let viewport = Size::new(width, 600.0);
         let root = self
             .input_builder
-            .prepare()
+            .prepare(&mut self.inputs, &mut self.dirty)
             .ui(ui)
-            .tree(&mut self.inputs)
-            .dirty(&mut self.dirty)
             .source(node)
             .root_font_size(16.0)
             .viewport(viewport)
@@ -120,14 +118,12 @@ impl Fixture {
             .unwrap();
         let fragment = self
             .builder
-            .prepare()
+            .prepare(&mut self.fragments, &mut self.dirty)
             .ui(ui)
             .tree(&self.inputs)
             .contents(&ContentManager::new())
             .fonts(&mut self.fonts)
-            .dirty(&mut self.dirty)
             .root(root)
-            .fragments(&mut self.fragments)
             .constraint(&LayoutConstraint::new_root(viewport, 16.0, 1.0))
             .build()
             .unwrap();

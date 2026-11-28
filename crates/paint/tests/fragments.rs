@@ -113,10 +113,8 @@ fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, BoxFragmentK
     let mut inputs = LayoutInputTree::new();
     let mut dirty = DirtyMap::new();
     let root = LayoutInputTreeBuilder::new()
-        .prepare()
+        .prepare(&mut inputs, &mut dirty)
         .ui(ui)
-        .tree(&mut inputs)
-        .dirty(&mut dirty)
         .source(node)
         .root_font_size(16.0)
         .viewport(VIEWPORT)
@@ -125,14 +123,12 @@ fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, BoxFragmentK
 
     let mut fragments = FragmentTree::new();
     let fragment = FragmentTreeBuilder::new()
-        .prepare()
+        .prepare(&mut fragments, &mut dirty)
         .ui(ui)
         .tree(&inputs)
         .contents(&ContentManager::new())
         .fonts(&mut parley::FontContext::new())
-        .dirty(&mut dirty)
         .root(root)
-        .fragments(&mut fragments)
         .constraint(&LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0))
         .build()
         .unwrap();
@@ -178,26 +174,24 @@ fn draw_with(
     let dirty = &mut DirtyMap::new();
     let mut prepaint = PrepaintTree::new();
     PrepaintTreeBuilder::new()
-        .prepare()
+        .prepare(&mut prepaint)
         .ui(ui)
         .inputs(inputs)
         .dirty(dirty)
         .fragments(tree)
         .units(units)
-        .tree(&mut prepaint)
         .root(root)
         .viewport_changed(false)
         .build()
         .unwrap();
     let mut layers = PaintLayerTree::new();
     let layer_root = PaintLayerBuilder::new()
-        .prepare()
+        .prepare(&mut layers)
         .ui(ui)
         .inputs(inputs)
         .dirty(dirty)
         .fragments(tree)
         .units(&UNITS)
-        .tree(&mut layers)
         .root(tree.boxes[root].source)
         .viewport_changed(false)
         .build()

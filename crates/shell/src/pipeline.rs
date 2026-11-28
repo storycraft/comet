@@ -303,10 +303,8 @@ impl Pipeline {
         }
         let input_root = builders
             .inputs
-            .prepare()
+            .prepare(inputs, dirty)
             .ui(ui)
-            .tree(inputs)
-            .dirty(dirty)
             .source(root)
             .root_font_size(ROOT_FONT_SIZE)
             .viewport(viewport)
@@ -321,14 +319,12 @@ impl Pipeline {
             .with_viewport_changed(viewport_changed);
         let Some(fragment_root) = builders
             .fragments
-            .prepare()
+            .prepare(fragments, dirty)
             .ui(ui)
             .tree(inputs)
             .contents(contents)
             .fonts(&mut self.fonts)
-            .dirty(dirty)
             .root(input_root)
-            .fragments(fragments)
             .constraint(&constraint)
             .build()
         else {
@@ -375,13 +371,12 @@ impl Pipeline {
         let layer_root = resolved.and_then(|()| {
             builders
                 .layers
-                .prepare()
+                .prepare(layers)
                 .ui(ui)
                 .inputs(inputs)
                 .dirty(dirty)
                 .fragments(&*fragments)
                 .units(&constraint.units)
-                .tree(layers)
                 .root(input_root)
                 .viewport_changed(layer_viewport_changed)
                 .build()
@@ -495,13 +490,12 @@ fn resolve_prepaint(
 
     builders
         .prepaint
-        .prepare()
+        .prepare(prepaint)
         .ui(ui)
         .inputs(inputs)
         .dirty(dirty)
         .fragments(fragments)
         .units(units)
-        .tree(prepaint)
         .root(root)
         .viewport_changed(viewport_changed)
         .build()?;
@@ -542,14 +536,13 @@ impl Pipeline {
         a11y.root = self
             .builders
             .ax
-            .prepare()
+            .prepare(&mut trees.ax)
             .ui(ui)
             .inputs(&trees.inputs)
             .dirty(&trees.dirty)
             .fragments(&trees.fragments)
             .prepaint(&trees.prepaint)
             .layers(&trees.layers)
-            .tree(&mut trees.ax)
             .root(root)
             .build();
 

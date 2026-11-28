@@ -36,10 +36,8 @@ impl Fixture {
     fn new(ui: Ui, root: NodeKey) -> Self {
         let mut tree = LayoutInputTree::new();
         let root = LayoutInputTreeBuilder::new()
-            .prepare()
+            .prepare(&mut tree, &mut DirtyMap::new())
             .ui(&ui)
-            .tree(&mut tree)
-            .dirty(&mut DirtyMap::new())
             .source(root)
             .root_font_size(16.0)
             .viewport(VIEWPORT)

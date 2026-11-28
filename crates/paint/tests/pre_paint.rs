@@ -94,10 +94,8 @@ impl Fixture {
     fn layout(&mut self, ui: &Ui, node: NodeKey) -> BoxFragmentKey {
         let input_root = self
             .input_builder
-            .prepare()
+            .prepare(&mut self.inputs, &mut self.dirty)
             .ui(ui)
-            .tree(&mut self.inputs)
-            .dirty(&mut self.dirty)
             .source(node)
             .root_font_size(16.0)
             .viewport(VIEWPORT)
@@ -105,14 +103,12 @@ impl Fixture {
             .unwrap();
         let root = self
             .builder
-            .prepare()
+            .prepare(&mut self.fragments, &mut self.dirty)
             .ui(ui)
             .tree(&self.inputs)
             .contents(&ContentManager::new())
             .fonts(&mut self.fonts)
-            .dirty(&mut self.dirty)
             .root(input_root)
-            .fragments(&mut self.fragments)
             .constraint(&LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0))
             .build()
             .unwrap();
@@ -127,13 +123,12 @@ impl Fixture {
     fn resolve(&mut self, ui: &Ui, key: BoxFragmentKey) -> Option<()> {
         let resolved = self
             .resolver
-            .prepare()
+            .prepare(&mut self.prepaint)
             .ui(ui)
             .inputs(&self.inputs)
             .dirty(&self.dirty)
             .fragments(&self.fragments)
             .units(&UNITS)
-            .tree(&mut self.prepaint)
             .root(key)
             .viewport_changed(false)
             .build();
@@ -141,13 +136,12 @@ impl Fixture {
         self.layers.clear();
         if let Some(input_root) = self.input_root {
             PaintLayerBuilder::new()
-                .prepare()
+                .prepare(&mut self.layers)
                 .ui(ui)
                 .inputs(&self.inputs)
                 .dirty(&self.dirty)
                 .fragments(&self.fragments)
                 .units(&UNITS)
-                .tree(&mut self.layers)
                 .root(input_root)
                 .viewport_changed(false)
                 .build();
@@ -244,13 +238,12 @@ impl Fixture {
     fn layers(&self, ui: &Ui) -> (PaintLayerTree, PaintLayerKey) {
         let mut layers = PaintLayerTree::new();
         let root = PaintLayerBuilder::new()
-            .prepare()
+            .prepare(&mut layers)
             .ui(ui)
             .inputs(&self.inputs)
             .dirty(&self.dirty)
             .fragments(&self.fragments)
             .units(&UNITS)
-            .tree(&mut layers)
             .root(self.input_root.unwrap())
             .viewport_changed(false)
             .build()
@@ -1521,13 +1514,12 @@ impl Fixture {
     fn full_resolve(&self, ui: &Ui, root: BoxFragmentKey) -> PrepaintTree {
         let mut full = PrepaintTree::new();
         PrepaintTreeBuilder::new()
-            .prepare()
+            .prepare(&mut full)
             .ui(ui)
             .inputs(&self.inputs)
             .dirty(&self.dirty)
             .fragments(&self.fragments)
             .units(&UNITS)
-            .tree(&mut full)
             .root(root)
             .viewport_changed(false)
             .build()
@@ -1759,13 +1751,12 @@ fn viewport_changes_resolve_viewport_dependent_paint_values_again() {
     let wide = LayoutConstraint::new_root(Size::new(200.0, 400.0), 16.0, 1.0).units;
     let resolve = |f: &mut Fixture, ui: &Ui, units, viewport_changed| {
         f.resolver
-            .prepare()
+            .prepare(&mut f.prepaint)
             .ui(ui)
             .inputs(&f.inputs)
             .dirty(&f.dirty)
             .fragments(&f.fragments)
             .units(units)
-            .tree(&mut f.prepaint)
             .root(fragment_root)
             .viewport_changed(viewport_changed)
             .build()

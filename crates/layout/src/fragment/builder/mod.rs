@@ -213,13 +213,13 @@ impl FragmentTreeBuilder {
     #[builder(finish_fn = build)]
     pub fn prepare(
         &mut self,
+        #[builder(start_fn)] fragments: &mut FragmentTree,
+        #[builder(start_fn)] dirty: &mut DirtyMap,
         ui: &Ui,
         tree: &LayoutInputTree,
         contents: &ContentManager,
         fonts: &mut parley::FontContext,
-        dirty: &mut DirtyMap,
         root: LayoutInputKey,
-        fragments: &mut FragmentTree,
         constraint: &LayoutConstraint,
     ) -> Option<BoxFragmentKey> {
         self.run(

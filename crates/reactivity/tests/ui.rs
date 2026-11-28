@@ -80,24 +80,20 @@ impl Layout {
 
         let ui = &tree.ui;
         let input_root = LayoutInputTreeBuilder::new()
-            .prepare()
+            .prepare(inputs, dirty)
             .ui(ui)
-            .tree(inputs)
-            .dirty(dirty)
             .source(root)
             .root_font_size(16.0)
             .viewport(viewport)
             .build()
             .expect("input tree");
         FragmentTreeBuilder::new()
-            .prepare()
+            .prepare(fragments, dirty)
             .ui(ui)
             .tree(inputs)
             .contents(&ContentManager::new())
             .fonts(&mut parley::FontContext::new())
-            .dirty(dirty)
             .root(input_root)
-            .fragments(fragments)
             .constraint(&LayoutConstraint::new_root(viewport, 16.0, 1.0))
             .build()
             .expect("fragment tree");

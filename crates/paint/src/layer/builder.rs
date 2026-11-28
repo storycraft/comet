@@ -464,12 +464,12 @@ impl PaintLayerBuilder {
     #[builder(finish_fn = build)]
     pub fn prepare(
         &mut self,
+        #[builder(start_fn)] tree: &mut PaintLayerTree,
         ui: &Ui,
         inputs: &LayoutInputTree,
         dirty: &DirtyMap,
         fragments: &FragmentTree,
         units: &UnitResolveContext,
-        tree: &mut PaintLayerTree,
         root: LayoutInputKey,
         viewport_changed: bool,
     ) -> Option<PaintLayerKey> {

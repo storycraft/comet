@@ -124,13 +124,13 @@ impl AxTreeBuilder {
     #[builder(finish_fn = build)]
     pub fn prepare(
         &mut self,
+        #[builder(start_fn)] tree: &mut AxTree,
         ui: &Ui,
         inputs: &LayoutInputTree,
         dirty: &DirtyMap,
         fragments: &FragmentTree,
         prepaint: &PrepaintTree,
         layers: &PaintLayerTree,
-        tree: &mut AxTree,
         root: LayoutInputKey,
     ) -> Option<AxKey> {
         fragments.box_fragment(root)?;

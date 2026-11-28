@@ -20,10 +20,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut dirty = DirtyMap::new();
     let mut builder = LayoutInputTreeBuilder::new();
     let input_root = builder
-        .prepare()
+        .prepare(&mut tree, &mut dirty)
         .ui(ui)
-        .tree(&mut tree)
-        .dirty(&mut dirty)
         .source(root)
         .root_font_size(16.0)
         .viewport(VIEWPORT)
@@ -39,10 +37,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     dirty.mark_node(&tree, text, DirtyFlags::NEED_FULL_LAYOUT);
 
     let updated = builder
-        .prepare()
+        .prepare(&mut tree, &mut dirty)
         .ui(ui)
-        .tree(&mut tree)
-        .dirty(&mut dirty)
         .source(root)
         .root_font_size(16.0)
         .viewport(VIEWPORT)

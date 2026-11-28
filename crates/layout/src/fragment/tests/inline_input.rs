@@ -14,10 +14,8 @@ use comet_geometry::Size;
 fn build(ui: &Ui, root: NodeKey) -> (LayoutInputTree, LayoutInputKey) {
     let mut tree = LayoutInputTree::new();
     let key = LayoutInputTreeBuilder::new()
-        .prepare()
+        .prepare(&mut tree, &mut DirtyMap::new())
         .ui(ui)
-        .tree(&mut tree)
-        .dirty(&mut DirtyMap::new())
         .source(root)
         .root_font_size(16.0)
         .viewport(Size::new(400.0, 600.0))

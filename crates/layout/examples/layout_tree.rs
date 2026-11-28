@@ -146,10 +146,8 @@ fn build(
     root_font_size: f64,
 ) -> Result<LayoutInputKey, &'static str> {
     builder
-        .prepare()
+        .prepare(tree, dirty)
         .ui(ui)
-        .tree(tree)
-        .dirty(dirty)
         .source(root)
         .root_font_size(root_font_size)
         .viewport(VIEWPORT)

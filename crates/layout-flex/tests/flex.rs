@@ -49,10 +49,8 @@ impl Layout {
     fn build(&mut self, ui: &Ui, root: NodeKey) -> BoxFragmentKey {
         let key = self
             .input_builder
-            .prepare()
+            .prepare(&mut self.inputs, &mut self.dirty)
             .ui(ui)
-            .tree(&mut self.inputs)
-            .dirty(&mut self.dirty)
             .source(root)
             .root_font_size(16.0)
             .viewport(VIEWPORT)
@@ -60,14 +58,12 @@ impl Layout {
             .unwrap();
         let fragment = self
             .builder
-            .prepare()
+            .prepare(&mut self.fragments, &mut self.dirty)
             .ui(ui)
             .tree(&self.inputs)
             .contents(&ContentManager::new())
             .fonts(&mut self.fonts)
-            .dirty(&mut self.dirty)
             .root(key)
-            .fragments(&mut self.fragments)
             .constraint(&LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0))
             .build()
             .unwrap();
@@ -560,10 +556,8 @@ fn viewport_gaps_follow_viewport_changes() {
         let viewport = Size::new(width, 600.0);
         let key = layout
             .input_builder
-            .prepare()
+            .prepare(&mut layout.inputs, &mut layout.dirty)
             .ui(&ui)
-            .tree(&mut layout.inputs)
-            .dirty(&mut layout.dirty)
             .source(root)
             .root_font_size(16.0)
             .viewport(viewport)
@@ -571,14 +565,12 @@ fn viewport_gaps_follow_viewport_changes() {
             .unwrap();
         let fragment = layout
             .builder
-            .prepare()
+            .prepare(&mut layout.fragments, &mut layout.dirty)
             .ui(&ui)
             .tree(&layout.inputs)
             .contents(&ContentManager::new())
             .fonts(&mut layout.fonts)
-            .dirty(&mut layout.dirty)
             .root(key)
-            .fragments(&mut layout.fragments)
             .constraint(
                 &LayoutConstraint::new_root(viewport, 16.0, 1.0)
                     .with_viewport_changed(viewport_changed),

@@ -294,9 +294,9 @@ impl LayoutInputTreeBuilder {
     #[builder(finish_fn = build)]
     pub fn prepare(
         &mut self,
+        #[builder(start_fn)] tree: &mut LayoutInputTree,
+        #[builder(start_fn)] dirty: &mut DirtyMap,
         ui: &Ui,
-        tree: &mut LayoutInputTree,
-        dirty: &mut DirtyMap,
         /// Source node to build. Its existing item in the tree is updated;
         /// without one, a new tree is built.
         source: NodeKey,

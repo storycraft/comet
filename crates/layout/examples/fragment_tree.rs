@@ -37,24 +37,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut viewport = Size::new(320.0, 600.0);
     let mut constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE, 1.0);
     let input_root = input_builder
-        .prepare()
+        .prepare(&mut inputs, &mut dirty)
         .ui(&ui)
-        .tree(&mut inputs)
-        .dirty(&mut dirty)
         .source(root)
         .root_font_size(ROOT_FONT_SIZE)
         .viewport(viewport)
         .build()
         .ok_or("could not build sample UI")?;
     let fragment_root = fragment_builder
-        .prepare()
+        .prepare(&mut fragments, &mut dirty)
         .ui(&ui)
         .tree(&inputs)
         .contents(&ContentManager::new())
         .fonts(&mut fonts)
-        .dirty(&mut dirty)
         .root(input_root)
-        .fragments(&mut fragments)
         .constraint(&constraint)
         .build()
         .ok_or("could not build fragments")?;
@@ -73,14 +69,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     dirty.mark_node(&inputs, greeting, DirtyFlags::NEED_FULL_LAYOUT);
 
     let updated = fragment_builder
-        .prepare()
+        .prepare(&mut fragments, &mut dirty)
         .ui(&ui)
         .tree(&inputs)
         .contents(&ContentManager::new())
         .fonts(&mut fonts)
-        .dirty(&mut dirty)
         .root(input_root)
-        .fragments(&mut fragments)
         .constraint(&constraint)
         .build()
         .ok_or("could not update fragments")?;
@@ -97,24 +91,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE, 1.0).with_viewport_changed(true);
     inputs.invalidate_viewport(&mut dirty, input_root);
     input_builder
-        .prepare()
+        .prepare(&mut inputs, &mut dirty)
         .ui(&ui)
-        .tree(&mut inputs)
-        .dirty(&mut dirty)
         .source(root)
         .root_font_size(ROOT_FONT_SIZE)
         .viewport(viewport)
         .build()
         .ok_or("could not rebuild sample UI")?;
     let resized = fragment_builder
-        .prepare()
+        .prepare(&mut fragments, &mut dirty)
         .ui(&ui)
         .tree(&inputs)
         .contents(&ContentManager::new())
         .fonts(&mut fonts)
-        .dirty(&mut dirty)
         .root(input_root)
-        .fragments(&mut fragments)
         .constraint(&constraint)
         .build()
         .ok_or("could not reflow fragments")?;
@@ -130,24 +120,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE, 1.0);
 
     input_builder
-        .prepare()
+        .prepare(&mut inputs, &mut dirty)
         .ui(&ui)
-        .tree(&mut inputs)
-        .dirty(&mut dirty)
         .source(root)
         .root_font_size(ROOT_FONT_SIZE)
         .viewport(viewport)
         .build()
         .ok_or("could not merge inline span")?;
     let merged = fragment_builder
-        .prepare()
+        .prepare(&mut fragments, &mut dirty)
         .ui(&ui)
         .tree(&inputs)
         .contents(&ContentManager::new())
         .fonts(&mut fonts)
-        .dirty(&mut dirty)
         .root(input_root)
-        .fragments(&mut fragments)
         .constraint(&constraint)
         .build()
         .ok_or("could not rebuild merged fragments")?;

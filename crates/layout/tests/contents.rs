@@ -37,10 +37,8 @@ fn sizes(ui: &Ui, root: NodeKey, contents: &ContentManager, nodes: &[NodeKey]) -
     let mut inputs = LayoutInputTree::new();
     let mut dirty = DirtyMap::new();
     let input_root = LayoutInputTreeBuilder::new()
-        .prepare()
+        .prepare(&mut inputs, &mut dirty)
         .ui(ui)
-        .tree(&mut inputs)
-        .dirty(&mut dirty)
         .source(root)
         .root_font_size(16.0)
         .viewport(VIEWPORT)
@@ -48,14 +46,12 @@ fn sizes(ui: &Ui, root: NodeKey, contents: &ContentManager, nodes: &[NodeKey]) -
         .unwrap();
     let mut fragments = FragmentTree::new();
     FragmentTreeBuilder::new()
-        .prepare()
+        .prepare(&mut fragments, &mut dirty)
         .ui(ui)
         .tree(&inputs)
         .contents(contents)
         .fonts(&mut parley::FontContext::new())
-        .dirty(&mut dirty)
         .root(input_root)
-        .fragments(&mut fragments)
         .constraint(&LayoutConstraint::new_root(VIEWPORT, 16.0, 1.0))
         .build()
         .unwrap();
@@ -166,10 +162,8 @@ fn content_boxes_are_measured_again_with_a_new_scale_factor() {
     let mut inputs = LayoutInputTree::new();
     let mut dirty = DirtyMap::new();
     let input_root = LayoutInputTreeBuilder::new()
-        .prepare()
+        .prepare(&mut inputs, &mut dirty)
         .ui(&ui)
-        .tree(&mut inputs)
-        .dirty(&mut dirty)
         .source(root)
         .root_font_size(16.0)
         .viewport(VIEWPORT)
@@ -180,14 +174,12 @@ fn content_boxes_are_measured_again_with_a_new_scale_factor() {
     let mut fonts = parley::FontContext::new();
     let mut layout = |dirty: &mut DirtyMap, scale_factor: f64, viewport_changed: bool| {
         builder
-            .prepare()
+            .prepare(&mut fragments, dirty)
             .ui(&ui)
             .tree(&inputs)
             .contents(&contents)
             .fonts(&mut fonts)
-            .dirty(dirty)
             .root(input_root)
-            .fragments(&mut fragments)
             .constraint(
                 &LayoutConstraint::new_root(VIEWPORT, 16.0, scale_factor)
                     .with_viewport_changed(viewport_changed),

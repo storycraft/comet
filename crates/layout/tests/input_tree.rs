@@ -26,10 +26,8 @@ fn build(
     dirty: &mut DirtyMap,
 ) -> Option<LayoutInputKey> {
     builder
-        .prepare()
+        .prepare(tree, dirty)
         .ui(ui)
-        .tree(tree)
-        .dirty(dirty)
         .source(root)
         .root_font_size(16.0)
         .viewport(VIEWPORT)
@@ -324,10 +322,8 @@ fn invalidate_viewport_marks_viewport_dependent_items() {
     ui.set_props(independent, (bx::FontSize(StyleUnit::Px(30.0)),));
     let viewport = Size::new(400.0, 300.0);
     builder
-        .prepare()
+        .prepare(&mut tree, &mut dirty)
         .ui(&ui)
-        .tree(&mut tree)
-        .dirty(&mut dirty)
         .source(root)
         .root_font_size(16.0)
         .viewport(viewport)
@@ -797,10 +793,8 @@ fn build_resolves_only_marked_items_of_an_existing_tree() {
     let viewport = Size::new(1000.0, 600.0);
     assert_eq!(
         builder
-            .prepare()
+            .prepare(&mut tree, &mut dirty)
             .ui(&ui)
-            .tree(&mut tree)
-            .dirty(&mut dirty)
             .source(root)
             .root_font_size(20.0)
             .viewport(viewport)
@@ -814,10 +808,8 @@ fn build_resolves_only_marked_items_of_an_existing_tree() {
     // Marked items resolve with the request.
     dirty.mark(&tree, text_key, FULL);
     builder
-        .prepare()
+        .prepare(&mut tree, &mut dirty)
         .ui(&ui)
-        .tree(&mut tree)
-        .dirty(&mut dirty)
         .source(root)
         .root_font_size(16.0)
         .viewport(viewport)
@@ -830,10 +822,8 @@ fn build_resolves_only_marked_items_of_an_existing_tree() {
     dirty.clear(&tree, key);
     dirty.mark(&tree, text_key, DirtyFlags::NEED_BOX_LAYOUT);
     builder
-        .prepare()
+        .prepare(&mut tree, &mut dirty)
         .ui(&ui)
-        .tree(&mut tree)
-        .dirty(&mut dirty)
         .source(root)
         .root_font_size(16.0)
         .viewport(viewport)
@@ -856,10 +846,8 @@ fn build_builds_a_new_tree_without_a_source_item() {
     // A new root font size needs a new tree.
     tree.delete_item(key);
     let rebuilt = builder
-        .prepare()
+        .prepare(&mut tree, &mut dirty)
         .ui(&ui)
-        .tree(&mut tree)
-        .dirty(&mut dirty)
         .source(root)
         .root_font_size(20.0)
         .viewport(VIEWPORT)
