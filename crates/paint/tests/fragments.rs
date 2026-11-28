@@ -130,6 +130,7 @@ fn build(ui: &Ui, node: NodeKey) -> (LayoutInputTree, FragmentTree, BoxFragmentK
             ui,
             &inputs,
             &ContentManager::new(),
+            &mut parley::FontContext::new(),
             &mut dirty,
             root,
             &mut fragments,

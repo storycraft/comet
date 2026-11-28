@@ -53,6 +53,7 @@ fn sizes(ui: &Ui, root: NodeKey, contents: &ContentManager, nodes: &[NodeKey]) -
             ui,
             &inputs,
             contents,
+            &mut parley::FontContext::new(),
             &mut dirty,
             input_root,
             &mut fragments,
@@ -175,12 +176,14 @@ fn content_boxes_are_measured_again_with_a_new_scale_factor() {
         .unwrap();
     let mut fragments = FragmentTree::new();
     let mut builder = FragmentTreeBuilder::new();
+    let mut fonts = parley::FontContext::new();
     let mut layout = |dirty: &mut DirtyMap, scale_factor: f64, viewport_changed: bool| {
         builder
             .build(
                 &ui,
                 &inputs,
                 &contents,
+                &mut fonts,
                 dirty,
                 input_root,
                 &mut fragments,

@@ -71,6 +71,7 @@ struct Fixture {
     resolver: PrepaintTreeBuilder,
     input_builder: LayoutInputTreeBuilder,
     builder: FragmentTreeBuilder,
+    fonts: parley::FontContext,
     root: Option<BoxFragmentKey>,
     input_root: Option<LayoutInputKey>,
 }
@@ -110,6 +111,7 @@ impl Fixture {
                 ui,
                 &self.inputs,
                 &ContentManager::new(),
+                &mut self.fonts,
                 &mut self.dirty,
                 input_root,
                 &mut self.fragments,

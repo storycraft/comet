@@ -48,9 +48,9 @@ pub(crate) const PAINT_CHANGED: DirtyFlags =
     DirtyFlags::NEED_PRE_PAINT.union(DirtyFlags::NEED_LAYER);
 
 /// Builds and updates [`FragmentTree`]s. Keep it to reuse its buffers.
+/// Fonts come from a [`parley::FontContext`] its owner passes to each build.
 #[derive(Default)]
 pub struct FragmentTreeBuilder {
-    pub fonts: parley::FontContext,
     content: InlineContentBuilder,
     scratch: Scratch,
 }
@@ -132,18 +132,23 @@ impl FragmentTreeBuilder {
     /// Boxes displaying a content, with `DisplayInner::Content`, are sized by
     /// the [`Content`](comet_content::Content) of their id in `contents`, or
     /// by their style alone when it is missing.
+    ///
+    /// Text is shaped with the fonts of `fonts`.
     #[allow(clippy::too_many_arguments)]
     pub fn build(
         &mut self,
         ui: &Ui,
         tree: &LayoutInputTree,
         contents: &ContentManager,
+        fonts: &mut parley::FontContext,
         dirty: &mut DirtyMap,
         root: LayoutInputKey,
         fragments: &mut FragmentTree,
         constraint: &LayoutConstraint,
     ) -> Option<BoxFragmentKey> {
-        self.run(ui, tree, contents, dirty, root, fragments, constraint, true)
+        self.run(
+            ui, tree, contents, fonts, dirty, root, fragments, constraint, true,
+        )
     }
 
     /// Run the steps of [`Self::build`] before laying out: sync the box
@@ -155,13 +160,14 @@ impl FragmentTreeBuilder {
         ui: &Ui,
         tree: &LayoutInputTree,
         contents: &ContentManager,
+        fonts: &mut parley::FontContext,
         dirty: &mut DirtyMap,
         root: LayoutInputKey,
         fragments: &mut FragmentTree,
         constraint: &LayoutConstraint,
     ) -> Option<BoxFragmentKey> {
         self.run(
-            ui, tree, contents, dirty, root, fragments, constraint, false,
+            ui, tree, contents, fonts, dirty, root, fragments, constraint, false,
         )
     }
 
@@ -171,6 +177,7 @@ impl FragmentTreeBuilder {
         ui: &Ui,
         tree: &LayoutInputTree,
         contents: &ContentManager,
+        fonts: &mut parley::FontContext,
         dirty: &mut DirtyMap,
         root: LayoutInputKey,
         fragments: &mut FragmentTree,
@@ -187,7 +194,7 @@ impl FragmentTreeBuilder {
                 tree,
                 constraint,
             },
-            fonts: &mut self.fonts,
+            fonts,
             content: &mut self.content,
             contents,
             dirty,

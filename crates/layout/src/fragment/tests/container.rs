@@ -63,6 +63,7 @@ struct Trees {
     tree: LayoutInputTree,
     dirty: DirtyMap,
     builder: FragmentTreeBuilder,
+    fonts: parley::FontContext,
     fragments: FragmentTree,
 }
 
@@ -83,6 +84,7 @@ impl Trees {
                 ui,
                 &self.tree,
                 &ContentManager::new(),
+                &mut self.fonts,
                 &mut self.dirty,
                 input_root,
                 &mut self.fragments,

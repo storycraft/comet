@@ -37,6 +37,7 @@ struct Layout {
     fragments: FragmentTree,
     input_builder: LayoutInputTreeBuilder,
     builder: FragmentTreeBuilder,
+    fonts: parley::FontContext,
 }
 
 impl Deref for Layout {
@@ -65,6 +66,7 @@ impl Layout {
                 ui,
                 &self.inputs,
                 &ContentManager::new(),
+                &mut self.fonts,
                 &mut self.dirty,
                 key,
                 &mut self.fragments,
@@ -573,6 +575,7 @@ fn viewport_gaps_follow_viewport_changes() {
                 &ui,
                 &layout.inputs,
                 &ContentManager::new(),
+                &mut layout.fonts,
                 &mut layout.dirty,
                 key,
                 &mut layout.fragments,

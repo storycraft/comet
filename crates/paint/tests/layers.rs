@@ -73,6 +73,7 @@ impl Fixture {
                 ui,
                 &inputs,
                 &ContentManager::new(),
+                &mut parley::FontContext::new(),
                 &mut dirty,
                 input_root,
                 &mut fragments,
@@ -1237,6 +1238,7 @@ fn hits_negative_layers_below_contents_from_the_last() {
 struct Pipeline {
     input_builder: LayoutInputTreeBuilder,
     fragment_builder: FragmentTreeBuilder,
+    fonts: parley::FontContext,
     resolver: PrepaintTreeBuilder,
     builder: PaintLayerBuilder,
     inputs: LayoutInputTree,
@@ -1264,6 +1266,7 @@ impl Pipeline {
                 ui,
                 &self.inputs,
                 &ContentManager::new(),
+                &mut self.fonts,
                 &mut self.dirty,
                 input_root,
                 &mut self.fragments,

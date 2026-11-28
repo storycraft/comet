@@ -90,6 +90,7 @@ impl Layout {
                 ui,
                 inputs,
                 &ContentManager::new(),
+                &mut parley::FontContext::new(),
                 dirty,
                 input_root,
                 fragments,

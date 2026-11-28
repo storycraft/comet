@@ -57,6 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &ui,
             &inputs,
             &ContentManager::new(),
+            &mut parley::FontContext::new(),
             &mut dirty,
             input_root,
             &mut fragments,

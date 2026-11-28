@@ -184,6 +184,8 @@ pub struct Hit {
 pub struct Pipeline {
     pub trees: UiTrees,
     pub builders: UiBuilders,
+    /// Fonts the layout shapes text with.
+    pub fonts: parley::FontContext,
     /// Root layer of the layers, from the last layout. `None` until a layout
     /// succeeds, or after one fails.
     layer_root: Option<PaintLayerKey>,
@@ -317,6 +319,7 @@ impl Pipeline {
             ui,
             inputs,
             contents,
+            &mut self.fonts,
             dirty,
             input_root,
             fragments,

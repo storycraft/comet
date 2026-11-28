@@ -104,6 +104,7 @@ struct Fixture {
     fragments: FragmentTree,
     input_builder: LayoutInputTreeBuilder,
     builder: FragmentTreeBuilder,
+    fonts: parley::FontContext,
 }
 
 impl Fixture {
@@ -124,6 +125,7 @@ impl Fixture {
                 ui,
                 &self.inputs,
                 &ContentManager::new(),
+                &mut self.fonts,
                 &mut self.dirty,
                 root,
                 &mut self.fragments,

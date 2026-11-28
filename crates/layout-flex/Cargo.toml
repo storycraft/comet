@@ -13,4 +13,5 @@ comet-tree = { workspace = true }
 taffy = { workspace = true, features = ["flexbox", "flexbox_balance", "content_size"] }
 
 [dev-dependencies]
+parley = { workspace = true }
 comet-content = { workspace = true }

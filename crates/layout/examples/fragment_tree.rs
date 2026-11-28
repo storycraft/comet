@@ -35,6 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut input_builder = LayoutInputTreeBuilder::new();
     let mut fragments = FragmentTree::new();
     let mut fragment_builder = FragmentTreeBuilder::new();
+    let mut fonts = parley::FontContext::new();
 
     let mut viewport = Size::new(320.0, 600.0);
     let mut constraint = LayoutConstraint::new_root(viewport, ROOT_FONT_SIZE, 1.0);
@@ -51,6 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &ui,
             &inputs,
             &ContentManager::new(),
+            &mut fonts,
             &mut dirty,
             input_root,
             &mut fragments,
@@ -76,6 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &ui,
             &inputs,
             &ContentManager::new(),
+            &mut fonts,
             &mut dirty,
             input_root,
             &mut fragments,
@@ -107,6 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &ui,
             &inputs,
             &ContentManager::new(),
+            &mut fonts,
             &mut dirty,
             input_root,
             &mut fragments,
@@ -137,6 +141,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &ui,
             &inputs,
             &ContentManager::new(),
+            &mut fonts,
             &mut dirty,
             input_root,
             &mut fragments,

@@ -957,6 +957,7 @@ dependencies = [
  "comet-geometry",
  "comet-layout",
  "comet-tree",
+ "parley",
  "taffy",
 ]
 
